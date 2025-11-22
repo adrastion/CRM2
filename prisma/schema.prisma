@@ -1,0 +1,461 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== TENANT SYSTEM ====================
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  subdomain   String   @unique
+  email       String   @unique
+  phone       String?
+  address     String?
+  logo        String?
+  settings    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       User[]
+  branches    Branch[]
+  clients     Client[]
+  trainers    Trainer[]
+  groups      Group[]
+  memberships Membership[]
+  payments    Payment[]
+  trainings   Training[]
+  attendances Attendance[]
+  marketers   Marketer[]
+  promoCodeAdmins PromoCodeAdmin[]
+  promoCodes  PromoCode[]
+  promoCodeUsages PromoCodeUsage[]
+  referralLinks ReferralLink[]
+  referralClicks ReferralClick[]
+
+  @@map("tenants")
+}
+
+// ==================== USER MANAGEMENT ====================
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  firstName   String
+  lastName    String
+  phone       String?
+  role        String
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trainer     Trainer?
+
+  @@map("users")
+}
+
+// ==================== BRANCHES ====================
+
+model Branch {
+  id          String   @id @default(cuid())
+  name        String
+  address     String
+  phone       String?
+  email       String?
+  description String?
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups      Group[]
+  trainings   Training[]
+  trainers    TrainerBranch[]
+  payments    Payment[]
+
+  @@map("branches")
+}
+
+// ==================== CLIENTS ====================
+
+model Client {
+  id              String    @id @default(cuid())
+  firstName       String
+  lastName        String
+  middleName      String?
+  email           String?
+  phone           String?
+  dateOfBirth     DateTime?
+  gender          String?
+  address         String?
+  emergencyContact String?
+  emergencyPhone  String?
+  medicalNotes    String?
+  photo           String?
+  isActive        Boolean   @default(true)
+  tenantId        String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  achievements    Achievement[]
+  groupMemberships GroupMembership[]
+  payments        Payment[]
+  attendances     Attendance[]
+  promoCodeUsages PromoCodeUsage[]
+  referralClicks  ReferralClick[]
+
+  @@map("clients")
+}
+
+// ==================== ACHIEVEMENTS ====================
+
+model Achievement {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime
+  type        String   // belt, award, competition, etc.
+  clientId    String
+  createdAt   DateTime @default(now())
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("achievements")
+}
+
+// ==================== TRAINERS ====================
+
+model Trainer {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  qualification   String?
+  experience      Int?     // years of experience
+  specialization  String?
+  salaryType      String   // fixed, percentage
+  salaryAmount    Decimal?
+  isActive        Boolean  @default(true)
+  tenantId        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups          Group[]
+  trainings       Training[]
+  branches        TrainerBranch[]
+
+  @@map("trainers")
+}
+
+// ==================== GROUPS ====================
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  maxMembers  Int?
+  ageMin      Int?
+  ageMax      Int?
+  isActive    Boolean  @default(true)
+  tenantId    String
+  branchId    String
+  trainerId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  trainer     Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  memberships GroupMembership[]
+  trainings   Training[]
+
+  @@map("groups")
+}
+
+// ==================== GROUP MEMBERSHIPS ====================
+
+model GroupMembership {
+  id        String   @id @default(cuid())
+  clientId  String
+  groupId   String
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  isActive  Boolean  @default(true)
+
+  // Relations
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, groupId])
+  @@map("group_memberships")
+}
+
+// ==================== MEMBERSHIPS ====================
+
+model Membership {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Decimal
+  duration    Int      // days
+  type        String   // monthly, quarterly, yearly, etc.
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments    Payment[]
+
+  @@map("memberships")
+}
+
+// ==================== PAYMENTS ====================
+
+model Payment {
+  id            String   @id @default(cuid())
+  amount        Decimal
+  type          String   // membership, single, penalty, etc.
+  status        String   // pending, paid, cancelled, refunded
+  paymentMethod String?  // cash, card, transfer, etc.
+  notes         String?
+  dueDate       DateTime?
+  paidAt        DateTime?
+  clientId      String
+  membershipId  String?
+  branchId      String?
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  membership    Membership? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promoCodeUsage PromoCodeUsage?
+
+  @@map("payments")
+}
+
+// ==================== TRAININGS ====================
+
+model Training {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  isRecurring Boolean  @default(false)
+  recurrence  String?  // weekly, monthly, etc.
+  isCancelled Boolean  @default(false)
+  tenantId    String
+  branchId    String
+  groupId     String
+  trainerId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  trainer     Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  attendances Attendance[]
+
+  @@map("trainings")
+}
+
+// ==================== ATTENDANCE ====================
+
+// AttendanceStatus enum replaced with String for SQLite compatibility
+
+model Attendance {
+  id         String           @id @default(cuid())
+  status     String
+  notes      String?
+  clientId   String
+  trainingId String
+  tenantId   String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  // Relations
+  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  training   Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, trainingId])
+  @@map("attendances")
+}
+
+// ==================== TRAINER BRANCH ASSIGNMENTS ====================
+
+model TrainerBranch {
+  id        String   @id @default(cuid())
+  trainerId String
+  branchId  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  trainer   Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, branchId])
+  @@map("trainer_branches")
+}
+
+// ==================== MARKETERS AND MEDIA PARTNERS ====================
+
+model Marketer {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  password    String   // Password for marketer login
+  phone       String?
+  type        String   // 'MARKETER' or 'MEDIA_PARTNER'
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promoCodes  PromoCode[]
+  referralLinks ReferralLink[]
+
+  @@map("marketers")
+}
+
+// ==================== PROMO CODE ADMINISTRATORS ====================
+
+model PromoCodeAdmin {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  password    String   // Password for promo code admin login
+  phone       String?
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("promo_code_admins")
+}
+
+// ==================== PROMO CODES ====================
+
+model PromoCode {
+  id            String   @id @default(cuid())
+  code          String
+  description   String?
+  discountType  String   // 'PERCENTAGE' or 'FIXED'
+  discountValue Decimal
+  minPurchase   Decimal?
+  maxDiscount   Decimal?
+  usageLimit    Int?     // null = unlimited
+  usedCount     Int      @default(0)
+  isActive      Boolean  @default(true)
+  validFrom     DateTime
+  validUntil    DateTime?
+  tenantId      String
+  marketerId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marketer      Marketer? @relation(fields: [marketerId], references: [id], onDelete: SetNull)
+  usages        PromoCodeUsage[]
+
+  @@unique([code, tenantId])
+  @@map("promo_codes")
+}
+
+// ==================== PROMO CODE USAGES ====================
+
+model PromoCodeUsage {
+  id            String   @id @default(cuid())
+  promoCodeId   String
+  clientId      String?
+  paymentId     String?  @unique
+  usedAt        DateTime @default(now())
+  discountAmount Decimal
+  tenantId      String
+
+  // Relations
+  promoCode     PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  payment       Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("promo_code_usages")
+}
+
+// ==================== REFERRAL LINKS ====================
+
+model ReferralLink {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  description   String?
+  url           String
+  isActive      Boolean  @default(true)
+  tenantId      String
+  marketerId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marketer      Marketer? @relation(fields: [marketerId], references: [id], onDelete: SetNull)
+  clicks        ReferralClick[]
+
+  @@map("referral_links")
+}
+
+// ==================== REFERRAL CLICKS ====================
+
+model ReferralClick {
+  id            String   @id @default(cuid())
+  referralLinkId String
+  clientId      String?
+  ipAddress     String?
+  userAgent     String?
+  clickedAt     DateTime @default(now())
+  converted     Boolean  @default(false) // true if client registered or made payment
+  conversionDate DateTime?
+  tenantId      String
+
+  // Relations
+  referralLink  ReferralLink @relation(fields: [referralLinkId], references: [id], onDelete: Cascade)
+  client        Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("referral_clicks")
+}

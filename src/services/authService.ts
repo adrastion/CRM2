@@ -1,0 +1,560 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { PrismaClient, User } from '@prisma/client';
+import { JWTPayload, CreateClientData } from '../types';
+import { emailService } from './emailService';
+
+const prisma = new PrismaClient();
+
+export class AuthService {
+  /**
+   * Generate subdomain from tenant name
+   */
+  private static generateSubdomain(tenantName: string): string {
+    // Transliterate Cyrillic to Latin
+    const transliterationMap: { [key: string]: string } = {
+      'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+      'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+      'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+      'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+      'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    };
+
+    let subdomain = tenantName
+      .toLowerCase()
+      .split('')
+      .map(char => transliterationMap[char] || char)
+      .join('')
+      // Replace spaces and special characters with hyphens
+      .replace(/[^a-z0-9]+/g, '-')
+      // Remove leading/trailing hyphens
+      .replace(/^-+|-+$/g, '')
+      // Limit length
+      .substring(0, 50);
+
+    // Ensure minimum length
+    if (subdomain.length < 2) {
+      subdomain = 'school-' + Date.now().toString().slice(-6);
+    }
+
+    return subdomain;
+  }
+
+  /**
+   * Generate unique subdomain
+   */
+  private static async generateUniqueSubdomain(baseSubdomain: string): Promise<string> {
+    let subdomain = baseSubdomain;
+    let counter = 1;
+
+    while (true) {
+      const existingTenant = await prisma.tenant.findUnique({
+        where: { subdomain }
+      });
+
+      if (!existingTenant) {
+        return subdomain;
+      }
+
+      // If subdomain exists, append counter
+      const suffix = `-${counter}`;
+      const maxLength = 50 - suffix.length;
+      subdomain = baseSubdomain.substring(0, maxLength) + suffix;
+      counter++;
+    }
+  }
+
+  /**
+   * Register a new tenant and owner
+   */
+  static async registerTenant(data: {
+    tenantName: string;
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }) {
+    // Generate unique subdomain from tenant name
+    const baseSubdomain = this.generateSubdomain(data.tenantName);
+    const subdomain = await this.generateUniqueSubdomain(baseSubdomain);
+
+    // Normalize email (lowercase and trim)
+    const normalizedEmail = data.email.toLowerCase().trim();
+
+    // Check if email is already registered
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (existingUser) {
+      throw new Error('Email is already registered');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+
+    // Create tenant and user in transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create tenant
+      const tenant = await tx.tenant.create({
+        data: {
+          name: data.tenantName.trim(),
+          subdomain: subdomain, // Use generated subdomain
+          email: normalizedEmail,
+          phone: data.phone?.trim() || null
+        }
+      });
+
+      // Create owner user
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          firstName: data.firstName.trim(),
+          lastName: data.lastName.trim(),
+          phone: data.phone?.trim() || null,
+          role: 'OWNER',
+          tenantId: tenant.id
+        }
+      });
+
+      return { tenant, user };
+    });
+
+    // Generate JWT token
+    const token = this.generateToken(result.user);
+
+    return {
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        firstName: result.user.firstName,
+        lastName: result.user.lastName,
+        role: result.user.role,
+        tenantId: result.user.tenantId
+      },
+      tenant: {
+        id: result.tenant.id,
+        name: result.tenant.name,
+        subdomain: result.tenant.subdomain
+      },
+      token
+    };
+  }
+
+  /**
+   * Login user
+   */
+  static async login(email: string, password: string) {
+    // Find user with tenant
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { tenant: true }
+    });
+
+    if (!user) {
+      throw new Error('Invalid credentials');
+    }
+
+    if (!user.isActive) {
+      throw new Error('Account is deactivated');
+    }
+
+    if (!user.tenant.isActive) {
+      throw new Error('Tenant account is deactivated');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new Error('Invalid credentials');
+    }
+
+    // Update last login
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
+
+    // Generate JWT token
+    const token = this.generateToken(user);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        tenantId: user.tenantId
+      },
+      tenant: {
+        id: user.tenant.id,
+        name: user.tenant.name,
+        subdomain: user.tenant.subdomain
+      },
+      token
+    };
+  }
+
+  /**
+   * Login promo code admin
+   */
+  static async promoCodeAdminLogin(email: string, password: string) {
+    // Find promo code admin with tenant
+    const admin = await prisma.promoCodeAdmin.findFirst({
+      where: { email },
+      include: { tenant: true }
+    });
+
+    if (!admin) {
+      throw new Error('Invalid credentials');
+    }
+
+    if (!admin.isActive) {
+      throw new Error('Account is deactivated');
+    }
+
+    if (!admin.tenant.isActive) {
+      throw new Error('Tenant account is deactivated');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, admin.password);
+    if (!isPasswordValid) {
+      throw new Error('Invalid credentials');
+    }
+
+    // Generate JWT token for promo code admin
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+    
+    const token = jwt.sign(
+      {
+        userId: admin.id,
+        email: admin.email,
+        type: 'PROMO_CODE_ADMIN',
+        tenantId: admin.tenantId
+      },
+      jwtSecret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as jwt.SignOptions
+    );
+
+    return {
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        tenantId: admin.tenantId
+      },
+      tenant: {
+        id: admin.tenant.id,
+        name: admin.tenant.name,
+        subdomain: admin.tenant.subdomain
+      },
+      token
+    };
+  }
+
+  /**
+   * Login marketer
+   */
+  static async marketerLogin(email: string, password: string) {
+    // Find marketer with tenant
+    const marketer = await prisma.marketer.findFirst({
+      where: { email },
+      include: { tenant: true }
+    });
+
+    if (!marketer) {
+      throw new Error('Invalid credentials');
+    }
+
+    if (!marketer.isActive) {
+      throw new Error('Account is deactivated');
+    }
+
+    if (!marketer.tenant.isActive) {
+      throw new Error('Tenant account is deactivated');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, marketer.password);
+    if (!isPasswordValid) {
+      throw new Error('Invalid credentials');
+    }
+
+    // Generate JWT token for marketer
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+    
+    const token = jwt.sign(
+      {
+        userId: marketer.id,
+        email: marketer.email,
+        type: 'MARKETER',
+        tenantId: marketer.tenantId
+      },
+      jwtSecret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as jwt.SignOptions
+    );
+
+    return {
+      marketer: {
+        id: marketer.id,
+        email: marketer.email,
+        name: marketer.name,
+        type: marketer.type,
+        tenantId: marketer.tenantId
+      },
+      tenant: {
+        id: marketer.tenant.id,
+        name: marketer.tenant.name,
+        subdomain: marketer.tenant.subdomain
+      },
+      token
+    };
+  }
+
+  /**
+   * Create a new user (admin or trainer)
+   */
+  static async createUser(data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    role: string;
+    tenantId: string;
+  }) {
+    // Check if email is already registered
+    const existingUser = await prisma.user.findUnique({
+      where: { email: data.email }
+    });
+
+    if (existingUser) {
+      throw new Error('Email is already registered');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        email: data.email,
+        password: hashedPassword,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        role: data.role,
+        tenantId: data.tenantId
+      }
+    });
+
+    // If role is TRAINER, create trainer record
+    if (data.role === 'TRAINER') {
+      await prisma.trainer.create({
+        data: {
+          userId: user.id,
+          tenantId: data.tenantId,
+          salaryType: 'fixed',
+          salaryAmount: 0
+        }
+      });
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      tenantId: user.tenantId
+    };
+  }
+
+  /**
+   * Change user password
+   */
+  static async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      throw new Error('Current password is incorrect');
+    }
+
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedNewPassword }
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
+  /**
+   * Request password reset
+   */
+  static async requestPasswordReset(email: string) {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { tenant: true }
+    });
+
+    if (!user) {
+      // Don't reveal if email exists or not
+      return { message: 'If the email exists, a reset link has been sent' };
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { userId: user.id, type: 'password_reset' },
+      process.env.JWT_SECRET!,
+      { expiresIn: '1h' }
+    );
+
+    // Send reset email
+    const resetUrl = `${process.env.CORS_ORIGIN}/reset-password?token=${resetToken}`;
+    
+    await emailService.sendPasswordResetEmail(user.email, {
+      firstName: user.firstName,
+      resetUrl
+    });
+
+    return { message: 'If the email exists, a reset link has been sent' };
+  }
+
+  /**
+   * Reset password with token
+   */
+  static async resetPassword(token: string, newPassword: string) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      
+      if (decoded.type !== 'password_reset') {
+        throw new Error('Invalid token type');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      // Update password
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword }
+      });
+
+      return { message: 'Password reset successfully' };
+    } catch (error) {
+      if (error instanceof jwt.JsonWebTokenError) {
+        throw new Error('Invalid or expired reset token');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Generate JWT token
+   */
+  private static generateToken(user: User): string {
+    const payload: JWTPayload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId
+    };
+
+    return jwt.sign(payload, process.env.JWT_SECRET!, {
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    } as jwt.SignOptions);
+  }
+
+  /**
+   * Verify JWT token
+   */
+  static verifyToken(token: string): JWTPayload {
+    return jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+  }
+
+  /**
+   * Get user profile
+   */
+  static async getUserProfile(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { 
+        tenant: true,
+        trainer: true
+      }
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      role: user.role,
+      lastLogin: user.lastLogin,
+      tenant: {
+        id: user.tenant.id,
+        name: user.tenant.name,
+        subdomain: user.tenant.subdomain
+      },
+      trainer: user.trainer
+    };
+  }
+
+  /**
+   * Update user profile
+   */
+  static async updateUserProfile(userId: string, data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+  }) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data
+    });
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      role: user.role
+    };
+  }
+}
