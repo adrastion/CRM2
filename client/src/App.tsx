@@ -12,17 +12,26 @@ const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Clients = lazy(() => import('./pages/Clients'));
+const ClientCategories = lazy(() => import('./pages/ClientCategories'));
 const Trainers = lazy(() => import('./pages/Trainers'));
+const TrainerEarnings = lazy(() => import('./pages/TrainerEarnings'));
+const AllTrainersEarnings = lazy(() => import('./pages/AllTrainersEarnings'));
 const Groups = lazy(() => import('./pages/Groups'));
 const Branches = lazy(() => import('./pages/Branches'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Payments = lazy(() => import('./pages/Payments'));
+const Memberships = lazy(() => import('./pages/Memberships'));
+const ClientMemberships = lazy(() => import('./pages/ClientMemberships'));
 const FAQ = lazy(() => import('./pages/FAQ'));
 const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
+const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
+const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
+const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
 const AdminPromoCodes = lazy(() => import('./pages/AdminPromoCodes'));
 const MarketerPanel = lazy(() => import('./pages/MarketerPanel'));
 const MarketerLogin = lazy(() => import('./pages/MarketerLogin'));
 const PromoCodeAdminLogin = lazy(() => import('./pages/PromoCodeAdminLogin'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -198,10 +207,22 @@ const AppContent: React.FC = () => {
             </PublicRoute>
           }
         />
-          {/* FAQ route - accessible for both authenticated and non-authenticated users */}
+          {/* Public routes - accessible for both authenticated and non-authenticated users */}
           <Route
             path="/faq"
             element={<FAQWrapper />}
+          />
+          <Route
+            path="/terms"
+            element={<TermsOfServiceWrapper />}
+          />
+          <Route
+            path="/contacts"
+            element={<ContactsWrapper />}
+          />
+          <Route
+            path="/pricing"
+            element={<PricingWrapper />}
           />
 
         {/* Protected Routes */}
@@ -226,11 +247,41 @@ const AppContent: React.FC = () => {
           }
         />
         <Route
+          path="/client-categories"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ClientCategories />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/trainers"
           element={
             <ProtectedRoute>
               <AppLayout>
                 <Trainers />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/earnings"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <TrainerEarnings />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainers/earnings"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <AllTrainersEarnings />
               </AppLayout>
             </ProtectedRoute>
           }
@@ -271,6 +322,36 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <AppLayout>
                 <Payments />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/memberships"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Memberships />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/client-memberships"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ClientMemberships />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Settings />
               </AppLayout>
             </ProtectedRoute>
           }

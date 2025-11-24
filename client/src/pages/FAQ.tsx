@@ -20,6 +20,7 @@ import {
   School,
   PlayArrow,
 } from '@mui/icons-material';
+import PublicFooter from '../components/PublicFooter';
 
 interface FAQItem {
   question: string;
@@ -63,7 +64,7 @@ const faqData: FAQItem[] = [
    - В разделе "Панель управления" вы увидите общую статистику
    - Отслеживайте количество клиентов, посещаемость, доходы
 
-Готово! Теперь вы можете полноценно использовать систему для управления вашей школой единоборств.`,
+Готово! Теперь вы можете полноценно использовать систему для управления вашей спортивной школой.`,
     category: 'Инструкция',
     icon: <PlayArrow />,
   },
@@ -329,7 +330,8 @@ const FAQ: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Container maxWidth="lg" sx={{ py: 4, flexGrow: 1 }}>
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <HelpOutline sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
         <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
@@ -435,6 +437,8 @@ const FAQ: React.FC = () => {
         </Typography>
       </Box>
     </Container>
+      <PublicFooter />
+    </Box>
   );
 };
 

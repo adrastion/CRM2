@@ -47,6 +47,14 @@ export interface SearchQuery extends PaginationQuery {
 }
 
 // Client interfaces
+export interface CreateParentData {
+  fullName: string;
+  phone?: string;
+  email?: string;
+  workplace?: string;
+  workplaceContact?: string;
+}
+
 export interface CreateClientData {
   firstName: string;
   lastName: string;
@@ -56,13 +64,15 @@ export interface CreateClientData {
   dateOfBirth?: string;
   gender?: string;
   address?: string;
-  emergencyContact?: string;
-  emergencyPhone?: string;
-  medicalNotes?: string;
+  birthCertificateNumber?: string;
+  medicalCertificateNumber?: string;
+  schoolOrKindergarten?: string;
+  parents?: CreateParentData[];
 }
 
-export interface UpdateClientData extends Partial<CreateClientData> {
+export interface UpdateClientData extends Partial<Omit<CreateClientData, 'parents'>> {
   isActive?: boolean;
+  parents?: CreateParentData[];
 }
 
 // Trainer interfaces
@@ -82,6 +92,7 @@ export interface CreateGroupData {
   maxMembers?: number;
   ageMin?: number;
   ageMax?: number;
+  color?: string; // Цвет для отображения в расписании (hex формат)
   branchId: string;
   trainerId: string;
 }
@@ -91,7 +102,8 @@ export interface CreateMembershipData {
   name: string;
   description?: string;
   price: number;
-  duration: number;
+  duration?: number; // days (для месячных абонементов)
+  visits?: number; // количество посещений (для абонементов на количество раз)
   type: string;
 }
 

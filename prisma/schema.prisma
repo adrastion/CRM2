@@ -29,6 +29,7 @@ model Tenant {
   users       User[]
   branches    Branch[]
   clients     Client[]
+  parents     Parent[]
   trainers    Trainer[]
   groups      Group[]
   memberships Membership[]
@@ -41,8 +42,26 @@ model Tenant {
   promoCodeUsages PromoCodeUsage[]
   referralLinks ReferralLink[]
   referralClicks ReferralClick[]
+  tenantSettings TenantSettings?
+  clientCategories ClientCategory[]
+  clientMemberships ClientMembership[]
 
   @@map("tenants")
+}
+
+// ==================== TENANT SETTINGS ====================
+
+model TenantSettings {
+  id                      String   @id @default(cuid())
+  tenantId                String   @unique
+  defaultTrainingDuration Int      @default(60) // Длительность тренировки по умолчанию в минутах
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
 }
 
 // ==================== USER MANAGEMENT ====================
@@ -92,37 +111,84 @@ model Branch {
   @@map("branches")
 }
 
+// ==================== CLIENT CATEGORIES ====================
+
+model ClientCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String?  // Цвет для отображения (hex формат)
+  isActive    Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clients     Client[]
+
+  @@map("client_categories")
+}
+
 // ==================== CLIENTS ====================
 
 model Client {
-  id              String    @id @default(cuid())
-  firstName       String
-  lastName        String
-  middleName      String?
-  email           String?
-  phone           String?
-  dateOfBirth     DateTime?
-  gender          String?
-  address         String?
-  emergencyContact String?
-  emergencyPhone  String?
-  medicalNotes    String?
-  photo           String?
-  isActive        Boolean   @default(true)
-  tenantId        String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  firstName             String
+  lastName              String
+  middleName            String?
+  email                 String?
+  phone                 String?
+  dateOfBirth           DateTime?
+  gender                String?
+  address               String?
+  birthCertificateNumber String?  // Номер свидетельства о рождении
+  medicalCertificateNumber String? // Номер справки
+  schoolOrKindergarten  String?   // Место учебы/дет.сада
+  emergencyContact      String?
+  emergencyPhone        String?
+  medicalNotes          String?
+  photo                 String?
+  categoryId            String?   // Категория клиента
+  isActive              Boolean   @default(true)
+  tenantId              String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   // Relations
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  achievements    Achievement[]
-  groupMemberships GroupMembership[]
-  payments        Payment[]
-  attendances     Attendance[]
-  promoCodeUsages PromoCodeUsage[]
-  referralClicks  ReferralClick[]
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category              ClientCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  achievements          Achievement[]
+  groupMemberships      GroupMembership[]
+  payments              Payment[]
+  attendances           Attendance[]
+  promoCodeUsages       PromoCodeUsage[]
+  referralClicks        ReferralClick[]
+  parents               Parent[]
+  clientMemberships     ClientMembership[]
 
   @@map("clients")
+}
+
+// ==================== PARENTS ====================
+
+model Parent {
+  id              String   @id @default(cuid())
+  fullName        String   // Полное ФИО родителя
+  phone           String?
+  email           String?
+  workplace       String?  // Место работы
+  workplaceContact String? // Способ связи с местом работы
+  clientId        String
+  tenantId        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("parents")
 }
 
 // ==================== ACHIEVEMENTS ====================
@@ -152,6 +218,7 @@ model Trainer {
   specialization  String?
   salaryType      String   // fixed, percentage
   salaryAmount    Decimal?
+  canViewAllGroups Boolean @default(false) // Может ли тренер видеть расписание всех групп
   isActive        Boolean  @default(true)
   tenantId        String
   createdAt       DateTime @default(now())
@@ -170,18 +237,20 @@ model Trainer {
 // ==================== GROUPS ====================
 
 model Group {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  maxMembers  Int?
-  ageMin      Int?
-  ageMax      Int?
-  isActive    Boolean  @default(true)
-  tenantId    String
-  branchId    String
-  trainerId   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  maxMembers    Int?
+  ageMin        Int?
+  ageMax        Int?
+  color         String?  // Цвет для отображения в расписании (hex формат)
+  trainingPrice Decimal? // Стоимость одной тренировки в группе
+  isActive      Boolean  @default(true)
+  tenantId      String
+  branchId      String
+  trainerId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -218,8 +287,9 @@ model Membership {
   name        String
   description String?
   price       Decimal
-  duration    Int      // days
-  type        String   // monthly, quarterly, yearly, etc.
+  duration    Int?     // days (для месячных абонементов)
+  visits      Int?     // количество посещений (для абонементов на количество раз)
+  type        String   // monthly, visits, quarterly, yearly, etc.
   isActive    Boolean  @default(true)
   tenantId    String
   createdAt   DateTime @default(now())
@@ -228,8 +298,32 @@ model Membership {
   // Relations
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments    Payment[]
+  clientMemberships ClientMembership[]
 
   @@map("memberships")
+}
+
+// ==================== CLIENT MEMBERSHIPS ====================
+
+model ClientMembership {
+  id            String   @id @default(cuid())
+  clientId      String
+  membershipId  String
+  startDate     DateTime @default(now())
+  endDate       DateTime? // Для месячных абonементов
+  visitsUsed    Int      @default(0) // Количество использованных посещений
+  visitsTotal   Int?     // Общее количество посещений (для абонементов на количество раз)
+  isActive      Boolean  @default(true)
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  membership    Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("client_memberships")
 }
 
 // ==================== PAYMENTS ====================

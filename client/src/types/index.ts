@@ -27,6 +27,18 @@ export interface AuthResponse {
 }
 
 // Client Types
+export interface Parent {
+  id: string;
+  fullName: string;
+  phone?: string;
+  email?: string;
+  workplace?: string;
+  workplaceContact?: string;
+  clientId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Client {
   id: string;
   firstName: string;
@@ -37,16 +49,23 @@ export interface Client {
   dateOfBirth?: string;
   gender?: string;
   address?: string;
+  birthCertificateNumber?: string;
+  medicalCertificateNumber?: string;
+  schoolOrKindergarten?: string;
   emergencyContact?: string;
   emergencyPhone?: string;
   medicalNotes?: string;
   photo?: string;
+  categoryId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   achievements?: Achievement[];
   groupMemberships?: GroupMembership[];
   memberships?: Payment[];
+  parents?: Parent[];
+  category?: ClientCategory;
+  attendances?: Attendance[];
 }
 
 export interface Achievement {
@@ -67,6 +86,7 @@ export interface Trainer {
   specialization?: string;
   salaryType: 'fixed' | 'percentage';
   salaryAmount?: number;
+  canViewAllGroups?: boolean;
   isActive: boolean;
   user?: User;
   branches?: TrainerBranch[];
@@ -81,6 +101,18 @@ export interface TrainerBranch {
   trainer?: Trainer;
 }
 
+// Client Category Types
+export interface ClientCategory {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string; // Цвет для отображения (hex формат)
+  isActive: boolean;
+  tenantId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Group Types
 export interface Group {
   id: string;
@@ -89,6 +121,7 @@ export interface Group {
   maxMembers?: number;
   ageMin?: number;
   ageMax?: number;
+  color?: string; // Цвет для отображения в расписании (hex формат)
   isActive: boolean;
   branchId: string;
   trainerId: string;
@@ -126,7 +159,8 @@ export interface Membership {
   name: string;
   description?: string;
   price: number;
-  duration: number;
+  duration?: number; // days (для месячных абонементов)
+  visits?: number; // количество посещений (для абонементов на количество раз)
   type: string;
   isActive: boolean;
   tenantId: string;
@@ -224,7 +258,16 @@ export interface RegisterForm {
   phone?: string;
 }
 
+export interface ParentForm {
+  fullName: string;
+  phone?: string;
+  email?: string;
+  workplace?: string;
+  workplaceContact?: string;
+}
+
 export interface CreateClientForm {
+  // Данные ребенка
   firstName: string;
   lastName: string;
   middleName?: string;
@@ -233,9 +276,11 @@ export interface CreateClientForm {
   dateOfBirth?: string;
   gender?: string;
   address?: string;
-  emergencyContact?: string;
-  emergencyPhone?: string;
-  medicalNotes?: string;
+  birthCertificateNumber?: string;
+  medicalCertificateNumber?: string;
+  schoolOrKindergarten?: string;
+  // Родители
+  parents?: ParentForm[];
 }
 
 // Navigation Types

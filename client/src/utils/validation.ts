@@ -120,18 +120,22 @@ export const validateDate = (value: string, fieldName: string, required: boolean
 export const validateClientForm = (formData: any): Record<string, string> => {
   const errors: Record<string, string> = {};
 
+  // Обязательные поля для ребенка
   const firstNameError = validateRequired(formData.firstName, 'Имя', 2);
   if (firstNameError) errors.firstName = firstNameError;
 
   const lastNameError = validateRequired(formData.lastName, 'Фамилия', 2);
   if (lastNameError) errors.lastName = lastNameError;
 
-  if (formData.email) {
-    const emailError = validateEmail(formData.email);
-    if (emailError) errors.email = emailError;
+  // Email и телефон ребенка не обязательны, но если указаны - проверяем формат
+  if (formData.email && formData.email.trim() !== '') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      errors.email = 'Введите корректный адрес электронной почты';
+    }
   }
 
-  if (formData.phone) {
+  if (formData.phone && formData.phone.trim() !== '') {
     const phoneError = validatePhone(formData.phone);
     if (phoneError) errors.phone = phoneError;
   }
@@ -141,9 +145,22 @@ export const validateClientForm = (formData: any): Record<string, string> => {
     if (dateError) errors.dateOfBirth = dateError;
   }
 
-  if (formData.emergencyPhone) {
-    const emergencyPhoneError = validatePhone(formData.emergencyPhone);
-    if (emergencyPhoneError) errors.emergencyPhone = emergencyPhoneError;
+  // Валидация родителей (если добавлены)
+  if (formData.parents && Array.isArray(formData.parents)) {
+    formData.parents.forEach((parent: any, index: number) => {
+      if (parent.email && parent.email.trim() !== '') {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(parent.email.trim())) {
+          errors[`parent_${index}_email`] = `Email родителя ${index + 1} имеет неверный формат`;
+        }
+      }
+      if (parent.phone && parent.phone.trim() !== '') {
+        const phoneError = validatePhone(parent.phone);
+        if (phoneError) {
+          errors[`parent_${index}_phone`] = `Телефон родителя ${index + 1}: ${phoneError}`;
+        }
+      }
+    });
   }
 
   return errors;

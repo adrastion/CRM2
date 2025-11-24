@@ -282,6 +282,56 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
       }
     });
 
+    // Если посещение со статусом PRESENT, вычитаем посещение из активного абонемента
+    if (status === 'PRESENT') {
+      // Находим активный абонемент клиента (приоритет: абонемент на посещения)
+      const activeMembership = await prisma.clientMembership.findFirst({
+        where: {
+          clientId,
+          tenantId,
+          isActive: true,
+          OR: [
+            // Абонемент на посещения (проверка на оставшиеся посещения будет в коде)
+            {
+              visitsTotal: { not: null }
+            },
+            // Месячный абонемент, который еще не истек
+            {
+              visitsTotal: null,
+              endDate: { gte: new Date() }
+            },
+            // Месячный абонемент без даты окончания (бессрочный)
+            {
+              visitsTotal: null,
+              endDate: null
+            }
+          ]
+        },
+        orderBy: [
+          // Приоритет абонементам на посещения
+          { visitsTotal: 'desc' },
+          { createdAt: 'desc' }
+        ]
+      });
+
+      if (activeMembership) {
+        // Если это абонемент на посещения
+        if (activeMembership.visitsTotal) {
+          const newVisitsUsed = activeMembership.visitsUsed + 1;
+          const isExhausted = newVisitsUsed >= activeMembership.visitsTotal;
+
+          await prisma.clientMembership.update({
+            where: { id: activeMembership.id },
+            data: {
+              visitsUsed: newVisitsUsed,
+              isActive: !isExhausted
+            }
+          });
+        }
+        // Для месячных абонементов просто отмечаем посещение (не вычитаем)
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: attendance,

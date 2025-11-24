@@ -156,6 +156,24 @@ class ApiService {
     await this.api.delete(`/clients/${id}`);
   }
 
+  async exportClients(): Promise<Blob> {
+    const response = await this.api.get('/clients/export/excel', {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async importClients(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await this.api.post<ApiResponse>('/clients/import/excel', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  }
+
   async addAchievement(clientId: string, data: any): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/clients/${clientId}/achievements`, data);
     return response.data.data;
@@ -205,6 +223,16 @@ class ApiService {
 
   async removeBranchFromTrainer(trainerId: string, branchId: string): Promise<void> {
     await this.api.delete(`/trainers/${trainerId}/branches/${branchId}`);
+  }
+
+  async getTrainerEarnings(trainerId: string, params?: any): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/trainers/${trainerId}/earnings`, { params });
+    return response.data.data;
+  }
+
+  async getAllTrainersEarnings(params?: any): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/trainers/earnings/all', { params });
+    return response.data.data;
   }
 
   // Group endpoints
@@ -395,6 +423,33 @@ class ApiService {
 
   async deleteMembership(id: string): Promise<void> {
     await this.api.delete(`/memberships/${id}`);
+  }
+
+  // Client membership endpoints
+  async getClientMemberships(params?: any): Promise<{ data: any[] }> {
+    const response = await this.api.get<ApiResponse>('/client-memberships', { params });
+    return {
+      data: response.data.data || []
+    };
+  }
+
+  async createClientMembership(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-memberships', data);
+    return response.data.data;
+  }
+
+  async updateClientMembership(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/client-memberships/${id}`, data);
+    return response.data.data;
+  }
+
+  async markVisitUsed(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/client-memberships/${id}/mark-visit`);
+    return response.data.data;
+  }
+
+  async deleteClientMembership(id: string): Promise<void> {
+    await this.api.delete(`/client-memberships/${id}`);
   }
 
   // Report endpoints
@@ -626,6 +681,42 @@ class ApiService {
 
   async deletePromoCodeAdmin(id: string): Promise<void> {
     await this.api.delete(`/promo-code-admins/${id}`);
+  }
+
+  // Settings
+  async getSettings(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/settings');
+    return response.data;
+  }
+
+  async updateSettings(data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/settings', data);
+    return response.data;
+  }
+
+  // Client Categories
+  async getClientCategories(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/client-categories');
+    return response.data;
+  }
+
+  async getClientCategory(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/client-categories/${id}`);
+    return response.data.data;
+  }
+
+  async createClientCategory(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-categories', data);
+    return response.data.data;
+  }
+
+  async updateClientCategory(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/client-categories/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteClientCategory(id: string): Promise<void> {
+    await this.api.delete(`/client-categories/${id}`);
   }
 }
 

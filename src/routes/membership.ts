@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import {
+  getMemberships,
+  getMembershipById,
+  createMembership,
+  updateMembership,
+  deleteMembership
+} from '../controllers/membershipController';
 
 const router = Router();
 
@@ -7,43 +14,10 @@ const router = Router();
 router.use(authenticate);
 
 // Membership management routes
-router.get('/', (req, res) => {
-  res.json({
-    success: true,
-    data: [],
-    message: 'Memberships retrieved successfully'
-  });
-});
-
-router.get('/:id', (req, res) => {
-  res.json({
-    success: true,
-    data: {},
-    message: 'Membership retrieved successfully'
-  });
-});
-
-router.post('/', requireOwnerAdminOrTrainer, (req, res) => {
-  res.json({
-    success: true,
-    data: {},
-    message: 'Membership created successfully'
-  });
-});
-
-router.put('/:id', requireOwnerAdminOrTrainer, (req, res) => {
-  res.json({
-    success: true,
-    data: {},
-    message: 'Membership updated successfully'
-  });
-});
-
-router.delete('/:id', requireOwnerAdminOrTrainer, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Membership deleted successfully'
-  });
-});
+router.get('/', getMemberships);
+router.get('/:id', getMembershipById);
+router.post('/', requireOwnerAdminOrTrainer, createMembership);
+router.put('/:id', requireOwnerAdminOrTrainer, updateMembership);
+router.delete('/:id', requireOwnerAdminOrTrainer, deleteMembership);
 
 export default router;

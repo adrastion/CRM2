@@ -10,7 +10,10 @@ import {
   getClientStats,
   validateCreateClient,
   validateUpdateClient,
-  validateClientQuery
+  validateClientQuery,
+  exportClients,
+  importClients,
+  upload
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
 
@@ -18,6 +21,10 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// Export/Import clients (must be before /:id routes)
+router.get('/export/excel', requireOwnerAdminOrTrainer, exportClients);
+router.post('/import/excel', requireOwnerAdminOrTrainer, upload.single('file'), importClients);
 
 // Client CRUD operations
 router.get('/', validateClientQuery, getClients);

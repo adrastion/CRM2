@@ -24,6 +24,9 @@ import promoCodeRoutes from './routes/promoCode';
 import referralLinkRoutes from './routes/referralLink';
 import marketerRoutes from './routes/marketer';
 import promoCodeAdminRoutes from './routes/promoCodeAdmin';
+import settingsRoutes from './routes/settings';
+import clientCategoryRoutes from './routes/clientCategory';
+import clientMembershipRoutes from './routes/clientMembership';
 
 // Load environment variables
 dotenv.config();
@@ -97,6 +100,9 @@ app.use('/api/promo-codes', promoCodeRoutes);
 app.use('/api/referral-links', referralLinkRoutes);
 app.use('/api/marketers', marketerRoutes);
 app.use('/api/promo-code-admins', promoCodeAdminRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/client-categories', clientCategoryRoutes);
+app.use('/api/client-memberships', clientMembershipRoutes);
 
 // Error handling middleware
 app.use(notFound);

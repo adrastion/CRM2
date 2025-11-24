@@ -61,7 +61,7 @@ export const commonSchemas = {
   id: Joi.string().required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
+  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
@@ -81,28 +81,54 @@ export const clientSchemas = {
   create: Joi.object({
     firstName: Joi.string().min(2).max(50).required(),
     lastName: Joi.string().min(2).max(50).required(),
-    middleName: Joi.string().min(2).max(50).optional(),
-    email: Joi.string().email().optional(),
-    phone: commonSchemas.phone,
-    dateOfBirth: Joi.date().max('now').optional(),
-    gender: Joi.string().valid('male', 'female', 'other').optional(),
-    address: Joi.string().max(500).optional(),
-    emergencyContact: Joi.string().max(100).optional(),
-    emergencyPhone: commonSchemas.phone,
-    medicalNotes: Joi.string().max(1000).optional()
+    middleName: Joi.string().min(2).max(50).optional().allow('', null),
+    email: Joi.string().email().optional().allow('', null),
+    phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+    dateOfBirth: Joi.alternatives().try(
+      Joi.date().max('now'),
+      Joi.string().allow('', null)
+    ).optional(),
+    gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
+    address: Joi.string().max(500).optional().allow('', null),
+    birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
+    categoryId: commonSchemas.id.allow(null, '').optional(),
+    parents: Joi.array().items(
+      Joi.object({
+        fullName: Joi.string().min(2).max(100).required(),
+        phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+        email: Joi.string().email().optional().allow('', null),
+        workplace: Joi.string().max(200).optional().allow('', null),
+        workplaceContact: Joi.string().max(200).optional().allow('', null)
+      })
+    ).optional()
   }),
   update: Joi.object({
     firstName: Joi.string().min(2).max(50).optional(),
     lastName: Joi.string().min(2).max(50).optional(),
-    middleName: Joi.string().min(2).max(50).optional(),
-    email: Joi.string().email().optional(),
-    phone: commonSchemas.phone,
-    dateOfBirth: Joi.date().max('now').optional(),
-    gender: Joi.string().valid('male', 'female', 'other').optional(),
-    address: Joi.string().max(500).optional(),
-    emergencyContact: Joi.string().max(100).optional(),
-    emergencyPhone: commonSchemas.phone,
-    medicalNotes: Joi.string().max(1000).optional(),
+    middleName: Joi.string().min(2).max(50).optional().allow('', null),
+    email: Joi.string().email().optional().allow('', null),
+    phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+    dateOfBirth: Joi.alternatives().try(
+      Joi.date().max('now'),
+      Joi.string().allow('', null)
+    ).optional(),
+    gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
+    address: Joi.string().max(500).optional().allow('', null),
+    birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
+    categoryId: commonSchemas.id.allow(null, '').optional(),
+    parents: Joi.array().items(
+      Joi.object({
+        fullName: Joi.string().min(2).max(100).required(),
+        phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+        email: Joi.string().email().optional().allow('', null),
+        workplace: Joi.string().max(200).optional().allow('', null),
+        workplaceContact: Joi.string().max(200).optional().allow('', null)
+      })
+    ).optional(),
     isActive: Joi.boolean().optional()
   })
 };
@@ -139,6 +165,7 @@ export const groupSchemas = {
     maxMembers: Joi.number().integer().min(1).max(100).optional(),
     ageMin: Joi.number().integer().min(0).max(100).optional(),
     ageMax: Joi.number().integer().min(0).max(100).optional(),
+    color: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
     branchId: commonSchemas.id,
     trainerId: commonSchemas.id
   }),
@@ -148,6 +175,7 @@ export const groupSchemas = {
     maxMembers: Joi.number().integer().min(1).max(100).optional(),
     ageMin: Joi.number().integer().min(0).max(100).optional(),
     ageMax: Joi.number().integer().min(0).max(100).optional(),
+    color: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
     isActive: Joi.boolean().optional()
   })
 };

@@ -14,6 +14,7 @@ import {
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginForm } from '../types';
+import PublicFooter from '../components/PublicFooter';
 
 const Login: React.FC = () => {
   const [formData, setFormData] = useState<LoginForm>({
@@ -81,10 +82,11 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="sm">
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Container component="main" maxWidth="sm" sx={{ flexGrow: 1, py: 4 }}>
       <Box
         sx={{
-          marginTop: 8,
+            marginTop: 4,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -93,7 +95,7 @@ const Login: React.FC = () => {
         <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-              CRM для единоборств
+              ПрофСпортСРМ
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Войдите в свой аккаунт
@@ -211,6 +213,8 @@ const Login: React.FC = () => {
         </Box>
       </Box>
     </Container>
+      <PublicFooter />
+    </Box>
   );
 };
 

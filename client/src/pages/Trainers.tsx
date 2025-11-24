@@ -55,6 +55,7 @@ const Trainers: React.FC = () => {
     specialization: '',
     salaryType: 'fixed',
     salaryAmount: '',
+    canViewAllGroups: false,
   });
 
   useEffect(() => {
@@ -152,6 +153,7 @@ const Trainers: React.FC = () => {
         specialization: '',
         salaryType: 'fixed',
         salaryAmount: '',
+        canViewAllGroups: false,
       });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания тренера');
@@ -189,6 +191,7 @@ const Trainers: React.FC = () => {
       specialization: trainer.specialization || '',
       salaryType: trainer.salaryType || 'fixed',
       salaryAmount: trainer.salaryAmount?.toString() || '',
+      canViewAllGroups: (trainer as any).canViewAllGroups || false,
     });
     setEditDialog(true);
   };
@@ -223,6 +226,7 @@ const Trainers: React.FC = () => {
         specialization: '',
         salaryType: 'fixed',
         salaryAmount: '',
+        canViewAllGroups: false,
       });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления тренера');
@@ -524,7 +528,8 @@ const Trainers: React.FC = () => {
                 label="Квалификация"
                 value={formData.qualification}
                 onChange={(e) => handleInputChange('qualification', e.target.value)}
-                placeholder="например: 3rd Dan Black Belt"
+                placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
+                helperText="Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -566,6 +571,24 @@ const Trainers: React.FC = () => {
                 onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
                 placeholder="Введите сумму"
               />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.canViewAllGroups}
+                    onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
+                    style={{ width: 20, height: 20 }}
+                  />
+                  <Typography variant="body2">
+                    Тренер может видеть расписание всех групп (не только своих)
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
+                  Если отключено, тренер будет видеть только тренировки своих групп
+                </Typography>
+              </FormControl>
             </Grid>
           </Grid>
         </DialogContent>
@@ -664,7 +687,8 @@ const Trainers: React.FC = () => {
                 label="Квалификация"
                 value={formData.qualification}
                 onChange={(e) => handleInputChange('qualification', e.target.value)}
-                placeholder="например: 3rd Dan Black Belt"
+                placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
+                helperText="Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -706,6 +730,24 @@ const Trainers: React.FC = () => {
                 onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
                 placeholder="Введите сумму"
               />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.canViewAllGroups}
+                    onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
+                    style={{ width: 20, height: 20 }}
+                  />
+                  <Typography variant="body2">
+                    Тренер может видеть расписание всех групп (не только своих)
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
+                  Если отключено, тренер будет видеть только тренировки своих групп
+                </Typography>
+              </FormControl>
             </Grid>
           </Grid>
         </DialogContent>

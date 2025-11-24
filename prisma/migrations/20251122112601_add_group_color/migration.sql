@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "groups" ADD COLUMN     "color" TEXT;

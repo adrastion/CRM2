@@ -31,6 +31,10 @@ import {
   Logout,
   AccountCircle,
   HelpOutline,
+  Description,
+  ContactMail,
+  LocalOffer,
+  Settings,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -44,11 +48,17 @@ interface AppLayoutProps {
 const navigationItems = [
   { label: 'Панель управления', path: '/dashboard', icon: <Dashboard />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Клиенты', path: '/clients', icon: <People />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
+  { label: 'Категории клиентов', path: '/client-categories', icon: <Groups />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Тренеры', path: '/trainers', icon: <Person />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Мой заработок', path: '/trainer/earnings', icon: <AttachMoney />, roles: ['TRAINER'] },
+  { label: 'Заработок тренеров', path: '/trainers/earnings', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Группы', path: '/groups', icon: <Groups />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Филиалы', path: '/branches', icon: <Business />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Расписание', path: '/schedule', icon: <CalendarToday />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Платежи', path: '/payments', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Тарифы', path: '/memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Настройки', path: '/settings', icon: <Settings />, roles: ['OWNER', 'ADMIN'] },
   { label: 'FAQ', path: '/faq', icon: <HelpOutline />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
 ];
 
@@ -92,7 +102,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold' }}>
-          {tenant?.name || 'CRM для единоборств'}
+          {tenant?.name || 'ПрофСпортСРМ'}
         </Typography>
       </Toolbar>
       <Divider />
@@ -140,7 +150,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {tenant?.name || 'CRM для единоборств'}
+            {tenant?.name || 'ПрофСпортСРМ'}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
@@ -200,10 +210,97 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           flexGrow: 1,
           p: 3,
           width: { md: `calc(100% - ${drawerWidth}px)` },
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
         }}
       >
         <Toolbar />
+        <Box sx={{ flexGrow: 1 }}>
         {children}
+        </Box>
+        {/* Footer */}
+        <Box
+          component="footer"
+          sx={{
+            mt: 4,
+            pt: 3,
+            borderTop: 1,
+            borderColor: 'divider',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: 2,
+            pb: 2,
+          }}
+        >
+          <Typography
+            variant="body2"
+            component="a"
+            href="/terms"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/terms');
+            }}
+            sx={{
+              color: 'text.secondary',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Пользовательское соглашение
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            |
+          </Typography>
+          <Typography
+            variant="body2"
+            component="a"
+            href="/contacts"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/contacts');
+            }}
+            sx={{
+              color: 'text.secondary',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Контакты и реквизиты
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            |
+          </Typography>
+          <Typography
+            variant="body2"
+            component="a"
+            href="/pricing"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/pricing');
+            }}
+            sx={{
+              color: 'text.secondary',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Тарифы
+          </Typography>
+        </Box>
       </Box>
 
       <Menu

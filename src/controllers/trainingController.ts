@@ -10,8 +10,24 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = {
-      tenantId: req.tenant?.id
+      tenantId: req.tenant?.id,
+      isCancelled: false // Исключаем отмененные тренировки
     };
+
+    // Если пользователь - тренер, проверяем права на просмотр всех групп
+    if (req.user?.role === 'TRAINER') {
+      const trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: req.user.id,
+          tenantId: req.tenant?.id
+        }
+      });
+
+      // Если тренер не может видеть все группы, показываем только его группы
+      if (trainer && !trainer.canViewAllGroups) {
+        where.trainerId = trainer.id;
+      }
+    }
 
     if (search) {
       // PostgreSQL supports case-insensitive search
@@ -111,11 +127,68 @@ export const getTrainingById = async (req: AuthenticatedRequest, res: Response) 
 
 export const createTraining = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const tenantId = req.tenant?.id || req.tenantId;
+    
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+      return;
+    }
+
     // Extract only valid fields for Training model
-    const { daysOfWeek, ...validData } = req.body;
+    const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = req.body;
+    
+    // Validate required fields
+    if (!validData.title) {
+      res.status(400).json({
+        success: false,
+        error: 'Title is required'
+      });
+      return;
+    }
+    if (!validData.groupId) {
+      res.status(400).json({
+        success: false,
+        error: 'Group ID is required'
+      });
+      return;
+    }
+    if (!validData.trainerId) {
+      res.status(400).json({
+        success: false,
+        error: 'Trainer ID is required'
+      });
+      return;
+    }
+    if (!validData.branchId) {
+      res.status(400).json({
+        success: false,
+        error: 'Branch ID is required'
+      });
+      return;
+    }
+    if (!validData.startTime) {
+      res.status(400).json({
+        success: false,
+        error: 'Start time is required'
+      });
+      return;
+    }
+    if (!validData.endTime) {
+      res.status(400).json({
+        success: false,
+        error: 'End time is required'
+      });
+      return;
+    }
+
     const trainingData = {
       ...validData,
-      tenantId: req.tenant?.id
+      tenantId,
+      startTime: new Date(validData.startTime),
+      endTime: new Date(validData.endTime)
     };
 
     const training = await prisma.training.create({
@@ -136,11 +209,12 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       data: training,
       message: 'Training created successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create training error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create training'
+      error: error?.message || 'Failed to create training',
+      details: error?.meta || error
     });
   }
 };
@@ -148,6 +222,7 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
 export const updateTraining = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const { updateSeries, ...updateData } = req.body;
 
     const training = await prisma.training.findFirst({
       where: {
@@ -165,7 +240,69 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
     }
 
     // Extract only valid fields for Training model
-    const { daysOfWeek, ...validData } = req.body;
+    const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = updateData;
+
+    // If updating a recurring training series
+    if (updateSeries && training.isRecurring && validData.isRecurring !== false) {
+      // Find all trainings in the same series (same title, group, trainer, branch, and created around the same time)
+      const seriesStartTime = new Date(training.createdAt);
+      seriesStartTime.setHours(seriesStartTime.getHours() - 1);
+      const seriesEndTime = new Date(training.createdAt);
+      seriesEndTime.setHours(seriesEndTime.getHours() + 1);
+
+      const seriesTrainings = await prisma.training.findMany({
+        where: {
+          tenantId: req.tenant?.id,
+          title: training.title,
+          groupId: training.groupId,
+          trainerId: training.trainerId,
+          branchId: training.branchId,
+          isRecurring: true,
+          createdAt: {
+            gte: seriesStartTime,
+            lte: seriesEndTime
+          },
+          isCancelled: false
+        }
+      });
+
+      // Update all trainings in the series
+      const updatePromises = seriesTrainings.map(t => 
+        prisma.training.update({
+          where: { id: t.id },
+          data: {
+            title: validData.title || t.title,
+            description: validData.description !== undefined ? validData.description : t.description,
+            groupId: validData.groupId || t.groupId,
+            trainerId: validData.trainerId || t.trainerId,
+            branchId: validData.branchId || t.branchId,
+            recurrence: validData.recurrence || t.recurrence
+          }
+        })
+      );
+
+      await Promise.all(updatePromises);
+
+      const updatedTraining = await prisma.training.findFirst({
+        where: { id },
+        include: {
+          branch: true,
+          group: true,
+          trainer: {
+            include: {
+              user: true
+            }
+          }
+        }
+      });
+
+      res.json({
+        success: true,
+        data: updatedTraining,
+        message: `Updated ${seriesTrainings.length} trainings in series successfully`
+      });
+    } else {
+      // Regular update for single training
     const updatedTraining = await prisma.training.update({
       where: { id },
       data: validData,
@@ -185,6 +322,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
       data: updatedTraining,
       message: 'Training updated successfully'
     });
+    }
   } catch (error) {
     console.error('Update training error:', error);
     res.status(500).json({

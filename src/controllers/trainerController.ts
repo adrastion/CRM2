@@ -120,7 +120,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, phone, qualification, experience, specialization, salaryType, salaryAmount } = req.body;
+    const { email, password, firstName, lastName, phone, qualification, experience, specialization, salaryType, salaryAmount, canViewAllGroups } = req.body;
 
     // Создаем пользователя напрямую
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -142,10 +142,11 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       data: {
         userId: user.id,
         qualification,
-        experience: parseInt(experience),
+        experience: experience ? parseInt(experience) : undefined,
         specialization,
         salaryType,
-        salaryAmount: parseFloat(salaryAmount),
+        salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
+        canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
         tenantId: req.tenant.id
       },
       include: {
@@ -172,7 +173,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 export const updateTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount } = req.body;
+    const { firstName, lastName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, canViewAllGroups } = req.body;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
@@ -216,7 +217,8 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       experience: experience ? parseInt(experience) : undefined,
       specialization,
       salaryType,
-      salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined
+      salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
+      canViewAllGroups: canViewAllGroups !== undefined ? (canViewAllGroups === true || canViewAllGroups === 'true') : undefined
     };
 
     // Удаляем undefined значения
@@ -443,6 +445,241 @@ export const removeBranchFromTrainer = async (req: AuthenticatedRequest, res: Re
     res.status(500).json({
       success: false,
       error: 'Failed to remove trainer from branch'
+    });
+  }
+};
+
+/**
+ * Get trainer earnings based on attendance
+ */
+export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params; // trainer id
+    const { startDate, endDate } = req.query;
+
+    // Verify trainer exists and belongs to tenant
+    const trainer = await prisma.trainer.findFirst({
+      where: {
+        id,
+        tenantId: req.tenant?.id
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (!trainer) {
+      res.status(404).json({
+        success: false,
+        error: 'Trainer not found'
+      });
+      return;
+    }
+
+    // If user is trainer, they can only see their own earnings
+    if (req.user?.role === 'TRAINER' && trainer.userId !== req.user.id) {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+      return;
+    }
+
+    // Build date filter
+    const dateFilter: any = {};
+    if (startDate) {
+      dateFilter.gte = new Date(startDate as string);
+    }
+    if (endDate) {
+      dateFilter.lte = new Date(endDate as string);
+    }
+
+    // Get all trainings for this trainer
+    const trainings = await prisma.training.findMany({
+      where: {
+        trainerId: id,
+        tenantId: req.tenant?.id,
+        isCancelled: false,
+        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter })
+      },
+      include: {
+        group: {
+          include: {
+            branch: true
+          }
+        },
+        attendances: {
+          where: {
+            status: 'PRESENT'
+          },
+          include: {
+            client: true
+          }
+        }
+      },
+      orderBy: {
+        startTime: 'desc'
+      }
+    });
+
+    // Calculate earnings for each training
+    let totalEarnings = 0;
+    const trainingEarnings = trainings.map(training => {
+      const presentCount = training.attendances.length;
+      const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+      const totalRevenue = presentCount * trainingPrice;
+
+      let earnings = 0;
+      if (trainer.salaryType === 'percentage' && trainer.salaryAmount) {
+        // Percentage-based salary
+        const percentage = Number(trainer.salaryAmount);
+        earnings = (totalRevenue * percentage) / 100;
+      } else if (trainer.salaryType === 'fixed' && trainer.salaryAmount) {
+        // Fixed salary per present client
+        const fixedAmount = Number(trainer.salaryAmount);
+        earnings = presentCount * fixedAmount;
+      }
+
+      totalEarnings += earnings;
+
+      return {
+        trainingId: training.id,
+        trainingTitle: training.title,
+        trainingDate: training.startTime,
+        groupName: training.group.name,
+        branchName: training.group.branch?.name,
+        presentCount,
+        trainingPrice,
+        totalRevenue,
+        earnings
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        trainer: {
+          id: trainer.id,
+          name: `${trainer.user?.firstName} ${trainer.user?.lastName}`,
+          salaryType: trainer.salaryType,
+          salaryAmount: trainer.salaryAmount ? Number(trainer.salaryAmount) : null
+        },
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        totalEarnings,
+        trainingCount: trainings.length,
+        trainingEarnings
+      }
+    });
+  } catch (error) {
+    console.error('Get trainer earnings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve trainer earnings'
+    });
+  }
+};
+
+/**
+ * Get all trainers earnings (for admin/owner)
+ */
+export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    // Only admin and owner can access this
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+      return;
+    }
+
+    const { startDate, endDate } = req.query;
+
+    // Build date filter
+    const dateFilter: any = {};
+    if (startDate) {
+      dateFilter.gte = new Date(startDate as string);
+    }
+    if (endDate) {
+      dateFilter.lte = new Date(endDate as string);
+    }
+
+    // Get all trainers
+    const trainers = await prisma.trainer.findMany({
+      where: {
+        tenantId: req.tenant?.id,
+        isActive: true
+      },
+      include: {
+        user: true
+      }
+    });
+
+    const trainersEarnings = await Promise.all(
+      trainers.map(async (trainer) => {
+        // Get all trainings for this trainer
+        const trainings = await prisma.training.findMany({
+          where: {
+            trainerId: trainer.id,
+            tenantId: req.tenant?.id,
+            isCancelled: false,
+            ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter })
+          },
+          include: {
+            group: true,
+            attendances: {
+              where: {
+                status: 'PRESENT'
+              }
+            }
+          }
+        });
+
+        let totalEarnings = 0;
+        trainings.forEach(training => {
+          const presentCount = training.attendances.length;
+          const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+          const totalRevenue = presentCount * trainingPrice;
+
+          if (trainer.salaryType === 'percentage' && trainer.salaryAmount) {
+            const percentage = Number(trainer.salaryAmount);
+            totalEarnings += (totalRevenue * percentage) / 100;
+          } else if (trainer.salaryType === 'fixed' && trainer.salaryAmount) {
+            const fixedAmount = Number(trainer.salaryAmount);
+            totalEarnings += presentCount * fixedAmount;
+          }
+        });
+
+        return {
+          trainerId: trainer.id,
+          trainerName: `${trainer.user?.firstName} ${trainer.user?.lastName}`,
+          salaryType: trainer.salaryType,
+          salaryAmount: trainer.salaryAmount ? Number(trainer.salaryAmount) : null,
+          trainingCount: trainings.length,
+          totalEarnings
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        trainers: trainersEarnings,
+        totalEarnings: trainersEarnings.reduce((sum, t) => sum + t.totalEarnings, 0)
+      }
+    });
+  } catch (error) {
+    console.error('Get all trainers earnings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve trainers earnings'
     });
   }
 };

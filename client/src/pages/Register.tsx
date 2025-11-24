@@ -15,6 +15,7 @@ import {
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { RegisterForm } from '../types';
+import PublicFooter from '../components/PublicFooter';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState<RegisterForm>({
@@ -146,10 +147,11 @@ const Register: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="md">
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Container component="main" maxWidth="md" sx={{ flexGrow: 1, py: 4 }}>
       <Box
         sx={{
-          marginTop: 4,
+            marginTop: 2,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -158,7 +160,7 @@ const Register: React.FC = () => {
         <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-              Создайте свою школу единоборств
+              Создайте свою спортивную школу
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Настройте CRM-систему за несколько минут
@@ -345,7 +347,7 @@ const Register: React.FC = () => {
 
         <Box sx={{ mt: 4, textAlign: 'center', maxWidth: 600 }}>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 'medium' }}>
-            Что вы получаете с CRM для единоборств:
+            Что вы получаете с ПрофСпортСРМ:
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
@@ -374,6 +376,8 @@ const Register: React.FC = () => {
         </Box>
       </Box>
     </Container>
+      <PublicFooter />
+    </Box>
   );
 };
 

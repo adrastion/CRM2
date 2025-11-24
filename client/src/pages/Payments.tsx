@@ -36,7 +36,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { Payment, Client, Branch } from '../types';
+import { Payment, Client, Branch, Group } from '../types';
 
 interface PaymentFormData {
   amount: string;
@@ -53,6 +53,7 @@ const Payments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -85,15 +86,17 @@ const Payments: React.FC = () => {
         params.search = searchQuery;
       }
 
-      const [paymentsRes, clientsRes, branchesRes] = await Promise.all([
+      const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
         apiService.getPayments(params),
         apiService.getClients(),
         apiService.getBranches(),
+        apiService.getGroups().catch(() => ({ data: [] })),
       ]);
       
       setPayments(paymentsRes.data);
       setClients(clientsRes.data);
       setBranches(branchesRes.data);
+      setGroups(groupsRes.data || []);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки данных');
       console.error('Error fetching data:', err);
@@ -120,16 +123,18 @@ const Payments: React.FC = () => {
           params.search = debouncedSearchQuery;
         }
 
-        const [paymentsRes, clientsRes, branchesRes] = await Promise.all([
+        const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
           apiService.getPayments(params, abortController.signal),
           apiService.getClients(undefined, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
+          apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] })),
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
         setPayments(paymentsRes.data);
         setClients(clientsRes.data);
         setBranches(branchesRes.data);
+        setGroups(groupsRes.data || []);
       } catch (err: any) {
         // Ignore cancelled requests
         if (err?.code === 'ERR_CANCELED' || err?.message === 'canceled' || abortController.signal.aborted) {

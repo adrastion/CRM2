@@ -50,6 +50,8 @@ const Groups: React.FC = () => {
     maxMembers: '',
     ageMin: '',
     ageMax: '',
+    color: '#1976d2', // Цвет по умолчанию
+    trainingPrice: '',
     branchId: '',
     trainerId: '',
   });
@@ -136,6 +138,8 @@ const Groups: React.FC = () => {
         maxMembers: '',
         ageMin: '',
         ageMax: '',
+        color: '#1976d2',
+        trainingPrice: '',
         branchId: '',
         trainerId: '',
       });
@@ -160,6 +164,8 @@ const Groups: React.FC = () => {
       maxMembers: group.maxMembers?.toString() || '',
       ageMin: group.ageMin?.toString() || '',
       ageMax: group.ageMax?.toString() || '',
+      color: group.color || '#1976d2',
+      trainingPrice: (group as any).trainingPrice?.toString() || '',
       branchId: group.branchId || '',
       trainerId: group.trainerId || '',
     });
@@ -175,6 +181,7 @@ const Groups: React.FC = () => {
         maxMembers: formData.maxMembers ? parseInt(formData.maxMembers) : undefined,
         ageMin: formData.ageMin ? parseInt(formData.ageMin) : undefined,
         ageMax: formData.ageMax ? parseInt(formData.ageMax) : undefined,
+        trainingPrice: formData.trainingPrice ? parseFloat(formData.trainingPrice) : undefined,
       };
       await apiService.updateGroup(editingGroup.id, groupData);
       await fetchData();
@@ -466,6 +473,39 @@ const Groups: React.FC = () => {
                 inputProps={{ min: 0 }}
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Цвет группы"
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => handleInputChange('color', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 1,
+                    backgroundColor: formData.color,
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  }}
+                />
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Стоимость тренировки (руб.)"
+                type="number"
+                value={formData.trainingPrice}
+                onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Стоимость одной тренировки в этой группе"
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -566,6 +606,39 @@ const Groups: React.FC = () => {
                 value={formData.ageMax}
                 onChange={(e) => handleInputChange('ageMax', e.target.value)}
                 inputProps={{ min: 0 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Цвет группы"
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => handleInputChange('color', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 1,
+                    backgroundColor: formData.color,
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  }}
+                />
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Стоимость тренировки (руб.)"
+                type="number"
+                value={formData.trainingPrice}
+                onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Стоимость одной тренировки в этой группе"
               />
             </Grid>
           </Grid>

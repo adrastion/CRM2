@@ -128,6 +128,38 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
+    // Если платеж за абонемент и статус "paid", создаем ClientMembership
+    if (payment.type === 'membership' && payment.status === 'paid' && payment.membershipId) {
+      const membership = await prisma.membership.findFirst({
+        where: {
+          id: payment.membershipId,
+          tenantId: req.tenant?.id
+        }
+      });
+
+      if (membership) {
+        // Calculate end date for monthly memberships
+        let endDate: Date | null = null;
+        if (membership.type === 'monthly' && membership.duration) {
+          endDate = new Date();
+          endDate.setDate(endDate.getDate() + membership.duration);
+        }
+
+        await prisma.clientMembership.create({
+          data: {
+            clientId: payment.clientId,
+            membershipId: payment.membershipId,
+            startDate: new Date(),
+            endDate,
+            visitsTotal: membership.visits || null,
+            visitsUsed: 0,
+            isActive: true,
+            tenantId: req.tenant?.id || ''
+          }
+        });
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: payment,
