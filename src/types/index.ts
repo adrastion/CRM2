@@ -67,11 +67,13 @@ export interface CreateClientData {
   birthCertificateNumber?: string;
   medicalCertificateNumber?: string;
   schoolOrKindergarten?: string;
+  categoryId?: string | null;
   parents?: CreateParentData[];
 }
 
 export interface UpdateClientData extends Partial<Omit<CreateClientData, 'parents'>> {
   isActive?: boolean;
+  categoryId?: string | null;
   parents?: CreateParentData[];
 }
 

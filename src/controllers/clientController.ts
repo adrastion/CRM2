@@ -167,12 +167,34 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   }
 
   // Извлекаем родителей из данных клиента
-  const { parents, ...clientFields } = clientData;
+  const { parents, categoryId, ...clientFields } = clientData;
+
+  // Проверяем существование категории, если она указана
+  let validCategoryId: string | null | undefined = null;
+  if (categoryId && categoryId !== '' && categoryId !== null) {
+    const category = await prisma.clientCategory.findFirst({
+      where: {
+        id: categoryId,
+        tenantId,
+        isActive: true
+      }
+    });
+
+    if (!category) {
+      res.status(400).json({
+        success: false,
+        error: `Category with ID ${categoryId} not found or inactive`
+      });
+      return;
+    }
+    validCategoryId = categoryId;
+  }
 
   // Преобразуем dateOfBirth в правильный формат DateTime
   const processedData = {
     ...clientFields,
     tenantId,
+    categoryId: validCategoryId,
     dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined
   };
 
@@ -188,7 +210,8 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
       } : undefined
     },
     include: {
-      parents: true
+      parents: true,
+      category: true
     }
   });
 
@@ -221,13 +244,43 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   }
 
   // Извлекаем родителей из данных обновления
-  const { parents, ...clientFields } = updateData;
+  const { parents, categoryId, ...clientFields } = updateData;
+
+  // Проверяем существование категории, если она указана
+  let validCategoryId: string | null | undefined = categoryId;
+  if (categoryId !== undefined) {
+    if (categoryId === null || categoryId === '') {
+      validCategoryId = null;
+    } else {
+      const category = await prisma.clientCategory.findFirst({
+        where: {
+          id: categoryId,
+          tenantId,
+          isActive: true
+        }
+      });
+
+      if (!category) {
+        res.status(400).json({
+          success: false,
+          error: `Category with ID ${categoryId} not found or inactive`
+        });
+        return;
+      }
+      validCategoryId = categoryId;
+    }
+  }
 
   // Преобразуем dateOfBirth в правильный формат DateTime
   const processedData: any = {
     ...clientFields,
     dateOfBirth: updateData.dateOfBirth ? new Date(updateData.dateOfBirth) : undefined
   };
+
+  // Добавляем categoryId только если он был явно указан
+  if (categoryId !== undefined) {
+    processedData.categoryId = validCategoryId;
+  }
 
   // Если есть родители, обновляем их
   if (parents !== undefined) {
@@ -251,7 +304,8 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     where: { id },
     data: processedData,
     include: {
-      parents: true
+      parents: true,
+      category: true
     }
   });
 

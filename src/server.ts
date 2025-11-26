@@ -34,6 +34,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust proxy - required for express-rate-limit when behind a reverse proxy
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
