@@ -97,7 +97,7 @@ const Contacts: React.FC = () => {
                   Расчетный счет
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  40802810520000346389
+                  40802810338000045634
                 </Typography>
               </Box>
 
@@ -106,7 +106,7 @@ const Contacts: React.FC = () => {
                   Корреспондентский счет
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  0101810745374525104
+                  30101810400000000225
                 </Typography>
               </Box>
 
@@ -115,7 +115,7 @@ const Contacts: React.FC = () => {
                   БИК
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  044525104
+                  044525225
                 </Typography>
               </Box>
 
@@ -124,7 +124,7 @@ const Contacts: React.FC = () => {
                   Банк
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  ООО "Банк Точка"
+                  ПАО Сбербанк
                 </Typography>
               </Box>
 
@@ -133,7 +133,7 @@ const Contacts: React.FC = () => {
                   Юридический адрес
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  [Адрес регистрации ИП]
+                  Владимирская область, Александровский район город Струнино, ул. Заречная, д. 10
                 </Typography>
               </Box>
             </Box>
