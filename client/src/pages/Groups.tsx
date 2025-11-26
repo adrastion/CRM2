@@ -64,7 +64,7 @@ const Groups: React.FC = () => {
         apiService.getGroups(),
         apiService.getBranches(),
         apiService.getTrainers(),
-        apiService.getClients(),
+        apiService.getClients({ limit: 100 }),
       ]);
       setGroups(groupsRes.data);
       setBranches(branchesRes.data);
@@ -91,7 +91,7 @@ const Groups: React.FC = () => {
           apiService.getGroups(undefined, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getTrainers(undefined, abortController.signal),
-          apiService.getClients(undefined, abortController.signal),
+          apiService.getClients({ limit: 100 }, abortController.signal),
         ]);
         if (!isMounted || abortController.signal.aborted) return;
         setGroups(groupsRes.data);
