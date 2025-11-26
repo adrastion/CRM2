@@ -86,7 +86,7 @@ const Clients: React.FC = () => {
   const fetchClients = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getClients();
+      const response = await apiService.getClients({ limit: 100 });
       setClients(response.data);
     } catch (err: any) {
       setError('Не удалось загрузить клиентов');
@@ -105,7 +105,7 @@ const Clients: React.FC = () => {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
         const [clientsRes, branchesRes, categoriesRes, membershipsRes] = await Promise.all([
-          apiService.getClients(undefined, abortController.signal),
+          apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getClientCategories().catch(() => ({ data: [] })),
           apiService.getMemberships().catch(() => ({ data: [] }))
