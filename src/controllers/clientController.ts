@@ -485,6 +485,83 @@ export const getClientStats = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 /**
+ * Download Excel template for importing clients
+ */
+export const downloadClientTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  // Create empty template with headers and example row
+  const templateData = [
+    {
+      '№': 1,
+      'Имя': 'Иван',
+      'Фамилия': 'Иванов',
+      'Отчество': 'Иванович',
+      'Email ребенка': 'ivan@example.com',
+      'Телефон ребенка': '+79001234567',
+      'Дата рождения': '01.01.2010',
+      'Пол': 'Мужской',
+      'Адрес проживания': 'г. Москва, ул. Примерная, д. 1',
+      'Номер свидетельства о рождении': 'I-МУ 123456',
+      'Номер справки': 'СП-123456',
+      'Место учебы/дет.сада': 'Школа №1',
+      'Родитель 1 - ФИО': 'Иванова Мария Петровна',
+      'Родитель 1 - Телефон': '+79007654321',
+      'Родитель 1 - Email': 'maria@example.com',
+      'Родитель 1 - Место работы': 'ООО "Компания"',
+      'Родитель 1 - Контакт на работе': '+74951234567',
+      'Родитель 2 - ФИО': '',
+      'Родитель 2 - Телефон': '',
+      'Родитель 2 - Email': '',
+      'Родитель 2 - Место работы': '',
+      'Родитель 2 - Контакт на работе': '',
+      'Дата создания': ''
+    }
+  ];
+
+  // Create workbook and worksheet
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(templateData);
+
+  // Set column widths
+  const columnWidths = [
+    { wch: 5 },   // №
+    { wch: 15 },  // Имя
+    { wch: 15 },  // Фамилия
+    { wch: 15 },  // Отчество
+    { wch: 25 },  // Email ребенка
+    { wch: 18 },  // Телефон ребенка
+    { wch: 15 },  // Дата рождения
+    { wch: 12 },  // Пол
+    { wch: 30 },  // Адрес
+    { wch: 25 },  // Свидетельство
+    { wch: 15 },  // Справка
+    { wch: 25 },  // Место учебы
+    { wch: 25 },  // Родитель 1 - ФИО
+    { wch: 18 },  // Родитель 1 - Телефон
+    { wch: 25 },  // Родитель 1 - Email
+    { wch: 25 },  // Родитель 1 - Работа
+    { wch: 25 },  // Родитель 1 - Контакт
+    { wch: 25 },  // Родитель 2 - ФИО
+    { wch: 18 },  // Родитель 2 - Телефон
+    { wch: 25 },  // Родитель 2 - Email
+    { wch: 25 },  // Родитель 2 - Работа
+    { wch: 25 },  // Родитель 2 - Контакт
+    { wch: 15 }   // Дата создания
+  ];
+  worksheet['!cols'] = columnWidths;
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Шаблон');
+
+  // Generate Excel file buffer
+  const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+  // Set response headers
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename=template_import_clients.xlsx');
+
+  res.send(excelBuffer);
+});
+
+/**
  * Export clients to Excel
  */
 export const exportClients = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

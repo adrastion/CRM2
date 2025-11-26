@@ -13,6 +13,7 @@ import {
   validateClientQuery,
   exportClients,
   importClients,
+  downloadClientTemplate,
   upload
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
@@ -24,6 +25,7 @@ router.use(authenticate);
 
 // Export/Import clients (must be before /:id routes)
 router.get('/export/excel', requireOwnerAdminOrTrainer, exportClients);
+router.get('/export/template', requireOwnerAdminOrTrainer, downloadClientTemplate);
 router.post('/import/excel', requireOwnerAdminOrTrainer, upload.single('file'), importClients);
 
 // Client CRUD operations

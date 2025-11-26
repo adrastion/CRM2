@@ -163,6 +163,13 @@ class ApiService {
     return response.data;
   }
 
+  async downloadClientTemplate(): Promise<Blob> {
+    const response = await this.api.get('/clients/export/template', {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
   async importClients(file: File): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);

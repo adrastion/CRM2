@@ -28,7 +28,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 
@@ -47,10 +47,14 @@ const Clients: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [branches, setBranches] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterCategoryId, setFilterCategoryId] = useState<string>('');
+  const [groupsDialog, setGroupsDialog] = useState(false);
+  const [selectedClientForGroups, setSelectedClientForGroups] = useState<Client | null>(null);
   const [statsDialog, setStatsDialog] = useState(false);
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
   const [clientStats, setClientStats] = useState<any>(null);
@@ -73,6 +77,7 @@ const Clients: React.FC = () => {
     medicalCertificateNumber: '',
     schoolOrKindergarten: '',
     categoryId: '',
+    groupIds: [] as string[],
     // Родители
     parents: [] as Array<{
       fullName: string;
@@ -104,17 +109,19 @@ const Clients: React.FC = () => {
       try {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
-        const [clientsRes, branchesRes, categoriesRes, membershipsRes] = await Promise.all([
+        const [clientsRes, branchesRes, categoriesRes, membershipsRes, groupsRes] = await Promise.all([
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getClientCategories().catch(() => ({ data: [] })),
-          apiService.getMemberships().catch(() => ({ data: [] }))
+          apiService.getMemberships().catch(() => ({ data: [] })),
+          apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] }))
         ]);
         if (!isMounted || abortController.signal.aborted) return;
         setClients(clientsRes.data);
         setBranches(branchesRes.data);
         setCategories(categoriesRes.data || []);
         setMembershipTypes(membershipsRes.data || []);
+        setGroups(groupsRes.data || []);
       } catch (err: any) {
         // Ignore cancelled requests
         if (err?.code === 'ERR_CANCELED' || err?.message === 'canceled' || abortController.signal.aborted) {
@@ -158,7 +165,21 @@ const Clients: React.FC = () => {
     hasErrorsRef.current = false;
 
     try {
-      await apiService.createClient(formData);
+      const { groupIds, ...clientData } = formData;
+      const createdClient = await apiService.createClient(clientData);
+      
+      // Добавляем клиента в выбранные группы
+      if (groupIds && groupIds.length > 0 && createdClient?.id) {
+        for (const groupId of groupIds) {
+          try {
+            await apiService.addClientToGroup(groupId, createdClient.id);
+          } catch (err: any) {
+            console.error(`Error adding client to group ${groupId}:`, err);
+            // Продолжаем добавлять в другие группы даже если одна не удалась
+          }
+        }
+      }
+      
       await fetchClients();
       // Сбрасываем все флаги и закрываем диалог только после успешного создания
       hasErrorsRef.current = false;
@@ -179,6 +200,7 @@ const Clients: React.FC = () => {
         medicalCertificateNumber: '',
         schoolOrKindergarten: '',
         categoryId: '',
+        groupIds: [],
         parents: [],
       });
     } catch (err: any) {
@@ -226,6 +248,10 @@ const Clients: React.FC = () => {
       medicalCertificateNumber: client.medicalCertificateNumber || '',
       schoolOrKindergarten: client.schoolOrKindergarten || '',
       categoryId: (client as any).categoryId || '',
+      groupIds: client.groupMemberships
+        ?.filter((gm: any) => gm.isActive)
+        .map((gm: any) => gm.group?.id)
+        .filter(Boolean) || [],
       parents: client.parents?.map(p => ({
         fullName: p.fullName || '',
         phone: p.phone || '',
@@ -250,7 +276,38 @@ const Clients: React.FC = () => {
     }
     
     try {
-      await apiService.updateClient(editingClient.id, formData);
+      const { groupIds, ...clientData } = formData;
+      await apiService.updateClient(editingClient.id, clientData);
+      
+      // Обновляем группы клиента
+      const currentGroupIds = editingClient.groupMemberships
+        ?.filter((gm: any) => gm.isActive)
+        .map((gm: any) => gm.group?.id)
+        .filter(Boolean) || [];
+      const newGroupIds = groupIds || [];
+      
+      // Удаляем из групп, которых больше нет в списке
+      for (const currentGroupId of currentGroupIds) {
+        if (!newGroupIds.includes(currentGroupId)) {
+          try {
+            await apiService.removeClientFromGroup(currentGroupId, editingClient.id);
+          } catch (err: any) {
+            console.error(`Error removing client from group ${currentGroupId}:`, err);
+          }
+        }
+      }
+      
+      // Добавляем в новые группы
+      for (const newGroupId of newGroupIds) {
+        if (!currentGroupIds.includes(newGroupId)) {
+          try {
+            await apiService.addClientToGroup(newGroupId, editingClient.id);
+          } catch (err: any) {
+            console.error(`Error adding client to group ${newGroupId}:`, err);
+          }
+        }
+      }
+      
       await fetchClients();
       setEditDialog(false);
       setEditingClient(null);
@@ -269,6 +326,7 @@ const Clients: React.FC = () => {
         medicalCertificateNumber: '',
         schoolOrKindergarten: '',
         categoryId: '',
+        groupIds: [],
         parents: [],
       });
     } catch (err: any) {
@@ -323,6 +381,52 @@ const Clients: React.FC = () => {
       setError(error?.response?.data?.error || 'Не удалось импортировать клиентов');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await apiService.downloadClientTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'template_import_clients.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Error downloading template:', error);
+      setError('Не удалось скачать шаблон');
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        setImportFile(file);
+        setImportResult(null);
+      } else {
+        setError('Поддерживаются только файлы Excel (.xlsx, .xls)');
+      }
     }
   };
 
@@ -523,7 +627,45 @@ const Clients: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {client.groupMemberships?.length || 0} групп
+                      {client.groupMemberships && client.groupMemberships.length > 0 ? (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {client.groupMemberships
+                            .filter((gm: any) => gm.isActive)
+                            .map((gm: any) => (
+                              <Chip
+                                key={gm.id}
+                                label={gm.group?.name || 'Группа'}
+                                size="small"
+                                onClick={() => {
+                                  setSelectedClientForGroups(client);
+                                  setGroupsDialog(true);
+                                }}
+                                sx={{
+                                  cursor: 'pointer',
+                                  '&:hover': {
+                                    backgroundColor: 'primary.dark'
+                                  }
+                                }}
+                              />
+                            ))}
+                        </Box>
+                      ) : (
+                        <Chip
+                          label="Нет групп"
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setSelectedClientForGroups(client);
+                            setGroupsDialog(true);
+                          }}
+                          sx={{
+                            cursor: 'pointer',
+                            '&:hover': {
+                              backgroundColor: 'action.hover'
+                            }
+                          }}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       {(client as any).clientMemberships && (client as any).clientMemberships.length > 0 ? (
@@ -793,6 +935,39 @@ const Clients: React.FC = () => {
                   {categories.map((category) => (
                     <MenuItem key={category.id} value={category.id}>
                       {category.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Группы</InputLabel>
+                <Select
+                  multiple
+                  value={formData.groupIds}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({
+                      ...formData,
+                      groupIds: typeof value === 'string' ? value.split(',') : value as string[]
+                    });
+                  }}
+                  label="Группы"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as string[]).map((groupId) => {
+                        const group = groups.find(g => g.id === groupId);
+                        return group ? (
+                          <Chip key={groupId} label={group.name} size="small" />
+                        ) : null;
+                      })}
+                    </Box>
+                  )}
+                >
+                  {groups.filter(g => g.isActive).map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
                     </MenuItem>
                   ))}
                 </Select>
@@ -1116,6 +1291,39 @@ const Clients: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Группы</InputLabel>
+                <Select
+                  multiple
+                  value={formData.groupIds}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({
+                      ...formData,
+                      groupIds: typeof value === 'string' ? value.split(',') : value as string[]
+                    });
+                  }}
+                  label="Группы"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as string[]).map((groupId) => {
+                        const group = groups.find(g => g.id === groupId);
+                        return group ? (
+                          <Chip key={groupId} label={group.name} size="small" />
+                        ) : null;
+                      })}
+                    </Box>
+                  )}
+                >
+                  {groups.filter(g => g.isActive).map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             
             {/* Родители */}
             <Grid item xs={12}>
@@ -1266,6 +1474,7 @@ const Clients: React.FC = () => {
           setImportDialog(false);
           setImportFile(null);
           setImportResult(null);
+          setIsDragOver(false);
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
           }
@@ -1302,6 +1511,49 @@ const Clients: React.FC = () => {
               )}
             </Alert>
           )}
+
+          {/* Инструкция по импорту */}
+          <Alert 
+            icon={<Info />} 
+            severity="info" 
+            sx={{ mb: 2 }}
+          >
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+              Инструкция по заполнению файла:
+            </Typography>
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Обязательные поля:</strong> Имя, Фамилия
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Дата рождения:</strong> формат ДД.ММ.ГГГГ (например: 01.01.2010)
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Пол:</strong> "Мужской", "Женский" или "Другой"
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Родители:</strong> можно указать до 2 родителей, все поля опциональны
+              </Typography>
+              <Typography component="li" variant="body2">
+                <strong>Что не указывать:</strong> Дата создания (заполняется автоматически)
+              </Typography>
+            </Box>
+          </Alert>
+
+          {/* Кнопка скачивания шаблона */}
+          <Box sx={{ mb: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<Download />}
+              fullWidth
+              onClick={handleDownloadTemplate}
+              sx={{ textTransform: 'none' }}
+            >
+              Скачать шаблон Excel
+            </Button>
+          </Box>
+
+          {/* Drag and Drop область */}
           <Box sx={{ mt: 2 }}>
             <input
               ref={fileInputRef}
@@ -1312,34 +1564,56 @@ const Clients: React.FC = () => {
                 if (file) {
                   setImportFile(file);
                   setImportResult(null);
+                  setError('');
                 }
               }}
               style={{ display: 'none' }}
             />
-            <Button
-              variant="outlined"
-              component="label"
-              fullWidth
-              sx={{ mb: 2 }}
-              disabled={importing}
+            <Box
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              sx={{
+                border: `2px dashed ${isDragOver ? 'primary.main' : 'grey.300'}`,
+                borderRadius: 2,
+                p: 4,
+                textAlign: 'center',
+                backgroundColor: isDragOver ? 'action.hover' : 'background.paper',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                mb: 2,
+                '&:hover': {
+                  borderColor: 'primary.main',
+                  backgroundColor: 'action.hover'
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
             >
-              {importFile ? importFile.name : 'Выберите Excel файл'}
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setImportFile(file);
-                    setImportResult(null);
-                  }
-                }}
-                style={{ display: 'none' }}
-              />
-            </Button>
-            <Typography variant="body2" color="text.secondary">
-              Формат файла: Excel (.xlsx, .xls). Файл должен содержать колонки согласно шаблону экспорта.
-            </Typography>
+              {importFile ? (
+                <Box>
+                  <FileUpload sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                  <Typography variant="h6" gutterBottom>
+                    {importFile.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Нажмите для выбора другого файла
+                  </Typography>
+                </Box>
+              ) : (
+                <Box>
+                  <FileUpload sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                  <Typography variant="h6" gutterBottom>
+                    Перетащите файл сюда
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    или нажмите для выбора файла
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Поддерживаются только файлы Excel (.xlsx, .xls)
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1349,6 +1623,7 @@ const Clients: React.FC = () => {
                 setImportDialog(false);
                 setImportFile(null);
                 setImportResult(null);
+                setIsDragOver(false);
                 if (fileInputRef.current) {
                   fileInputRef.current.value = '';
                 }
@@ -1467,6 +1742,107 @@ const Clients: React.FC = () => {
           <Button onClick={() => { setMembershipDialog(false); setSelectedMembershipId(''); }}>Отмена</Button>
           <Button onClick={handleGiveMembership} variant="contained" disabled={!selectedMembershipId}>
             Выдать тариф
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог управления группами клиента */}
+      <Dialog 
+        open={groupsDialog} 
+        onClose={() => {
+          setGroupsDialog(false);
+          setSelectedClientForGroups(null);
+        }} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          Управление группами: {selectedClientForGroups?.firstName} {selectedClientForGroups?.lastName}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Текущие группы:
+            </Typography>
+            {selectedClientForGroups?.groupMemberships?.filter((gm: any) => gm.isActive).length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Клиент не состоит ни в одной группе
+              </Typography>
+            ) : (
+              <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {selectedClientForGroups?.groupMemberships
+                  ?.filter((gm: any) => gm.isActive)
+                  .map((gm: any) => (
+                    <Chip
+                      key={gm.id}
+                      label={gm.group?.name || 'Группа'}
+                      onDelete={async () => {
+                        if (window.confirm(`Удалить клиента из группы "${gm.group?.name}"?`)) {
+                          try {
+                            await apiService.removeClientFromGroup(gm.group?.id, selectedClientForGroups!.id);
+                            await fetchClients();
+                            const updatedClient = await apiService.getClient(selectedClientForGroups!.id);
+                            setSelectedClientForGroups(updatedClient);
+                          } catch (err: any) {
+                            setError(err.response?.data?.error || 'Ошибка удаления из группы');
+                            console.error('Error removing from group:', err);
+                          }
+                        }
+                      }}
+                      color="primary"
+                      sx={{ backgroundColor: gm.group?.color || 'primary.main' }}
+                    />
+                  ))}
+              </Box>
+            )}
+            <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+              Добавить в группу:
+            </Typography>
+            <FormControl fullWidth>
+              <InputLabel>Выберите группу</InputLabel>
+              <Select
+                value=""
+                onChange={async (e) => {
+                  const groupId = e.target.value;
+                  if (!selectedClientForGroups || !groupId) return;
+                  
+                  try {
+                    await apiService.addClientToGroup(groupId, selectedClientForGroups.id);
+                    await fetchClients();
+                    const updatedClient = await apiService.getClient(selectedClientForGroups.id);
+                    setSelectedClientForGroups(updatedClient);
+                    // Сброс выбора
+                    (e.target as any).value = '';
+                  } catch (err: any) {
+                    setError(err.response?.data?.error || 'Ошибка добавления в группу');
+                    console.error('Error adding to group:', err);
+                  }
+                }}
+                label="Выберите группу"
+              >
+                {groups
+                  .filter((group) => {
+                    if (!selectedClientForGroups) return false;
+                    const currentGroupIds = selectedClientForGroups.groupMemberships
+                      ?.filter((gm: any) => gm.isActive)
+                      .map((gm: any) => gm.group?.id) || [];
+                    return !currentGroupIds.includes(group.id) && group.isActive;
+                  })
+                  .map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setGroupsDialog(false);
+            setSelectedClientForGroups(null);
+          }}>
+            Закрыть
           </Button>
         </DialogActions>
       </Dialog>
