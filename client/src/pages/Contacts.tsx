@@ -88,7 +88,7 @@ const Contacts: React.FC = () => {
                   ОГРНИП
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  3233300000337896
+                  323330000033789
                 </Typography>
               </Box>
 
