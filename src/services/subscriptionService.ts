@@ -286,10 +286,12 @@ export class SubscriptionService {
       subscriptionStatus: subscriptionPayment.subscription.status
     });
 
-    // Обновляем статус платежа
+    // Определяем статус платежа
     // YooKassa может вернуть статус: pending, waiting_for_capture, succeeded, canceled
+    // Также проверяем поле paid для надежности
+    const isPaymentSucceeded = payment.status === 'succeeded' || payment.paid === true;
     let status = 'pending';
-    if (payment.status === 'succeeded' || payment.paid === true) {
+    if (isPaymentSucceeded) {
       status = 'succeeded';
     } else if (payment.status === 'canceled' || payment.status === 'cancelled') {
       status = 'cancelled';
@@ -300,18 +302,18 @@ export class SubscriptionService {
     console.log('Determined payment status:', {
       yookassaStatus: payment.status,
       yookassaPaid: payment.paid,
+      isPaymentSucceeded,
       ourStatus: status
     });
 
     // Проверяем, не был ли платеж уже обработан
-    const isPaymentSucceeded = payment.status === 'succeeded' || payment.paid === true;
     const wasAlreadyProcessed = subscriptionPayment.status === 'succeeded' && isPaymentSucceeded;
     
     await prisma.subscriptionPayment.update({
       where: { id: subscriptionPayment.id },
       data: {
         status,
-        paidAt: (payment.status === 'succeeded' || payment.paid === true) ? new Date() : null,
+        paidAt: isPaymentSucceeded ? new Date() : null,
       },
     });
 
@@ -322,9 +324,6 @@ export class SubscriptionService {
     }
 
     // Если платеж успешен, активируем подписку
-    // Проверяем и status === 'succeeded', и paid === true для надежности
-    const isPaymentSucceeded = payment.status === 'succeeded' || payment.paid === true;
-    
     if (isPaymentSucceeded) {
       // Получаем план из metadata платежа или из существующей подписки
       const planType = payment.metadata?.planType || subscriptionPayment.subscription.planType;
