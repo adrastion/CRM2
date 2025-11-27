@@ -57,6 +57,7 @@ export interface Client {
   medicalNotes?: string;
   photo?: string;
   categoryId?: string;
+  balance?: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -116,8 +117,10 @@ export interface Trainer {
   qualification?: string;
   experience?: number;
   specialization?: string;
-  salaryType: 'fixed' | 'percentage';
+  salaryType: 'percentage' | 'per_student' | 'fixed' | 'per_training' | 'individual';
   salaryAmount?: number;
+  salaryPercentage?: number; // Для individual типа (процент от индивидуального занятия)
+  balance?: number;
   canViewAllGroups?: boolean;
   isActive: boolean;
   user?: User;

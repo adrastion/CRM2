@@ -46,6 +46,7 @@ model Tenant {
   clientCategories ClientCategory[]
   clientMemberships ClientMembership[]
   standards Standard[]
+  transactions Transaction[]
 
   @@map("tenants")
 }
@@ -151,6 +152,7 @@ model Client {
   medicalNotes          String?
   photo                 String?
   categoryId            String?   // Категория клиента
+  balance               Decimal   @default(0) // Внутренний кошелек клиента
   isActive              Boolean   @default(true)
   tenantId              String
   createdAt             DateTime  @default(now())
@@ -168,6 +170,7 @@ model Client {
   parents               Parent[]
   clientMemberships     ClientMembership[]
   clientStandards       ClientStandard[]
+  transactions          Transaction[]
 
   @@map("clients")
 }
@@ -260,8 +263,10 @@ model Trainer {
   qualification   String?
   experience      Int?     // years of experience
   specialization  String?
-  salaryType      String   // fixed, percentage
-  salaryAmount    Decimal?
+  salaryType      String   // percentage, per_student, fixed, per_training, individual
+  salaryAmount    Decimal? // Процент, цена за ученика, фиксированная сумма, цена за тренировку, процент от индивидуального занятия
+  salaryPercentage Decimal? // Процент для индивидуальных занятий (часть зала / часть тренеру)
+  balance         Decimal   @default(0) // Баланс тренера (заработок)
   canViewAllGroups Boolean @default(false) // Может ли тренер видеть расписание всех групп
   isActive        Boolean  @default(true)
   tenantId        String
@@ -274,6 +279,7 @@ model Trainer {
   groups          Group[]
   trainings       Training[]
   branches        TrainerBranch[]
+  transactions    Transaction[]
 
   @@map("trainers")
 }
@@ -394,6 +400,7 @@ model Payment {
   branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   promoCodeUsage PromoCodeUsage?
+  transactions    Transaction[]
 
   @@map("payments")
 }
@@ -422,6 +429,7 @@ model Training {
   group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   trainer     Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   attendances Attendance[]
+  transactions Transaction[]
 
   @@map("trainings")
 }
@@ -444,9 +452,36 @@ model Attendance {
   client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   training   Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
   tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
   @@unique([clientId, trainingId])
   @@map("attendances")
+}
+
+// ==================== TRANSACTIONS (ТРАНЗАКЦИИ) ====================
+
+model Transaction {
+  id              String   @id @default(cuid())
+  type            String   // client_payment, trainer_earnings, client_withdrawal, trainer_withdrawal, training_payment
+  amount          Decimal  // Сумма транзакции (положительная или отрицательная)
+  description     String?  // Описание транзакции
+  clientId        String?  // ID клиента (если транзакция связана с клиентом)
+  trainerId       String?  // ID тренера (если транзакция связана с тренером)
+  trainingId      String?  // ID тренировки (если транзакция связана с тренировкой)
+  attendanceId    String?  // ID посещения (если транзакция связана с посещением)
+  paymentId       String?  // ID платежа (если транзакция связана с платежом)
+  tenantId        String
+  createdAt       DateTime @default(now())
+
+  // Relations
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  trainer         Trainer? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  training        Training? @relation(fields: [trainingId], references: [id], onDelete: SetNull)
+  attendance      Attendance? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+  payment         Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@map("transactions")
 }
 
 // ==================== TRAINER BRANCH ASSIGNMENTS ====================

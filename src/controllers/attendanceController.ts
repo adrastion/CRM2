@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
+import {
+  deductFromClientBalance,
+  calculateTrainerEarningsForAttendance,
+  addToTrainerBalance
+} from '../utils/finance';
 
 const prisma = new PrismaClient();
 
@@ -282,8 +287,17 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
       }
     });
 
-    // Если посещение со статусом PRESENT, вычитаем посещение из активного абонемента
+    // Если посещение со статусом PRESENT, обрабатываем оплату и абонемент
     if (status === 'PRESENT') {
+      // Получаем информацию о тренировке с группой и тренером
+      const trainingWithDetails = await prisma.training.findFirst({
+        where: { id: trainingId, tenantId },
+        include: {
+          group: true,
+          trainer: true
+        }
+      });
+
       // Находим активный абонемент клиента (приоритет: абонемент на посещения)
       const activeMembership = await prisma.clientMembership.findFirst({
         where: {
@@ -314,6 +328,8 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         ]
       });
 
+      let shouldChargeClient = true; // Флаг, нужно ли списывать деньги с баланса
+
       if (activeMembership) {
         // Если это абонемент на посещения
         if (activeMembership.visitsTotal) {
@@ -327,8 +343,85 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
               isActive: !isExhausted
             }
           });
+          
+          // Если есть активный абонемент на посещения, не списываем с баланса
+          shouldChargeClient = false;
+        } else {
+          // Для месячных абонементов просто отмечаем посещение (не списываем с баланса)
+          shouldChargeClient = false;
         }
-        // Для месячных абонементов просто отмечаем посещение (не вычитаем)
+      }
+
+      // Если нет активного абонемента, списываем деньги с баланса клиента
+      if (shouldChargeClient && trainingWithDetails) {
+        const trainingPrice = trainingWithDetails.group.trainingPrice 
+          ? Number(trainingWithDetails.group.trainingPrice) 
+          : 0;
+
+        if (trainingPrice > 0) {
+          // Проверяем баланс клиента
+          const currentClient = await prisma.client.findFirst({
+            where: { id: clientId, tenantId }
+          });
+
+          if (currentClient) {
+            const clientBalance = Number(currentClient.balance || 0);
+            
+            if (clientBalance >= trainingPrice) {
+              // Снимаем деньги с баланса клиента
+              await deductFromClientBalance(
+                clientId,
+                trainingPrice,
+                trainingId,
+                attendance.id,
+                tenantId,
+                `Оплата тренировки: ${trainingWithDetails.title}`
+              );
+
+              // Рассчитываем и начисляем заработок тренеру
+              const trainerEarnings = await calculateTrainerEarningsForAttendance(
+                trainingWithDetails.trainerId,
+                trainingId,
+                attendance.id,
+                tenantId
+              );
+
+              if (trainerEarnings > 0) {
+                await addToTrainerBalance(
+                  trainingWithDetails.trainerId,
+                  trainerEarnings,
+                  trainingId,
+                  attendance.id,
+                  tenantId,
+                  `Заработок за тренировку: ${trainingWithDetails.title}`
+                );
+              }
+            } else {
+              // Недостаточно средств - можно создать запись о задолженности
+              // Пока просто создаем посещение без списания, но логируем проблему
+              console.warn(`Insufficient balance for client ${clientId}. Balance: ${clientBalance}, Required: ${trainingPrice}`);
+            }
+          }
+        }
+      } else if (trainingWithDetails && activeMembership) {
+        // Если есть абонемент, все равно начисляем тренеру (но не списываем с клиента)
+        const trainerEarnings = await calculateTrainerEarningsForAttendance(
+          trainingWithDetails.trainerId,
+          trainingId,
+          attendance.id,
+          tenantId
+        );
+
+        if (trainerEarnings > 0) {
+          await addToTrainerBalance(
+            trainingWithDetails.trainerId,
+            trainerEarnings,
+            trainingId,
+            attendance.id,
+            tenantId,
+            `Заработок за тренировку: ${trainingWithDetails.title}`
+          );
+        }
       }
     }
 
