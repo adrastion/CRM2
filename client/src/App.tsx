@@ -13,6 +13,7 @@ const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Clients = lazy(() => import('./pages/Clients'));
 const ClientCategories = lazy(() => import('./pages/ClientCategories'));
+const Standards = lazy(() => import('./pages/Standards'));
 const Trainers = lazy(() => import('./pages/Trainers'));
 const TrainerEarnings = lazy(() => import('./pages/TrainerEarnings'));
 const AllTrainersEarnings = lazy(() => import('./pages/AllTrainersEarnings'));
@@ -252,6 +253,16 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <AppLayout>
                 <ClientCategories />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/standards"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Standards />
               </AppLayout>
             </ProtectedRoute>
           }

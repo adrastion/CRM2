@@ -242,6 +242,55 @@ class ApiService {
     return response.data.data;
   }
 
+  // Standard endpoints (Нормативы)
+  async getStandards(params?: any): Promise<{ data: any[] }> {
+    const response = await this.api.get<ApiResponse>('/standards', { params });
+    return {
+      data: response.data.data || []
+    };
+  }
+
+  async getStandard(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/standards/${id}`);
+    return response.data.data;
+  }
+
+  async createStandard(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/standards', data);
+    return response.data.data;
+  }
+
+  async updateStandard(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/standards/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteStandard(id: string): Promise<void> {
+    await this.api.delete(`/standards/${id}`);
+  }
+
+  // Client Standards endpoints (Выполнения нормативов клиентом)
+  async getClientStandards(clientId: string): Promise<{ data: any[] }> {
+    const response = await this.api.get<ApiResponse>(`/standards/clients/${clientId}`);
+    return {
+      data: response.data.data || []
+    };
+  }
+
+  async addClientStandard(clientId: string, data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/standards/clients/${clientId}`, data);
+    return response.data.data;
+  }
+
+  async updateClientStandard(clientId: string, clientStandardId: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/standards/clients/${clientId}/${clientStandardId}`, data);
+    return response.data.data;
+  }
+
+  async deleteClientStandard(clientId: string, clientStandardId: string): Promise<void> {
+    await this.api.delete(`/standards/clients/${clientId}/${clientStandardId}`);
+  }
+
   // Group endpoints
   async getGroups(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/groups', { params, signal });

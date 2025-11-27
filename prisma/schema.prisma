@@ -45,6 +45,7 @@ model Tenant {
   tenantSettings TenantSettings?
   clientCategories ClientCategory[]
   clientMemberships ClientMembership[]
+  standards Standard[]
 
   @@map("tenants")
 }
@@ -166,6 +167,7 @@ model Client {
   referralClicks        ReferralClick[]
   parents               Parent[]
   clientMemberships     ClientMembership[]
+  clientStandards       ClientStandard[]
 
   @@map("clients")
 }
@@ -206,6 +208,48 @@ model Achievement {
   client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("achievements")
+}
+
+// ==================== STANDARDS (НОРМАТИВЫ) ====================
+
+model Standard {
+  id              String   @id @default(cuid())
+  name            String   // Название норматива (например, "Подтягивания", "Бег 100м")
+  description     String?  // Описание норматива
+  unit            String?  // Единица измерения (раз, секунды, метры, кг и т.д.)
+  targetValue     Decimal? // Целевое значение (опционально)
+  category        String?  // Категория/тип норматива (сила, выносливость, скорость и т.д.)
+  isActive        Boolean  @default(true)
+  tenantId        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientStandards ClientStandard[]
+
+  @@map("standards")
+}
+
+// ==================== CLIENT STANDARDS (ВЫПОЛНЕНИЕ НОРМАТИВОВ) ====================
+
+model ClientStandard {
+  id          String   @id @default(cuid())
+  clientId    String
+  standardId  String
+  completedAt DateTime // Дата выполнения
+  result      Decimal? // Результат выполнения (числовое значение)
+  resultText  String?  // Текстовый результат (если нужен не только числовой)
+  status      String   @default("completed") // completed, failed, pending
+  notes       String?  // Комментарии/заметки
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  standard    Standard @relation(fields: [standardId], references: [id], onDelete: Cascade)
+
+  @@map("client_standards")
 }
 
 // ==================== TRAINERS ====================

@@ -77,6 +77,38 @@ export interface Achievement {
   clientId: string;
 }
 
+// Standard Types (Нормативы)
+export interface Standard {
+  id: string;
+  name: string;
+  description?: string;
+  unit?: string; // Единица измерения (раз, секунды, метры, кг и т.д.)
+  targetValue?: number; // Целевое значение
+  category?: string; // Категория/тип норматива
+  isActive: boolean;
+  tenantId: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    clientStandards: number;
+  };
+}
+
+export interface ClientStandard {
+  id: string;
+  clientId: string;
+  standardId: string;
+  completedAt: string; // Дата выполнения
+  result?: number; // Результат выполнения (числовое значение)
+  resultText?: string; // Текстовый результат
+  status: 'completed' | 'failed' | 'pending';
+  notes?: string; // Комментарии/заметки
+  createdAt: string;
+  updatedAt: string;
+  client?: Client;
+  standard?: Standard;
+}
+
 // Trainer Types
 export interface Trainer {
   id: string;

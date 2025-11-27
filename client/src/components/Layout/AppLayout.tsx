@@ -35,6 +35,7 @@ import {
   ContactMail,
   LocalOffer,
   Settings,
+  Assignment,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -49,6 +50,7 @@ const navigationItems = [
   { label: 'Панель управления', path: '/dashboard', icon: <Dashboard />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Клиенты', path: '/clients', icon: <People />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Категории клиентов', path: '/client-categories', icon: <Groups />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Нормативы', path: '/standards', icon: <Assignment />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Тренеры', path: '/trainers', icon: <Person />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Мой заработок', path: '/trainer/earnings', icon: <AttachMoney />, roles: ['TRAINER'] },
   { label: 'Заработок тренеров', path: '/trainers/earnings', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },

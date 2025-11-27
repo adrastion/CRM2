@@ -27,6 +27,7 @@ import promoCodeAdminRoutes from './routes/promoCodeAdmin';
 import settingsRoutes from './routes/settings';
 import clientCategoryRoutes from './routes/clientCategory';
 import clientMembershipRoutes from './routes/clientMembership';
+import standardRoutes from './routes/standard';
 
 // Load environment variables
 dotenv.config();
@@ -106,6 +107,7 @@ app.use('/api/promo-code-admins', promoCodeAdminRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/client-categories', clientCategoryRoutes);
 app.use('/api/client-memberships', clientMembershipRoutes);
+app.use('/api/standards', standardRoutes);
 
 // Error handling middleware
 app.use(notFound);
