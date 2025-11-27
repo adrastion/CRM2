@@ -28,6 +28,7 @@ import settingsRoutes from './routes/settings';
 import clientCategoryRoutes from './routes/clientCategory';
 import clientMembershipRoutes from './routes/clientMembership';
 import standardRoutes from './routes/standard';
+import subscriptionRoutes from './routes/subscription';
 
 // Load environment variables
 dotenv.config();
@@ -108,6 +109,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/client-categories', clientCategoryRoutes);
 app.use('/api/client-memberships', clientMembershipRoutes);
 app.use('/api/standards', standardRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Error handling middleware
 app.use(notFound);

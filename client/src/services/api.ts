@@ -454,8 +454,8 @@ class ApiService {
   }
 
   // Membership endpoints
-  async getMemberships(params?: any): Promise<{ data: any[]; pagination: any }> {
-    const response = await this.api.get<ApiResponse>('/memberships', { params });
+  async getMemberships(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/memberships', { params, signal });
     return {
       data: response.data.data || [],
       pagination: response.data.pagination
@@ -773,6 +773,32 @@ class ApiService {
 
   async deleteClientCategory(id: string): Promise<void> {
     await this.api.delete(`/client-categories/${id}`);
+  }
+
+  // Subscription methods
+  async getSubscription(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/subscriptions');
+    return response.data.data;
+  }
+
+  async createSubscriptionPayment(planType: string, returnUrl?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/subscriptions/payment', {
+      planType,
+      returnUrl,
+    });
+    return response.data.data;
+  }
+
+  async updateSubscriptionPlan(planType: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/subscriptions/plan', {
+      planType,
+    });
+    return response.data.data;
+  }
+
+  async checkResourceLimit(resource: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/subscriptions/check-limit?resource=${resource}`);
+    return response.data.data;
   }
 }
 

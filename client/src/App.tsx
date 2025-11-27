@@ -28,6 +28,7 @@ const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
 const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
 const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
+const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess'));
 const AdminPromoCodes = lazy(() => import('./pages/AdminPromoCodes'));
 const MarketerPanel = lazy(() => import('./pages/MarketerPanel'));
 const MarketerLogin = lazy(() => import('./pages/MarketerLogin'));
@@ -401,6 +402,14 @@ const AppContent: React.FC = () => {
                 <MarketerPanel />
               </AppLayout>
             </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/subscription/success"
+          element={
+            <ProtectedRoute>
+              <SubscriptionSuccess />
+            </ProtectedRoute>
           }
         />
 

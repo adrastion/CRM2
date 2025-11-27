@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -12,6 +13,12 @@ import {
   ListItemText,
   Chip,
   Divider,
+  CircularProgress,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -25,6 +32,8 @@ import {
   TrendingUp,
 } from '@mui/icons-material';
 import PublicFooter from '../components/PublicFooter';
+import { useAuth } from '../contexts/AuthContext';
+import { apiService } from '../services/api';
 
 interface PricingPlan {
   name: string;
@@ -41,9 +50,27 @@ interface PricingPlan {
   popular?: boolean;
 }
 
-const pricingPlans: PricingPlan[] = [
+
+interface PlanType {
+  name: string;
+  planType: 'FREE' | 'STARTER' | 'BUSINESS' | 'PROFESSIONAL' | 'ENTERPRISE';
+  price: string;
+  description: string;
+  features: {
+    trainers: number | string;
+    clients: number | string;
+    groups: number | string;
+    branches: number | string;
+    trainings: string;
+    support: string;
+  };
+  popular?: boolean;
+}
+
+const planTypes: PlanType[] = [
   {
     name: 'БЕСПЛАТНЫЙ',
+    planType: 'FREE',
     price: '0₽',
     description: 'Для начинающих школ и тестирования системы',
     features: {
@@ -57,6 +84,7 @@ const pricingPlans: PricingPlan[] = [
   },
   {
     name: 'СТАРТОВЫЙ',
+    planType: 'STARTER',
     price: '990₽',
     description: 'Для небольших школ, 1-2 филиала',
     features: {
@@ -70,6 +98,7 @@ const pricingPlans: PricingPlan[] = [
   },
   {
     name: 'БИЗНЕС',
+    planType: 'BUSINESS',
     price: '2,490₽',
     description: 'Для средних школ, сеть филиалов',
     features: {
@@ -84,6 +113,7 @@ const pricingPlans: PricingPlan[] = [
   },
   {
     name: 'ПРОФЕССИОНАЛЬНЫЙ',
+    planType: 'PROFESSIONAL',
     price: '4,990₽',
     description: 'Для крупных школ и федераций',
     features: {
@@ -97,6 +127,7 @@ const pricingPlans: PricingPlan[] = [
   },
   {
     name: 'КОРПОРАТИВНЫЙ',
+    planType: 'ENTERPRISE',
     price: 'По запросу',
     description: 'Для крупных сетей и корпораций',
     features: {
@@ -111,6 +142,89 @@ const pricingPlans: PricingPlan[] = [
 ];
 
 const Pricing: React.FC = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; plan: PlanType | null }>({
+    open: false,
+    plan: null,
+  });
+
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'OWNER') {
+      loadSubscription();
+    }
+  }, [isAuthenticated, user]);
+
+  const loadSubscription = async () => {
+    try {
+      const data = await apiService.getSubscription();
+      setSubscription(data.subscription);
+    } catch (err: any) {
+      console.error('Error loading subscription:', err);
+    }
+  };
+
+  const handleSelectPlan = (plan: PlanType) => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
+    if (user?.role !== 'OWNER') {
+      setError('Только владелец может управлять подпиской');
+      return;
+    }
+
+    if (plan.planType === 'ENTERPRISE') {
+      // Для корпоративного тарифа нужна связь с менеджером
+      setError('Для корпоративного тарифа свяжитесь с нами');
+      return;
+    }
+
+    setConfirmDialog({ open: true, plan });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!confirmDialog.plan) return;
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const returnUrl = `${window.location.origin}/subscription/success`;
+      const payment = await apiService.createSubscriptionPayment(
+        confirmDialog.plan.planType,
+        returnUrl
+      );
+
+      if (payment.paymentUrl) {
+        // Перенаправляем на страницу оплаты YooKassa
+        window.location.href = payment.paymentUrl;
+      } else if (payment.status === 'succeeded') {
+        // Бесплатный тариф или уже оплачено
+        setSuccess('Подписка успешно активирована!');
+        await loadSubscription();
+        setConfirmDialog({ open: false, plan: null });
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка при создании платежа');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getCurrentPlan = () => {
+    if (!subscription) return null;
+    return planTypes.find((p) => p.planType === subscription.planType);
+  };
+
+  const currentPlan = getCurrentPlan();
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Container maxWidth="xl" sx={{ py: 4, flexGrow: 1 }}>
@@ -125,10 +239,32 @@ const Pricing: React.FC = () => {
         <Typography variant="body2" color="text.secondary">
           Все тарифы включают комиссию платежной системы. Оплата производится ежемесячно.
         </Typography>
+        {isAuthenticated && user?.role === 'OWNER' && subscription && (
+          <Alert severity="info" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
+            Текущий тариф: <strong>{subscription.planType}</strong>
+            {subscription.status === 'active' && subscription.endDate && (
+              <> • Действует до: {new Date(subscription.endDate).toLocaleDateString('ru-RU')}</>
+            )}
+          </Alert>
+        )}
+        {error && (
+          <Alert severity="error" sx={{ mt: 2, maxWidth: 600, mx: 'auto' }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+        {success && (
+          <Alert severity="success" sx={{ mt: 2, maxWidth: 600, mx: 'auto' }} onClose={() => setSuccess(null)}>
+            {success}
+          </Alert>
+        )}
       </Box>
 
       <Grid container spacing={3}>
-        {pricingPlans.map((plan, index) => (
+        {planTypes.map((plan, index) => {
+          const isCurrentPlan = currentPlan?.planType === plan.planType && subscription?.status === 'active';
+          const isEnterprise = plan.planType === 'ENTERPRISE';
+          
+          return (
           <Grid item xs={12} sm={6} md={4} lg={index === 4 ? 12 : undefined} key={plan.name}>
             <Paper
               sx={{
@@ -243,14 +379,54 @@ const Pricing: React.FC = () => {
                 fullWidth
                 size="large"
                 sx={{ mt: 3 }}
-                disabled={plan.name === 'КОРПОРАТИВНЫЙ'}
+                disabled={isEnterprise || loading || isCurrentPlan}
+                onClick={() => handleSelectPlan(plan)}
               >
-                {plan.name === 'КОРПОРАТИВНЫЙ' ? 'Связаться с нами' : 'Выбрать тариф'}
+                {loading ? (
+                  <CircularProgress size={24} />
+                ) : isCurrentPlan ? (
+                  'Текущий тариф'
+                ) : isEnterprise ? (
+                  'Связаться с нами'
+                ) : (
+                  'Выбрать тариф'
+                )}
               </Button>
             </Paper>
           </Grid>
-        ))}
+          );
+        })}
       </Grid>
+
+      {/* Dialog для подтверждения платежа */}
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, plan: null })}>
+        <DialogTitle>Подтверждение выбора тарифа</DialogTitle>
+        <DialogContent>
+          {confirmDialog.plan && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Тариф: {confirmDialog.plan.name}
+              </Typography>
+              <Typography variant="body1" gutterBottom>
+                Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                После подтверждения вы будете перенаправлены на страницу оплаты YooKassa.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog({ open: false, plan: null })}>Отмена</Button>
+          <Button
+            onClick={handleConfirmPayment}
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Оплатить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Дополнительная информация */}
       <Box sx={{ mt: 6 }}>

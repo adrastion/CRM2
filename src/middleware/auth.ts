@@ -113,6 +113,11 @@ export const authorize = (...roles: string[]) => {
 };
 
 /**
+ * Middleware to check if user is owner
+ */
+export const requireOwner = authorize('OWNER');
+
+/**
  * Middleware to check if user is owner or admin
  */
 export const requireOwnerOrAdmin = authorize('OWNER', 'ADMIN');

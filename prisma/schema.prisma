@@ -47,6 +47,7 @@ model Tenant {
   clientMemberships ClientMembership[]
   standards Standard[]
   transactions Transaction[]
+  subscription Subscription?
 
   @@map("tenants")
 }
@@ -631,4 +632,46 @@ model ReferralClick {
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("referral_clicks")
+}
+
+// ==================== SUBSCRIPTIONS (ПОДПИСКИ) ====================
+
+model Subscription {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  planType        String   // FREE, STARTER, BUSINESS, PROFESSIONAL, ENTERPRISE
+  status          String   // active, expired, cancelled, suspended
+  startDate       DateTime @default(now())
+  endDate         DateTime?
+  autoRenew       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments        SubscriptionPayment[]
+
+  @@map("subscriptions")
+}
+
+// ==================== SUBSCRIPTION PAYMENTS (ПЛАТЕЖИ ЗА ПОДПИСКУ) ====================
+
+model SubscriptionPayment {
+  id                  String   @id @default(cuid())
+  subscriptionId      String
+  amount              Decimal  // Сумма платежа
+  currency            String   @default("RUB")
+  status              String   // pending, succeeded, cancelled, failed
+  paymentMethod       String?  // yookassa
+  yookassaPaymentId   String?  // ID платежа в YooKassa
+  yookassaPaymentUrl  String?  // URL для оплаты
+  paidAt              DateTime?
+  expiresAt           DateTime? // Срок действия ссылки на оплату
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  subscription        Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_payments")
 }

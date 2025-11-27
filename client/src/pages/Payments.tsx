@@ -47,6 +47,7 @@ interface PaymentFormData {
   dueDate: Date | null;
   clientId: string;
   branchId: string;
+  membershipId: string;
 }
 
 const Payments: React.FC = () => {
@@ -54,6 +55,7 @@ const Payments: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [memberships, setMemberships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -71,6 +73,7 @@ const Payments: React.FC = () => {
     dueDate: null,
     clientId: '',
     branchId: '',
+    membershipId: '',
   });
 
   const fetchData = async () => {
@@ -86,17 +89,19 @@ const Payments: React.FC = () => {
         params.search = searchQuery;
       }
 
-      const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
+      const [paymentsRes, clientsRes, branchesRes, groupsRes, membershipsRes] = await Promise.all([
         apiService.getPayments(params),
         apiService.getClients({ limit: 100 }),
         apiService.getBranches(),
         apiService.getGroups().catch(() => ({ data: [] })),
+        apiService.getMemberships().catch(() => ({ data: [] })),
       ]);
       
       setPayments(paymentsRes.data);
       setClients(clientsRes.data);
       setBranches(branchesRes.data);
       setGroups(groupsRes.data || []);
+      setMemberships(membershipsRes.data || []);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки данных');
       console.error('Error fetching data:', err);
@@ -123,11 +128,12 @@ const Payments: React.FC = () => {
           params.search = debouncedSearchQuery;
         }
 
-        const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
+        const [paymentsRes, clientsRes, branchesRes, groupsRes, membershipsRes] = await Promise.all([
           apiService.getPayments(params, abortController.signal),
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] })),
+          apiService.getMemberships(undefined, abortController.signal).catch(() => ({ data: [] })),
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
@@ -135,6 +141,7 @@ const Payments: React.FC = () => {
         setClients(clientsRes.data);
         setBranches(branchesRes.data);
         setGroups(groupsRes.data || []);
+        setMemberships(membershipsRes.data || []);
       } catch (err: any) {
         // Ignore cancelled requests
         if (err?.code === 'ERR_CANCELED' || err?.message === 'canceled' || abortController.signal.aborted) {
@@ -168,12 +175,25 @@ const Payments: React.FC = () => {
         alert('Пожалуйста, заполните все обязательные поля');
         return;
       }
+      
+      if (formData.type === 'membership' && !formData.membershipId) {
+        alert('Пожалуйста, выберите абонемент');
+        return;
+      }
 
-      const paymentData = {
+      const paymentData: any = {
         ...formData,
         amount: parseFloat(formData.amount),
         dueDate: formData.dueDate ? formData.dueDate.toISOString() : null,
       };
+
+      // Добавляем membershipId только если тип платежа - абонемент
+      if (formData.type === 'membership' && formData.membershipId) {
+        paymentData.membershipId = formData.membershipId;
+      } else {
+        // Удаляем membershipId, если тип не абонемент
+        delete paymentData.membershipId;
+      }
 
       await apiService.createPayment(paymentData);
       await fetchData();
@@ -196,6 +216,7 @@ const Payments: React.FC = () => {
       dueDate: payment.dueDate ? new Date(payment.dueDate) : null,
       clientId: payment.clientId,
       branchId: payment.branchId || '',
+      membershipId: payment.membershipId || '',
     });
     setEditDialog(true);
   };
@@ -204,11 +225,19 @@ const Payments: React.FC = () => {
     if (!editingPayment) return;
 
     try {
-      const paymentData = {
+      const paymentData: any = {
         ...formData,
         amount: parseFloat(formData.amount),
         dueDate: formData.dueDate ? formData.dueDate.toISOString() : null,
       };
+
+      // Добавляем membershipId только если тип платежа - абонемент
+      if (formData.type === 'membership' && formData.membershipId) {
+        paymentData.membershipId = formData.membershipId;
+      } else {
+        // Удаляем membershipId, если тип не абонемент
+        delete paymentData.membershipId;
+      }
 
       await apiService.updatePayment(editingPayment.id, paymentData);
       await fetchData();
@@ -242,6 +271,7 @@ const Payments: React.FC = () => {
       dueDate: null,
       clientId: '',
       branchId: '',
+      membershipId: '',
     });
     setEditingPayment(null);
   };
@@ -587,7 +617,7 @@ const Payments: React.FC = () => {
                   <InputLabel>Тип платежа</InputLabel>
                   <Select
                     value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value, membershipId: e.target.value !== 'membership' ? '' : formData.membershipId })}
                     label="Тип платежа"
                   >
                     <MenuItem value="membership">Абонемент</MenuItem>
@@ -596,6 +626,27 @@ const Payments: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              {formData.type === 'membership' && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Абонемент</InputLabel>
+                    <Select
+                      value={formData.membershipId}
+                      onChange={(e) => setFormData({ ...formData, membershipId: e.target.value })}
+                      label="Абонемент"
+                    >
+                      {memberships.filter(m => m.isActive).map((membership) => (
+                        <MenuItem key={membership.id} value={membership.id}>
+                          {membership.name} - {Number(membership.price).toLocaleString('ru-RU', {
+                            style: 'currency',
+                            currency: 'RUB',
+                          })}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Статус</InputLabel>
@@ -766,7 +817,7 @@ const Payments: React.FC = () => {
                   <InputLabel>Тип платежа</InputLabel>
                   <Select
                     value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value, membershipId: e.target.value !== 'membership' ? '' : formData.membershipId })}
                     label="Тип платежа"
                   >
                     <MenuItem value="membership">Абонемент</MenuItem>
@@ -775,6 +826,27 @@ const Payments: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              {formData.type === 'membership' && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Абонемент</InputLabel>
+                    <Select
+                      value={formData.membershipId}
+                      onChange={(e) => setFormData({ ...formData, membershipId: e.target.value })}
+                      label="Абонемент"
+                    >
+                      {memberships.filter(m => m.isActive).map((membership) => (
+                        <MenuItem key={membership.id} value={membership.id}>
+                          {membership.name} - {Number(membership.price).toLocaleString('ru-RU', {
+                            style: 'currency',
+                            currency: 'RUB',
+                          })}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Статус</InputLabel>

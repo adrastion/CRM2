@@ -4,6 +4,62 @@ import { AuthenticatedRequest } from '../types';
 
 const prisma = new PrismaClient();
 
+/**
+ * Helper function to create ClientMembership from payment
+ */
+async function createClientMembershipFromPayment(
+  payment: { type: string; status: string; membershipId: string | null; clientId: string },
+  tenantId: string
+): Promise<void> {
+  // Если платеж за абонемент и статус "paid", создаем ClientMembership
+  if (payment.type === 'membership' && payment.status === 'paid' && payment.membershipId) {
+    // Проверяем, не существует ли уже активный абонемент для этого платежа
+    const existingMembership = await prisma.clientMembership.findFirst({
+      where: {
+        clientId: payment.clientId,
+        membershipId: payment.membershipId,
+        isActive: true,
+        tenantId
+      }
+    });
+
+    // Если уже есть активный абонемент, не создаем новый
+    if (existingMembership) {
+      console.log('Active membership already exists for this payment');
+      return;
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        id: payment.membershipId,
+        tenantId
+      }
+    });
+
+    if (membership) {
+      // Calculate end date for monthly memberships
+      let endDate: Date | null = null;
+      if (membership.type === 'monthly' && membership.duration) {
+        endDate = new Date();
+        endDate.setDate(endDate.getDate() + membership.duration);
+      }
+
+      await prisma.clientMembership.create({
+        data: {
+          clientId: payment.clientId,
+          membershipId: payment.membershipId,
+          startDate: new Date(),
+          endDate,
+          visitsTotal: membership.visits || null,
+          visitsUsed: 0,
+          isActive: true,
+          tenantId
+        }
+      });
+    }
+  }
+}
+
 export const getPayments = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { page = 1, limit = 10, search, branchId, status, type, clientId } = req.query;
@@ -129,35 +185,8 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
     });
 
     // Если платеж за абонемент и статус "paid", создаем ClientMembership
-    if (payment.type === 'membership' && payment.status === 'paid' && payment.membershipId) {
-      const membership = await prisma.membership.findFirst({
-        where: {
-          id: payment.membershipId,
-          tenantId: req.tenant?.id
-        }
-      });
-
-      if (membership) {
-        // Calculate end date for monthly memberships
-        let endDate: Date | null = null;
-        if (membership.type === 'monthly' && membership.duration) {
-          endDate = new Date();
-          endDate.setDate(endDate.getDate() + membership.duration);
-        }
-
-        await prisma.clientMembership.create({
-          data: {
-            clientId: payment.clientId,
-            membershipId: payment.membershipId,
-            startDate: new Date(),
-            endDate,
-            visitsTotal: membership.visits || null,
-            visitsUsed: 0,
-            isActive: true,
-            tenantId: req.tenant?.id || ''
-          }
-        });
-      }
+    if (req.tenant?.id) {
+      await createClientMembershipFromPayment(payment, req.tenant.id);
     }
 
     res.status(201).json({
@@ -195,6 +224,8 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
 
     // If status changed to 'paid' and paidAt is not set, set it to now
     const updateData: any = { ...req.body };
+    const statusChangedToPaid = req.body.status === 'paid' && payment.status !== 'paid';
+    
     if (req.body.status === 'paid' && !payment.paidAt) {
       updateData.paidAt = new Date();
     } else if (req.body.status !== 'paid' && payment.paidAt) {
@@ -210,6 +241,11 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
         branch: true
       }
     });
+
+    // Если статус изменился на 'paid', создаем ClientMembership
+    if (statusChangedToPaid && req.tenant?.id) {
+      await createClientMembershipFromPayment(updatedPayment, req.tenant.id);
+    }
 
     res.json({
       success: true,

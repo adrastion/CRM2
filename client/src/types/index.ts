@@ -214,6 +214,7 @@ export interface Payment {
   notes?: string;
   dueDate?: string;
   paidAt?: string;
+  createdAt?: string;
   clientId: string;
   membershipId?: string;
   client?: Client;
