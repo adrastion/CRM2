@@ -277,6 +277,7 @@ export interface DashboardStats {
   monthlyRevenue: number;
   attendanceRate: number;
   upcomingTrainings: number;
+  trainerMonthlyEarnings?: number;
 }
 
 // Form Types

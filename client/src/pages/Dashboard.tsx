@@ -203,6 +203,13 @@ const Dashboard: React.FC = () => {
         color: '#f57c00',
         show: true,
       },
+      {
+        title: 'Заработок за месяц',
+        value: new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(stats?.trainerMonthlyEarnings || 0),
+        icon: <AttachMoney />,
+        color: '#388e3c',
+        show: isTrainer,
+      },
     ];
     
     return allCards.filter(card => card.show);
