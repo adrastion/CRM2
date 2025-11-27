@@ -122,6 +122,7 @@ export interface Group {
   ageMin?: number;
   ageMax?: number;
   color?: string; // Цвет для отображения в расписании (hex формат)
+  trainingPrice?: number; // Стоимость одной тренировки в группе
   isActive: boolean;
   branchId: string;
   trainerId: string;
