@@ -491,7 +491,58 @@ const Payments: React.FC = () => {
                   <InputLabel>Клиент</InputLabel>
                   <Select
                     value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                    onChange={async (e) => {
+                      const selectedClientId = e.target.value;
+                      const selectedClient = clients.find(c => c.id === selectedClientId);
+                      
+                      // Автоматически определяем филиал клиента через активные группы
+                      let branchId = '';
+                      
+                      if (selectedClient) {
+                        // Ищем филиал через активные группы клиента (данные уже должны быть в загруженном списке)
+                        const activeGroupMembership = (selectedClient as any).groupMemberships?.find(
+                          (gm: any) => gm.isActive && gm.group?.branch
+                        );
+                        
+                        if (activeGroupMembership?.group?.branch?.id) {
+                          branchId = activeGroupMembership.group.branch.id;
+                        } else {
+                          // Если нет активной группы в загруженных данных, загружаем полные данные клиента
+                          try {
+                            const clientData = await apiService.getClient(selectedClientId);
+                            const fullActiveGroup = (clientData as any).groupMemberships?.find(
+                              (gm: any) => gm.isActive && gm.group?.branch
+                            );
+                            if (fullActiveGroup?.group?.branch?.id) {
+                              branchId = fullActiveGroup.group.branch.id;
+                            }
+                          } catch (err) {
+                            console.error('Error loading client details:', err);
+                          }
+                        }
+                        
+                        // Если не нашли через группы, ищем в последнем платеже клиента
+                        if (!branchId) {
+                          const lastPayment = payments
+                            .filter(p => p.clientId === selectedClientId && p.branchId)
+                            .sort((a, b) => {
+                              const dateA = a.paidAt ? new Date(a.paidAt).getTime() : new Date(a.createdAt || '').getTime();
+                              const dateB = b.paidAt ? new Date(b.paidAt).getTime() : new Date(b.createdAt || '').getTime();
+                              return dateB - dateA;
+                            })[0];
+                          
+                          if (lastPayment?.branchId) {
+                            branchId = lastPayment.branchId;
+                          }
+                        }
+                      }
+                      
+                      setFormData({ 
+                        ...formData, 
+                        clientId: selectedClientId,
+                        branchId: branchId || formData.branchId // Сохраняем текущий, если не нашли
+                      });
+                    }}
                     label="Клиент"
                   >
                     {clients.filter(c => c.isActive).map((client) => (
@@ -619,7 +670,58 @@ const Payments: React.FC = () => {
                   <InputLabel>Клиент</InputLabel>
                   <Select
                     value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                    onChange={async (e) => {
+                      const selectedClientId = e.target.value;
+                      const selectedClient = clients.find(c => c.id === selectedClientId);
+                      
+                      // Автоматически определяем филиал клиента через активные группы
+                      let branchId = '';
+                      
+                      if (selectedClient) {
+                        // Ищем филиал через активные группы клиента (данные уже должны быть в загруженном списке)
+                        const activeGroupMembership = (selectedClient as any).groupMemberships?.find(
+                          (gm: any) => gm.isActive && gm.group?.branch
+                        );
+                        
+                        if (activeGroupMembership?.group?.branch?.id) {
+                          branchId = activeGroupMembership.group.branch.id;
+                        } else {
+                          // Если нет активной группы в загруженных данных, загружаем полные данные клиента
+                          try {
+                            const clientData = await apiService.getClient(selectedClientId);
+                            const fullActiveGroup = (clientData as any).groupMemberships?.find(
+                              (gm: any) => gm.isActive && gm.group?.branch
+                            );
+                            if (fullActiveGroup?.group?.branch?.id) {
+                              branchId = fullActiveGroup.group.branch.id;
+                            }
+                          } catch (err) {
+                            console.error('Error loading client details:', err);
+                          }
+                        }
+                        
+                        // Если не нашли через группы, ищем в последнем платеже клиента
+                        if (!branchId) {
+                          const lastPayment = payments
+                            .filter(p => p.clientId === selectedClientId && p.branchId)
+                            .sort((a, b) => {
+                              const dateA = a.paidAt ? new Date(a.paidAt).getTime() : new Date(a.createdAt || '').getTime();
+                              const dateB = b.paidAt ? new Date(b.paidAt).getTime() : new Date(b.createdAt || '').getTime();
+                              return dateB - dateA;
+                            })[0];
+                          
+                          if (lastPayment?.branchId) {
+                            branchId = lastPayment.branchId;
+                          }
+                        }
+                      }
+                      
+                      setFormData({ 
+                        ...formData, 
+                        clientId: selectedClientId,
+                        branchId: branchId || formData.branchId // Сохраняем текущий, если не нашли
+                      });
+                    }}
                     label="Клиент"
                   >
                     {clients.filter(c => c.isActive).map((client) => (
