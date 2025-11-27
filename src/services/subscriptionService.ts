@@ -224,6 +224,8 @@ export class SubscriptionService {
       throw new Error('Payment ID is missing');
     }
 
+    console.log('Processing YooKassa webhook for payment:', paymentId);
+
     // Получаем информацию о платеже из YooKassa
     const response = await fetch(`${YOOKASSA_API_URL}/payments/${paymentId}`, {
       method: 'GET',
@@ -239,6 +241,7 @@ export class SubscriptionService {
     }
 
     const payment: any = await response.json();
+    console.log('Payment status from YooKassa:', payment.status);
 
     const subscriptionPayment = await prisma.subscriptionPayment.findFirst({
       where: { yookassaPaymentId: paymentId },
@@ -246,8 +249,17 @@ export class SubscriptionService {
     });
 
     if (!subscriptionPayment) {
+      console.error('Subscription payment not found for YooKassa payment:', paymentId);
       throw new Error('Subscription payment not found');
     }
+
+    console.log('Found subscription payment:', {
+      id: subscriptionPayment.id,
+      subscriptionId: subscriptionPayment.subscriptionId,
+      currentStatus: subscriptionPayment.status,
+      subscriptionPlan: subscriptionPayment.subscription.planType,
+      subscriptionStatus: subscriptionPayment.subscription.status
+    });
 
     // Обновляем статус платежа
     let status = 'pending';
@@ -259,6 +271,9 @@ export class SubscriptionService {
       status = 'pending';
     }
 
+    // Проверяем, не был ли платеж уже обработан
+    const wasAlreadyProcessed = subscriptionPayment.status === 'succeeded' && payment.status === 'succeeded';
+    
     await prisma.subscriptionPayment.update({
       where: { id: subscriptionPayment.id },
       data: {
@@ -267,13 +282,44 @@ export class SubscriptionService {
       },
     });
 
+    // Если платеж уже был обработан ранее, не активируем подписку повторно
+    if (wasAlreadyProcessed) {
+      console.log('Payment was already processed, skipping subscription activation');
+      return { success: true, message: 'Payment already processed' };
+    }
+
     // Если платеж успешен, активируем подписку
-    if (payment.status === 'succeeded' && payment.metadata?.planType) {
-      await this.activateSubscription(
-        payment.metadata.tenantId,
-        payment.metadata.planType as PlanType,
-        subscriptionPayment.subscriptionId
-      );
+    if (payment.status === 'succeeded') {
+      // Получаем план из metadata платежа или из существующей подписки
+      const planType = payment.metadata?.planType || subscriptionPayment.subscription.planType;
+      const tenantId = payment.metadata?.tenantId || subscriptionPayment.subscription.tenantId;
+      
+      console.log('Activating subscription:', {
+        tenantId,
+        planType,
+        subscriptionId: subscriptionPayment.subscriptionId,
+        paymentMetadata: payment.metadata
+      });
+      
+      if (planType && tenantId) {
+        try {
+          const updatedSubscription = await this.activateSubscription(
+            tenantId,
+            planType as PlanType,
+            subscriptionPayment.subscriptionId
+          );
+          console.log('Subscription activated successfully:', updatedSubscription);
+        } catch (error) {
+          console.error('Error activating subscription:', error);
+          throw error;
+        }
+      } else {
+        console.error('Missing planType or tenantId in webhook:', {
+          paymentMetadata: payment.metadata,
+          subscription: subscriptionPayment.subscription
+        });
+        throw new Error('Missing planType or tenantId for subscription activation');
+      }
     }
 
     return { success: true };
@@ -290,6 +336,14 @@ export class SubscriptionService {
     const startDate = new Date();
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 1); // Подписка на 1 месяц
+
+    console.log('Activating subscription with params:', {
+      tenantId,
+      planType,
+      subscriptionId,
+      startDate,
+      endDate
+    });
 
     const subscription = subscriptionId
       ? await prisma.subscription.update({
@@ -320,6 +374,15 @@ export class SubscriptionService {
             autoRenew: true,
           },
         });
+
+    console.log('Subscription activated:', {
+      id: subscription.id,
+      tenantId: subscription.tenantId,
+      planType: subscription.planType,
+      status: subscription.status,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate
+    });
 
     return subscription;
   }
