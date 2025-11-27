@@ -120,7 +120,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, phone, qualification, experience, specialization, salaryType, salaryAmount, canViewAllGroups } = req.body;
+    const { email, password, firstName, lastName, phone, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
 
     // Создаем пользователя напрямую
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -146,6 +146,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         specialization,
         salaryType,
         salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
+        salaryPercentage: salaryPercentage ? parseFloat(salaryPercentage) : undefined,
         canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
         tenantId: req.tenant.id
       },
@@ -173,7 +174,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 export const updateTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, canViewAllGroups } = req.body;
+    const { firstName, lastName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
@@ -218,6 +219,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       specialization,
       salaryType,
       salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
+      salaryPercentage: salaryPercentage !== undefined ? (salaryPercentage ? parseFloat(salaryPercentage) : null) : undefined,
       canViewAllGroups: canViewAllGroups !== undefined ? (canViewAllGroups === true || canViewAllGroups === 'true') : undefined
     };
 

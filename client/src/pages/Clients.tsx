@@ -741,6 +741,7 @@ const Clients: React.FC = () => {
                   <TableCell>Категория</TableCell>
                   <TableCell>Группы</TableCell>
                   <TableCell>Тарифы</TableCell>
+                  <TableCell>Баланс</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>
                     <TableSortLabel
@@ -961,6 +962,21 @@ const Clients: React.FC = () => {
                       ) : (
                         <Typography variant="body2" color="text.secondary">Нет тарифов</Typography>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: 'bold',
+                          color: client.balance !== undefined && Number(client.balance) < 0 
+                            ? 'error.main' 
+                            : Number(client.balance || 0) > 0 
+                            ? 'success.main' 
+                            : 'text.secondary'
+                        }}
+                      >
+                        {((client.balance !== undefined ? Number(client.balance) : 0).toFixed(2))} ₽
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip

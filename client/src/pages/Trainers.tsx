@@ -65,6 +65,7 @@ const Trainers: React.FC = () => {
     specialization: '',
     salaryType: 'fixed',
     salaryAmount: '',
+    salaryPercentage: '',
     canViewAllGroups: false,
   });
 
@@ -201,6 +202,7 @@ const Trainers: React.FC = () => {
       specialization: trainer.specialization || '',
       salaryType: trainer.salaryType || 'fixed',
       salaryAmount: trainer.salaryAmount?.toString() || '',
+      salaryPercentage: (trainer as any).salaryPercentage?.toString() || '',
       canViewAllGroups: (trainer as any).canViewAllGroups || false,
     });
     setEditDialog(true);
@@ -379,6 +381,7 @@ const Trainers: React.FC = () => {
                   <TableCell>Квалификация</TableCell>
                   <TableCell>Опыт</TableCell>
                   <TableCell>Тип зарплаты</TableCell>
+                  <TableCell>Баланс</TableCell>
                   <TableCell>Филиалы</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>Действия</TableCell>
@@ -410,6 +413,7 @@ const Trainers: React.FC = () => {
                               specialization: trainer.specialization || '',
                               salaryType: trainer.salaryType || 'fixed',
                               salaryAmount: trainer.salaryAmount?.toString() || '',
+                              salaryPercentage: (trainer as any).salaryPercentage?.toString() || '',
                               canViewAllGroups: trainer.canViewAllGroups || false,
                             });
                             setEditDialog(true);
@@ -423,10 +427,30 @@ const Trainers: React.FC = () => {
                       <TableCell>{trainer.experience ? `${trainer.experience} лет` : '-'}</TableCell>
                       <TableCell>
                         <Chip 
-                          label={trainer.salaryType === 'fixed' ? 'Фиксированная' : 'Процентная'} 
+                          label={
+                            trainer.salaryType === 'fixed' ? 'Фиксированная' :
+                            trainer.salaryType === 'percentage' ? 'Процентная' :
+                            trainer.salaryType === 'per_student' ? 'За ученика' :
+                            trainer.salaryType === 'per_training' ? 'За тренировку' :
+                            trainer.salaryType === 'individual' ? 'Индивидуальная' :
+                            'Неизвестно'
+                          } 
                           color={trainer.salaryType === 'fixed' ? 'primary' : 'secondary'} 
                           size="small" 
                         />
+                      </TableCell>
+                      <TableCell>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 'bold',
+                            color: trainer.balance !== undefined && Number(trainer.balance) > 0 
+                              ? 'success.main' 
+                              : 'text.secondary'
+                          }}
+                        >
+                          {((trainer.balance !== undefined ? Number(trainer.balance) : 0).toFixed(2))} ₽
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         {trainer.branches && trainer.branches.length > 0 ? (
@@ -621,21 +645,48 @@ const Trainers: React.FC = () => {
                   value={formData.salaryType}
                   onChange={(e) => handleInputChange('salaryType', e.target.value)}
                 >
-                  <MenuItem value="fixed">Фиксированная</MenuItem>
-                  <MenuItem value="percentage">Процентная</MenuItem>
+                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
+                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
+                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
+                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
+                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Размер зарплаты"
+                label={
+                  formData.salaryType === 'percentage' ? 'Процент (%)' :
+                  formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
+                  formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
+                  formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
+                  formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
+                  'Размер зарплаты'
+                }
                 type="number"
                 value={formData.salaryAmount}
                 onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
-                placeholder="Введите сумму"
+                placeholder={
+                  formData.salaryType === 'percentage' ? 'Например: 30' :
+                  formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
+                  'Введите сумму'
+                }
               />
             </Grid>
+            {formData.salaryType === 'individual' && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Процент тренеру (%)"
+                  type="number"
+                  value={formData.salaryPercentage}
+                  onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
+                  placeholder="Например: 50"
+                  helperText="Остальная часть идет в зал"
+                />
+              </Grid>
+            )}
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -780,21 +831,48 @@ const Trainers: React.FC = () => {
                   value={formData.salaryType}
                   onChange={(e) => handleInputChange('salaryType', e.target.value)}
                 >
-                  <MenuItem value="fixed">Фиксированная</MenuItem>
-                  <MenuItem value="percentage">Процентная</MenuItem>
+                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
+                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
+                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
+                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
+                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Размер зарплаты"
+                label={
+                  formData.salaryType === 'percentage' ? 'Процент (%)' :
+                  formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
+                  formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
+                  formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
+                  formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
+                  'Размер зарплаты'
+                }
                 type="number"
                 value={formData.salaryAmount}
                 onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
-                placeholder="Введите сумму"
+                placeholder={
+                  formData.salaryType === 'percentage' ? 'Например: 30' :
+                  formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
+                  'Введите сумму'
+                }
               />
             </Grid>
+            {formData.salaryType === 'individual' && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Процент тренеру (%)"
+                  type="number"
+                  value={formData.salaryPercentage}
+                  onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
+                  placeholder="Например: 50"
+                  helperText="Остальная часть идет в зал"
+                />
+              </Grid>
+            )}
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
