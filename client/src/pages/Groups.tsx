@@ -367,7 +367,34 @@ const Groups: React.FC = () => {
                 ) : (
                   groups.map((group) => (
                     <TableRow key={group.id}>
-                      <TableCell>{group.name}</TableCell>
+                      <TableCell>
+                        <Typography
+                          sx={{
+                            cursor: 'pointer',
+                            color: 'primary.main',
+                            '&:hover': {
+                              textDecoration: 'underline'
+                            }
+                          }}
+                          onClick={() => {
+                            setEditingGroup(group);
+                            setFormData({
+                              name: group.name,
+                              description: group.description || '',
+                              maxMembers: group.maxMembers?.toString() || '',
+                              ageMin: group.ageMin?.toString() || '',
+                              ageMax: group.ageMax?.toString() || '',
+                              color: group.color || '#1976d2',
+                              trainingPrice: group.trainingPrice?.toString() || '',
+                              branchId: group.branchId,
+                              trainerId: group.trainerId,
+                            });
+                            setEditDialog(true);
+                          }}
+                        >
+                          {group.name}
+                        </Typography>
+                      </TableCell>
                       <TableCell>
                         {group.description || '-'}
                       </TableCell>

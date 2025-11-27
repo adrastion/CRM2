@@ -28,7 +28,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Business } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Business, AttachMoney } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Trainer, Branch, TrainerBranch } from '../types';
 
@@ -40,9 +40,14 @@ const Trainers: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [branchesDialog, setBranchesDialog] = useState(false);
+  const [earningsDialog, setEarningsDialog] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
+  const [earnings, setEarnings] = useState<any>(null);
+  const [loadingEarnings, setLoadingEarnings] = useState(false);
+  const [earningsStartDate, setEarningsStartDate] = useState<Date | null>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [earningsEndDate, setEarningsEndDate] = useState<Date | null>(new Date());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     email: '',
@@ -246,6 +251,35 @@ const Trainers: React.FC = () => {
     setBranchesDialog(true);
   };
 
+  const handleOpenEarningsDialog = async (trainer: Trainer) => {
+    setSelectedTrainer(trainer);
+    setEarningsDialog(true);
+    await fetchEarnings(trainer.id);
+  };
+
+  const fetchEarnings = async (trainerId: string) => {
+    try {
+      setLoadingEarnings(true);
+      setError(null);
+      
+      const params: any = {};
+      if (earningsStartDate) {
+        params.startDate = earningsStartDate.toISOString();
+      }
+      if (earningsEndDate) {
+        params.endDate = earningsEndDate.toISOString();
+      }
+
+      const earningsRes = await apiService.getTrainerEarnings(trainerId, params);
+      setEarnings(earningsRes);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки данных о заработке');
+      console.error('Error fetching earnings:', err);
+    } finally {
+      setLoadingEarnings(false);
+    }
+  };
+
   const handleAddBranchToTrainer = async () => {
     if (!selectedTrainer || !selectedBranchId) return;
 
@@ -350,7 +384,34 @@ const Trainers: React.FC = () => {
                   return (
                     <TableRow key={trainer.id}>
                       <TableCell>
-                        {trainer.user?.firstName} {trainer.user?.lastName}
+                        <Typography
+                          sx={{
+                            cursor: 'pointer',
+                            color: 'primary.main',
+                            '&:hover': {
+                              textDecoration: 'underline'
+                            }
+                          }}
+                          onClick={() => {
+                            setEditingTrainer(trainer);
+                            setFormData({
+                              email: trainer.user?.email || '',
+                              password: '',
+                              firstName: trainer.user?.firstName || '',
+                              lastName: trainer.user?.lastName || '',
+                              phone: trainer.user?.phone || '',
+                              qualification: trainer.qualification || '',
+                              experience: trainer.experience?.toString() || '',
+                              specialization: trainer.specialization || '',
+                              salaryType: trainer.salaryType || 'fixed',
+                              salaryAmount: trainer.salaryAmount?.toString() || '',
+                              canViewAllGroups: trainer.canViewAllGroups || false,
+                            });
+                            setEditDialog(true);
+                          }}
+                        >
+                          {trainer.user?.firstName} {trainer.user?.lastName}
+                        </Typography>
                       </TableCell>
                       <TableCell>{trainer.user?.email}</TableCell>
                       <TableCell>{trainer.qualification || '-'}</TableCell>
@@ -397,12 +458,10 @@ const Trainers: React.FC = () => {
                         <IconButton 
                           size="small" 
                           color="primary"
-                          onClick={() => {
-                            // TODO: Implement view trainer functionality
-                            alert('Просмотр тренера: ' + trainer.user?.firstName + ' ' + trainer.user?.lastName);
-                          }}
+                          title="Просмотр зарплаты"
+                          onClick={() => handleOpenEarningsDialog(trainer)}
                         >
-                          <Visibility />
+                          <AttachMoney />
                         </IconButton>
                         <IconButton 
                           size="small" 
@@ -856,6 +915,171 @@ const Trainers: React.FC = () => {
             setBranchesDialog(false);
             setSelectedTrainer(null);
             setSelectedBranchId('');
+          }}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог просмотра зарплаты тренера */}
+      <Dialog open={earningsDialog} onClose={() => setEarningsDialog(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          Зарплата тренера: {selectedTrainer?.user?.firstName} {selectedTrainer?.user?.lastName}
+        </DialogTitle>
+        <DialogContent>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+            <Box sx={{ mt: 2 }}>
+              {/* Фильтры по дате */}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={4}>
+                  <DatePicker
+                    label="Дата начала"
+                    value={earningsStartDate}
+                    onChange={(newValue) => {
+                      setEarningsStartDate(newValue);
+                      if (selectedTrainer && newValue) {
+                        fetchEarnings(selectedTrainer.id);
+                      }
+                    }}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true
+                      }
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <DatePicker
+                    label="Дата окончания"
+                    value={earningsEndDate}
+                    onChange={(newValue) => {
+                      setEarningsEndDate(newValue);
+                      if (selectedTrainer && newValue) {
+                        fetchEarnings(selectedTrainer.id);
+                      }
+                    }}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true
+                      }
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => {
+                      const now = new Date();
+                      setEarningsStartDate(new Date(now.getFullYear(), now.getMonth(), 1));
+                      setEarningsEndDate(now);
+                      if (selectedTrainer) {
+                        fetchEarnings(selectedTrainer.id);
+                      }
+                    }}
+                  >
+                    Текущий месяц
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {loadingEarnings ? (
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                  <CircularProgress />
+                </Box>
+              ) : earnings ? (
+                <>
+                  {/* Общая статистика */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} sm={4}>
+                      <Card>
+                        <CardContent>
+                          <Typography color="text.secondary" gutterBottom>
+                            Всего тренировок
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                            {earnings.trainingCount || 0}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card>
+                        <CardContent>
+                          <Typography color="text.secondary" gutterBottom>
+                            Общий заработок
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                            {earnings.totalEarnings?.toLocaleString('ru-RU', {
+                              style: 'currency',
+                              currency: 'RUB',
+                            }) || '0 ₽'}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card>
+                        <CardContent>
+                          <Typography color="text.secondary" gutterBottom>
+                            Тип зарплаты
+                          </Typography>
+                          <Chip
+                            label={earnings.trainer?.salaryType === 'percentage' ? 'Процентная' : 'Фиксированная'}
+                            color={earnings.trainer?.salaryType === 'percentage' ? 'secondary' : 'primary'}
+                            sx={{ mt: 1 }}
+                          />
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+
+                  {/* Детализация по тренировкам */}
+                  {earnings.trainingEarnings && earnings.trainingEarnings.length > 0 && (
+                    <TableContainer component={Paper} variant="outlined">
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Дата</TableCell>
+                            <TableCell>Группа</TableCell>
+                            <TableCell>Филиал</TableCell>
+                            <TableCell align="center">Присутствовало</TableCell>
+                            <TableCell align="right">Заработок</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {earnings.trainingEarnings.map((training: any, index: number) => (
+                            <TableRow key={index}>
+                              <TableCell>
+                                {format(new Date(training.trainingDate), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                              </TableCell>
+                              <TableCell>{training.groupName}</TableCell>
+                              <TableCell>{training.branchName || '-'}</TableCell>
+                              <TableCell align="center">{training.presentCount}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                                {training.earnings?.toLocaleString('ru-RU', {
+                                  style: 'currency',
+                                  currency: 'RUB',
+                                }) || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Нет данных за выбранный период
+                </Typography>
+              )}
+            </Box>
+          </LocalizationProvider>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setEarningsDialog(false);
+            setSelectedTrainer(null);
+            setEarnings(null);
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
