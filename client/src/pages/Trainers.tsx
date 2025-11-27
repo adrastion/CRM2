@@ -164,6 +164,7 @@ const Trainers: React.FC = () => {
         specialization: '',
         salaryType: 'fixed',
         salaryAmount: '',
+        salaryPercentage: '',
         canViewAllGroups: false,
       });
     } catch (err: any) {
@@ -238,6 +239,7 @@ const Trainers: React.FC = () => {
         specialization: '',
         salaryType: 'fixed',
         salaryAmount: '',
+        salaryPercentage: '',
         canViewAllGroups: false,
       });
     } catch (err: any) {
