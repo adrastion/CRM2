@@ -27,8 +27,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TableSortLabel,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 
@@ -53,6 +54,11 @@ const Clients: React.FC = () => {
   const [groups, setGroups] = useState<any[]>([]);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterCategoryId, setFilterCategoryId] = useState<string>('');
+  const [filterGroupId, setFilterGroupId] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [editingPhoneClientId, setEditingPhoneClientId] = useState<string | null>(null);
+  const [editingPhoneValue, setEditingPhoneValue] = useState<string>('');
   const [groupsDialog, setGroupsDialog] = useState(false);
   const [selectedClientForGroups, setSelectedClientForGroups] = useState<Client | null>(null);
   const [statsDialog, setStatsDialog] = useState(false);
@@ -560,12 +566,28 @@ const Clients: React.FC = () => {
             ))}
           </Select>
         </FormControl>
-        {(filterBranchId || filterCategoryId) && (
+        <FormControl sx={{ minWidth: 200 }}>
+          <InputLabel>Группа</InputLabel>
+          <Select
+            value={filterGroupId}
+            onChange={(e) => setFilterGroupId(e.target.value)}
+            label="Группа"
+          >
+            <MenuItem value="">Все группы</MenuItem>
+            {groups.filter(g => g.isActive).map((group) => (
+              <MenuItem key={group.id} value={group.id}>
+                {group.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {(filterBranchId || filterCategoryId || filterGroupId) && (
           <Button
             variant="outlined"
             onClick={() => {
               setFilterBranchId('');
               setFilterCategoryId('');
+              setFilterGroupId('');
             }}
           >
             Сбросить фильтры
@@ -579,13 +601,74 @@ const Clients: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Имя</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Телефон</TableCell>
+                  <TableCell>
+                    <TableSortLabel
+                      active={sortBy === 'firstName'}
+                      direction={sortBy === 'firstName' ? sortOrder : 'asc'}
+                      onClick={() => {
+                        if (sortBy === 'firstName') {
+                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setSortBy('firstName');
+                          setSortOrder('asc');
+                        }
+                      }}
+                    >
+                      Имя
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell>
+                    <TableSortLabel
+                      active={sortBy === 'email'}
+                      direction={sortBy === 'email' ? sortOrder : 'asc'}
+                      onClick={() => {
+                        if (sortBy === 'email') {
+                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setSortBy('email');
+                          setSortOrder('asc');
+                        }
+                      }}
+                    >
+                      Email
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell>
+                    <TableSortLabel
+                      active={sortBy === 'phone'}
+                      direction={sortBy === 'phone' ? sortOrder : 'asc'}
+                      onClick={() => {
+                        if (sortBy === 'phone') {
+                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setSortBy('phone');
+                          setSortOrder('asc');
+                        }
+                      }}
+                    >
+                      Телефон
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>Категория</TableCell>
                   <TableCell>Группы</TableCell>
                   <TableCell>Тарифы</TableCell>
                   <TableCell>Статус</TableCell>
+                  <TableCell>
+                    <TableSortLabel
+                      active={sortBy === 'createdAt'}
+                      direction={sortBy === 'createdAt' ? sortOrder : 'desc'}
+                      onClick={() => {
+                        if (sortBy === 'createdAt') {
+                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setSortBy('createdAt');
+                          setSortOrder('desc');
+                        }
+                      }}
+                    >
+                      Дата создания
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>Действия</TableCell>
                 </TableRow>
               </TableHead>
@@ -603,7 +686,50 @@ const Clients: React.FC = () => {
                     if (filterCategoryId) {
                       if ((client as any).categoryId !== filterCategoryId) return false;
                     }
+                    // Фильтр по группе
+                    if (filterGroupId) {
+                      const hasGroup = client.groupMemberships?.some(
+                        (gm) => gm.group?.id === filterGroupId && gm.isActive
+                      );
+                      if (!hasGroup) return false;
+                    }
                     return true;
+                  })
+                  .sort((a, b) => {
+                    let aValue: any;
+                    let bValue: any;
+                    
+                    switch (sortBy) {
+                      case 'firstName':
+                        aValue = `${a.firstName} ${a.lastName}`;
+                        bValue = `${b.firstName} ${b.lastName}`;
+                        break;
+                      case 'email':
+                        aValue = a.email || '';
+                        bValue = b.email || '';
+                        break;
+                      case 'phone':
+                        aValue = a.phone || '';
+                        bValue = b.phone || '';
+                        break;
+                      case 'createdAt':
+                        aValue = new Date((a as any).createdAt || 0).getTime();
+                        bValue = new Date((b as any).createdAt || 0).getTime();
+                        break;
+                      default:
+                        aValue = new Date((a as any).createdAt || 0).getTime();
+                        bValue = new Date((b as any).createdAt || 0).getTime();
+                    }
+                    
+                    if (typeof aValue === 'string' && typeof bValue === 'string') {
+                      return sortOrder === 'asc' 
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                    } else {
+                      return sortOrder === 'asc' 
+                        ? (aValue > bValue ? 1 : -1)
+                        : (aValue < bValue ? 1 : -1);
+                    }
                   })
                   .map((client) => (
                   <TableRow key={client.id}>
@@ -611,7 +737,66 @@ const Clients: React.FC = () => {
                       {client.firstName} {client.lastName}
                     </TableCell>
                     <TableCell>{client.email || '-'}</TableCell>
-                    <TableCell>{client.phone || '-'}</TableCell>
+                    <TableCell>
+                      {editingPhoneClientId === client.id ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <TextField
+                            size="small"
+                            value={editingPhoneValue}
+                            onChange={(e) => setEditingPhoneValue(e.target.value)}
+                            placeholder="+1234567890"
+                            autoFocus
+                            sx={{ width: 150 }}
+                          />
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={async () => {
+                              try {
+                                await apiService.updateClient(client.id, { phone: editingPhoneValue });
+                                await fetchClients();
+                                setEditingPhoneClientId(null);
+                                setEditingPhoneValue('');
+                              } catch (err: any) {
+                                setError(err.response?.data?.error || 'Ошибка обновления телефона');
+                              }
+                            }}
+                          >
+                            <Check />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setEditingPhoneClientId(null);
+                              setEditingPhoneValue('');
+                            }}
+                          >
+                            <Close />
+                          </IconButton>
+                        </Box>
+                      ) : (
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            cursor: 'pointer',
+                            '&:hover': {
+                              color: 'primary.main',
+                              textDecoration: 'underline'
+                            }
+                          }}
+                          onClick={() => {
+                            setEditingPhoneClientId(client.id);
+                            setEditingPhoneValue(client.phone || '');
+                          }}
+                        >
+                          <Phone sx={{ fontSize: 16 }} />
+                          {client.phone || '-'}
+                        </Box>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {(client as any).category ? (
                         <Chip
@@ -694,6 +879,11 @@ const Clients: React.FC = () => {
                         color={client.isActive ? 'success' : 'default'}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>
+                      {(client as any).createdAt 
+                        ? new Date((client as any).createdAt).toLocaleDateString('ru-RU')
+                        : '-'}
                     </TableCell>
                     <TableCell>
                       <IconButton 

@@ -26,6 +26,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Checkbox,
+  ListItemText,
 } from '@mui/material';
 import { Add, Edit, Delete, Visibility, People } from '@mui/icons-material';
 import { apiService } from '../services/api';
@@ -44,6 +46,7 @@ const Groups: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -228,9 +231,55 @@ const Groups: React.FC = () => {
       // Refresh groups list
       await fetchData();
       setSelectedClientId('');
+      setSelectedClientIds([]);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка добавления клиента в группу');
       console.error('Error adding client to group:', err);
+    }
+  };
+
+  const handleAddMultipleClientsToGroup = async () => {
+    if (!selectedGroup || !selectedClientIds || selectedClientIds.length === 0) return;
+
+    const maxMembers = selectedGroup.maxMembers;
+    const currentMembers = selectedGroup.memberships?.filter(m => m.isActive).length || 0;
+    
+    if (maxMembers && currentMembers + selectedClientIds.length > maxMembers) {
+      setError(`Нельзя добавить ${selectedClientIds.length} клиентов. Максимум участников: ${maxMembers}, сейчас: ${currentMembers}, можно добавить: ${maxMembers - currentMembers}`);
+      return;
+    }
+
+    try {
+      const errors: string[] = [];
+      const successes: string[] = [];
+
+      for (const clientId of selectedClientIds) {
+        try {
+          await apiService.addClientToGroup(selectedGroup.id, clientId);
+          successes.push(clientId);
+        } catch (err: any) {
+          const client = clients.find(c => c.id === clientId);
+          const clientName = client ? `${client.firstName} ${client.lastName}` : clientId;
+          errors.push(`${clientName}: ${err.response?.data?.error || 'Ошибка добавления'}`);
+        }
+      }
+
+      // Refresh group data
+      const updatedGroup = await apiService.getGroup(selectedGroup.id);
+      setSelectedGroup(updatedGroup);
+      // Refresh groups list
+      await fetchData();
+      
+      if (errors.length > 0) {
+        setError(`Добавлено: ${successes.length}, ошибок: ${errors.length}. ${errors.join('; ')}`);
+      } else {
+        setError(null);
+      }
+      
+      setSelectedClientIds([]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка добавления клиентов в группу');
+      console.error('Error adding clients to group:', err);
     }
   };
 
@@ -659,7 +708,11 @@ const Groups: React.FC = () => {
       </Dialog>
 
       {/* Диалог управления участниками */}
-      <Dialog open={membersDialog} onClose={() => setMembersDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={membersDialog} onClose={() => {
+        setMembersDialog(false);
+        setSelectedClientId('');
+        setSelectedClientIds([]);
+      }} maxWidth="md" fullWidth>
         <DialogTitle>
           Участники группы: {selectedGroup?.name}
           {selectedGroup?.maxMembers && (
@@ -670,41 +723,76 @@ const Groups: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Добавить клиента</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Добавить клиентов</Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={8}>
+              <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Выберите клиента</InputLabel>
+                  <InputLabel>Выберите клиентов (можно несколько)</InputLabel>
                   <Select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    label="Выберите клиента"
+                    multiple
+                    value={selectedClientIds}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSelectedClientIds(typeof value === 'string' ? value.split(',') : value as string[]);
+                    }}
+                    label="Выберите клиентов (можно несколько)"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {(selected as string[]).map((clientId) => {
+                          const client = getAvailableClients().find(c => c.id === clientId);
+                          return client ? (
+                            <Chip key={clientId} label={`${client.firstName} ${client.lastName}`} size="small" />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
                   >
                     {getAvailableClients().map((client) => (
                       <MenuItem key={client.id} value={client.id}>
-                        {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
+                        <Checkbox checked={selectedClientIds.indexOf(client.id) > -1} />
+                        <ListItemText primary={`${client.firstName} ${client.lastName}`} secondary={client.email || client.phone || ''} />
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12}>
                 <Button
                   fullWidth
                   variant="contained"
-                  onClick={handleAddClientToGroup}
-                  disabled={!selectedClientId || (selectedGroup?.maxMembers ? (selectedGroup.memberships?.filter(m => m.isActive).length || 0) >= selectedGroup.maxMembers : false)}
+                  onClick={handleAddMultipleClientsToGroup}
+                  disabled={
+                    selectedClientIds.length === 0 || 
+                    (selectedGroup?.maxMembers 
+                      ? ((selectedGroup.memberships?.filter(m => m.isActive).length || 0) + selectedClientIds.length) > selectedGroup.maxMembers 
+                      : false)
+                  }
                   sx={{ height: '56px' }}
                 >
-                  Добавить
+                  Добавить выбранных ({selectedClientIds.length})
                 </Button>
               </Grid>
             </Grid>
-            {selectedGroup?.maxMembers && (selectedGroup.memberships?.filter(m => m.isActive).length || 0) >= selectedGroup.maxMembers && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                Группа заполнена (достигнут лимит {selectedGroup.maxMembers} участников)
-              </Alert>
-            )}
+            {selectedGroup?.maxMembers && (() => {
+              const currentCount = selectedGroup.memberships?.filter(m => m.isActive).length || 0;
+              const willBeAdded = selectedClientIds.length;
+              const totalAfter = currentCount + willBeAdded;
+              const isFull = currentCount >= selectedGroup.maxMembers;
+              const willExceed = totalAfter > selectedGroup.maxMembers;
+              
+              return (
+                <Alert 
+                  severity={isFull ? 'warning' : willExceed ? 'error' : 'info'} 
+                  sx={{ mt: 2 }}
+                >
+                  {isFull 
+                    ? `Группа заполнена (достигнут лимит ${selectedGroup.maxMembers} участников)`
+                    : willExceed
+                    ? `Нельзя добавить ${willBeAdded} клиентов. Доступно мест: ${selectedGroup.maxMembers - currentCount}. Попробуйте выбрать меньше клиентов.`
+                    : `Участников: ${currentCount} / ${selectedGroup.maxMembers}. Будет добавлено: ${willBeAdded}`}
+                </Alert>
+              );
+            })()}
           </Box>
 
           <Box>
@@ -761,6 +849,7 @@ const Groups: React.FC = () => {
             setMembersDialog(false);
             setSelectedGroup(null);
             setSelectedClientId('');
+            setSelectedClientIds([]);
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>

@@ -85,28 +85,100 @@ npm --version
 
 ### 2. Установка PostgreSQL
 
-Kali Linux может не иметь PostgreSQL в стандартных репозиториях, поэтому добавим официальный репозиторий:
+**Рекомендуемый способ: установка из стандартных репозиториев Kali**
+
+Самый простой способ - использовать стандартные пакеты из репозиториев Kali:
 
 ```bash
-# Удалить старую версию (если установлена)
-sudo apt remove --purge postgresql* -y
-sudo apt autoremove -y
-
-# Добавить официальный репозиторий PostgreSQL
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-
 # Обновить список пакетов
 sudo apt update
 
-# Установить PostgreSQL 15 (или 14/13)
-sudo apt install -y postgresql-15 postgresql-contrib-15
+# Установить PostgreSQL из стандартных репозиториев
+sudo apt install -y postgresql postgresql-contrib
 
 # Проверить версию
 psql --version
 
 # Проверить статус службы
 sudo systemctl status postgresql
+```
+
+Если служба не запущена:
+
+```bash
+# Запустить PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql  # Автозапуск при загрузке
+```
+
+**Альтернативный способ: установка из официального репозитория PostgreSQL**
+
+Если вам нужна конкретная версия PostgreSQL (например, 15), можно добавить официальный репозиторий:
+
+```bash
+# Удалить старую версию (если установлена)
+sudo apt remove --purge postgresql* -y
+sudo apt autoremove -y
+
+# Добавить официальный репозиторий PostgreSQL (современный метод)
+
+# Вариант 1: Использование современного метода с keyrings (рекомендуется)
+# Создать директорию для ключей (если не существует)
+sudo mkdir -p /etc/apt/keyrings
+
+# Скачать и сохранить GPG ключ
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+
+# Установить правильные права доступа на ключ
+sudo chmod 644 /etc/apt/keyrings/postgresql.gpg
+
+# Добавить репозиторий с указанием на ключ
+sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+# Обновить список пакетов
+sudo apt update
+
+# Проверить доступные версии PostgreSQL
+echo "Проверка доступных версий PostgreSQL..."
+apt-cache search postgresql | grep -E "^postgresql-[0-9]|^postgresql-contrib" | head -5
+
+# Установить PostgreSQL (попробовать разные версии)
+# Если postgresql-15 недоступен, попробуйте:
+# sudo apt install -y postgresql-14 postgresql-contrib-14
+# или
+# sudo apt install -y postgresql-13 postgresql-contrib-13
+
+# Если конкретная версия недоступна, используйте стандартные пакеты
+sudo apt install -y postgresql postgresql-contrib || echo "Попробуйте установить из стандартных репозиториев (см. ниже)"
+
+# Проверить версию
+psql --version
+
+# Проверить статус службы
+sudo systemctl status postgresql
+```
+
+**Если пакет postgresql-15 недоступен, используйте стандартные пакеты:**
+
+```bash
+# Вариант 2: Установка из стандартных репозиториев Kali (если репозиторий PostgreSQL не работает)
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+
+# Проверить установленную версию
+psql --version
+```
+
+**Или используйте кодовое имя Debian Testing для репозитория:**
+
+```bash
+# Kali основана на Debian Testing, попробуйте использовать книжную версию
+sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+# или для Kali Rolling:
+sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt sid-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+sudo apt update
+sudo apt install -y postgresql-15 postgresql-contrib-15
 ```
 
 Если служба не запущена:
@@ -379,23 +451,147 @@ sudo iptables -A INPUT -p tcp --dport 3001 -j ACCEPT
 
 ## 🐛 Решение проблем
 
-### Проблема 1: PostgreSQL не запускается
+### Проблема 1: Пакет postgresql-15 не найден
+
+Если вы видите ошибку `невозможно найти пакет postgresql-15`:
+
+**Решение 1: Использовать стандартные пакеты из репозиториев Kali (РЕКОМЕНДУЕТСЯ)**
 
 ```bash
+# Установить PostgreSQL из стандартных репозиториев
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+
+# Проверить версию
+psql --version
+
 # Проверить статус
-sudo systemctl status postgresql
-
-# Посмотреть логи
-sudo journalctl -u postgresql -n 50
-
-# Перезапустить
-sudo systemctl restart postgresql
-
-# Проверить порт
-sudo netstat -tulpn | grep 5432
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 ```
 
-### Проблема 2: Ошибка подключения к базе данных
+Это самый простой способ. Версия PostgreSQL будет из стандартных репозиториев (обычно 13 или 14), что полностью подходит для проекта.
+
+**Решение 2: Использовать правильное кодовое имя для Kali Linux**
+
+Kali Linux может использовать кодовое имя Debian Testing или Rolling:
+
+```bash
+# Проверить кодовое имя
+lsb_release -cs
+
+# Удалить старый файл репозитория (если был создан)
+sudo rm -f /etc/apt/sources.list.d/pgdg.list
+
+# Для Kali Rolling (использовать bookworm - Debian Testing):
+sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+# Или для более новой Kali (использовать sid - Debian Unstable):
+# sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt sid-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+sudo apt update
+apt-cache search postgresql | grep "^postgresql-[0-9]" | head -5
+sudo apt install -y postgresql-15 postgresql-contrib-15
+```
+
+**Решение 3: Установить другую версию PostgreSQL**
+
+```bash
+# Проверить доступные версии
+apt-cache search postgresql | grep "^postgresql-[0-9]"
+
+# Установить доступную версию (например, 14 или 13)
+sudo apt install -y postgresql-14 postgresql-contrib-14
+# или
+sudo apt install -y postgresql-13 postgresql-contrib-13
+```
+
+> **Важно:** Проект работает с PostgreSQL 13+, поэтому любая версия от 13 и выше подойдет. Рекомендую использовать стандартные пакеты из репозиториев Kali.
+
+### Проблема 2: Ошибка подключения к PostgreSQL / PostgreSQL не запущен
+
+Если вы видите ошибку:
+```
+psql: ошибка: подключиться к серверу через сокет "/var/run/postgresql/.s.PGSQL.5432" не удалось: Нет такого файла или каталога
+```
+
+**Решение 1: Проверить, установлен ли PostgreSQL**
+
+```bash
+# Проверить наличие PostgreSQL
+which psql
+which postgres
+
+# Если команды не найдены, PostgreSQL не установлен - нужно установить (см. раздел установки выше)
+```
+
+**Решение 2: Запустить PostgreSQL**
+
+Если PostgreSQL установлен, но не запущен:
+
+```bash
+# Проверить статус службы
+sudo systemctl status postgresql
+
+# Если служба не активна, запустить её
+sudo systemctl start postgresql
+
+# Включить автозапуск при загрузке системы
+sudo systemctl enable postgresql
+
+# Проверить статус снова
+sudo systemctl status postgresql
+```
+
+**Решение 3: Проверить, что PostgreSQL слушает на правильном порту**
+
+```bash
+# Проверить, слушает ли PostgreSQL на порту 5432
+sudo netstat -tulpn | grep 5432
+# или
+sudo ss -tulpn | grep 5432
+
+# Проверить логи PostgreSQL
+sudo journalctl -u postgresql -n 50 --no-pager
+
+# Проверить конфигурацию
+sudo -u postgres psql -c "SHOW config_file;"
+```
+
+**Решение 4: Если PostgreSQL установлен, но служба не существует**
+
+```bash
+# Найти установленные версии PostgreSQL
+ls /usr/lib/postgresql/
+
+# Проверить, какие службы PostgreSQL доступны
+systemctl list-unit-files | grep postgres
+
+# Запустить конкретную версию (например, postgresql@15-main)
+sudo systemctl start postgresql@15-main
+sudo systemctl enable postgresql@15-main
+
+# Или найти правильное имя службы
+sudo systemctl list-units --type=service | grep postgres
+```
+
+**Решение 5: Инициализировать кластер базы данных (если это первый запуск)**
+
+```bash
+# Найти установленную версию
+ls /usr/lib/postgresql/
+
+# Инициализировать кластер для конкретной версии (например, 15)
+sudo -u postgres /usr/lib/postgresql/15/bin/initdb -D /var/lib/postgresql/15/main
+
+# Или использовать pg_createcluster (если доступен)
+sudo pg_createcluster 15 main
+
+# Затем запустить службу
+sudo systemctl start postgresql@15-main
+```
+
+### Проблема 3: Ошибка подключения к базе данных
 
 ```bash
 # Проверить, что PostgreSQL слушает на localhost
@@ -408,7 +604,7 @@ psql -U crm_user -d martial_arts_crm -h localhost
 sudo -u postgres psql -c "\du"
 ```
 
-### Проблема 3: Ошибки при установке npm пакетов
+### Проблема 4: Ошибки при установке npm пакетов
 
 ```bash
 # Очистить кэш npm
@@ -425,7 +621,7 @@ npm install
 cd ..
 ```
 
-### Проблема 4: Ошибки Prisma
+### Проблема 5: Ошибки Prisma
 
 ```bash
 # Сбросить Prisma клиент
@@ -439,7 +635,7 @@ npx prisma migrate reset
 npx prisma migrate dev
 ```
 
-### Проблема 5: Порт уже занят
+### Проблема 6: Порт уже занят
 
 ```bash
 # Найти процесс, использующий порт
@@ -453,7 +649,7 @@ sudo kill -9 <PID>
 # Или изменить порт в .env файле
 ```
 
-### Проблема 6: Ошибки прав доступа
+### Проблема 7: Ошибки прав доступа
 
 ```bash
 # Дать права на директорию проекта
@@ -463,7 +659,7 @@ sudo chown -R $USER:$USER /home/bes/CRM2
 chmod +x node_modules/.bin/*
 ```
 
-### Проблема 7: Ошибки с bcrypt
+### Проблема 8: Ошибки с bcrypt
 
 ```bash
 # Переустановить bcrypt
