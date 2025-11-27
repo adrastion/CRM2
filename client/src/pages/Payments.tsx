@@ -88,7 +88,7 @@ const Payments: React.FC = () => {
 
       const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
         apiService.getPayments(params),
-        apiService.getClients(),
+        apiService.getClients({ limit: 100 }),
         apiService.getBranches(),
         apiService.getGroups().catch(() => ({ data: [] })),
       ]);
@@ -125,7 +125,7 @@ const Payments: React.FC = () => {
 
         const [paymentsRes, clientsRes, branchesRes, groupsRes] = await Promise.all([
           apiService.getPayments(params, abortController.signal),
-          apiService.getClients(undefined, abortController.signal),
+          apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] })),
         ]);
