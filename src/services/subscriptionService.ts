@@ -218,13 +218,32 @@ export class SubscriptionService {
    * Обработка webhook от YooKassa
    */
   static async handleYooKassaWebhook(event: any) {
-    const paymentId = event.object?.id;
+    console.log('Received YooKassa webhook:', JSON.stringify(event, null, 2));
+
+    // YooKassa отправляет webhook в формате:
+    // { type: "notification", event: "payment.succeeded", object: { id: "...", status: "...", ... } }
+    // Или может прийти напрямую объект платежа
+    const paymentId = event.object?.id || event.id;
+    const eventType = event.event || event.type;
+    const paymentStatus = event.object?.status || event.status;
 
     if (!paymentId) {
+      console.error('Payment ID is missing in webhook:', event);
       throw new Error('Payment ID is missing');
     }
 
-    console.log('Processing YooKassa webhook for payment:', paymentId);
+    console.log('Processing YooKassa webhook:', {
+      paymentId,
+      eventType,
+      paymentStatus,
+      hasObject: !!event.object
+    });
+
+    // Обрабатываем только события об изменении статуса платежа
+    if (eventType && !eventType.includes('payment')) {
+      console.log('Ignoring non-payment event:', eventType);
+      return { success: true, message: 'Non-payment event ignored' };
+    }
 
     // Получаем информацию о платеже из YooKassa
     const response = await fetch(`${YOOKASSA_API_URL}/payments/${paymentId}`, {
@@ -241,7 +260,13 @@ export class SubscriptionService {
     }
 
     const payment: any = await response.json();
-    console.log('Payment status from YooKassa:', payment.status);
+    console.log('Payment data from YooKassa API:', {
+      id: payment.id,
+      status: payment.status,
+      amount: payment.amount,
+      metadata: payment.metadata,
+      paid: payment.paid
+    });
 
     const subscriptionPayment = await prisma.subscriptionPayment.findFirst({
       where: { yookassaPaymentId: paymentId },
@@ -262,23 +287,31 @@ export class SubscriptionService {
     });
 
     // Обновляем статус платежа
+    // YooKassa может вернуть статус: pending, waiting_for_capture, succeeded, canceled
     let status = 'pending';
-    if (payment.status === 'succeeded') {
+    if (payment.status === 'succeeded' || payment.paid === true) {
       status = 'succeeded';
-    } else if (payment.status === 'canceled') {
+    } else if (payment.status === 'canceled' || payment.status === 'cancelled') {
       status = 'cancelled';
-    } else if (payment.status === 'pending') {
+    } else if (payment.status === 'pending' || payment.status === 'waiting_for_capture') {
       status = 'pending';
     }
 
+    console.log('Determined payment status:', {
+      yookassaStatus: payment.status,
+      yookassaPaid: payment.paid,
+      ourStatus: status
+    });
+
     // Проверяем, не был ли платеж уже обработан
-    const wasAlreadyProcessed = subscriptionPayment.status === 'succeeded' && payment.status === 'succeeded';
+    const isPaymentSucceeded = payment.status === 'succeeded' || payment.paid === true;
+    const wasAlreadyProcessed = subscriptionPayment.status === 'succeeded' && isPaymentSucceeded;
     
     await prisma.subscriptionPayment.update({
       where: { id: subscriptionPayment.id },
       data: {
         status,
-        paidAt: payment.status === 'succeeded' ? new Date() : null,
+        paidAt: (payment.status === 'succeeded' || payment.paid === true) ? new Date() : null,
       },
     });
 
@@ -289,7 +322,10 @@ export class SubscriptionService {
     }
 
     // Если платеж успешен, активируем подписку
-    if (payment.status === 'succeeded') {
+    // Проверяем и status === 'succeeded', и paid === true для надежности
+    const isPaymentSucceeded = payment.status === 'succeeded' || payment.paid === true;
+    
+    if (isPaymentSucceeded) {
       // Получаем план из metadata платежа или из существующей подписки
       const planType = payment.metadata?.planType || subscriptionPayment.subscription.planType;
       const tenantId = payment.metadata?.tenantId || subscriptionPayment.subscription.tenantId;
