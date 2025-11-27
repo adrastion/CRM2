@@ -28,8 +28,14 @@ import {
   Select,
   MenuItem,
   TableSortLabel,
+  Tabs,
+  Tab,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 
@@ -63,6 +69,18 @@ const Clients: React.FC = () => {
   const [selectedClientForGroups, setSelectedClientForGroups] = useState<Client | null>(null);
   const [statsDialog, setStatsDialog] = useState(false);
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
+  const [standardsDialog, setStandardsDialog] = useState(false);
+  const [selectedClientForStandards, setSelectedClientForStandards] = useState<Client | null>(null);
+  const [clientStandards, setClientStandards] = useState<any[]>([]);
+  const [standards, setStandards] = useState<any[]>([]);
+  const [loadingClientStandards, setLoadingClientStandards] = useState(false);
+  const [addStandardDialog, setAddStandardDialog] = useState(false);
+  const [selectedStandardId, setSelectedStandardId] = useState<string>('');
+  const [standardResult, setStandardResult] = useState<string>('');
+  const [standardResultText, setStandardResultText] = useState<string>('');
+  const [standardStatus, setStandardStatus] = useState<string>('completed');
+  const [standardNotes, setStandardNotes] = useState<string>('');
+  const [standardCompletedAt, setStandardCompletedAt] = useState<string>(new Date().toISOString().split('T')[0]);
   const [clientStats, setClientStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [membershipDialog, setMembershipDialog] = useState(false);
@@ -454,6 +472,77 @@ const Clients: React.FC = () => {
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка выдачи тарифа');
       console.error('Error giving membership:', err);
+    }
+  };
+
+  const handleOpenStandardsDialog = async (client: Client) => {
+    setSelectedClientForStandards(client);
+    setStandardsDialog(true);
+    setLoadingClientStandards(true);
+    try {
+      // Загружаем нормативы клиента
+      const standardsRes = await apiService.getClientStandards(client.id);
+      setClientStandards(standardsRes.data);
+      
+      // Загружаем шаблоны нормативов
+      const templatesRes = await apiService.getStandards({ isActive: 'true' });
+      setStandards(templatesRes.data);
+    } catch (err: any) {
+      setError('Не удалось загрузить нормативы');
+      console.error('Error loading standards:', err);
+    } finally {
+      setLoadingClientStandards(false);
+    }
+  };
+
+  const handleAddClientStandard = async () => {
+    if (!selectedClientForStandards || !selectedStandardId) {
+      setError('Выберите норматив');
+      return;
+    }
+
+    try {
+      await apiService.addClientStandard(selectedClientForStandards.id, {
+        standardId: selectedStandardId,
+        completedAt: standardCompletedAt,
+        result: standardResult || undefined,
+        resultText: standardResultText || undefined,
+        status: standardStatus,
+        notes: standardNotes || undefined,
+      });
+      
+      // Обновляем список нормативов
+      const standardsRes = await apiService.getClientStandards(selectedClientForStandards.id);
+      setClientStandards(standardsRes.data);
+      
+      // Очищаем форму
+      setSelectedStandardId('');
+      setStandardResult('');
+      setStandardResultText('');
+      setStandardStatus('completed');
+      setStandardNotes('');
+      setStandardCompletedAt(new Date().toISOString().split('T')[0]);
+      setAddStandardDialog(false);
+      setError('');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось добавить норматив');
+    }
+  };
+
+  const handleDeleteClientStandard = async (clientStandardId: string) => {
+    if (!selectedClientForStandards) return;
+    
+    if (window.confirm('Вы уверены, что хотите удалить эту запись о нормативе?')) {
+      try {
+        await apiService.deleteClientStandard(selectedClientForStandards.id, clientStandardId);
+        
+        // Обновляем список нормативов
+        const standardsRes = await apiService.getClientStandards(selectedClientForStandards.id);
+        setClientStandards(standardsRes.data);
+        setError('');
+      } catch (err: any) {
+        setError(err?.response?.data?.error || 'Не удалось удалить норматив');
+      }
     }
   };
 
@@ -917,6 +1006,17 @@ const Clients: React.FC = () => {
                         }}
                       >
                         <LocalOffer />
+                      </IconButton>
+                      <IconButton 
+                        size="small" 
+                        color="primary" 
+                        title="Нормативы"
+                        onClick={async () => {
+                          setSelectedClientForStandards(client);
+                          await handleOpenStandardsDialog(client);
+                        }}
+                      >
+                        <Assignment />
                       </IconButton>
                       <IconButton 
                         size="small" 
@@ -1745,20 +1845,20 @@ const Clients: React.FC = () => {
 
           {/* Drag and Drop область */}
           <Box sx={{ mt: 2 }}>
-            <input
+              <input
               ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setImportFile(file);
-                  setImportResult(null);
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setImportFile(file);
+                    setImportResult(null);
                   setError('');
-                }
-              }}
-              style={{ display: 'none' }}
-            />
+                  }
+                }}
+                style={{ display: 'none' }}
+              />
             <Box
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -1785,9 +1885,9 @@ const Clients: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     {importFile.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary">
                     Нажмите для выбора другого файла
-                  </Typography>
+            </Typography>
                 </Box>
               ) : (
                 <Box>
@@ -2033,6 +2133,204 @@ const Clients: React.FC = () => {
             setSelectedClientForGroups(null);
           }}>
             Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог нормативов клиента */}
+      <Dialog 
+        open={standardsDialog} 
+        onClose={() => {
+          setStandardsDialog(false);
+          setSelectedClientForStandards(null);
+          setClientStandards([]);
+        }} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>
+          Нормативы: {selectedClientForStandards?.firstName} {selectedClientForStandards?.lastName}
+        </DialogTitle>
+        <DialogContent>
+          {loadingClientStandards ? (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">Выполненные нормативы</Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    setAddStandardDialog(true);
+                    setSelectedStandardId('');
+                    setStandardResult('');
+                    setStandardResultText('');
+                    setStandardStatus('completed');
+                    setStandardNotes('');
+                    setStandardCompletedAt(new Date().toISOString().split('T')[0]);
+                  }}
+                >
+                  Добавить норматив
+                </Button>
+              </Box>
+
+              {clientStandards.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Нет выполненных нормативов
+                </Typography>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Норматив</TableCell>
+                        <TableCell>Дата</TableCell>
+                        <TableCell>Результат</TableCell>
+                        <TableCell>Статус</TableCell>
+                        <TableCell>Действия</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {clientStandards.map((cs: any) => (
+                        <TableRow key={cs.id}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="bold">
+                              {cs.standard?.name || 'Неизвестный норматив'}
+                            </Typography>
+                            {cs.standard?.unit && (
+                              <Typography variant="caption" color="text.secondary">
+                                Единица: {cs.standard.unit}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(cs.completedAt).toLocaleDateString('ru-RU')}
+                          </TableCell>
+                          <TableCell>
+                            {cs.result !== null && cs.result !== undefined 
+                              ? `${cs.result}${cs.standard?.unit ? ` ${cs.standard.unit}` : ''}`
+                              : cs.resultText || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={cs.status === 'completed' ? 'Выполнен' : cs.status === 'failed' ? 'Не выполнен' : 'В процессе'}
+                              color={cs.status === 'completed' ? 'success' : cs.status === 'failed' ? 'error' : 'warning'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleDeleteClientStandard(cs.id)}
+                            >
+                              <Delete />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setStandardsDialog(false);
+            setSelectedClientForStandards(null);
+            setClientStandards([]);
+          }}>
+            Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог добавления норматива */}
+      <Dialog open={addStandardDialog} onClose={() => setAddStandardDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить норматив</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <FormControl fullWidth required>
+                <InputLabel>Норматив</InputLabel>
+                <Select
+                  value={selectedStandardId}
+                  onChange={(e) => setSelectedStandardId(e.target.value)}
+                  label="Норматив"
+                >
+                  {standards.filter(s => s.isActive).map((standard) => (
+                    <MenuItem key={standard.id} value={standard.id}>
+                      {standard.name} {standard.targetValue && `(цель: ${standard.targetValue}${standard.unit ? ` ${standard.unit}` : ''})`}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Дата выполнения"
+                value={standardCompletedAt}
+                onChange={(e) => setStandardCompletedAt(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Результат (число)"
+                value={standardResult}
+                onChange={(e) => setStandardResult(e.target.value)}
+                helperText="Числовой результат (например, количество раз, секунды)"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Результат (текст)"
+                value={standardResultText}
+                onChange={(e) => setStandardResultText(e.target.value)}
+                helperText="Текстовый результат"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Статус</InputLabel>
+                <Select
+                  value={standardStatus}
+                  onChange={(e) => setStandardStatus(e.target.value)}
+                  label="Статус"
+                >
+                  <MenuItem value="completed">Выполнен</MenuItem>
+                  <MenuItem value="failed">Не выполнен</MenuItem>
+                  <MenuItem value="pending">В процессе</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Примечания"
+                multiline
+                rows={3}
+                value={standardNotes}
+                onChange={(e) => setStandardNotes(e.target.value)}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddStandardDialog(false)}>Отмена</Button>
+          <Button onClick={handleAddClientStandard} variant="contained" disabled={!selectedStandardId}>
+            Добавить
           </Button>
         </DialogActions>
       </Dialog>

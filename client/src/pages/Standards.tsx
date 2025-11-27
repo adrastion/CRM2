@@ -137,7 +137,7 @@ const Standards: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-          Нормативы
+          Шаблоны нормативов
         </Typography>
         <Button
           variant="contained"
@@ -148,7 +148,7 @@ const Standards: React.FC = () => {
             setError('');
           }}
         >
-          Добавить норматив
+          Создать шаблон норматива
         </Button>
       </Box>
 
