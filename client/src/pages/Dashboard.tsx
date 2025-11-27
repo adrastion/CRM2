@@ -143,56 +143,70 @@ const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const statCards = useMemo(() => [
-    {
-      title: 'Всего клиентов',
-      value: stats?.totalClients || 0,
-      icon: <People />,
-      color: '#1976d2',
-    },
-    {
-      title: 'Активные клиенты',
-      value: stats?.activeClients || 0,
-      icon: <CheckCircle />,
-      color: '#388e3c',
-    },
-    {
-      title: 'Тренеры',
-      value: stats?.totalTrainers || 0,
-      icon: <Person />,
-      color: '#f57c00',
-    },
-    {
-      title: 'Группы',
-      value: stats?.totalGroups || 0,
-      icon: <Groups />,
-      color: '#7b1fa2',
-    },
-    {
-      title: 'Филиалы',
-      value: stats?.totalBranches || 0,
-      icon: <Business />,
-      color: '#d32f2f',
-    },
-    {
-      title: 'Месячный доход',
-      value: new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(stats?.monthlyRevenue || 0),
-      icon: <AttachMoney />,
-      color: '#388e3c',
-    },
-    {
-      title: 'Посещаемость',
-      value: `${stats?.attendanceRate || 0}%`,
-      icon: <TrendingUp />,
-      color: '#1976d2',
-    },
-    {
-      title: 'Предстоящие тренировки',
-      value: stats?.upcomingTrainings || 0,
-      icon: <Schedule />,
-      color: '#f57c00',
-    },
-  ], [stats]);
+  const statCards = useMemo(() => {
+    const isTrainer = user?.role === 'TRAINER';
+    
+    const allCards = [
+      {
+        title: 'Всего клиентов',
+        value: stats?.totalClients || 0,
+        icon: <People />,
+        color: '#1976d2',
+        show: true,
+      },
+      {
+        title: 'Активные клиенты',
+        value: stats?.activeClients || 0,
+        icon: <CheckCircle />,
+        color: '#388e3c',
+        show: true,
+      },
+      {
+        title: 'Тренеры',
+        value: stats?.totalTrainers || 0,
+        icon: <Person />,
+        color: '#f57c00',
+        show: !isTrainer,
+      },
+      {
+        title: 'Группы',
+        value: stats?.totalGroups || 0,
+        icon: <Groups />,
+        color: '#7b1fa2',
+        show: true,
+      },
+      {
+        title: 'Филиалы',
+        value: stats?.totalBranches || 0,
+        icon: <Business />,
+        color: '#d32f2f',
+        show: !isTrainer,
+      },
+      {
+        title: 'Месячный доход',
+        value: new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(stats?.monthlyRevenue || 0),
+        icon: <AttachMoney />,
+        color: '#388e3c',
+        show: !isTrainer,
+      },
+      {
+        title: 'Посещаемость',
+        value: `${stats?.attendanceRate || 0}%`,
+        icon: <TrendingUp />,
+        color: '#1976d2',
+        show: true,
+      },
+      {
+        title: 'Предстоящие тренировки',
+        value: stats?.upcomingTrainings || 0,
+        icon: <Schedule />,
+        color: '#f57c00',
+        show: true,
+      },
+    ];
+    
+    return allCards.filter(card => card.show);
+  }, [stats, user?.role]);
 
   if (loading) {
     return (
@@ -250,11 +264,12 @@ const Dashboard: React.FC = () => {
           </Grid>
         ))}
 
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 400, overflow: 'auto' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
-              Последняя активность
-            </Typography>
+        {user?.role !== 'TRAINER' && (
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: 400, overflow: 'auto' }}>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
+                Последняя активность
+              </Typography>
             {activities.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 4 }}>
                 <Typography variant="body2" color="text.secondary">
@@ -291,9 +306,10 @@ const Dashboard: React.FC = () => {
               </List>
             )}
           </Paper>
-        </Grid>
+          </Grid>
+        )}
 
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={user?.role !== 'TRAINER' ? 6 : 12}>
           <Paper sx={{ p: 2, height: 400, overflow: 'auto' }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
               Предстоящие тренировки
@@ -376,20 +392,22 @@ const Dashboard: React.FC = () => {
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card 
-                  sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                  onClick={() => navigate('/payments')}
-                >
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <AttachMoney sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">Записать платеж</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Обработать платеж
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+              {user?.role !== 'TRAINER' && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card 
+                    sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                    onClick={() => navigate('/payments')}
+                  >
+                    <CardContent sx={{ textAlign: 'center' }}>
+                      <AttachMoney sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                      <Typography variant="h6">Записать платеж</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Обработать платеж
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
             </Grid>
           </Paper>
         </Grid>

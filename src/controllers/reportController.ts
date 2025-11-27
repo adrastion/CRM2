@@ -25,6 +25,26 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
 
+    // Check if user is a trainer
+    let trainer = null;
+    let trainerGroupIds: string[] = [];
+    
+    if (req.user?.role === 'TRAINER') {
+      trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: req.user.id,
+          tenantId
+        },
+        include: {
+          groups: true
+        }
+      });
+
+      if (trainer) {
+        trainerGroupIds = trainer.groups.map(g => g.id);
+      }
+    }
+
     // Parallel queries for better performance
     const [
       totalClients,
@@ -37,81 +57,156 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
       presentAttendances,
       upcomingTrainings
     ] = await Promise.all([
-      // Total clients
-      prisma.client.count({
-        where: { tenantId }
-      }),
-      // Active clients
-      prisma.client.count({
-        where: {
-          tenantId,
-          isActive: true
-        }
-      }),
-      // Total trainers
-      prisma.trainer.count({
-        where: {
-          tenantId,
-          isActive: true
-        }
-      }),
-      // Total groups
-      prisma.group.count({
-        where: {
-          tenantId,
-          isActive: true
-        }
-      }),
-      // Total branches
-      prisma.branch.count({
-        where: {
-          tenantId,
-          isActive: true
-        }
-      }),
-      // Monthly revenue (paid payments this month)
-      prisma.payment.aggregate({
-        where: {
-          tenantId,
-          status: 'paid',
-          paidAt: {
-            gte: startOfMonth,
-            lte: endOfMonth
-          }
-        },
-        _sum: {
-          amount: true
-        }
-      }),
-      // Total attendances (for attendance rate calculation)
-      prisma.attendance.count({
-        where: {
-          tenantId,
-          createdAt: {
-            gte: startOfMonth
-          }
-        }
-      }),
-      // Present attendances
-      prisma.attendance.count({
-        where: {
-          tenantId,
-          status: 'PRESENT',
-          createdAt: {
-            gte: startOfMonth
-          }
-        }
-      }),
-      // Upcoming trainings (next 7 days)
-      prisma.training.count({
-        where: {
-          tenantId,
-          startTime: {
-            gte: now,
-            lte: nextWeek
-          }
-        }
-      })
+      // Total clients - для тренера только клиенты его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.client.count({
+            where: {
+              tenantId,
+              groupMemberships: {
+                some: {
+                  groupId: { in: trainerGroupIds },
+                  isActive: true
+                }
+              }
+            }
+          })
+        : prisma.client.count({
+            where: { tenantId }
+          }),
+      // Active clients - для тренера только активные клиенты его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.client.count({
+            where: {
+              tenantId,
+              isActive: true,
+              groupMemberships: {
+                some: {
+                  groupId: { in: trainerGroupIds },
+                  isActive: true
+                }
+              }
+            }
+          })
+        : prisma.client.count({
+            where: {
+              tenantId,
+              isActive: true
+            }
+          }),
+      // Total trainers - для тренера не показываем
+      req.user?.role === 'TRAINER' 
+        ? Promise.resolve(0)
+        : prisma.trainer.count({
+            where: {
+              tenantId,
+              isActive: true
+            }
+          }),
+      // Total groups - для тренера только его группы
+      trainer && trainerGroupIds.length > 0
+        ? prisma.group.count({
+            where: {
+              id: { in: trainerGroupIds },
+              tenantId,
+              isActive: true
+            }
+          })
+        : prisma.group.count({
+            where: {
+              tenantId,
+              isActive: true
+            }
+          }),
+      // Total branches - для тренера не показываем
+      req.user?.role === 'TRAINER'
+        ? Promise.resolve(0)
+        : prisma.branch.count({
+            where: {
+              tenantId,
+              isActive: true
+            }
+          }),
+      // Monthly revenue - для тренера не считаем
+      req.user?.role === 'TRAINER'
+        ? Promise.resolve({ _sum: { amount: null } })
+        : prisma.payment.aggregate({
+            where: {
+              tenantId,
+              status: 'paid',
+              paidAt: {
+                gte: startOfMonth,
+                lte: endOfMonth
+              }
+            },
+            _sum: {
+              amount: true
+            }
+          }),
+      // Total attendances - для тренера только его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.attendance.count({
+            where: {
+              tenantId,
+              training: {
+                groupId: { in: trainerGroupIds }
+              },
+              createdAt: {
+                gte: startOfMonth
+              }
+            }
+          })
+        : prisma.attendance.count({
+            where: {
+              tenantId,
+              createdAt: {
+                gte: startOfMonth
+              }
+            }
+          }),
+      // Present attendances - для тренера только его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.attendance.count({
+            where: {
+              tenantId,
+              status: 'PRESENT',
+              training: {
+                groupId: { in: trainerGroupIds }
+              },
+              createdAt: {
+                gte: startOfMonth
+              }
+            }
+          })
+        : prisma.attendance.count({
+            where: {
+              tenantId,
+              status: 'PRESENT',
+              createdAt: {
+                gte: startOfMonth
+              }
+            }
+          }),
+      // Upcoming trainings - для тренера только его тренировки
+      trainer
+        ? prisma.training.count({
+            where: {
+              trainerId: trainer.id,
+              tenantId,
+              startTime: {
+                gte: now,
+                lte: nextWeek
+              }
+            }
+          })
+        : prisma.training.count({
+            where: {
+              tenantId,
+              startTime: {
+                gte: now,
+                lte: nextWeek
+              }
+            }
+          })
     ]);
 
     // Calculate monthly revenue
@@ -160,61 +255,145 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
+    // Check if user is a trainer
+    let trainer = null;
+    let trainerGroupIds: string[] = [];
+    
+    if (req.user?.role === 'TRAINER') {
+      trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: req.user.id,
+          tenantId
+        },
+        include: {
+          groups: true
+        }
+      });
+
+      if (trainer) {
+        trainerGroupIds = trainer.groups.map(g => g.id);
+      }
+    }
+
     // Get recent activities from different sources
     const [recentClients, recentPayments, recentTrainings, recentAttendances] = await Promise.all([
-      // Recent clients
-      prisma.client.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        include: {
-          groupMemberships: {
-            where: { isActive: true },
-            include: {
-              group: true
+      // Recent clients - для тренера только клиенты его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.client.findMany({
+            where: {
+              tenantId,
+              groupMemberships: {
+                some: {
+                  groupId: { in: trainerGroupIds },
+                  isActive: true
+                }
+              }
             },
-            take: 1
-          }
-        }
-      }),
-      // Recent payments
-      prisma.payment.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        include: {
-          client: true,
-          membership: true
-        }
-      }),
-      // Recent trainings
-      prisma.training.findMany({
-        where: { tenantId },
-        orderBy: { startTime: 'desc' },
-        take: limit,
-        include: {
-          group: true,
-          trainer: {
+            orderBy: { createdAt: 'desc' },
+            take: limit,
             include: {
-              user: true
+              groupMemberships: {
+                where: { 
+                  isActive: true,
+                  groupId: { in: trainerGroupIds }
+                },
+                include: {
+                  group: true
+                },
+                take: 1
+              }
             }
-          }
-        }
-      }),
-      // Recent attendances
-      prisma.attendance.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        include: {
-          client: true,
-          training: {
+          })
+        : prisma.client.findMany({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
             include: {
-              group: true
+              groupMemberships: {
+                where: { isActive: true },
+                include: {
+                  group: true
+                },
+                take: 1
+              }
             }
-          }
-        }
-      })
+          }),
+      // Recent payments - для тренера не показываем
+      req.user?.role === 'TRAINER'
+        ? Promise.resolve([])
+        : prisma.payment.findMany({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            include: {
+              client: true,
+              membership: true
+            }
+          }),
+      // Recent trainings - для тренера только его тренировки
+      trainer
+        ? prisma.training.findMany({
+            where: {
+              tenantId,
+              trainerId: trainer.id
+            },
+            orderBy: { startTime: 'desc' },
+            take: limit,
+            include: {
+              group: true,
+              trainer: {
+                include: {
+                  user: true
+                }
+              }
+            }
+          })
+        : prisma.training.findMany({
+            where: { tenantId },
+            orderBy: { startTime: 'desc' },
+            take: limit,
+            include: {
+              group: true,
+              trainer: {
+                include: {
+                  user: true
+                }
+              }
+            }
+          }),
+      // Recent attendances - для тренера только его групп
+      trainer && trainerGroupIds.length > 0
+        ? prisma.attendance.findMany({
+            where: {
+              tenantId,
+              training: {
+                groupId: { in: trainerGroupIds }
+              }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            include: {
+              client: true,
+              training: {
+                include: {
+                  group: true
+                }
+              }
+            }
+          })
+        : prisma.attendance.findMany({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            include: {
+              client: true,
+              training: {
+                include: {
+                  group: true
+                }
+              }
+            }
+          })
     ]);
 
     // Combine and format activities
@@ -310,9 +489,25 @@ export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Respo
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
 
+    // Check if user is a trainer
+    let trainerId: string | undefined;
+    
+    if (req.user?.role === 'TRAINER') {
+      const trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: req.user.id,
+          tenantId
+        }
+      });
+      if (trainer) {
+        trainerId = trainer.id;
+      }
+    }
+
     const trainings = await prisma.training.findMany({
       where: {
         tenantId,
+        ...(trainerId && { trainerId }),
         startTime: {
           gte: now,
           lte: futureDate
