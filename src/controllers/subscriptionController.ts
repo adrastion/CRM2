@@ -228,6 +228,26 @@ export const updatePlan = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 /**
+ * Получить информацию о тарифе и использовании ресурсов
+ */
+export const getPlanUsage = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.tenant?.id) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant ID is required',
+    });
+    return;
+  }
+
+  const planUsage = await SubscriptionService.getPlanUsage(req.tenant.id);
+
+  res.json({
+    success: true,
+    data: planUsage,
+  });
+});
+
+/**
  * Проверить доступность ресурса
  */
 export const checkResourceLimit = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

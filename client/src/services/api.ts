@@ -822,6 +822,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async getPlanUsage(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/subscriptions/plan-usage');
+    return response.data.data;
+  }
+
   // Admin Dashboard methods
   async getAdminDashboard(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard');

@@ -175,7 +175,7 @@ const Payments: React.FC = () => {
         alert('Пожалуйста, заполните все обязательные поля');
         return;
       }
-      
+
       if (formData.type === 'membership' && !formData.membershipId) {
         alert('Пожалуйста, выберите абонемент');
         return;

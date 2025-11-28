@@ -540,9 +540,9 @@ const Pricing: React.FC = () => {
                     </Typography>
                   </Box>
                 ) : (
-                  <Typography variant="body1" gutterBottom>
-                    Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
-                  </Typography>
+              <Typography variant="body1" gutterBottom>
+                Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
+              </Typography>
                 )}
               </Box>
 

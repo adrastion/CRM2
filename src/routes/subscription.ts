@@ -7,6 +7,7 @@ import {
   checkResourceLimit,
   validatePromoCode,
   getPromoCodeStatus,
+  getPlanUsage,
 } from '../controllers/subscriptionController';
 import { authenticate, requireOwner } from '../middleware/auth';
 
@@ -24,6 +25,9 @@ router.get('/', getSubscription);
 
 // Проверить лимит ресурса (доступно всем авторизованным)
 router.get('/check-limit', checkResourceLimit);
+
+// Получить информацию о тарифе и использовании ресурсов (доступно всем авторизованным)
+router.get('/plan-usage', getPlanUsage);
 
 // Получить статус использования промокодов (доступно всем авторизованным)
 router.get('/promo-code-status', getPromoCodeStatus);

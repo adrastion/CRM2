@@ -403,11 +403,11 @@ export class SubscriptionService {
         subscription.nextPlanType = null;
         subscription.status = 'expired';
       } else {
-        await prisma.subscription.update({
-          where: { id: subscription.id },
-          data: { status: 'expired' },
-        });
-        subscription.status = 'expired';
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: 'expired' },
+      });
+      subscription.status = 'expired';
       }
     }
 
@@ -710,7 +710,7 @@ export class SubscriptionService {
 
     // Проверяем, не был ли платеж уже обработан
     const wasAlreadyProcessed = subscriptionPayment.status === 'succeeded' && isPaymentSucceeded;
-    
+
     await prisma.subscriptionPayment.update({
       where: { id: subscriptionPayment.id },
       data: {
@@ -784,8 +784,8 @@ export class SubscriptionService {
           const updatedSubscription = await this.activateSubscription(
             tenantId,
             planType as PlanType,
-            subscriptionPayment.subscriptionId
-          );
+        subscriptionPayment.subscriptionId
+      );
           console.log('Subscription activated successfully:', updatedSubscription);
 
           // Начисляем комиссию маркетологу за успешную оплату подписки
@@ -871,7 +871,7 @@ export class SubscriptionService {
       status: subscription.status,
       startDate: subscription.startDate,
       endDate: subscription.endDate
-    });
+        });
 
     return subscription;
   }
@@ -943,6 +943,98 @@ export class SubscriptionService {
   static async getLimits(tenantId: string): Promise<PlanLimits> {
     const subscription = await this.getSubscription(tenantId);
     return PLAN_LIMITS[subscription.planType as PlanType];
+  }
+
+  /**
+   * Получение информации о тарифе и использовании ресурсов
+   */
+  static async getPlanUsage(tenantId: string) {
+    const subscription = await this.getSubscription(tenantId);
+    const limits = PLAN_LIMITS[subscription.planType as PlanType];
+
+    // Подсчитываем текущее использование ресурсов
+    const [trainersCount, clientsCount, groupsCount, branchesCount, trainingsCount] = await Promise.all([
+      prisma.trainer.count({
+        where: { tenantId, isActive: true },
+      }),
+      prisma.client.count({
+        where: { tenantId, isActive: true },
+      }),
+      prisma.group.count({
+        where: { tenantId, isActive: true },
+      }),
+      prisma.branch.count({
+        where: { tenantId, isActive: true },
+      }),
+      // Для тренировок считаем за текущий месяц
+      (async () => {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        return prisma.training.count({
+          where: {
+            tenantId,
+            startTime: {
+              gte: startOfMonth,
+              lte: endOfMonth,
+            },
+          },
+        });
+      })(),
+    ]);
+
+    // Вычисляем оставшиеся ресурсы
+    const calculateRemaining = (limit: number | 'unlimited', used: number): number | 'unlimited' => {
+      if (limit === 'unlimited') {
+        return 'unlimited';
+      }
+      return Math.max(0, limit - used);
+    };
+
+    const calculateUsagePercent = (limit: number | 'unlimited', used: number): number => {
+      if (limit === 'unlimited') {
+        return 0; // Для безлимитных ресурсов процент не имеет смысла
+      }
+      return Math.min(100, Math.round((used / limit) * 100));
+    };
+
+    return {
+      subscription: {
+        planType: subscription.planType,
+        status: subscription.status,
+        startDate: subscription.startDate,
+        endDate: subscription.endDate,
+        nextPlanType: subscription.nextPlanType,
+      },
+      limits: {
+        trainers: limits.trainers,
+        clients: limits.clients,
+        groups: limits.groups,
+        branches: limits.branches,
+        trainings: limits.trainings,
+      },
+      usage: {
+        trainers: trainersCount,
+        clients: clientsCount,
+        groups: groupsCount,
+        branches: branchesCount,
+        trainings: trainingsCount,
+      },
+      remaining: {
+        trainers: calculateRemaining(limits.trainers, trainersCount),
+        clients: calculateRemaining(limits.clients, clientsCount),
+        groups: calculateRemaining(limits.groups, groupsCount),
+        branches: calculateRemaining(limits.branches, branchesCount),
+        trainings: calculateRemaining(limits.trainings, trainingsCount),
+      },
+      usagePercent: {
+        trainers: calculateUsagePercent(limits.trainers, trainersCount),
+        clients: calculateUsagePercent(limits.clients, clientsCount),
+        groups: calculateUsagePercent(limits.groups, groupsCount),
+        branches: calculateUsagePercent(limits.branches, branchesCount),
+        trainings: calculateUsagePercent(limits.trainings, trainingsCount),
+      },
+    };
   }
 
   /**

@@ -15,6 +15,13 @@ import {
   Avatar,
   CircularProgress,
   Alert,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
+  Divider,
 } from '@mui/material';
 import {
   People,
@@ -25,6 +32,7 @@ import {
   TrendingUp,
   Schedule,
   CheckCircle,
+  CardMembership,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -67,6 +75,9 @@ const Dashboard: React.FC = () => {
   const [upcomingTrainings, setUpcomingTrainings] = useState<UpcomingTraining[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [planUsageDialog, setPlanUsageDialog] = useState(false);
+  const [planUsage, setPlanUsage] = useState<any>(null);
+  const [planUsageLoading, setPlanUsageLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,6 +153,20 @@ const Dashboard: React.FC = () => {
       return format(date, 'd MMMM, HH:mm', { locale: ru });
     }
   }, []);
+
+  const handleOpenPlanUsage = async () => {
+    setPlanUsageDialog(true);
+    setPlanUsageLoading(true);
+    try {
+      const data = await apiService.getPlanUsage();
+      setPlanUsage(data);
+    } catch (err: any) {
+      setError('Не удалось загрузить информацию о тарифе');
+      console.error('Error loading plan usage:', err);
+    } finally {
+      setPlanUsageLoading(false);
+    }
+  };
 
   const statCards = useMemo(() => {
     const isTrainer = user?.role === 'TRAINER';
@@ -233,13 +258,24 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
-          Добро пожаловать, {user?.firstName}!
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          {tenant?.name} - Обзор панели управления
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
+            Добро пожаловать, {user?.firstName}!
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            {tenant?.name} - Обзор панели управления
+          </Typography>
+        </Box>
+        {user?.role === 'OWNER' && (
+          <Button
+            variant="outlined"
+            startIcon={<CardMembership />}
+            onClick={handleOpenPlanUsage}
+          >
+            Мой тариф
+          </Button>
+        )}
       </Box>
 
       <Grid container spacing={3}>
@@ -419,6 +455,126 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Диалог информации о тарифе */}
+      <Dialog
+        open={planUsageDialog}
+        onClose={() => setPlanUsageDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Мой тариф: {planUsage?.subscription?.planType || 'Загрузка...'}
+        </DialogTitle>
+        <DialogContent>
+          {planUsageLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : planUsage ? (
+            <Box>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Статус подписки
+                </Typography>
+                <Chip
+                  label={planUsage.subscription.status === 'active' ? 'Активна' : 'Неактивна'}
+                  color={planUsage.subscription.status === 'active' ? 'success' : 'default'}
+                  sx={{ mb: 1 }}
+                />
+                {planUsage.subscription.endDate && (
+                  <Typography variant="body2" color="text.secondary">
+                    Действует до: {new Date(planUsage.subscription.endDate).toLocaleDateString('ru-RU')}
+                  </Typography>
+                )}
+                {planUsage.subscription.nextPlanType && (
+                  <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
+                    Запланирован переход на тариф: {planUsage.subscription.nextPlanType}
+                  </Typography>
+                )}
+              </Box>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                Использование ресурсов
+              </Typography>
+
+              {[
+                { key: 'clients', label: 'Клиенты', icon: <People /> },
+                { key: 'trainers', label: 'Тренеры', icon: <Person /> },
+                { key: 'groups', label: 'Группы', icon: <Groups /> },
+                { key: 'branches', label: 'Филиалы', icon: <Business /> },
+                { key: 'trainings', label: 'Тренировки (в месяц)', icon: <Schedule /> },
+              ].map((resource) => {
+                const limit = planUsage.limits[resource.key];
+                const used = planUsage.usage[resource.key];
+                const remaining = planUsage.remaining[resource.key];
+                const percent = planUsage.usagePercent[resource.key];
+
+                return (
+                  <Box key={resource.key} sx={{ mb: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {resource.icon}
+                        <Typography variant="body1" fontWeight="medium">
+                          {resource.label}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {used} / {limit === 'unlimited' ? '∞' : limit}
+                      </Typography>
+                    </Box>
+                    {limit !== 'unlimited' && (
+                      <>
+                        <LinearProgress
+                          variant="determinate"
+                          value={percent}
+                          color={percent >= 90 ? 'error' : percent >= 70 ? 'warning' : 'primary'}
+                          sx={{ height: 8, borderRadius: 4, mb: 1 }}
+                        />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Использовано: {used}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color={remaining === 0 ? 'error.main' : 'text.secondary'}
+                            fontWeight={remaining === 0 ? 'bold' : 'normal'}
+                          >
+                            Осталось: {remaining === 'unlimited' ? '∞' : remaining}
+                          </Typography>
+                        </Box>
+                      </>
+                    )}
+                    {limit === 'unlimited' && (
+                      <Typography variant="caption" color="success.main">
+                        Безлимитный тариф
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })}
+            </Box>
+          ) : (
+            <Alert severity="error">Не удалось загрузить информацию о тарифе</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPlanUsageDialog(false)}>Закрыть</Button>
+          {user?.role === 'OWNER' && (
+            <Button
+              variant="contained"
+              onClick={() => {
+                setPlanUsageDialog(false);
+                navigate('/pricing');
+              }}
+            >
+              Изменить тариф
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
