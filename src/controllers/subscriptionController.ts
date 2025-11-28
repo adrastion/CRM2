@@ -67,9 +67,22 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
 
 /**
  * Webhook для обработки уведомлений от YooKassa
+ * ВАЖНО: Этот роут не требует аутентификации, но должен быть защищен
+ * IP-адресами YooKassa (185.71.76.0/27, 185.71.77.0/27, 77.75.153.0/25, 77.75.156.11, 77.75.156.35, 77.75.154.128/25)
  */
 export const handleWebhook = asyncHandler(async (req: Request, res: Response) => {
   try {
+    console.log('Webhook received:', {
+      method: req.method,
+      path: req.path,
+      headers: {
+        'user-agent': req.headers['user-agent'],
+        'x-forwarded-for': req.headers['x-forwarded-for'],
+        'x-real-ip': req.headers['x-real-ip'],
+      },
+      body: req.body
+    });
+
     await SubscriptionService.handleYooKassaWebhook(req.body);
     res.json({ success: true });
   } catch (error: any) {
