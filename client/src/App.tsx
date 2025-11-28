@@ -189,6 +189,28 @@ const PromoCodeAdminLoginRoute: React.FC<{ children: React.ReactNode }> = ({ chi
   return !isAuthenticated ? <>{children}</> : <Navigate to="/admin/promo-codes" replace />;
 };
 
+// Protected Super Admin Route Component
+const ProtectedSuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useSuperAdminAuth();
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  return isAuthenticated ? <>{children}</> : <Navigate to="/super-admin/login" replace />;
+};
+
+// Public Super Admin Login Route (redirect if already authenticated)
+const SuperAdminLoginRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useSuperAdminAuth();
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  return !isAuthenticated ? <>{children}</> : <Navigate to="/admin/dashboard" replace />;
+};
+
 // Main App Component
 const AppContent: React.FC = () => {
   return (
