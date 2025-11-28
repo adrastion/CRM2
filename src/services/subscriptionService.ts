@@ -508,8 +508,27 @@ export class SubscriptionService {
       };
     }
 
+    // Получаем данные tenant'а для чека
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        email: true,
+        phone: true,
+        name: true,
+      },
+    });
+
+    // Формируем объект customer для чека (обязательно должен быть email или phone)
+    const customer: any = {};
+    if (tenant?.email) {
+      customer.email = tenant.email;
+    }
+    if (tenant?.phone) {
+      customer.phone = tenant.phone;
+    }
+
     // Создаем платеж в YooKassa через API
-    const paymentData = {
+    const paymentData: any = {
       amount: {
         value: amount.toFixed(2),
         currency: 'RUB',
@@ -530,6 +549,20 @@ export class SubscriptionService {
           promoCode: validatedPromoCode.code,
           marketerId: validatedPromoCode.marketerId || '',
         }),
+      },
+      receipt: {
+        customer: Object.keys(customer).length > 0 ? customer : { email: 'noreply@example.com' }, // Минимальные данные, если нет email/phone
+        items: [
+          {
+            description: `Подписка ${planType}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
+            quantity: '1.00',
+            amount: {
+              value: amount.toFixed(2),
+              currency: 'RUB',
+            },
+            vat_code: 1, // НДС не облагается (для услуг)
+          },
+        ],
       },
     };
 

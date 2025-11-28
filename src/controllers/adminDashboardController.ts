@@ -297,7 +297,6 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
               role: { in: ['OWNER', 'ADMIN'] },
             },
           },
-          clients: true,
           trainers: true,
           branches: true,
         },
@@ -308,24 +307,75 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
     },
   });
 
-  const tenantsWithStats = tenants.map(tenant => ({
-    id: tenant.id,
-    name: tenant.name,
-    email: tenant.email,
-    subdomain: tenant.subdomain,
-    isActive: tenant.isActive,
-    createdAt: tenant.createdAt,
-    subscription: tenant.subscription ? {
-      planType: tenant.subscription.planType,
-      status: tenant.subscription.status,
-      endDate: tenant.subscription.endDate,
-    } : null,
-    stats: {
-      admins: tenant._count.users,
-      clients: tenant._count.clients,
-      trainers: tenant._count.trainers,
-      branches: tenant._count.branches,
-    },
+  // Получаем количество клиентов для каждого tenant'а
+  // Исключаем клиентов, которые являются родителями (если родители создаются как клиенты)
+  const tenantsWithStats = await Promise.all(tenants.map(async (tenant) => {
+    // Получаем всех родителей tenant'а
+    const parents = await prisma.parent.findMany({
+      where: {
+        tenantId: tenant.id,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        email: true,
+      },
+    });
+
+    // Получаем всех клиентов tenant'а
+    // Исключаем клиентов, которые могут быть родителями
+    // Проверяем по имени, телефону и email, если они совпадают с родителями
+    const allClients = await prisma.client.findMany({
+      where: {
+        tenantId: tenant.id,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        middleName: true,
+        phone: true,
+        email: true,
+      },
+    });
+
+    // Исключаем клиентов, которые совпадают с родителями по телефону или email
+    // (если родители создаются как клиенты)
+    const parentPhones = new Set(parents.map(p => p.phone).filter(Boolean));
+    const parentEmails = new Set(parents.map(p => p.email).filter(Boolean));
+    
+    // Считаем только клиентов, которые не являются родителями
+    const clientsCount = allClients.filter(client => {
+      // Если у клиента есть телефон или email, который совпадает с родителем, исключаем его
+      if (client.phone && parentPhones.has(client.phone)) {
+        return false;
+      }
+      if (client.email && parentEmails.has(client.email)) {
+        return false;
+      }
+      return true;
+    }).length;
+
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      email: tenant.email,
+      subdomain: tenant.subdomain,
+      isActive: tenant.isActive,
+      createdAt: tenant.createdAt,
+      subscription: tenant.subscription ? {
+        planType: tenant.subscription.planType,
+        status: tenant.subscription.status,
+        endDate: tenant.subscription.endDate,
+      } : null,
+      stats: {
+        admins: tenant._count.users,
+        clients: clientsCount,
+        trainers: tenant._count.trainers,
+        branches: tenant._count.branches,
+      },
+    };
   }));
 
   res.json({
