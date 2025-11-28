@@ -123,18 +123,24 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
   }
 
   try {
+    console.log('validatePromoCode controller called:', { tenantId: req.tenant?.id, promoCode, planType });
     const planPrice = PLAN_PRICES[planType as PlanType];
+    console.log('Plan price:', planPrice);
     
     // Проверяем, использовал ли пользователь промокод маркетолога
     const hasUsedMarketerPromo = await SubscriptionService.hasUsedMarketerPromoCode(req.tenant.id);
+    console.log('Has used marketer promo:', hasUsedMarketerPromo);
     
     const validatedPromoCode = await SubscriptionService.validatePromoCode(
       req.tenant.id,
       promoCode,
       planPrice
     );
+    console.log('Promo code validated successfully:', validatedPromoCode.code);
+    
     const discountAmount = SubscriptionService.calculateDiscount(validatedPromoCode, planPrice);
     const finalAmount = Math.max(0, planPrice - discountAmount);
+    console.log('Discount calculated:', { discountAmount, finalAmount });
 
     res.json({
       success: true,
@@ -153,6 +159,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
       },
     });
   } catch (error: any) {
+    console.error('Error validating promo code in controller:', error);
     // Проверяем статус использования промокодов для более информативного ответа
     const hasUsedMarketerPromo = await SubscriptionService.hasUsedMarketerPromoCode(req.tenant.id).catch(() => false);
     const hasUsedNonMarketerPromo = await SubscriptionService.hasUsedNonMarketerPromoCode(req.tenant.id).catch(() => false);

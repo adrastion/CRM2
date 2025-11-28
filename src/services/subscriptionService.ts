@@ -132,6 +132,8 @@ export class SubscriptionService {
    * Валидация промокода для подписки
    */
   static async validatePromoCode(tenantId: string, promoCode: string, planPrice: number) {
+    console.log('Validating promo code:', { tenantId, promoCode: promoCode.toUpperCase(), planPrice });
+    
     const code = await prisma.promoCode.findFirst({
       where: {
         code: promoCode.toUpperCase(),
@@ -148,17 +150,22 @@ export class SubscriptionService {
       },
     });
 
+    console.log('Promo code found:', code ? { id: code.id, code: code.code, usageLimit: code.usageLimit, usedCount: code.usedCount } : 'NOT FOUND');
+
     if (!code) {
+      console.log('Promo code not found or inactive');
       throw new Error('Промокод не найден или неактивен');
     }
 
     // Проверка срока действия
     const now = new Date();
     if (new Date(code.validFrom) > now) {
+      console.log('Promo code not yet valid:', { validFrom: code.validFrom, now });
       throw new Error('Промокод еще не действителен');
     }
 
     if (code.validUntil && new Date(code.validUntil) < now) {
+      console.log('Promo code expired:', { validUntil: code.validUntil, now });
       throw new Error('Промокод истек');
     }
 
@@ -171,10 +178,13 @@ export class SubscriptionService {
       },
     });
     
+    console.log('Promo code usage check:', { usageLimit: code.usageLimit, actualUsageCount, usedCount: code.usedCount });
+    
     // Проверяем, не превысит ли использование лимит (учитываем, что будет создана новая запись)
     // Если usageLimit = 1, то можно использовать 1 раз (actualUsageCount должен быть 0)
     // Если actualUsageCount уже равен usageLimit, то промокод исчерпан
     if (code.usageLimit !== null && actualUsageCount >= code.usageLimit) {
+      console.log('Promo code limit exceeded:', { usageLimit: code.usageLimit, actualUsageCount });
       throw new Error('Промокод исчерпан');
     }
 
@@ -185,17 +195,21 @@ export class SubscriptionService {
 
     // Проверка использования промокодов маркетолога
     const hasUsedMarketerPromo = await this.hasUsedMarketerPromoCode(tenantId);
+    console.log('Marketer promo check:', { hasUsedMarketerPromo, codeMarketerId: code.marketerId });
     
     if (code.marketerId) {
       // Если это промокод маркетолога и уже был использован промокод маркетолога
       if (hasUsedMarketerPromo) {
+        console.log('Marketer promo already used');
         throw new Error('Вы уже использовали стартовый промокод маркетолога. Этот промокод недоступен.');
       }
     } else {
       // Если это промокод без маркетолога
       const hasUsedNonMarketerPromo = await this.hasUsedNonMarketerPromoCode(tenantId);
+      console.log('Non-marketer promo check:', { hasUsedNonMarketerPromo });
       
       if (hasUsedNonMarketerPromo) {
+        console.log('Non-marketer promo already used');
         throw new Error('Вы уже использовали промокод без маркетолога. Доступен только один такой промокод.');
       }
       
@@ -203,6 +217,7 @@ export class SubscriptionService {
       // (это уже проверено выше - если hasUsedNonMarketerPromo = false, то можно использовать)
     }
 
+    console.log('Promo code validation successful:', { code: code.code, discountType: code.discountType, discountValue: code.discountValue });
     return code;
   }
 
