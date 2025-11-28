@@ -561,6 +561,8 @@ export class SubscriptionService {
               currency: 'RUB',
             },
             vat_code: 1, // НДС не облагается (для услуг)
+            payment_subject: 'service', // Предмет расчета: service (услуга)
+            payment_mode: 'full_prepayment', // Способ расчета: full_prepayment (полная предоплата)
           },
         ],
       },
