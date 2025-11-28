@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 import {
   getGroups,
   getGroupById,
@@ -18,7 +19,7 @@ router.use(authenticate);
 // Group management routes
 router.get('/', getGroups);
 router.get('/:id', getGroupById);
-router.post('/', requireOwnerAdminOrTrainer, createGroup);
+router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('groups'), createGroup);
 router.put('/:id', requireOwnerAdminOrTrainer, updateGroup);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteGroup);
 

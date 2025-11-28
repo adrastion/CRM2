@@ -48,6 +48,7 @@ model Tenant {
   standards Standard[]
   transactions Transaction[]
   subscription Subscription?
+  referredBy  TenantMarketer? // Связь с маркетологом, который привел этого tenant
 
   @@map("tenants")
 }
@@ -504,21 +505,24 @@ model TrainerBranch {
 // ==================== MARKETERS AND MEDIA PARTNERS ====================
 
 model Marketer {
-  id          String   @id @default(cuid())
-  name        String
-  email       String
-  password    String   // Password for marketer login
-  phone       String?
-  type        String   // 'MARKETER' or 'MEDIA_PARTNER'
-  isActive    Boolean  @default(true)
-  tenantId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String
+  email             String
+  password          String   // Password for marketer login
+  phone             String?
+  type              String   // 'MARKETER' or 'MEDIA_PARTNER'
+  balance           Decimal  @default(0) // Баланс маркетолога (комиссия от рефералов)
+  commissionPercentage Decimal @default(10) // Процент комиссии от покупок рефералов (по умолчанию 10%)
+  isActive          Boolean  @default(true)
+  tenantId          String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  promoCodes  PromoCode[]
-  referralLinks ReferralLink[]
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promoCodes        PromoCode[]
+  referralLinks     ReferralLink[]
+  referredTenants   TenantMarketer[] // Tenant'ы, привлеченные этим маркетологом
 
   @@map("marketers")
 }
@@ -574,19 +578,21 @@ model PromoCode {
 // ==================== PROMO CODE USAGES ====================
 
 model PromoCodeUsage {
-  id            String   @id @default(cuid())
-  promoCodeId   String
-  clientId      String?
-  paymentId     String?  @unique
-  usedAt        DateTime @default(now())
-  discountAmount Decimal
-  tenantId      String
+  id                  String   @id @default(cuid())
+  promoCodeId         String
+  clientId            String?
+  paymentId           String?  @unique
+  subscriptionPaymentId String? @unique
+  usedAt              DateTime @default(now())
+  discountAmount      Decimal
+  tenantId            String
 
   // Relations
-  promoCode     PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
-  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  payment       Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promoCode           PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  client              Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  payment             Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  subscriptionPayment SubscriptionPayment? @relation(fields: [subscriptionPaymentId], references: [id], onDelete: SetNull)
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("promo_code_usages")
 }
@@ -640,6 +646,7 @@ model Subscription {
   id              String   @id @default(cuid())
   tenantId        String   @unique
   planType        String   // FREE, STARTER, BUSINESS, PROFESSIONAL, ENTERPRISE
+  nextPlanType    String?  // Следующий план (для отложенного downgrade)
   status          String   // active, expired, cancelled, suspended
   startDate       DateTime @default(now())
   endDate         DateTime?
@@ -672,6 +679,24 @@ model SubscriptionPayment {
 
   // Relations
   subscription        Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  promoCodeUsage      PromoCodeUsage?
 
   @@map("subscription_payments")
+}
+
+// ==================== TENANT MARKETER (СВЯЗЬ TENANT С МАРКЕТОЛОГОМ) ====================
+
+model TenantMarketer {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique // Один tenant может быть привязан только к одному маркетологу
+  marketerId        String
+  commissionPercentage Decimal @default(10) // Процент комиссии для этого конкретного tenant
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marketer          Marketer @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_marketers")
 }

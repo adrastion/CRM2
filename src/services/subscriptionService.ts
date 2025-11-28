@@ -61,7 +61,259 @@ export const PLAN_PRICES: Record<PlanType, number> = {
   ENTERPRISE: 0, // По запросу
 };
 
+// Экспортируем для использования в контроллерах
+export { PLAN_PRICES };
+
 export class SubscriptionService {
+  /**
+   * Проверка, использовал ли tenant промокод маркетолога
+   */
+  static async hasUsedMarketerPromoCode(tenantId: string): Promise<boolean> {
+    // Проверяем использование промокодов маркетолога через subscription payments
+    const subscriptionPaymentUsage = await prisma.promoCodeUsage.findFirst({
+      where: {
+        tenantId,
+        promoCode: {
+          marketerId: { not: null },
+        },
+        subscriptionPayment: {
+          status: 'succeeded',
+        },
+      },
+    });
+
+    // Проверяем использование промокодов маркетолога через обычные payments
+    const paymentUsage = await prisma.promoCodeUsage.findFirst({
+      where: {
+        tenantId,
+        promoCode: {
+          marketerId: { not: null },
+        },
+        payment: {
+          status: 'paid',
+        },
+      },
+    });
+
+    return !!(subscriptionPaymentUsage || paymentUsage);
+  }
+
+  /**
+   * Проверка, использовал ли tenant промокод без маркетолога
+   */
+  static async hasUsedNonMarketerPromoCode(tenantId: string): Promise<boolean> {
+    // Проверяем использование промокодов без маркетолога через subscription payments
+    const subscriptionPaymentUsage = await prisma.promoCodeUsage.findFirst({
+      where: {
+        tenantId,
+        promoCode: {
+          marketerId: null,
+        },
+        subscriptionPayment: {
+          status: 'succeeded',
+        },
+      },
+    });
+
+    // Проверяем использование промокодов без маркетолога через обычные payments
+    const paymentUsage = await prisma.promoCodeUsage.findFirst({
+      where: {
+        tenantId,
+        promoCode: {
+          marketerId: null,
+        },
+        payment: {
+          status: 'paid',
+        },
+      },
+    });
+
+    return !!(subscriptionPaymentUsage || paymentUsage);
+  }
+
+  /**
+   * Валидация промокода для подписки
+   */
+  static async validatePromoCode(tenantId: string, promoCode: string, planPrice: number) {
+    const code = await prisma.promoCode.findFirst({
+      where: {
+        code: promoCode.toUpperCase(),
+        tenantId,
+        isActive: true,
+      },
+      include: {
+        marketer: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!code) {
+      throw new Error('Промокод не найден или неактивен');
+    }
+
+    // Проверка срока действия
+    const now = new Date();
+    if (new Date(code.validFrom) > now) {
+      throw new Error('Промокод еще не действителен');
+    }
+
+    if (code.validUntil && new Date(code.validUntil) < now) {
+      throw new Error('Промокод истек');
+    }
+
+    // Проверка лимита использования
+    if (code.usageLimit && code.usedCount >= code.usageLimit) {
+      throw new Error('Промокод исчерпан');
+    }
+
+    // Проверка минимальной суммы покупки
+    if (code.minPurchase && planPrice < Number(code.minPurchase)) {
+      throw new Error(`Минимальная сумма покупки для этого промокода: ${code.minPurchase} руб.`);
+    }
+
+    // Проверка использования промокодов маркетолога
+    const hasUsedMarketerPromo = await this.hasUsedMarketerPromoCode(tenantId);
+    
+    if (code.marketerId) {
+      // Если это промокод маркетолога и уже был использован промокод маркетолога
+      if (hasUsedMarketerPromo) {
+        throw new Error('Вы уже использовали стартовый промокод маркетолога. Этот промокод недоступен.');
+      }
+    } else {
+      // Если это промокод без маркетолога
+      const hasUsedNonMarketerPromo = await this.hasUsedNonMarketerPromoCode(tenantId);
+      
+      if (hasUsedNonMarketerPromo) {
+        throw new Error('Вы уже использовали промокод без маркетолога. Доступен только один такой промокод.');
+      }
+      
+      // Если использован промокод маркетолога, разрешаем использовать промокод без маркетолога
+      // (это уже проверено выше - если hasUsedNonMarketerPromo = false, то можно использовать)
+    }
+
+    return code;
+  }
+
+  /**
+   * Привязка tenant к маркетологу при использовании промокода
+   */
+  static async linkTenantToMarketer(tenantId: string, marketerId: string) {
+    // Проверяем, не привязан ли уже tenant к маркетологу
+    const existingLink = await prisma.tenantMarketer.findUnique({
+      where: { tenantId },
+    });
+
+    if (existingLink) {
+      console.log('Tenant already linked to marketer:', {
+        tenantId,
+        existingMarketerId: existingLink.marketerId,
+        newMarketerId: marketerId,
+      });
+      return existingLink;
+    }
+
+    // Получаем маркетолога для получения процента комиссии
+    const marketer = await prisma.marketer.findUnique({
+      where: { id: marketerId },
+    });
+
+    if (!marketer) {
+      throw new Error('Marketer not found');
+    }
+
+    // Создаем связь tenant -> marketer
+    const tenantMarketer = await prisma.tenantMarketer.create({
+      data: {
+        tenantId,
+        marketerId,
+        commissionPercentage: marketer.commissionPercentage,
+      },
+    });
+
+    console.log('Tenant linked to marketer:', {
+      tenantId,
+      marketerId,
+      commissionPercentage: marketer.commissionPercentage,
+    });
+
+    return tenantMarketer;
+  }
+
+  /**
+   * Начисление комиссии маркетологу за покупку подписки
+   */
+  static async addCommissionToMarketer(tenantId: string, paymentAmount: number) {
+    // Находим связь tenant -> marketer
+    const tenantMarketer = await prisma.tenantMarketer.findUnique({
+      where: { tenantId },
+      include: {
+        marketer: true,
+      },
+    });
+
+    if (!tenantMarketer) {
+      console.log('No marketer linked to tenant:', tenantId);
+      return null;
+    }
+
+    // Рассчитываем комиссию (используем процент из связи, если указан, иначе из маркетолога)
+    const commissionPercentage = Number(tenantMarketer.commissionPercentage || tenantMarketer.marketer.commissionPercentage);
+    const commissionAmount = (paymentAmount * commissionPercentage) / 100;
+
+    // Начисляем комиссию маркетологу
+    const updatedMarketer = await prisma.marketer.update({
+      where: { id: tenantMarketer.marketerId },
+      data: {
+        balance: {
+          increment: commissionAmount,
+        },
+      },
+    });
+
+    console.log('Commission added to marketer:', {
+      marketerId: tenantMarketer.marketerId,
+      tenantId,
+      paymentAmount,
+      commissionPercentage,
+      commissionAmount,
+      newBalance: Number(updatedMarketer.balance),
+    });
+
+    return {
+      marketerId: tenantMarketer.marketerId,
+      commissionAmount,
+      commissionPercentage,
+      newBalance: Number(updatedMarketer.balance),
+    };
+  }
+
+  /**
+   * Расчет скидки по промокоду
+   */
+  static calculateDiscount(promoCode: any, planPrice: number): number {
+    let discount = 0;
+
+    if (promoCode.discountType === 'PERCENTAGE') {
+      discount = (planPrice * Number(promoCode.discountValue)) / 100;
+      // Применяем максимальную скидку, если указана
+      if (promoCode.maxDiscount && discount > Number(promoCode.maxDiscount)) {
+        discount = Number(promoCode.maxDiscount);
+      }
+    } else if (promoCode.discountType === 'FIXED') {
+      discount = Number(promoCode.discountValue);
+      // Скидка не может быть больше стоимости
+      if (discount > planPrice) {
+        discount = planPrice;
+      }
+    }
+
+    return Math.round(discount * 100) / 100; // Округляем до 2 знаков
+  }
+
   /**
    * Получение Basic Auth заголовка для YooKassa API
    */
@@ -104,9 +356,10 @@ export class SubscriptionService {
 
   /**
    * Получение текущей подписки тенанта
+   * Проверяет и применяет отложенные изменения тарифа
    */
   static async getSubscription(tenantId: string) {
-    const subscription = await prisma.subscription.findUnique({
+    let subscription = await prisma.subscription.findUnique({
       where: { tenantId },
       include: {
         payments: {
@@ -118,16 +371,34 @@ export class SubscriptionService {
 
     if (!subscription) {
       // Создаем бесплатную подписку по умолчанию
-      return this.getOrCreateSubscription(tenantId, 'FREE');
+      subscription = await this.getOrCreateSubscription(tenantId, 'FREE');
     }
 
-    // Проверка истечения подписки
+    // Применяем отложенное изменение тарифа, если нужно
+    subscription = await this.applyPendingPlanChange(tenantId);
+
+    // Проверка истечения подписки и применение отложенного изменения тарифа
     if (subscription.status === 'active' && subscription.endDate && subscription.endDate < new Date()) {
-      await prisma.subscription.update({
-        where: { id: subscription.id },
-        data: { status: 'expired' },
-      });
-      subscription.status = 'expired';
+      // Если есть отложенное изменение тарифа, применяем его
+      if (subscription.nextPlanType) {
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            planType: subscription.nextPlanType,
+            nextPlanType: null,
+            status: 'expired',
+          },
+        });
+        subscription.planType = subscription.nextPlanType;
+        subscription.nextPlanType = null;
+        subscription.status = 'expired';
+      } else {
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: { status: 'expired' },
+        });
+        subscription.status = 'expired';
+      }
     }
 
     return subscription;
@@ -139,22 +410,91 @@ export class SubscriptionService {
   static async createPayment(
     tenantId: string,
     planType: PlanType,
-    returnUrl: string
+    returnUrl: string,
+    promoCode?: string
   ) {
     const subscription = await this.getOrCreateSubscription(tenantId);
 
-    const amount = PLAN_PRICES[planType];
+    let amount = PLAN_PRICES[planType];
     if (amount === 0 && planType !== 'FREE') {
       throw new Error('Enterprise plan requires manual setup');
     }
 
-    if (planType === 'FREE') {
-      // Для бесплатного тарифа сразу активируем
-      await this.activateSubscription(tenantId, planType);
+    let validatedPromoCode = null;
+    let discountAmount = 0;
+
+    // Валидация и применение промокода, если указан
+    if (promoCode) {
+      try {
+        validatedPromoCode = await this.validatePromoCode(tenantId, promoCode, amount);
+        discountAmount = this.calculateDiscount(validatedPromoCode, amount);
+        amount = Math.max(0, amount - discountAmount); // Итоговая сумма не может быть отрицательной
+      } catch (error: any) {
+        throw new Error(`Ошибка применения промокода: ${error.message}`);
+      }
+    }
+
+    // Если итоговая стоимость 0 (бесплатный тариф или промокод на 100%), сразу активируем подписку
+    if (amount === 0) {
+      // Активируем подписку
+      const activatedSubscription = await this.activateSubscription(tenantId, planType, subscription.id);
+
+      // Сохраняем использование промокода, если был применен
+      if (validatedPromoCode) {
+        // Создаем запись о платеже для отслеживания использования промокода
+        const subscriptionPayment = await prisma.subscriptionPayment.create({
+          data: {
+            subscriptionId: subscription.id,
+            amount: PLAN_PRICES[planType], // Оригинальная сумма
+            currency: 'RUB',
+            status: 'succeeded',
+            paymentMethod: 'promo_code',
+            paidAt: new Date(),
+          },
+        });
+
+        // Сохраняем использование промокода
+        await prisma.promoCodeUsage.create({
+          data: {
+            promoCodeId: validatedPromoCode.id,
+            subscriptionPaymentId: subscriptionPayment.id,
+            discountAmount: discountAmount,
+            tenantId: tenantId,
+          },
+        });
+
+        // Увеличиваем счетчик использования промокода (для бесплатных подписок через промокод)
+        await prisma.promoCode.update({
+          where: { id: validatedPromoCode.id },
+          data: { usedCount: { increment: 1 } },
+        });
+
+        // Если это промокод маркетолога, создаем связь tenant -> marketer
+        if (validatedPromoCode.marketerId) {
+          await this.linkTenantToMarketer(tenantId, validatedPromoCode.marketerId);
+          
+          // Начисляем комиссию маркетологу за бесплатную подписку через промокод
+          const originalAmount = PLAN_PRICES[planType];
+          await this.addCommissionToMarketer(tenantId, originalAmount);
+        }
+        
+        console.log('Promo code applied for free subscription:', {
+          promoCodeId: validatedPromoCode.id,
+          code: validatedPromoCode.code,
+          discountAmount,
+          subscriptionId: subscription.id,
+          marketerId: validatedPromoCode.marketerId
+        });
+      }
+
       return {
         paymentId: null,
         paymentUrl: null,
         status: 'succeeded',
+        promoCodeApplied: !!validatedPromoCode,
+        discountAmount: discountAmount,
+        originalAmount: PLAN_PRICES[planType],
+        finalAmount: 0,
       };
     }
 
@@ -168,11 +508,14 @@ export class SubscriptionService {
         type: 'redirect',
         return_url: returnUrl,
       },
-      description: `Подписка ${planType} для тенанта ${tenantId}`,
+      description: `Подписка ${planType} для тенанта ${tenantId}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
       metadata: {
         tenantId,
         planType,
         subscriptionId: subscription.id,
+        promoCodeId: validatedPromoCode?.id || null,
+        originalAmount: PLAN_PRICES[planType].toString(),
+        discountAmount: discountAmount.toString(),
       },
     };
 
@@ -197,7 +540,7 @@ export class SubscriptionService {
     const subscriptionPayment = await prisma.subscriptionPayment.create({
       data: {
         subscriptionId: subscription.id,
-        amount: amount,
+        amount: amount, // Итоговая сумма после скидки
         currency: 'RUB',
         status: 'pending',
         paymentMethod: 'yookassa',
@@ -207,10 +550,32 @@ export class SubscriptionService {
       },
     });
 
+    // Сохраняем использование промокода, если был применен
+    // НЕ увеличиваем счетчик использования здесь - это будет сделано только после успешной оплаты через webhook
+    if (validatedPromoCode) {
+      await prisma.promoCodeUsage.create({
+        data: {
+          promoCodeId: validatedPromoCode.id,
+          subscriptionPaymentId: subscriptionPayment.id,
+          discountAmount: discountAmount,
+          tenantId: tenantId,
+        },
+      });
+
+      // Если это промокод маркетолога, создаем связь tenant -> marketer
+      if (validatedPromoCode.marketerId) {
+        await this.linkTenantToMarketer(tenantId, validatedPromoCode.marketerId);
+      }
+    }
+
     return {
       paymentId: subscriptionPayment.id,
       paymentUrl: payment.confirmation?.confirmation_url || null,
       status: 'pending',
+      promoCodeApplied: !!validatedPromoCode,
+      discountAmount: discountAmount,
+      originalAmount: PLAN_PRICES[planType],
+      finalAmount: amount,
     };
   }
 
@@ -270,7 +635,14 @@ export class SubscriptionService {
 
     const subscriptionPayment = await prisma.subscriptionPayment.findFirst({
       where: { yookassaPaymentId: paymentId },
-      include: { subscription: true },
+      include: { 
+        subscription: true,
+        promoCodeUsage: {
+          include: {
+            promoCode: true
+          }
+        }
+      },
     });
 
     if (!subscriptionPayment) {
@@ -336,6 +708,20 @@ export class SubscriptionService {
         paymentMetadata: payment.metadata
       });
       
+      // Увеличиваем счетчик использования промокода, если он был применен
+      if (subscriptionPayment.promoCodeUsage) {
+        const promoCode = subscriptionPayment.promoCodeUsage.promoCode;
+        await prisma.promoCode.update({
+          where: { id: promoCode.id },
+          data: { usedCount: { increment: 1 } },
+        });
+        console.log('Promo code usage count incremented:', {
+          promoCodeId: promoCode.id,
+          code: promoCode.code,
+          newCount: promoCode.usedCount + 1
+        });
+      }
+      
       if (planType && tenantId) {
         try {
           const updatedSubscription = await this.activateSubscription(
@@ -344,6 +730,14 @@ export class SubscriptionService {
             subscriptionPayment.subscriptionId
           );
           console.log('Subscription activated successfully:', updatedSubscription);
+
+          // Начисляем комиссию маркетологу за успешную оплату подписки
+          // Используем оригинальную сумму из metadata или сумму платежа
+          const originalAmount = payment.metadata?.originalAmount 
+            ? parseFloat(payment.metadata.originalAmount) 
+            : Number(subscriptionPayment.amount);
+          
+          await this.addCommissionToMarketer(tenantId, originalAmount);
         } catch (error) {
           console.error('Error activating subscription:', error);
           throw error;
@@ -385,6 +779,7 @@ export class SubscriptionService {
           where: { id: subscriptionId },
           data: {
             planType,
+            nextPlanType: null, // Очищаем отложенное изменение при активации нового тарифа
             status: 'active',
             startDate,
             endDate,
@@ -396,6 +791,7 @@ export class SubscriptionService {
           create: {
             tenantId,
             planType,
+            nextPlanType: null,
             status: 'active',
             startDate,
             endDate,
@@ -403,6 +799,7 @@ export class SubscriptionService {
           },
           update: {
             planType,
+            nextPlanType: null, // Очищаем отложенное изменение при активации нового тарифа
             status: 'active',
             startDate,
             endDate,
@@ -424,6 +821,7 @@ export class SubscriptionService {
 
   /**
    * Проверка лимитов подписки
+   * Возвращает true, если можно создать ресурс, false - если лимит превышен
    */
   static async checkLimit(tenantId: string, resource: keyof PlanLimits): Promise<boolean> {
     const subscription = await this.getSubscription(tenantId);
@@ -432,6 +830,7 @@ export class SubscriptionService {
       return false;
     }
 
+    // Используем текущий план (не nextPlanType), так как лимиты применяются к текущему тарифу
     const limits = PLAN_LIMITS[subscription.planType as PlanType];
     const limit = limits[resource];
 
@@ -491,6 +890,8 @@ export class SubscriptionService {
 
   /**
    * Обновление плана подписки
+   * При переходе на более дорогой план - активируется сразу
+   * При переходе на более дешевый план - активируется после окончания текущего периода
    */
   static async updatePlan(tenantId: string, newPlanType: PlanType) {
     const subscription = await this.getSubscription(tenantId);
@@ -501,17 +902,65 @@ export class SubscriptionService {
 
     if (newPrice > currentPrice) {
       // Upgrade - активируем сразу
+      console.log('Upgrading subscription immediately:', {
+        tenantId,
+        from: subscription.planType,
+        to: newPlanType
+      });
       return this.activateSubscription(tenantId, newPlanType, subscription.id);
-    } else {
-      // Downgrade - устанавливаем дату изменения на конец текущего периода
+    } else if (newPrice < currentPrice) {
+      // Downgrade - устанавливаем nextPlanType, план изменится после окончания текущего периода
+      console.log('Scheduling subscription downgrade:', {
+        tenantId,
+        from: subscription.planType,
+        to: newPlanType,
+        endDate: subscription.endDate
+      });
       return prisma.subscription.update({
         where: { id: subscription.id },
         data: {
-          planType: newPlanType,
+          nextPlanType: newPlanType,
           // План изменится в конце текущего периода
         },
       });
+    } else {
+      // Тот же план - просто обновляем
+      return subscription;
     }
+  }
+
+  /**
+   * Применение отложенного изменения тарифа (если есть nextPlanType)
+   * ВАЖНО: Этот метод не должен вызывать getSubscription, чтобы избежать рекурсии
+   */
+  static async applyPendingPlanChange(tenantId: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { tenantId },
+    });
+    
+    if (!subscription) {
+      return null;
+    }
+    
+    // Если есть отложенное изменение тарифа и текущий период истек
+    if (subscription.nextPlanType && subscription.endDate && new Date() >= new Date(subscription.endDate)) {
+      console.log('Applying pending plan change:', {
+        tenantId,
+        from: subscription.planType,
+        to: subscription.nextPlanType,
+        endDate: subscription.endDate
+      });
+      
+      return await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          planType: subscription.nextPlanType,
+          nextPlanType: null,
+        },
+      });
+    }
+    
+    return subscription;
   }
 }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 import {
   getBranches,
   getBranchById,
@@ -16,7 +17,7 @@ router.use(authenticate);
 // Branch management routes
 router.get('/', getBranches);
 router.get('/:id', getBranchById);
-router.post('/', requireOwnerAdminOrTrainer, createBranch);
+router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('branches'), createBranch);
 router.put('/:id', requireOwnerAdminOrTrainer, updateBranch);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteBranch);
 

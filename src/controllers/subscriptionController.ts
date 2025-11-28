@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
-import { SubscriptionService, PlanType } from '../services/subscriptionService';
+import { SubscriptionService, PlanType, PLAN_PRICES } from '../services/subscriptionService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 /**
@@ -39,7 +39,7 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
     return;
   }
 
-  const { planType, returnUrl } = req.body;
+  const { planType, returnUrl, promoCode } = req.body;
 
   if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
     res.status(400).json({
@@ -56,13 +56,115 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
   const payment = await SubscriptionService.createPayment(
     req.tenant.id,
     planType as PlanType,
-    returnUrl || defaultReturnUrl
+    returnUrl || defaultReturnUrl,
+    promoCode
   );
 
   res.json({
     success: true,
     data: payment,
   });
+});
+
+/**
+ * Получить статус использования промокодов для текущего tenant
+ */
+export const getPromoCodeStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.tenant?.id) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant ID is required',
+    });
+    return;
+  }
+
+  const hasUsedMarketerPromo = await SubscriptionService.hasUsedMarketerPromoCode(req.tenant.id);
+  const hasUsedNonMarketerPromo = await SubscriptionService.hasUsedNonMarketerPromoCode(req.tenant.id);
+
+  res.json({
+    success: true,
+    data: {
+      hasUsedMarketerPromo,
+      hasUsedNonMarketerPromo,
+      canUseMarketerPromo: !hasUsedMarketerPromo,
+      canUseNonMarketerPromo: !hasUsedNonMarketerPromo,
+    },
+  });
+});
+
+/**
+ * Валидация промокода для подписки
+ */
+export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.tenant?.id) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant ID is required',
+    });
+    return;
+  }
+
+  const { promoCode, planType } = req.body;
+
+  if (!promoCode) {
+    res.status(400).json({
+      success: false,
+      error: 'Promo code is required',
+    });
+    return;
+  }
+
+  if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid plan type',
+    });
+    return;
+  }
+
+  try {
+    const planPrice = PLAN_PRICES[planType as PlanType];
+    
+    // Проверяем, использовал ли пользователь промокод маркетолога
+    const hasUsedMarketerPromo = await SubscriptionService.hasUsedMarketerPromoCode(req.tenant.id);
+    
+    const validatedPromoCode = await SubscriptionService.validatePromoCode(
+      req.tenant.id,
+      promoCode,
+      planPrice
+    );
+    const discountAmount = SubscriptionService.calculateDiscount(validatedPromoCode, planPrice);
+    const finalAmount = Math.max(0, planPrice - discountAmount);
+
+    res.json({
+      success: true,
+      data: {
+        promoCode: validatedPromoCode.code,
+        discountAmount,
+        originalAmount: planPrice,
+        finalAmount,
+        discountType: validatedPromoCode.discountType,
+        discountValue: Number(validatedPromoCode.discountValue),
+        hasUsedMarketerPromo, // Информация для фронтенда
+        isMarketerPromo: !!validatedPromoCode.marketerId,
+        warning: hasUsedMarketerPromo && !validatedPromoCode.marketerId 
+          ? 'Вы уже использовали стартовый промокод маркетолога. Этот промокод можно использовать только один раз.'
+          : null,
+      },
+    });
+  } catch (error: any) {
+    // Проверяем статус использования промокодов для более информативного ответа
+    const hasUsedMarketerPromo = await SubscriptionService.hasUsedMarketerPromoCode(req.tenant.id).catch(() => false);
+    const hasUsedNonMarketerPromo = await SubscriptionService.hasUsedNonMarketerPromoCode(req.tenant.id).catch(() => false);
+    
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Invalid promo code',
+      hasUsedMarketerPromo, // Информация для фронтенда
+      hasUsedNonMarketerPromo,
+      canUseNonMarketerPromo: hasUsedMarketerPromo && !hasUsedNonMarketerPromo, // Можно использовать промокод без маркетолога, если использован промокод маркетолога
+    });
+  }
 });
 
 /**

@@ -17,6 +17,7 @@ import {
   upload
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.post('/import/excel', requireOwnerAdminOrTrainer, upload.single('file'), 
 // Client CRUD operations
 router.get('/', validateClientQuery, getClients);
 router.get('/:id', getClient);
-router.post('/', requireOwnerAdminOrTrainer, validateCreateClient, createClient);
+router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('clients'), validateCreateClient, createClient);
 router.put('/:id', requireOwnerAdminOrTrainer, validateUpdateClient, updateClient);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteClient);
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 import {
   getTrainings,
   getTrainingById,
@@ -16,7 +17,7 @@ router.use(authenticate);
 // Training management routes
 router.get('/', getTrainings);
 router.get('/:id', getTrainingById);
-router.post('/', requireOwnerAdminOrTrainer, createTraining);
+router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainings'), createTraining);
 router.put('/:id', requireOwnerAdminOrTrainer, updateTraining);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteTraining);
 

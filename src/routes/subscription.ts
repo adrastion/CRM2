@@ -5,6 +5,8 @@ import {
   handleWebhook,
   updatePlan,
   checkResourceLimit,
+  validatePromoCode,
+  getPromoCodeStatus,
 } from '../controllers/subscriptionController';
 import { authenticate, requireOwner } from '../middleware/auth';
 
@@ -22,6 +24,12 @@ router.get('/', getSubscription);
 
 // Проверить лимит ресурса (доступно всем авторизованным)
 router.get('/check-limit', checkResourceLimit);
+
+// Получить статус использования промокодов (доступно всем авторизованным)
+router.get('/promo-code-status', getPromoCodeStatus);
+
+// Валидация промокода (доступно всем авторизованным)
+router.post('/validate-promo-code', validatePromoCode);
 
 // Создать платеж (только для OWNER)
 router.post('/payment', requireOwner, createPayment);
