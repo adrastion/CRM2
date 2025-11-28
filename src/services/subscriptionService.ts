@@ -163,7 +163,8 @@ export class SubscriptionService {
     }
 
     // Проверка лимита использования
-    if (code.usageLimit && code.usedCount >= code.usageLimit) {
+    // Проверяем, не превысит ли использование лимит (учитываем, что счетчик будет увеличен)
+    if (code.usageLimit && code.usedCount + 1 > code.usageLimit) {
       throw new Error('Промокод исчерпан');
     }
 
