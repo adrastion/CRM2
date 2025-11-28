@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -30,6 +31,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Checkbox,
+  Link,
 } from '@mui/material';
 import { 
   Add, 
@@ -85,6 +87,7 @@ interface TrainingFormData {
 }
 
 const Schedule: React.FC = () => {
+  const navigate = useNavigate();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -1904,7 +1907,23 @@ const Schedule: React.FC = () => {
                       return (
                         <TableRow key={item.client.id}>
                           <TableCell>
-                            {item.client.firstName} {item.client.lastName}
+                            <Link
+                              component="button"
+                              variant="body2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/clients?clientId=${item.client.id}`);
+                              }}
+                              sx={{
+                                cursor: 'pointer',
+                                textDecoration: 'none',
+                                '&:hover': {
+                                  textDecoration: 'underline',
+                                },
+                              }}
+                            >
+                              {item.client.firstName} {item.client.lastName}
+                            </Link>
                           </TableCell>
                           <TableCell>{item.client.phone || '-'}</TableCell>
                           <TableCell align="center">

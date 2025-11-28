@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { validateClientForm } from '../utils/validation';
 import {
   Box,
@@ -41,6 +42,7 @@ import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
 
 const Clients: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -170,7 +172,49 @@ const Clients: React.FC = () => {
       isMounted = false;
       abortController.abort();
     };
-  }, []);
+  }, [filterBranchId, filterCategoryId, filterGroupId, sortBy, sortOrder]);
+
+  // Handle clientId from URL params
+  useEffect(() => {
+    const clientIdFromUrl = searchParams.get('clientId');
+    if (clientIdFromUrl && clients.length > 0 && !editDialog) {
+      const client = clients.find(c => c.id === clientIdFromUrl);
+      if (client) {
+        // Use the same logic as handleEditClient
+        setEditingClient(client);
+        setFormData({
+          firstName: client.firstName || '',
+          lastName: client.lastName || '',
+          middleName: client.middleName || '',
+          email: client.email || '',
+          phone: client.phone || '',
+          dateOfBirth: client.dateOfBirth ? client.dateOfBirth.split('T')[0] : '',
+          gender: client.gender || '',
+          address: client.address || '',
+          birthCertificateNumber: client.birthCertificateNumber || '',
+          medicalCertificateNumber: client.medicalCertificateNumber || '',
+          schoolOrKindergarten: client.schoolOrKindergarten || '',
+          categoryId: (client as any).categoryId || '',
+          groupIds: client.groupMemberships
+            ?.filter((gm: any) => gm.isActive)
+            .map((gm: any) => gm.group?.id)
+            .filter(Boolean) || [],
+          parents: client.parents?.map(p => ({
+            fullName: p.fullName || '',
+            phone: p.phone || '',
+            email: p.email || '',
+            workplace: p.workplace || '',
+            workplaceContact: p.workplaceContact || '',
+          })) || [],
+        });
+        setEditDialog(true);
+        // Remove clientId from URL
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.delete('clientId');
+        setSearchParams(newSearchParams, { replace: true });
+      }
+    }
+  }, [clients, searchParams, editDialog, setSearchParams]);
 
   const handleCreateClient = async () => {
     // Validate form

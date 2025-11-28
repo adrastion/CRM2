@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -28,12 +29,14 @@ import {
   MenuItem,
   Checkbox,
   ListItemText,
+  Link,
 } from '@mui/material';
 import { Add, Edit, Delete, Visibility, People } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Group, Branch, Trainer, Client } from '../types';
 
 const Groups: React.FC = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -846,7 +849,29 @@ const Groups: React.FC = () => {
                       .map((membership) => (
                         <TableRow key={membership.id}>
                           <TableCell>
-                            {membership.client?.firstName} {membership.client?.lastName}
+                            {membership.client ? (
+                              <Link
+                                component="button"
+                                variant="body2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (membership.client) {
+                                    navigate(`/clients?clientId=${membership.client.id}`);
+                                  }
+                                }}
+                                sx={{
+                                  cursor: 'pointer',
+                                  textDecoration: 'none',
+                                  '&:hover': {
+                                    textDecoration: 'underline',
+                                  },
+                                }}
+                              >
+                                {membership.client.firstName} {membership.client.lastName}
+                              </Link>
+                            ) : (
+                              '-'
+                            )}
                           </TableCell>
                           <TableCell>{membership.client?.email || '-'}</TableCell>
                           <TableCell>{membership.client?.phone || '-'}</TableCell>

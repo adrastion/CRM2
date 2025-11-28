@@ -260,12 +260,12 @@ const Dashboard: React.FC = () => {
     <Box>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
-            Добро пожаловать, {user?.firstName}!
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            {tenant?.name} - Обзор панели управления
-          </Typography>
+        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
+          Добро пожаловать, {user?.firstName}!
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary">
+          {tenant?.name} - Обзор панели управления
+        </Typography>
         </Box>
         {user?.role === 'OWNER' && (
           <Button
