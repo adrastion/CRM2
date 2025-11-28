@@ -5,6 +5,7 @@ import { CssBaseline, Box, CircularProgress } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthContext';
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
+import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
 import AppLayout from './components/Layout/AppLayout';
 
 // Lazy load pages for better performance
@@ -35,6 +36,7 @@ const MarketerLogin = lazy(() => import('./pages/MarketerLogin'));
 const PromoCodeAdminLogin = lazy(() => import('./pages/PromoCodeAdminLogin'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -370,13 +372,21 @@ const AppContent: React.FC = () => {
           }
         />
         <Route
+          path="/super-admin/login"
+          element={
+            <SuperAdminLoginRoute>
+              <SuperAdminLogin />
+            </SuperAdminLoginRoute>
+          }
+        />
+        <Route
           path="/admin/dashboard"
           element={
-            <ProtectedRoute>
+            <ProtectedSuperAdminRoute>
               <AppLayout>
                 <AdminDashboard />
               </AppLayout>
-            </ProtectedRoute>
+            </ProtectedSuperAdminRoute>
           }
         />
         <Route
@@ -443,7 +453,9 @@ const App: React.FC = () => {
       <AuthProvider>
         <MarketerAuthProvider>
           <PromoCodeAdminAuthProvider>
-            <AppContent />
+            <SuperAdminAuthProvider>
+              <AppContent />
+            </SuperAdminAuthProvider>
           </PromoCodeAdminAuthProvider>
         </MarketerAuthProvider>
       </AuthProvider>

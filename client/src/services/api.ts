@@ -16,12 +16,15 @@ class ApiService {
     // Request interceptor to add auth token
     this.api.interceptors.request.use(
       (config) => {
-        // Check for promo code admin token first (for promo codes routes)
+        // Check for super admin token first (for admin dashboard routes)
+        const superAdminToken = localStorage.getItem('superAdminToken');
         const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
         const marketerToken = localStorage.getItem('marketerToken');
         const regularToken = localStorage.getItem('token');
         
-        if (promoCodeAdminToken) {
+        if (superAdminToken) {
+          config.headers.Authorization = `Bearer ${superAdminToken}`;
+        } else if (promoCodeAdminToken) {
           config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
         } else if (marketerToken) {
           config.headers.Authorization = `Bearer ${marketerToken}`;
@@ -824,6 +827,21 @@ class ApiService {
   async getTenantDetails(tenantId: string): Promise<any> {
     const response = await this.api.get<ApiResponse>(`/admin-dashboard/tenants/${tenantId}`);
     return response.data.data;
+  }
+
+  // Super Admin Auth methods
+  async superAdminLogin(data: { email: string; password: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/super-admin/auth/login', data);
+    return response.data.data;
+  }
+
+  // Set token manually (for super admin)
+  setToken(token: string | null): void {
+    if (token) {
+      localStorage.setItem('superAdminToken', token);
+    } else {
+      localStorage.removeItem('superAdminToken');
+    }
   }
 }
 

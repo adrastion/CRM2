@@ -30,6 +30,7 @@ import clientMembershipRoutes from './routes/clientMembership';
 import standardRoutes from './routes/standard';
 import subscriptionRoutes from './routes/subscription';
 import adminDashboardRoutes from './routes/adminDashboard';
+import superAdminAuthRoutes from './routes/superAdminAuth';
 
 // Load environment variables
 dotenv.config();
@@ -111,6 +112,7 @@ app.use('/api/client-categories', clientCategoryRoutes);
 app.use('/api/client-memberships', clientMembershipRoutes);
 app.use('/api/standards', standardRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/super-admin/auth', superAdminAuthRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
 
 // Error handling middleware

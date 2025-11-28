@@ -4,14 +4,12 @@ import {
   updateAdminSettings,
   getTenantDetails,
 } from '../controllers/adminDashboardController';
-import { authenticate, requireOwner } from '../middleware/auth';
+import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
 
 const router = Router();
 
-// Все маршруты требуют аутентификации и роль OWNER
-// ВАЖНО: В будущем можно добавить специальную роль SUPER_ADMIN
-router.use(authenticate);
-router.use(requireOwner);
+// Все маршруты требуют аутентификации суперадмина
+router.use(authenticateSuperAdmin);
 
 // Получить статистику дашборда
 router.get('/', getAdminDashboard);

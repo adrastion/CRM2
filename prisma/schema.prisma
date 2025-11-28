@@ -712,3 +712,19 @@ model SuperAdminSettings {
 
   @@map("super_admin_settings")
 }
+
+// ==================== SUPER ADMIN (СУПЕРАДМИН ПРОЕКТА) ====================
+
+model SuperAdmin {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  firstName   String
+  lastName    String
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("super_admins")
+}
