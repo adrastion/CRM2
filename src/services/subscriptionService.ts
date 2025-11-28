@@ -889,6 +889,135 @@ export class SubscriptionService {
   }
 
   /**
+   * Деактивация лишних ресурсов при переходе на меньший тариф
+   */
+  static async deactivateExcessResources(tenantId: string, oldPlanType: PlanType, newPlanType: PlanType) {
+    const oldLimits = PLAN_LIMITS[oldPlanType];
+    const newLimits = PLAN_LIMITS[newPlanType];
+
+    console.log('Checking for excess resources after downgrade:', {
+      tenantId,
+      from: oldPlanType,
+      to: newPlanType,
+      oldLimits,
+      newLimits,
+    });
+
+    // Проверяем каждый тип ресурса
+    const resources: Array<{ type: keyof PlanLimits; model: any; where: any }> = [
+      {
+        type: 'trainers',
+        model: prisma.trainer,
+        where: { tenantId, isActive: true },
+      },
+      {
+        type: 'clients',
+        model: prisma.client,
+        where: { tenantId, isActive: true },
+      },
+      {
+        type: 'groups',
+        model: prisma.group,
+        where: { tenantId, isActive: true },
+      },
+      {
+        type: 'branches',
+        model: prisma.branch,
+        where: { tenantId, isActive: true },
+      },
+    ];
+
+    for (const resource of resources) {
+      const oldLimit = oldLimits[resource.type];
+      const newLimit = newLimits[resource.type];
+
+      // Пропускаем, если новый лимит безлимитный или больше старого
+      if (newLimit === 'unlimited' || (typeof oldLimit === 'number' && typeof newLimit === 'number' && newLimit >= oldLimit)) {
+        continue;
+      }
+
+      // Если новый лимит - число, проверяем превышение
+      if (typeof newLimit === 'number') {
+        const currentCount = await resource.model.count({
+          where: resource.where,
+        });
+
+        if (currentCount > newLimit) {
+          const excessCount = currentCount - newLimit;
+          console.log(`Deactivating ${excessCount} excess ${resource.type}:`, {
+            currentCount,
+            newLimit,
+            excessCount,
+          });
+
+          // Получаем ресурсы, отсортированные по дате создания (старые первыми)
+          const resourcesToDeactivate = await resource.model.findMany({
+            where: resource.where,
+            orderBy: { createdAt: 'asc' },
+            take: excessCount,
+            select: { id: true },
+          });
+
+          // Деактивируем лишние ресурсы
+          if (resourcesToDeactivate.length > 0) {
+            await resource.model.updateMany({
+              where: {
+                id: { in: resourcesToDeactivate.map((r: any) => r.id) },
+              },
+              data: { isActive: false },
+            });
+
+            console.log(`Deactivated ${resourcesToDeactivate.length} ${resource.type} resources`);
+          }
+        }
+      }
+    }
+
+    // Для тренировок - деактивируем только будущие тренировки, превышающие лимит
+    const oldTrainingLimit = oldLimits.trainings;
+    const newTrainingLimit = newLimits.trainings;
+
+    if (newTrainingLimit !== 'unlimited' && typeof newTrainingLimit === 'number') {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const currentMonthCount = await prisma.training.count({
+        where: {
+          tenantId,
+          startTime: { gte: startOfMonth },
+          isCancelled: false,
+        },
+      });
+
+      if (currentMonthCount > newTrainingLimit) {
+        // Для тренировок отменяем будущие тренировки, превышающие лимит
+        const futureTrainings = await prisma.training.findMany({
+          where: {
+            tenantId,
+            startTime: { gte: new Date() },
+            isCancelled: false,
+          },
+          orderBy: { startTime: 'asc' },
+          take: currentMonthCount - newTrainingLimit,
+          select: { id: true },
+        });
+
+        if (futureTrainings.length > 0) {
+          await prisma.training.updateMany({
+            where: {
+              id: { in: futureTrainings.map((t) => t.id) },
+            },
+            data: { isCancelled: true },
+          });
+
+          console.log(`Cancelled ${futureTrainings.length} future trainings`);
+        }
+      }
+    }
+  }
+
+  /**
    * Обновление плана подписки
    * При переходе на более дорогой план - активируется сразу
    * При переходе на более дешевый план - активируется после окончания текущего периода
@@ -904,7 +1033,7 @@ export class SubscriptionService {
     const newPrice = PLAN_PRICES[newPlanType];
 
     if (newPrice > currentPrice) {
-      // Upgrade - активируем сразу
+      // Upgrade - активируем сразу (лимиты увеличиваются, ничего не деактивируем)
       console.log('Upgrading subscription immediately:', {
         tenantId,
         from: subscription.planType,
@@ -923,13 +1052,28 @@ export class SubscriptionService {
         where: { id: subscription.id },
         data: {
           nextPlanType: newPlanType,
-          // План изменится в конце текущего периода
+          // План изменится в конце текущего периода, тогда деактивируем лишние ресурсы
         },
       });
     } else {
-      // Тот же план - просто обновляем
-      return subscription;
+      // Переход на тариф с той же ценой - применяем сразу и деактивируем лишние ресурсы
+      console.log('Changing to plan with same price, applying immediately:', {
+        tenantId,
+        from: subscription.planType,
+        to: newPlanType
+      });
+
+      // Деактивируем лишние ресурсы перед изменением тарифа
+      await this.deactivateExcessResources(
+        tenantId,
+        subscription.planType as PlanType,
+        newPlanType
+      );
+
+      return this.activateSubscription(tenantId, newPlanType, subscription.id);
     }
+    // Если тарифы одинаковые - просто возвращаем текущую подписку
+    return subscription;
   }
 
   /**
@@ -939,6 +1083,12 @@ export class SubscriptionService {
   static async applyPendingPlanChange(tenantId: string) {
     const subscription = await prisma.subscription.findUnique({
       where: { tenantId },
+      include: {
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
     });
     
     if (!subscription) {
@@ -953,12 +1103,25 @@ export class SubscriptionService {
         to: subscription.nextPlanType,
         endDate: subscription.endDate
       });
+
+      // Деактивируем лишние ресурсы при переходе на меньший тариф
+      await this.deactivateExcessResources(
+        tenantId,
+        subscription.planType as PlanType,
+        subscription.nextPlanType as PlanType
+      );
       
       return await prisma.subscription.update({
         where: { id: subscription.id },
         data: {
           planType: subscription.nextPlanType,
           nextPlanType: null,
+        },
+        include: {
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          },
         },
       });
     }
