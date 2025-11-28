@@ -29,6 +29,14 @@ export const checkSubscriptionLimit = (resource: ResourceType) => {
       const limits = await SubscriptionService.getLimits(req.tenant.id);
       const limit = limits[resource];
 
+      if (!subscription) {
+        res.status(500).json({
+          success: false,
+          error: 'Subscription not found',
+        });
+        return;
+      }
+
       res.status(403).json({
         success: false,
         error: `Лимит ${resource} превышен для тарифа ${subscription.planType}. Текущий лимит: ${limit === 'unlimited' ? 'безлимит' : limit}`,
@@ -61,6 +69,14 @@ export const checkSubscriptionActive = asyncHandler(async (
   }
 
   const subscription = await SubscriptionService.getSubscription(req.tenant.id);
+
+  if (!subscription) {
+    res.status(500).json({
+      success: false,
+      error: 'Subscription not found',
+    });
+    return;
+  }
 
   if (subscription.status !== 'active') {
     res.status(403).json({

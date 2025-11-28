@@ -61,9 +61,6 @@ export const PLAN_PRICES: Record<PlanType, number> = {
   ENTERPRISE: 0, // По запросу
 };
 
-// Экспортируем для использования в контроллерах
-export { PLAN_PRICES };
-
 export class SubscriptionService {
   /**
    * Проверка, использовал ли tenant промокод маркетолога
@@ -375,10 +372,13 @@ export class SubscriptionService {
     }
 
     // Применяем отложенное изменение тарифа, если нужно
-    subscription = await this.applyPendingPlanChange(tenantId);
+    const updatedSubscription = await this.applyPendingPlanChange(tenantId);
+    if (updatedSubscription) {
+      subscription = { ...subscription, ...updatedSubscription };
+    }
 
     // Проверка истечения подписки и применение отложенного изменения тарифа
-    if (subscription.status === 'active' && subscription.endDate && subscription.endDate < new Date()) {
+    if (subscription && subscription.status === 'active' && subscription.endDate && subscription.endDate < new Date()) {
       // Если есть отложенное изменение тарифа, применяем его
       if (subscription.nextPlanType) {
         await prisma.subscription.update({
@@ -826,7 +826,7 @@ export class SubscriptionService {
   static async checkLimit(tenantId: string, resource: keyof PlanLimits): Promise<boolean> {
     const subscription = await this.getSubscription(tenantId);
 
-    if (subscription.status !== 'active') {
+    if (!subscription || subscription.status !== 'active') {
       return false;
     }
 
@@ -895,6 +895,9 @@ export class SubscriptionService {
    */
   static async updatePlan(tenantId: string, newPlanType: PlanType) {
     const subscription = await this.getSubscription(tenantId);
+    if (!subscription) {
+      throw new Error('Subscription not found');
+    }
 
     // Если переход на более дорогой план - сразу активируем
     const currentPrice = PLAN_PRICES[subscription.planType as PlanType];
