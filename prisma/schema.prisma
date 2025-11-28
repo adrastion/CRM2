@@ -441,19 +441,20 @@ model Training {
 // AttendanceStatus enum replaced with String for SQLite compatibility
 
 model Attendance {
-  id         String           @id @default(cuid())
-  status     String
-  notes      String?
-  clientId   String
-  trainingId String
-  tenantId   String
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  id           String           @id @default(cuid())
+  status       String
+  notes        String?
+  shouldCharge Boolean          @default(true) // Списывать ли средства с клиента (для пропусков)
+  clientId     String
+  trainingId   String
+  tenantId     String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   // Relations
-  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  training   Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  training     Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
   @@unique([clientId, trainingId])

@@ -711,12 +711,22 @@ const Schedule: React.FC = () => {
     setAttendanceData(prev => 
       prev.map(item => {
         if (item.client.id === clientId) {
+          // Определяем shouldCharge по умолчанию
+          // Логика: shouldCharge=true означает НЕ списывать средства (галочка стоит)
+          let shouldCharge = false;
+          if (status === 'EXCUSED') {
+            shouldCharge = true; // По умолчанию для уважительной причины галочка стоит (не списываем)
+          } else if (status === 'ABSENT') {
+            shouldCharge = false; // По умолчанию для пропуска без причины галочка не стоит (списываем)
+          }
+
           if (item.attendance) {
             return {
               ...item,
               attendance: {
                 ...item.attendance,
-                status: status as 'PRESENT' | 'ABSENT' | 'EXCUSED'
+                status: status as 'PRESENT' | 'ABSENT' | 'EXCUSED',
+                shouldCharge: item.attendance.shouldCharge !== undefined ? item.attendance.shouldCharge : shouldCharge
               } as Attendance
             };
           } else {
@@ -726,6 +736,7 @@ const Schedule: React.FC = () => {
                 id: '',
                 status: status as 'PRESENT' | 'ABSENT' | 'EXCUSED',
                 notes: '',
+                shouldCharge: shouldCharge,
                 clientId,
                 trainingId: selectedTraining?.id || '',
                 createdAt: new Date().toISOString(),
@@ -739,15 +750,45 @@ const Schedule: React.FC = () => {
     );
   };
 
+  const handleShouldChargeChange = (clientId: string, shouldCharge: boolean) => {
+    setAttendanceData(prev => 
+      prev.map(item => {
+        if (item.client.id === clientId) {
+          if (item.attendance) {
+            return {
+              ...item,
+              attendance: {
+                ...item.attendance,
+                shouldCharge: shouldCharge
+              } as Attendance
+            };
+          }
+        }
+        return item;
+      })
+    );
+  };
+
   const handleSaveAttendance = async () => {
     if (!selectedTraining) return;
 
     try {
-      const attendances = attendanceData.map(item => ({
-        clientId: item.client.id,
-        status: item.attendance?.status || 'ABSENT',
-        notes: item.attendance?.notes || ''
-      }));
+      const attendances = attendanceData.map(item => {
+        const status = item.attendance?.status || 'ABSENT';
+        // Определяем shouldCharge по умолчанию
+        let defaultShouldCharge = false;
+        if (status === 'EXCUSED') {
+          defaultShouldCharge = true; // По умолчанию для EXCUSED галочка стоит
+        } else if (status === 'ABSENT') {
+          defaultShouldCharge = false; // По умолчанию для ABSENT галочка не стоит
+        }
+        return {
+          clientId: item.client.id,
+          status: status,
+          notes: item.attendance?.notes || '',
+          shouldCharge: item.attendance?.shouldCharge !== undefined ? item.attendance.shouldCharge : defaultShouldCharge
+        };
+      });
 
       await apiService.bulkUpdateAttendance(selectedTraining.id, attendances);
       await fetchData();
@@ -1898,6 +1939,7 @@ const Schedule: React.FC = () => {
                       <TableCell align="center">Присутствовал</TableCell>
                       <TableCell align="center">Отсутствовал</TableCell>
                       <TableCell align="center">Уважительная причина</TableCell>
+                      <TableCell align="center">Списать средства</TableCell>
                       <TableCell>Примечания</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1946,6 +1988,18 @@ const Schedule: React.FC = () => {
                               onChange={() => handleAttendanceStatusChange(item.client.id, 'EXCUSED' as 'PRESENT' | 'ABSENT' | 'EXCUSED')}
                               value="EXCUSED"
                             />
+                          </TableCell>
+                          <TableCell align="center">
+                            {(currentStatus === 'ABSENT' || currentStatus === 'EXCUSED') && (
+                              <Checkbox
+                                checked={item.attendance?.shouldCharge !== undefined ? item.attendance.shouldCharge : (currentStatus === 'EXCUSED')}
+                                onChange={(e) => handleShouldChargeChange(item.client.id, e.target.checked)}
+                                title="Не списывать средства за пропуск"
+                              />
+                            )}
+                            {currentStatus === 'PRESENT' && (
+                              <Typography variant="body2" color="text.secondary">-</Typography>
+                            )}
                           </TableCell>
                           <TableCell>
                             <TextField

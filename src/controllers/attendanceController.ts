@@ -212,7 +212,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    const { clientId, trainingId, status, notes } = req.body;
+    const { clientId, trainingId, status, notes, shouldCharge } = req.body;
 
     if (!clientId || !trainingId || !status) {
       res.status(400).json({
@@ -272,6 +272,18 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
+    // Определяем shouldCharge по умолчанию:
+    // Логика: shouldCharge=true означает НЕ списывать средства (галочка стоит)
+    // - Для PRESENT: не имеет значения (всегда false, но не используется)
+    // - Для ABSENT: false (по умолчанию галочка не стоит, списываем)
+    // - Для EXCUSED: true (по умолчанию галочка стоит, не списываем)
+    let finalShouldCharge = false;
+    if (status === 'EXCUSED') {
+      finalShouldCharge = shouldCharge !== undefined ? shouldCharge : true; // По умолчанию галочка стоит
+    } else if (status === 'ABSENT') {
+      finalShouldCharge = shouldCharge !== undefined ? shouldCharge : false; // По умолчанию галочка не стоит
+    }
+
     // Create attendance
     const attendance = await prisma.attendance.create({
       data: {
@@ -279,6 +291,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         trainingId,
         status,
         notes,
+        shouldCharge: finalShouldCharge,
         tenantId
       },
       include: {
@@ -423,6 +436,64 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
           );
         }
       }
+    } else if ((status === 'ABSENT' || status === 'EXCUSED') && !finalShouldCharge) {
+      // Если пропуск с shouldCharge=false (галочка не стоит), списываем средства и начисляем тренеру
+      const trainingWithDetails = await prisma.training.findFirst({
+        where: { id: trainingId, tenantId },
+        include: {
+          group: true,
+          trainer: true
+        }
+      });
+
+      if (trainingWithDetails) {
+        const trainingPrice = trainingWithDetails.group.trainingPrice 
+          ? Number(trainingWithDetails.group.trainingPrice) 
+          : 0;
+
+        if (trainingPrice > 0) {
+          const currentClient = await prisma.client.findFirst({
+            where: { id: clientId, tenantId }
+          });
+
+          if (currentClient) {
+            const clientBalance = Number(currentClient.balance || 0);
+            
+            if (clientBalance >= trainingPrice) {
+              // Снимаем деньги с баланса клиента за пропуск
+              await deductFromClientBalance(
+                clientId,
+                trainingPrice,
+                trainingId,
+                attendance.id,
+                tenantId,
+                `Списание за пропуск тренировки: ${trainingWithDetails.title}`
+              );
+
+              // Рассчитываем и начисляем заработок тренеру
+              const trainerEarnings = await calculateTrainerEarningsForAttendance(
+                trainingWithDetails.trainerId,
+                trainingId,
+                attendance.id,
+                tenantId
+              );
+
+              if (trainerEarnings > 0) {
+                await addToTrainerBalance(
+                  trainingWithDetails.trainerId,
+                  trainerEarnings,
+                  trainingId,
+                  attendance.id,
+                  tenantId,
+                  `Заработок за тренировку (пропуск): ${trainingWithDetails.title}`
+                );
+              }
+            } else {
+              console.warn(`Insufficient balance for client ${clientId} for missed training. Balance: ${clientBalance}, Required: ${trainingPrice}`);
+            }
+          }
+        }
+      }
     }
 
     res.status(201).json({
@@ -449,7 +520,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 export const updateAttendance = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, shouldCharge } = req.body;
 
     const attendance = await prisma.attendance.findFirst({
       where: {
@@ -466,11 +537,25 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
+    // Определяем shouldCharge
+    // Логика: shouldCharge=true означает НЕ списывать средства (галочка стоит)
+    let finalShouldCharge = attendance.shouldCharge;
+    if (shouldCharge !== undefined) {
+      finalShouldCharge = shouldCharge;
+    } else if (status === 'EXCUSED' && attendance.status !== 'EXCUSED') {
+      // При изменении на EXCUSED по умолчанию галочка стоит (не списываем)
+      finalShouldCharge = true;
+    } else if (status === 'ABSENT' && attendance.status !== 'ABSENT') {
+      // При изменении на ABSENT по умолчанию галочка не стоит (списываем)
+      finalShouldCharge = false;
+    }
+
     const updatedAttendance = await prisma.attendance.update({
       where: { id },
       data: {
         status,
-        notes
+        notes,
+        shouldCharge: finalShouldCharge
       },
       include: {
         client: true,
@@ -569,7 +654,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     const results = [];
 
     for (const att of attendances) {
-      const { clientId, status, notes } = att;
+      const { clientId, status, notes, shouldCharge } = att;
 
       if (!clientId || !status) {
         continue;
@@ -586,11 +671,24 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
           }
         });
 
+        // Определяем shouldCharge по умолчанию
+        // Логика: shouldCharge=true означает НЕ списывать средства (галочка стоит)
+        let finalShouldCharge = false;
+        if (status === 'EXCUSED') {
+          finalShouldCharge = shouldCharge !== undefined ? shouldCharge : true; // По умолчанию галочка стоит
+        } else if (status === 'ABSENT') {
+          finalShouldCharge = shouldCharge !== undefined ? shouldCharge : false; // По умолчанию галочка не стоит
+        } else if (shouldCharge !== undefined) {
+          finalShouldCharge = shouldCharge;
+        } else if (existing) {
+          finalShouldCharge = existing.shouldCharge;
+        }
+
         if (existing) {
           // Update existing
           const updated = await prisma.attendance.update({
             where: { id: existing.id },
-            data: { status, notes },
+            data: { status, notes, shouldCharge: finalShouldCharge },
             include: { client: true }
           });
           results.push(updated);
@@ -602,6 +700,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
               trainingId,
               status,
               notes,
+              shouldCharge: finalShouldCharge,
               tenantId
             },
             include: { client: true }

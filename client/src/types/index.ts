@@ -244,6 +244,7 @@ export interface Attendance {
   id: string;
   status: 'PRESENT' | 'ABSENT' | 'EXCUSED';
   notes?: string;
+  shouldCharge?: boolean; // Списывать ли средства с клиента (для пропусков)
   clientId: string;
   trainingId: string;
   createdAt?: string;
