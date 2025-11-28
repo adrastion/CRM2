@@ -145,11 +145,6 @@ export class SubscriptionService {
             name: true,
           },
         },
-        _count: {
-          select: {
-            usages: true,
-          },
-        },
       },
     });
 
@@ -169,7 +164,12 @@ export class SubscriptionService {
 
     // Проверка лимита использования
     // Используем фактическое количество использований из PromoCodeUsage для более точной проверки
-    const actualUsageCount = code._count?.usages || code.usedCount;
+    // Получаем реальное количество использований из базы данных
+    const actualUsageCount = await prisma.promoCodeUsage.count({
+      where: {
+        promoCodeId: code.id,
+      },
+    });
     
     // Проверяем, не превысит ли использование лимит (учитываем, что будет создана новая запись)
     // Если usageLimit = 1, то можно использовать 1 раз (actualUsageCount должен быть 0)
