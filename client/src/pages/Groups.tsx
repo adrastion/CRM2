@@ -579,7 +579,7 @@ const Groups: React.FC = () => {
                 value={formData.trainingPrice}
                 onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
-                helperText="Стоимость одной тренировки в этой группе"
+                helperText="Стоимость одной тренировки в этой группе для одного клиента"
               />
             </Grid>
           </Grid>

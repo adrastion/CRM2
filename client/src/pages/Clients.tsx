@@ -35,9 +35,10 @@ import {
   ListItemText,
   ListItemSecondaryAction,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
+import StandardChart from '../components/StandardChart';
 
 const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
@@ -83,6 +84,8 @@ const Clients: React.FC = () => {
   const [standardCompletedAt, setStandardCompletedAt] = useState<string>(new Date().toISOString().split('T')[0]);
   const [clientStats, setClientStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [standardChartDialog, setStandardChartDialog] = useState(false);
+  const [selectedStandardForChart, setSelectedStandardForChart] = useState<{ id: string; name: string; unit?: string; targetValue?: number } | null>(null);
   const [membershipDialog, setMembershipDialog] = useState(false);
   const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
   const [membershipTypes, setMembershipTypes] = useState<any[]>([]);
@@ -2213,9 +2216,29 @@ const Clients: React.FC = () => {
                       {clientStandards.map((cs: any) => (
                         <TableRow key={cs.id}>
                           <TableCell>
-                            <Typography variant="body2" fontWeight="bold">
-                              {cs.standard?.name || 'Неизвестный норматив'}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2" fontWeight="bold">
+                                {cs.standard?.name || 'Неизвестный норматив'}
+                              </Typography>
+                              {cs.standard && (
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => {
+                                    setSelectedStandardForChart({
+                                      id: cs.standard.id,
+                                      name: cs.standard.name,
+                                      unit: cs.standard.unit,
+                                      targetValue: cs.standard.targetValue ? Number(cs.standard.targetValue) : undefined,
+                                    });
+                                    setStandardChartDialog(true);
+                                  }}
+                                  title="Показать график"
+                                >
+                                  <ShowChart fontSize="small" />
+                                </IconButton>
+                              )}
+                            </Box>
                             {cs.standard?.unit && (
                               <Typography variant="caption" color="text.secondary">
                                 Единица: {cs.standard.unit}
@@ -2347,6 +2370,47 @@ const Clients: React.FC = () => {
           <Button onClick={() => setAddStandardDialog(false)}>Отмена</Button>
           <Button onClick={handleAddClientStandard} variant="contained" disabled={!selectedStandardId}>
             Добавить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог с графиком норматива */}
+      <Dialog 
+        open={standardChartDialog} 
+        onClose={() => {
+          setStandardChartDialog(false);
+          setSelectedStandardForChart(null);
+        }} 
+        maxWidth="lg" 
+        fullWidth
+      >
+        <DialogTitle>
+          График выполнения норматива
+          {selectedStandardForChart && (
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {selectedStandardForChart.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedStandardForChart && (
+            <StandardChart
+              standardId={selectedStandardForChart.id}
+              standardName={selectedStandardForChart.name}
+              unit={selectedStandardForChart.unit}
+              targetValue={selectedStandardForChart.targetValue}
+              clientStandards={clientStandards}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setStandardChartDialog(false);
+              setSelectedStandardForChart(null);
+            }}
+          >
+            Закрыть
           </Button>
         </DialogActions>
       </Dialog>
