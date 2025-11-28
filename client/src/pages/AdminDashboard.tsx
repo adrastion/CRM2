@@ -402,7 +402,7 @@ const AdminDashboard: React.FC = () => {
                   {data.marketers.list.map((marketer) => (
                     <TableRow key={marketer.id}>
                       <TableCell>{marketer.name}</TableCell>
-                      <TableCell align="right" fontWeight="bold">
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                         {formatCurrency(marketer.balance)}
                       </TableCell>
                       <TableCell align="right">{marketer.commissionPercentage}%</TableCell>
@@ -512,7 +512,7 @@ const AdminDashboard: React.FC = () => {
                   <TableCell>
                     <Chip label={payment.planType} size="small" />
                   </TableCell>
-                  <TableCell align="right" fontWeight="bold">
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                     {formatCurrency(payment.amount)}
                   </TableCell>
                   <TableCell>{formatDate(payment.paidAt)}</TableCell>
