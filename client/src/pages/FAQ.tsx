@@ -371,7 +371,7 @@ const FAQ: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }} data-onboarding="faq-page">
       <Container maxWidth="lg" sx={{ py: 4, flexGrow: 1 }}>
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <HelpOutline sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />

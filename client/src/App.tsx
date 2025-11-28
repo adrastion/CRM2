@@ -7,7 +7,7 @@ import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthCo
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
 import AppLayout from './components/Layout/AppLayout';
-import OnboardingTour from './components/OnboardingTour';
+import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 
 // Lazy load pages for better performance
@@ -271,6 +271,32 @@ const AppContent: React.FC = () => {
     checkOnboardingStatus();
   }, [isAuthenticated, user]);
 
+  // Listen for restart onboarding event
+  React.useEffect(() => {
+    const handleRestartOnboarding = async () => {
+      if (!isAuthenticated || !user || user.role !== 'OWNER') {
+        return;
+      }
+
+      try {
+        // Проверяем статус обучения после сброса
+        const response = await apiService.getSettings();
+        const settings = response.data;
+        
+        if (!settings?.hasCompletedOnboarding && !settings?.onboardingDeclined) {
+          setOnboardingOpen(true);
+        }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+      }
+    };
+
+    window.addEventListener('restartOnboarding', handleRestartOnboarding as EventListener);
+    return () => {
+      window.removeEventListener('restartOnboarding', handleRestartOnboarding as EventListener);
+    };
+  }, [isAuthenticated, user]);
+
   const handleOnboardingComplete = () => {
     setOnboardingOpen(false);
   };
@@ -284,15 +310,15 @@ const AppContent: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+    <Router>
       {!onboardingLoading && user?.role === 'OWNER' && (
-        <OnboardingTour
+        <InteractiveOnboarding
           open={onboardingOpen}
           onClose={handleOnboardingDecline}
           onComplete={handleOnboardingComplete}
           onDecline={handleOnboardingDecline}
         />
       )}
-    <Router>
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public Routes */}

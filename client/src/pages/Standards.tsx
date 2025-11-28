@@ -134,7 +134,7 @@ const Standards: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="standards-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Шаблоны нормативов
@@ -147,6 +147,7 @@ const Standards: React.FC = () => {
             setFormData({ name: '', description: '', unit: '', targetValue: '', category: '', isActive: true });
             setError('');
           }}
+          data-onboarding="add-standard-button"
         >
           Создать шаблон норматива
         </Button>

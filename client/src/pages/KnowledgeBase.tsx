@@ -649,7 +649,7 @@ const KnowledgeBase: React.FC = () => {
   const selectedSectionData = knowledgeSections.find(s => s.id === selectedSection);
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4 }} data-onboarding="knowledge-base-page">
       {/* Breadcrumbs */}
       <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 3 }}>
         <Link

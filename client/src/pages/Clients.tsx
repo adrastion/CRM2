@@ -628,12 +628,12 @@ const Clients: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="clients-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Клиенты
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2 }} data-onboarding="clients-import-export">
           <Button
             variant="outlined"
             startIcon={<FileDownload />}
@@ -664,6 +664,7 @@ const Clients: React.FC = () => {
             setHasValidationErrors(false);
             hasErrorsRef.current = false;
           }}
+          data-onboarding="add-client-button"
         >
           Добавить клиента
         </Button>
@@ -733,7 +734,7 @@ const Clients: React.FC = () => {
 
       <Card>
         <CardContent>
-          <TableContainer component={Paper}>
+          <TableContainer component={Paper} data-onboarding="clients-table">
             <Table>
               <TableHead>
                 <TableRow>

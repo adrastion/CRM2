@@ -10,7 +10,6 @@ import {
   Alert,
   CircularProgress,
   Paper,
-  Divider,
   Switch,
   FormControlLabel,
   Tabs,
@@ -31,6 +30,7 @@ import {
   ViewList,
   DarkMode,
   LightMode,
+  School,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -90,6 +90,34 @@ const Settings: React.FC = () => {
     const saved = localStorage.getItem('darkMode');
     return saved === 'true';
   });
+
+  // Повторное прохождение обучения
+  const [restartingOnboarding, setRestartingOnboarding] = useState(false);
+
+  const handleRestartOnboarding = async () => {
+    try {
+      setRestartingOnboarding(true);
+      setError(null);
+      
+      // Сбрасываем статус обучения
+      await apiService.updateOnboardingStatus({
+        hasCompletedOnboarding: false,
+        onboardingDeclined: false,
+      });
+      
+      // Отправляем событие для открытия обучения
+      const event = new CustomEvent('restartOnboarding');
+      window.dispatchEvent(event);
+      
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось сбросить статус обучения');
+      console.error('Error restarting onboarding:', err);
+    } finally {
+      setRestartingOnboarding(false);
+    }
+  };
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -266,7 +294,7 @@ const Settings: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="settings-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Настройки
@@ -511,6 +539,32 @@ const Settings: React.FC = () => {
                   </Box>
                 </Paper>
               </Grid>
+
+              {/* Повторное прохождение обучения */}
+              {user?.role === 'OWNER' && (
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <School sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight="medium">
+                        Интерактивное обучение
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Пройдите обучение еще раз, чтобы освежить знания о системе
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<School />}
+                      onClick={handleRestartOnboarding}
+                      disabled={restartingOnboarding}
+                      fullWidth
+                    >
+                      {restartingOnboarding ? 'Запуск обучения...' : 'Повторить обучение'}
+                    </Button>
+                  </Paper>
+                </Grid>
+              )}
             </Grid>
           </TabPanel>
         </CardContent>

@@ -197,7 +197,7 @@ const Branches: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="branches-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Филиалы
@@ -211,6 +211,7 @@ const Branches: React.FC = () => {
             setFormErrors({});
             setError('');
           }}
+          data-onboarding="add-branch-button"
         >
           Добавить филиал
         </Button>
@@ -308,6 +309,7 @@ const Branches: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        data-onboarding="branch-form-dialog"
       >
         <DialogTitle>Добавить новый филиал</DialogTitle>
         <DialogContent>

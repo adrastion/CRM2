@@ -14,6 +14,21 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
       isActive: true
     };
 
+    // Если пользователь - тренер, проверяем права на просмотр всех групп
+    if (req.user?.role === 'TRAINER') {
+      const trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: req.user.id,
+          tenantId: req.tenant?.id
+        }
+      });
+
+      // Если тренер не может видеть все группы, показываем только его группы
+      if (trainer && !trainer.canViewAllGroups) {
+        where.trainerId = trainer.id;
+      }
+    }
+
     if (search) {
       // PostgreSQL supports case-insensitive search
       where.OR = [

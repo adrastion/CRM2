@@ -94,7 +94,7 @@ const Groups: React.FC = () => {
         setLoading(true);
         setError(null);
         const [groupsRes, branchesRes, trainersRes, clientsRes] = await Promise.all([
-          apiService.getGroups(undefined, abortController.signal),
+          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
           apiService.getTrainers(undefined, abortController.signal),
           apiService.getClients({ limit: 100 }, abortController.signal),
@@ -320,7 +320,7 @@ const Groups: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="groups-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Группы
@@ -330,6 +330,7 @@ const Groups: React.FC = () => {
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
           onClick={() => setOpenDialog(true)}
+          data-onboarding="add-group-button"
         >
           Добавить группу
         </Button>
@@ -465,7 +466,7 @@ const Groups: React.FC = () => {
       </Card>
 
       {/* Диалог добавления группы */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth data-onboarding="group-form-dialog">
         <DialogTitle>Добавить новую группу</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>

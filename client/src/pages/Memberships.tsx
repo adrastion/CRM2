@@ -189,7 +189,7 @@ const Memberships: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box data-onboarding="memberships-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
           Тарифы (Абонементы)
@@ -199,6 +199,7 @@ const Memberships: React.FC = () => {
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
           onClick={() => setOpenDialog(true)}
+          data-onboarding="add-membership-button"
         >
           Создать тариф
         </Button>

@@ -169,6 +169,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   setMobileOpen(false);
                 }
               }}
+              data-onboarding={
+                item.path === '/dashboard' ? 'dashboard' : 
+                item.path === '/clients' ? 'clients-nav' :
+                item.path === '/groups' ? 'groups-nav' :
+                item.path === '/schedule' ? 'schedule-nav' :
+                item.path === '/standards' ? 'standards-nav' :
+                item.path === '/trainers' ? 'trainers-nav' :
+                item.path === '/trainers/earnings' ? 'trainer-salaries-nav' :
+                item.path === '/branches' ? 'branches-nav' :
+                item.path === '/memberships' ? 'memberships-nav' :
+                item.path === '/client-memberships' ? 'client-memberships-nav' :
+                item.path === '/settings' ? 'settings-nav' :
+                item.path === '/faq' ? 'faq-nav' :
+                item.path === '/knowledge-base' ? 'knowledge-base-nav' : undefined
+              }
             >
               <ListItemIcon>
                 {item.icon}
