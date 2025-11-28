@@ -145,6 +145,11 @@ export class SubscriptionService {
             name: true,
           },
         },
+        _count: {
+          select: {
+            usages: true,
+          },
+        },
       },
     });
 
@@ -163,8 +168,13 @@ export class SubscriptionService {
     }
 
     // Проверка лимита использования
-    // Проверяем, не превысит ли использование лимит (учитываем, что счетчик будет увеличен)
-    if (code.usageLimit && code.usedCount + 1 > code.usageLimit) {
+    // Используем фактическое количество использований из PromoCodeUsage для более точной проверки
+    const actualUsageCount = code._count?.usages || code.usedCount;
+    
+    // Проверяем, не превысит ли использование лимит (учитываем, что будет создана новая запись)
+    // Если usageLimit = 1, то можно использовать 1 раз (actualUsageCount должен быть 0)
+    // Если actualUsageCount уже равен usageLimit, то промокод исчерпан
+    if (code.usageLimit !== null && actualUsageCount >= code.usageLimit) {
       throw new Error('Промокод исчерпан');
     }
 
