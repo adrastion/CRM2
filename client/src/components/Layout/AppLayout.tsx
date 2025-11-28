@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AppBar,
   Box,
@@ -36,6 +36,7 @@ import {
   LocalOffer,
   Settings,
   Assignment,
+  MenuBook,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -62,6 +63,7 @@ const navigationItems = [
   { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Настройки', path: '/settings', icon: <Settings />, roles: ['OWNER', 'ADMIN'] },
   { label: 'FAQ', path: '/faq', icon: <HelpOutline />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
+  { label: 'База знаний', path: '/knowledge-base', icon: <MenuBook />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
 ];
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
@@ -96,9 +98,57 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     handleProfileMenuClose();
   };
 
-  const filteredNavigationItems = navigationItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role || '')
-  );
+  const [visibleTabs, setVisibleTabs] = React.useState<{ [key: string]: boolean }>(() => {
+    const saved = localStorage.getItem('visibleTabs');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    // По умолчанию все вкладки видимы
+    return {};
+  });
+
+  React.useEffect(() => {
+    const handleTabsVisibilityChange = (event: CustomEvent) => {
+      setVisibleTabs(event.detail.visibleTabs);
+    };
+
+    window.addEventListener('tabsVisibilityChange', handleTabsVisibilityChange as EventListener);
+    return () => {
+      window.removeEventListener('tabsVisibilityChange', handleTabsVisibilityChange as EventListener);
+    };
+  }, []);
+
+  const tabKeyMap: { [key: string]: string } = {
+    '/dashboard': 'dashboard',
+    '/clients': 'clients',
+    '/client-categories': 'clientCategories',
+    '/standards': 'standards',
+    '/trainers': 'trainers',
+    '/trainer/earnings': 'trainerEarnings',
+    '/trainers/earnings': 'allTrainersEarnings',
+    '/groups': 'groups',
+    '/branches': 'branches',
+    '/schedule': 'schedule',
+    '/payments': 'payments',
+    '/memberships': 'memberships',
+    '/client-memberships': 'clientMemberships',
+    '/settings': 'settings',
+    '/faq': 'faq',
+    '/knowledge-base': 'knowledgeBase',
+  };
+
+  const filteredNavigationItems = navigationItems.filter(item => {
+    // Проверка роли
+    if (item.roles && !item.roles.includes(user?.role || '')) {
+      return false;
+    }
+    // Проверка видимости вкладки
+    const tabKey = tabKeyMap[item.path];
+    if (tabKey && visibleTabs[tabKey] === false) {
+      return false;
+    }
+    return true;
+  });
 
   const drawer = (
     <div>

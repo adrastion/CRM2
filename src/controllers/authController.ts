@@ -59,6 +59,16 @@ const updateProfileSchema = Joi.object({
   phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional()
 });
 
+const changeEmailSchema = Joi.object({
+  newEmail: Joi.string().email().required().messages({
+    'string.email': 'Некорректный формат email',
+    'any.required': 'Новый email обязателен'
+  }),
+  password: Joi.string().required().messages({
+    'any.required': 'Пароль обязателен для подтверждения'
+  })
+});
+
 /**
  * Register a new tenant and owner
  */
@@ -210,6 +220,29 @@ export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 /**
+ * Change user email
+ */
+export const changeEmail = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      error: 'Пользователь не аутентифицирован'
+    });
+    return;
+  }
+
+  const { newEmail, password } = req.body;
+  const result = await AuthService.changeEmail(req.user.id, newEmail, password);
+  
+  res.json({
+    success: true,
+    data: result,
+    message: 'Email успешно изменен'
+  });
+  return;
+});
+
+/**
  * Request password reset
  */
 export const requestPasswordReset = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
@@ -284,6 +317,7 @@ export const validateMarketerLogin = validate(marketerLoginSchema);
 export const validatePromoCodeAdminLogin = validate(promoCodeAdminLoginSchema);
 export const validateCreateUser = validate(createUserSchema);
 export const validateChangePassword = validate(changePasswordSchema);
+export const validateChangeEmail = validate(changeEmailSchema);
 export const validateResetPassword = validate(resetPasswordSchema);
 export const validateNewPassword = validate(newPasswordSchema);
 export const validateUpdateProfile = validate(updateProfileSchema);

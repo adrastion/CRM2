@@ -85,3 +85,39 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   });
 });
 
+/**
+ * Update onboarding status
+ */
+export const updateOnboardingStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { hasCompletedOnboarding, onboardingDeclined } = req.body;
+
+  if (!tenantId) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant ID is required'
+    });
+    return;
+  }
+
+  // Обновляем или создаем настройки
+  const settings = await prisma.tenantSettings.upsert({
+    where: { tenantId },
+    update: {
+      hasCompletedOnboarding: hasCompletedOnboarding !== undefined ? hasCompletedOnboarding : undefined,
+      onboardingDeclined: onboardingDeclined !== undefined ? onboardingDeclined : undefined
+    },
+    create: {
+      tenantId,
+      hasCompletedOnboarding: hasCompletedOnboarding || false,
+      onboardingDeclined: onboardingDeclined || false
+    }
+  });
+
+  res.json({
+    success: true,
+    data: settings,
+    message: 'Onboarding status updated successfully'
+  });
+});
+

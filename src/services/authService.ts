@@ -427,6 +427,42 @@ export class AuthService {
   }
 
   /**
+   * Change user email
+   */
+  static async changeEmail(userId: string, newEmail: string, password: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new Error('Password is incorrect');
+    }
+
+    // Check if email is already taken
+    const existingUser = await prisma.user.findUnique({
+      where: { email: newEmail.toLowerCase() }
+    });
+
+    if (existingUser && existingUser.id !== userId) {
+      throw new Error('Email already in use');
+    }
+
+    // Update email
+    await prisma.user.update({
+      where: { id: userId },
+      data: { email: newEmail.toLowerCase() }
+    });
+
+    return { message: 'Email changed successfully', email: newEmail.toLowerCase() };
+  }
+
+  /**
    * Request password reset
    */
   static async requestPasswordReset(email: string) {

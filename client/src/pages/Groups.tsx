@@ -406,7 +406,7 @@ const Groups: React.FC = () => {
                   </TableCell>
                   <TableCell>
                         {group.trainer?.user 
-                          ? `${group.trainer.user.firstName} ${group.trainer.user.lastName}`
+                          ? `${group.trainer.user.lastName} ${group.trainer.user.firstName} ${group.trainer.user.middleName || ''}`.trim()
                           : '-'}
                   </TableCell>
                       <TableCell>{group.maxMembers || '-'}</TableCell>
@@ -515,7 +515,7 @@ const Groups: React.FC = () => {
                   {trainers.map((trainer) => (
                     <MenuItem key={trainer.id} value={trainer.id}>
                       {trainer.user 
-                        ? `${trainer.user.firstName} ${trainer.user.lastName}`
+                        ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
                         : `Тренер #${trainer.id}`}
                     </MenuItem>
                   ))}
@@ -650,7 +650,7 @@ const Groups: React.FC = () => {
                   {trainers.map((trainer) => (
                     <MenuItem key={trainer.id} value={trainer.id}>
                       {trainer.user 
-                        ? `${trainer.user.firstName} ${trainer.user.lastName}`
+                        ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
                         : `Тренер #${trainer.id}`}
                     </MenuItem>
                   ))}

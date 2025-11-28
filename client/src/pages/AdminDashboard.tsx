@@ -131,6 +131,9 @@ const AdminDashboard: React.FC = () => {
   // Диалоги
   const [expenseDialog, setExpenseDialog] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState(false);
+  const [planDialog, setPlanDialog] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+  const [selectedPlanType, setSelectedPlanType] = useState<string>('');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
   const [expenseDescription, setExpenseDescription] = useState<string>('');
   const [paymentMarketerId, setPaymentMarketerId] = useState<string>('');
@@ -652,14 +655,28 @@ const AdminDashboard: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {data.recentPayments.map((payment) => (
+              {data.recentPayments.map((payment: any) => (
                 <TableRow key={payment.id}>
                   <TableCell>{payment.tenantName}</TableCell>
                   <TableCell>
                     <Chip label={payment.planType} size="small" />
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    {formatCurrency(payment.amount)}
+                    {payment.hasDiscount ? (
+                      <Box>
+                        <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary' }}>
+                          {formatCurrency(payment.originalAmount)}
+                        </Typography>
+                        <Typography variant="body1" color="success.main">
+                          {formatCurrency(payment.amount)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Скидка: {formatCurrency(payment.discountAmount)}
+                        </Typography>
+                      </Box>
+                    ) : (
+                      formatCurrency(payment.amount)
+                    )}
                   </TableCell>
                   <TableCell>{formatDate(payment.paidAt)}</TableCell>
                 </TableRow>
@@ -739,14 +756,14 @@ const AdminDashboard: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      transactions.map((transaction) => (
+                      transactions.map((transaction: any) => (
                         <TableRow key={transaction.id}>
                           <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
                           <TableCell>
                             <Chip
                               label={
                                 transaction.type === 'income'
-                                  ? 'Поступление'
+                                  ? transaction.source === 'subscription' ? 'Платеж за подписку' : 'Поступление'
                                   : transaction.type === 'expense'
                                   ? 'Расход'
                                   : 'Выплата маркетологу'
@@ -761,7 +778,19 @@ const AdminDashboard: React.FC = () => {
                               size="small"
                             />
                           </TableCell>
-                          <TableCell>{transaction.description}</TableCell>
+                          <TableCell>
+                            {transaction.description}
+                            {transaction.promoCode && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Промокод: {transaction.promoCode}
+                              </Typography>
+                            )}
+                            {transaction.tenant && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Аккаунт: {transaction.tenant.name}
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {transaction.marketer ? (
                               `${transaction.marketer.name} (${transaction.marketer.email})`
@@ -770,8 +799,27 @@ const AdminDashboard: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                            {transaction.type === 'income' ? '+' : '-'}
-                            {formatCurrency(transaction.amount)}
+                            {transaction.type === 'income' ? (
+                              transaction.hasDiscount || transaction.discountAmount > 0 ? (
+                                <Box>
+                                  <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary' }}>
+                                    {formatCurrency(transaction.originalAmount || transaction.amount)}
+                                  </Typography>
+                                  <Typography variant="body1" color="success.main">
+                                    +{formatCurrency(transaction.amount)}
+                                  </Typography>
+                                  {transaction.discountAmount > 0 && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      Скидка: {formatCurrency(transaction.discountAmount)}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              ) : (
+                                `+${formatCurrency(transaction.amount)}`
+                              )
+                            ) : (
+                              `-${formatCurrency(transaction.amount)}`
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -810,12 +858,13 @@ const AdminDashboard: React.FC = () => {
                       <TableCell align="right">Тренеров</TableCell>
                       <TableCell align="right">Филиалов</TableCell>
                       <TableCell>Статус</TableCell>
+                      <TableCell>Действия</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {allTenants.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} align="center">
+                        <TableCell colSpan={10} align="center">
                           <Typography color="text.secondary" sx={{ py: 4 }}>
                             Нет аккаунтов
                           </Typography>
@@ -844,6 +893,20 @@ const AdminDashboard: React.FC = () => {
                               color={tenant.isActive ? 'success' : 'default'}
                               size="small"
                             />
+                          </TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => {
+                                setSelectedTenantId(tenant.id);
+                                setSelectedPlanType(tenant.subscription?.planType || 'FREE');
+                                setPlanDialog(true);
+                              }}
+                              title="Изменить тариф"
+                            >
+                              <Settings />
+                            </IconButton>
                           </TableCell>
                         </TableRow>
                       ))
@@ -940,6 +1003,54 @@ const AdminDashboard: React.FC = () => {
             disabled={submitting || !paymentMarketerId || !paymentAmount}
           >
             {submitting ? <CircularProgress size={24} /> : 'Выплатить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог изменения тарифа */}
+      <Dialog open={planDialog} onClose={() => setPlanDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Изменить тариф</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Тариф</InputLabel>
+              <Select
+                value={selectedPlanType}
+                label="Тариф"
+                onChange={(e) => setSelectedPlanType(e.target.value)}
+              >
+                <MenuItem value="FREE">FREE</MenuItem>
+                <MenuItem value="STARTER">STARTER</MenuItem>
+                <MenuItem value="BUSINESS">BUSINESS</MenuItem>
+                <MenuItem value="PROFESSIONAL">PROFESSIONAL</MenuItem>
+                <MenuItem value="ENTERPRISE">ENTERPRISE</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPlanDialog(false)}>Отмена</Button>
+          <Button
+            onClick={async () => {
+              if (!selectedTenantId || !selectedPlanType) return;
+              setSubmitting(true);
+              try {
+                await apiService.updateTenantPlan(selectedTenantId, selectedPlanType);
+                await loadAllTenants();
+                await loadDashboard();
+                setPlanDialog(false);
+                setSelectedTenantId('');
+                setSelectedPlanType('');
+              } catch (err: any) {
+                setError(err.response?.data?.error || 'Ошибка обновления тарифа');
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+            variant="contained"
+            disabled={submitting || !selectedPlanType}
+          >
+            {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

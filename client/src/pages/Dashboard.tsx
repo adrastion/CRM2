@@ -62,6 +62,7 @@ interface UpcomingTraining {
     user?: {
       firstName: string;
       lastName: string;
+      middleName?: string;
     };
   };
   memberCount: number;
@@ -383,7 +384,7 @@ const Dashboard: React.FC = () => {
                           </Typography>
                           {training.trainer?.user && (
                             <Typography variant="body2" component="span" display="block" color="text.secondary">
-                              Тренер: {training.trainer.user.firstName} {training.trainer.user.lastName}
+                              Тренер: {training.trainer.user.lastName} {training.trainer.user.firstName} {training.trainer.user.middleName || ''}
                             </Typography>
                           )}
                         </Box>

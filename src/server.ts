@@ -39,7 +39,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Trust proxy - required for express-rate-limit when behind a reverse proxy
-app.set('trust proxy', true);
+// Set to 1 if behind a single reverse proxy (nginx, etc.), or the number of proxies
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet({

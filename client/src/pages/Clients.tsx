@@ -2261,9 +2261,9 @@ const Clients: React.FC = () => {
                         <TableRow key={cs.id}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography variant="body2" fontWeight="bold">
-                                {cs.standard?.name || 'Неизвестный норматив'}
-                              </Typography>
+                            <Typography variant="body2" fontWeight="bold">
+                              {cs.standard?.name || 'Неизвестный норматив'}
+                            </Typography>
                               {cs.standard && (
                                 <IconButton
                                   size="small"

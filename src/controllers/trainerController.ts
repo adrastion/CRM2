@@ -22,6 +22,7 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
         OR: [
           { firstName: { contains: search as string, mode: 'insensitive' } },
           { lastName: { contains: search as string, mode: 'insensitive' } },
+          { middleName: { contains: search as string, mode: 'insensitive' } },
           { email: { contains: search as string, mode: 'insensitive' } }
         ]
       };
@@ -120,7 +121,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, phone, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
+    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
 
     // Создаем пользователя напрямую
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -131,6 +132,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         password: hashedPassword,
         firstName,
         lastName,
+        middleName,
         phone,
         role: 'TRAINER',
         tenantId: req.tenant.id
@@ -174,7 +176,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 export const updateTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
+    const { firstName, lastName, middleName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
@@ -198,6 +200,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
     const userUpdateData: any = {
       firstName,
       lastName,
+      middleName,
       email,
       phone
     };
@@ -657,7 +660,7 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
 
         return {
           trainerId: trainer.id,
-          trainerName: `${trainer.user?.firstName} ${trainer.user?.lastName}`,
+          trainerName: `${trainer.user?.lastName} ${trainer.user?.firstName} ${trainer.user?.middleName || ''}`.trim(),
           salaryType: trainer.salaryType,
           salaryAmount: trainer.salaryAmount ? Number(trainer.salaryAmount) : null,
           trainingCount: trainings.length,

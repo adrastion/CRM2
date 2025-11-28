@@ -783,7 +783,7 @@ const Schedule: React.FC = () => {
           defaultShouldCharge = false; // По умолчанию для ABSENT галочка не стоит
         }
         return {
-          clientId: item.client.id,
+        clientId: item.client.id,
           status: status,
           notes: item.attendance?.notes || '',
           shouldCharge: item.attendance?.shouldCharge !== undefined ? item.attendance.shouldCharge : defaultShouldCharge
@@ -904,7 +904,7 @@ const Schedule: React.FC = () => {
               {trainers.map((trainer) => (
                 <MenuItem key={trainer.id} value={trainer.id}>
                   {trainer.user 
-                    ? `${trainer.user.firstName} ${trainer.user.lastName}`
+                    ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
                     : `Тренер #${trainer.id}`}
                 </MenuItem>
               ))}
@@ -1177,7 +1177,7 @@ const Schedule: React.FC = () => {
                   >
                     {trainers.map((trainer) => (
                       <MenuItem key={trainer.id} value={trainer.id}>
-                        {trainer.user?.firstName} {trainer.user?.lastName}
+                        {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1605,7 +1605,7 @@ const Schedule: React.FC = () => {
                   >
                     {trainers.map((trainer) => (
                       <MenuItem key={trainer.id} value={trainer.id}>
-                        {trainer.user?.firstName} {trainer.user?.lastName}
+                        {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1964,7 +1964,7 @@ const Schedule: React.FC = () => {
                                 },
                               }}
                             >
-                              {item.client.firstName} {item.client.lastName}
+                            {item.client.firstName} {item.client.lastName}
                             </Link>
                           </TableCell>
                           <TableCell>{item.client.phone || '-'}</TableCell>

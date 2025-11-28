@@ -28,14 +28,14 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Business, AttachMoney } from '@mui/icons-material';
+import { Add, Edit, Delete, Business, AttachMoney } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { Trainer, Branch, TrainerBranch } from '../types';
+import { Trainer, Branch } from '../types';
 
 const Trainers: React.FC = () => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -59,6 +59,7 @@ const Trainers: React.FC = () => {
     password: '',
     firstName: '',
     lastName: '',
+    middleName: '',
     phone: '',
     qualification: '',
     experience: '',
@@ -158,6 +159,7 @@ const Trainers: React.FC = () => {
         password: '',
         firstName: '',
         lastName: '',
+        middleName: '',
         phone: '',
         qualification: '',
         experience: '',
@@ -197,6 +199,7 @@ const Trainers: React.FC = () => {
       password: '', // Не показываем пароль при редактировании
       firstName: trainer.user?.firstName || '',
       lastName: trainer.user?.lastName || '',
+      middleName: trainer.user?.middleName || '',
       phone: trainer.user?.phone || '',
       qualification: trainer.qualification || '',
       experience: trainer.experience?.toString() || '',
@@ -233,6 +236,7 @@ const Trainers: React.FC = () => {
         password: '',
         firstName: '',
         lastName: '',
+        middleName: '',
         phone: '',
         qualification: '',
         experience: '',
@@ -409,6 +413,7 @@ const Trainers: React.FC = () => {
                               password: '',
                               firstName: trainer.user?.firstName || '',
                               lastName: trainer.user?.lastName || '',
+                              middleName: trainer.user?.middleName || '',
                               phone: trainer.user?.phone || '',
                               qualification: trainer.qualification || '',
                               experience: trainer.experience?.toString() || '',
@@ -421,7 +426,7 @@ const Trainers: React.FC = () => {
                             setEditDialog(true);
                           }}
                         >
-                          {trainer.user?.firstName} {trainer.user?.lastName}
+                          {trainer.user?.lastName} {trainer.user?.firstName} {trainer.user?.middleName || ''}
                         </Typography>
                       </TableCell>
                       <TableCell>{trainer.user?.email}</TableCell>
@@ -556,7 +561,7 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Имя"
@@ -567,7 +572,17 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.firstName}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Отчество"
+                value={formData.middleName}
+                onChange={(e) => handleInputChange('middleName', e.target.value)}
+                error={!!formErrors.middleName}
+                helperText={formErrors.middleName}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Фамилия"
@@ -752,7 +767,7 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Имя"
@@ -761,7 +776,15 @@ const Trainers: React.FC = () => {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Отчество"
+                value={formData.middleName}
+                onChange={(e) => handleInputChange('middleName', e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Фамилия"

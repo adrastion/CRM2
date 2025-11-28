@@ -8,6 +8,7 @@ import {
   getProfile,
   updateProfile,
   changePassword,
+  changeEmail,
   requestPasswordReset,
   resetPassword,
   logout,
@@ -18,6 +19,7 @@ import {
   validatePromoCodeAdminLogin,
   validateCreateUser,
   validateChangePassword,
+  validateChangeEmail,
   validateResetPassword,
   validateNewPassword,
   validateUpdateProfile
@@ -40,6 +42,7 @@ router.use(authenticate); // All routes below require authentication
 router.get('/profile', getProfile);
 router.put('/profile', validateUpdateProfile, updateProfile);
 router.post('/change-password', validateChangePassword, changePassword);
+router.post('/change-email', validateChangeEmail, changeEmail);
 router.post('/logout', logout);
 router.get('/verify', verifyToken);
 

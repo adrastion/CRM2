@@ -7,6 +7,8 @@ import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthCo
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
 import AppLayout from './components/Layout/AppLayout';
+import OnboardingTour from './components/OnboardingTour';
+import { apiService } from './services/api';
 
 // Lazy load pages for better performance
 const Login = lazy(() => import('./pages/Login'));
@@ -24,8 +26,8 @@ const Schedule = lazy(() => import('./pages/Schedule'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Memberships = lazy(() => import('./pages/Memberships'));
 const ClientMemberships = lazy(() => import('./pages/ClientMemberships'));
-const FAQ = lazy(() => import('./pages/FAQ'));
 const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
 const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
 const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
@@ -38,9 +40,10 @@ const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
 
-// Create Material-UI theme
-const theme = createTheme({
+// Create Material-UI theme with dark mode support
+const getTheme = (darkMode: boolean) => createTheme({
   palette: {
+    mode: darkMode ? 'dark' : 'light',
     primary: {
       main: '#1976d2',
     },
@@ -223,7 +226,72 @@ const SuperAdminLoginRoute: React.FC<{ children: React.ReactNode }> = ({ childre
 
 // Main App Component
 const AppContent: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+  const [darkMode, setDarkMode] = React.useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
+  });
+  const [onboardingOpen, setOnboardingOpen] = React.useState(false);
+  const [onboardingLoading, setOnboardingLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const handleThemeChange = (event: CustomEvent) => {
+      setDarkMode(event.detail.darkMode);
+    };
+
+    window.addEventListener('themeChange', handleThemeChange as EventListener);
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener);
+    };
+  }, []);
+
+  // Check onboarding status when user is authenticated
+  React.useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      if (!isAuthenticated || !user || user.role !== 'OWNER') {
+        setOnboardingLoading(false);
+        return;
+      }
+
+      try {
+        const response = await apiService.getSettings();
+        const settings = response.data;
+        
+        // Show onboarding only if user hasn't completed it and hasn't declined
+        if (!settings?.hasCompletedOnboarding && !settings?.onboardingDeclined) {
+          setOnboardingOpen(true);
+        }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+      } finally {
+        setOnboardingLoading(false);
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [isAuthenticated, user]);
+
+  const handleOnboardingComplete = () => {
+    setOnboardingOpen(false);
+  };
+
+  const handleOnboardingDecline = () => {
+    setOnboardingOpen(false);
+  };
+
+  const theme = React.useMemo(() => getTheme(darkMode), [darkMode]);
+
   return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {!onboardingLoading && user?.role === 'OWNER' && (
+        <OnboardingTour
+          open={onboardingOpen}
+          onClose={handleOnboardingDecline}
+          onComplete={handleOnboardingComplete}
+          onDecline={handleOnboardingDecline}
+        />
+      )}
     <Router>
       <Suspense fallback={<PageLoader />}>
       <Routes>
@@ -404,6 +472,16 @@ const AppContent: React.FC = () => {
           }
         />
         <Route
+          path="/knowledge-base"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <KnowledgeBase />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/super-admin/login"
           element={
             <SuperAdminLoginRoute>
@@ -474,24 +552,22 @@ const AppContent: React.FC = () => {
       </Routes>
       </Suspense>
     </Router>
+    </ThemeProvider>
   );
 };
 
 // Root App Component with Theme and Auth Providers
 const App: React.FC = () => {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
       <AuthProvider>
         <MarketerAuthProvider>
           <PromoCodeAdminAuthProvider>
-            <SuperAdminAuthProvider>
-              <AppContent />
-            </SuperAdminAuthProvider>
+          <SuperAdminAuthProvider>
+            <AppContent />
+          </SuperAdminAuthProvider>
           </PromoCodeAdminAuthProvider>
         </MarketerAuthProvider>
       </AuthProvider>
-    </ThemeProvider>
   );
 };
 

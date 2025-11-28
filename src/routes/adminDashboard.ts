@@ -7,6 +7,7 @@ import {
   getTransactionHistory,
   createExpense,
   payMarketer,
+  updateTenantPlan,
 } from '../controllers/adminDashboardController';
 import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
 
@@ -35,6 +36,9 @@ router.post('/expenses', createExpense);
 
 // Выплата маркетологу
 router.post('/marketers/pay', payMarketer);
+
+// Обновить тариф tenant'а
+router.put('/tenants/:tenantId/plan', updateTenantPlan);
 
 export default router;
 

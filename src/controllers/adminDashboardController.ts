@@ -60,13 +60,18 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
           tenant: true,
         },
       },
+      promoCodeUsage: {
+        include: {
+          promoCode: true,
+        },
+      },
     },
     orderBy: {
       paidAt: 'desc',
     },
   });
 
-  // Общая сумма заработанных денег
+  // Общая сумма заработанных денег (с учетом скидок - используем фактическую сумму платежа)
   const totalRevenue = successfulPayments.reduce((sum, payment) => {
     return sum + Number(payment.amount);
   }, 0);
@@ -117,22 +122,56 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
   // Проверяем, достаточно ли средств
   const hasInsufficientFunds = availableBudget < 0;
 
-  // Подписки, которые скоро истекают (в течение 7 дней)
-  const soonExpiring = activeSubscriptions.filter(t => {
-    if (!t.subscription?.endDate) return false;
-    const daysUntilExpiry = Math.ceil(
-      (new Date(t.subscription.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-  });
+  // Получаем подписки, которые скоро истекают (в течение 30 дней)
+  const soonExpiringDate = new Date();
+  soonExpiringDate.setDate(soonExpiringDate.getDate() + 30);
 
-  // Подписки, которые уже истекли
-  const expired = tenants.filter(t => 
-    t.subscription && 
-    t.subscription.status === 'expired' &&
-    t.subscription.endDate &&
-    new Date(t.subscription.endDate) < new Date()
-  );
+  const soonExpiring = tenants
+    .filter(t => 
+      t.subscription && 
+      t.subscription.status === 'active' &&
+      t.subscription.endDate &&
+      t.subscription.endDate > new Date() &&
+      t.subscription.endDate <= soonExpiringDate
+    )
+    .map(t => ({
+      id: t.id,
+      name: t.name,
+      email: t.email,
+      planType: t.subscription!.planType,
+      endDate: t.subscription!.endDate!.toISOString(),
+      daysUntilExpiry: Math.ceil((t.subscription!.endDate!.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
+    }));
+
+  // Получаем истекшие подписки
+  const expired = tenants
+    .filter(t => 
+      t.subscription && 
+      t.subscription.status === 'expired' &&
+      t.subscription.endDate &&
+      t.subscription.endDate < new Date()
+    )
+    .map(t => ({
+      id: t.id,
+      name: t.name,
+      email: t.email,
+      planType: t.subscription!.planType,
+      endDate: t.subscription!.endDate!.toISOString(),
+    }));
+
+  // Последние платежи (первые 10)
+  const recentPayments = successfulPayments.slice(0, 10).map(payment => ({
+    id: payment.id,
+    tenantName: payment.subscription.tenant.name,
+    amount: Number(payment.amount), // Фактическая сумма с учетом скидки
+    originalAmount: payment.promoCodeUsage 
+      ? Number(payment.amount) + Number(payment.promoCodeUsage.discountAmount)
+      : Number(payment.amount),
+    discountAmount: payment.promoCodeUsage ? Number(payment.promoCodeUsage.discountAmount) : 0,
+    planType: payment.subscription.planType,
+    paidAt: payment.paidAt?.toISOString() || payment.createdAt.toISOString(),
+    hasDiscount: !!payment.promoCodeUsage,
+  }));
 
   res.json({
     success: true,
@@ -145,23 +184,8 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
       },
       subscriptions: {
         byPlan: planStats,
-        soonExpiring: soonExpiring.map(t => ({
-          id: t.id,
-          name: t.name,
-          email: t.email,
-          planType: t.subscription?.planType,
-          endDate: t.subscription?.endDate,
-          daysUntilExpiry: t.subscription?.endDate 
-            ? Math.ceil((new Date(t.subscription.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-            : null,
-        })),
-        expired: expired.map(t => ({
-          id: t.id,
-          name: t.name,
-          email: t.email,
-          planType: t.subscription?.planType,
-          endDate: t.subscription?.endDate,
-        })),
+        soonExpiring,
+        expired,
       },
       revenue: {
         total: totalRevenue,
@@ -176,7 +200,7 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
           email: m.email,
           balance: Number(m.balance),
           commissionPercentage: Number(m.commissionPercentage),
-          referredClientsCount: m._count?.referredTenants || 0,
+          referredClientsCount: m._count.referredTenants,
         })),
       },
       budget: {
@@ -190,13 +214,7 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
           reserveAmount: adminSettings.reserveAmount ? Number(adminSettings.reserveAmount) : null,
         },
       },
-      recentPayments: successfulPayments.slice(0, 10).map(p => ({
-        id: p.id,
-        tenantName: p.subscription.tenant.name,
-        amount: Number(p.amount),
-        planType: p.subscription.planType,
-        paidAt: p.paidAt,
-      })),
+      recentPayments,
     },
   });
 });
@@ -317,45 +335,20 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
       },
       select: {
         id: true,
-        fullName: true,
-        phone: true,
-        email: true,
       },
     });
 
-    // Получаем всех клиентов tenant'а
-    // Исключаем клиентов, которые могут быть родителями
-    // Проверяем по имени, телефону и email, если они совпадают с родителями
-    const allClients = await prisma.client.findMany({
+    const parentIds = parents.map(p => p.id);
+
+    // Получаем количество клиентов, исключая родителей
+    const clientsCount = await prisma.client.count({
       where: {
         tenantId: tenant.id,
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        middleName: true,
-        phone: true,
-        email: true,
+        NOT: {
+          id: { in: parentIds },
+        },
       },
     });
-
-    // Исключаем клиентов, которые совпадают с родителями по телефону или email
-    // (если родители создаются как клиенты)
-    const parentPhones = new Set(parents.map(p => p.phone).filter(Boolean));
-    const parentEmails = new Set(parents.map(p => p.email).filter(Boolean));
-    
-    // Считаем только клиентов, которые не являются родителями
-    const clientsCount = allClients.filter(client => {
-      // Если у клиента есть телефон или email, который совпадает с родителем, исключаем его
-      if (client.phone && parentPhones.has(client.phone)) {
-        return false;
-      }
-      if (client.email && parentEmails.has(client.email)) {
-        return false;
-      }
-      return true;
-    }).length;
 
     return {
       id: tenant.id,
@@ -395,7 +388,8 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
     where.type = type;
   }
 
-  const [transactions, total] = await Promise.all([
+  // Получаем транзакции из AdminTransaction
+  const [adminTransactions, adminTotal] = await Promise.all([
     prisma.adminTransaction.findMany({
       where,
       include: {
@@ -424,19 +418,77 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
     prisma.adminTransaction.count({ where }),
   ]);
 
+  // Получаем платежи за подписки
+  const subscriptionPayments = await prisma.subscriptionPayment.findMany({
+    where: {
+      status: 'succeeded',
+    },
+    include: {
+      subscription: {
+        include: {
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+      promoCodeUsage: {
+        include: {
+          promoCode: {
+            select: {
+              code: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      paidAt: 'desc',
+    },
+    take: Number(limit),
+    skip: Number(offset),
+  });
+
+  // Объединяем транзакции и платежи за подписки
+  const allTransactions = [
+    ...adminTransactions.map(t => ({
+      id: t.id,
+      type: t.type,
+      amount: Number(t.amount),
+      description: t.description,
+      marketer: t.marketer,
+      superAdmin: t.superAdmin,
+      createdAt: t.createdAt,
+      source: 'admin' as const,
+    })),
+    ...subscriptionPayments.map(p => ({
+      id: p.id,
+      type: 'income' as const,
+      amount: Number(p.amount), // Фактическая сумма с учетом скидки
+      originalAmount: p.promoCodeUsage 
+        ? Number(p.amount) + Number(p.promoCodeUsage.discountAmount)
+        : Number(p.amount),
+      discountAmount: p.promoCodeUsage ? Number(p.promoCodeUsage.discountAmount) : 0,
+      description: `Платеж за подписку ${p.subscription.planType} от ${p.subscription.tenant.name}`,
+      promoCode: p.promoCodeUsage?.promoCode?.code || null,
+      tenant: {
+        id: p.subscription.tenant.id,
+        name: p.subscription.tenant.name,
+        email: p.subscription.tenant.email,
+      },
+      createdAt: p.paidAt || p.createdAt,
+      source: 'subscription' as const,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   res.json({
     success: true,
     data: {
-      transactions: transactions.map(t => ({
-        id: t.id,
-        type: t.type,
-        amount: Number(t.amount),
-        description: t.description,
-        marketer: t.marketer,
-        superAdmin: t.superAdmin,
-        createdAt: t.createdAt,
-      })),
-      total,
+      transactions: allTransactions.slice(0, Number(limit)),
+      total: adminTotal + subscriptionPayments.length,
       limit: Number(limit),
       offset: Number(offset),
     },
@@ -505,7 +557,6 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
     return;
   }
 
-  // Проверяем, что маркетолог существует
   const marketer = await prisma.marketer.findUnique({
     where: { id: marketerId },
   });
@@ -524,46 +575,48 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (paymentAmount > currentBalance) {
     res.status(400).json({
       success: false,
-      error: `Insufficient balance. Current balance: ${currentBalance}, requested: ${paymentAmount}`,
+      error: 'Payment amount exceeds marketer balance',
     });
     return;
   }
 
-  // Создаем транзакцию и уменьшаем баланс маркетолога
-  const [transaction, updatedMarketer] = await Promise.all([
-    prisma.adminTransaction.create({
-      data: {
-        type: 'marketer_payment',
-        amount: paymentAmount,
-        description: description?.trim() || `Выплата маркетологу ${marketer.name}`,
-        marketerId: marketerId,
-        superAdminId: superAdmin?.id,
-      },
-      include: {
-        marketer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        superAdmin: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
+  // Создаем транзакцию
+  const transaction = await prisma.adminTransaction.create({
+    data: {
+      type: 'marketer_payment',
+      amount: paymentAmount,
+      description: description || `Выплата маркетологу ${marketer.name}`,
+      marketerId: marketerId,
+      superAdminId: superAdmin?.id,
+    },
+    include: {
+      marketer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
         },
       },
-    }),
-    prisma.marketer.update({
-      where: { id: marketerId },
-      data: {
-        balance: currentBalance - paymentAmount,
+      superAdmin: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
       },
-    }),
-  ]);
+    },
+  });
+
+  // Уменьшаем баланс маркетолога
+  const updatedMarketer = await prisma.marketer.update({
+    where: { id: marketerId },
+    data: {
+      balance: {
+        decrement: paymentAmount,
+      },
+    },
+  });
 
   res.json({
     success: true,
@@ -586,3 +639,26 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   });
 });
 
+/**
+ * Обновление тарифа для tenant'а (только для суперадмина)
+ */
+export const updateTenantPlan = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req.params;
+  const { planType } = req.body;
+
+  if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid plan type',
+    });
+    return;
+  }
+
+  const { SubscriptionService } = await import('../services/subscriptionService');
+  const updatedSubscription = await SubscriptionService.updatePlan(tenantId, planType as any);
+
+  res.json({
+    success: true,
+    data: updatedSubscription,
+  });
+});

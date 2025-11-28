@@ -132,6 +132,10 @@ class ApiService {
     await this.api.post('/auth/change-password', data);
   }
 
+  async changeEmail(data: { newEmail: string; password: string }): Promise<void> {
+    await this.api.post('/auth/change-email', data);
+  }
+
   async requestPasswordReset(email: string): Promise<void> {
     await this.api.post('/auth/request-password-reset', { email });
   }
@@ -762,6 +766,11 @@ class ApiService {
     return response.data;
   }
 
+  async updateOnboardingStatus(data: { hasCompletedOnboarding?: boolean; onboardingDeclined?: boolean }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/settings/onboarding', data);
+    return response.data;
+  }
+
   // Client Categories
   async getClientCategories(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/client-categories');
@@ -876,6 +885,11 @@ class ApiService {
 
   async payMarketer(data: { marketerId: string; amount: number; description?: string }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/marketers/pay', data);
+    return response.data.data;
+  }
+
+  async updateTenantPlan(tenantId: string, planType: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, { planType });
     return response.data.data;
   }
 }
