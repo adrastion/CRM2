@@ -575,7 +575,7 @@ const Groups: React.FC = () => {
               <TextField
                 fullWidth
                 label="Стоимость тренировки (руб.)"
-                type="number
+                type="number"
                 value={formData.trainingPrice}
                 onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
