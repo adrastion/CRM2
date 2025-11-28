@@ -119,6 +119,22 @@ export class AuthService {
         }
       });
 
+      // Create FREE subscription for new tenant
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 100); // Устанавливаем дату окончания далеко в будущем для FREE тарифа
+
+      await tx.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          planType: 'FREE',
+          status: 'active',
+          startDate,
+          endDate,
+          autoRenew: true,
+        },
+      });
+
       return { tenant, user };
     });
 

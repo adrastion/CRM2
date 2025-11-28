@@ -336,12 +336,22 @@ export class SubscriptionService {
     });
 
     if (!subscription) {
+      const startDate = new Date();
+      let endDate: Date | null = null;
+      
+      // Для FREE тарифа устанавливаем дату окончания далеко в будущем
+      if (planType === 'FREE') {
+        endDate = new Date();
+        endDate.setFullYear(endDate.getFullYear() + 100);
+      }
+
       subscription = await prisma.subscription.create({
         data: {
           tenantId,
           planType,
           status: planType === 'FREE' ? 'active' : 'expired',
-          startDate: new Date(),
+          startDate,
+          endDate,
           autoRenew: true,
         },
         include: { payments: true },
