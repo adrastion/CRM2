@@ -38,12 +38,31 @@ const SubscriptionSuccess: React.FC = () => {
   const loadSubscription = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await apiService.getSubscription();
       setSubscription(data.subscription);
-      setError(null);
+      
+      // Проверяем статус последнего платежа
+      if (data.subscription?.payments && data.subscription.payments.length > 0) {
+        const lastPayment = data.subscription.payments[0]; // Самый последний платеж
+        // Если платеж не завершен или отменен, показываем ошибку
+        if (lastPayment.status === 'pending' || lastPayment.status === 'cancelled') {
+          setError('Что-то пошло не так. Платеж не был завершен. Пожалуйста, попробуйте еще раз.');
+        }
+      } else if (data.subscription?.status !== 'active') {
+        // Если нет платежей и подписка не активна, возможно платеж не был завершен
+        // Проверяем, есть ли недавние попытки оплаты (в течение последних 10 минут)
+        const now = new Date();
+        const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+        
+        // Если подписка не активна и мы на странице успеха, вероятно платеж не был завершен
+        if (data.subscription?.status === 'expired' || data.subscription?.status === 'cancelled') {
+          setError('Что-то пошло не так. Платеж не был завершен. Пожалуйста, попробуйте еще раз.');
+        }
+      }
     } catch (err: any) {
       console.error('Error loading subscription:', err);
-      setError('Ошибка при загрузке информации о подписке');
+      setError('Что-то пошло не так. Платеж не был завершен. Пожалуйста, попробуйте еще раз.');
     } finally {
       setLoading(false);
     }
@@ -81,6 +100,34 @@ const SubscriptionSuccess: React.FC = () => {
               >
                 Вернуться к тарифам
               </Button>
+            </>
+          ) : error ? (
+            <>
+              <ErrorIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
+              <Typography variant="h4" gutterBottom>
+                Что-то пошло не так
+              </Typography>
+              <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
+                {error}
+              </Alert>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 3 }}>
+                Платеж не был завершен. Вы можете попробовать оплатить подписку еще раз.
+              </Typography>
+              <Box sx={{ mt: 4 }}>
+                <Button
+                  variant="contained"
+                  sx={{ mr: 2 }}
+                  onClick={() => navigate('/pricing')}
+                >
+                  Вернуться к тарифам
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate('/dashboard')}
+                >
+                  Перейти в панель управления
+                </Button>
+              </Box>
             </>
           ) : subscription?.status === 'active' ? (
             <>
