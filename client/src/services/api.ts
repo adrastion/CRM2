@@ -781,10 +781,19 @@ class ApiService {
     return response.data.data;
   }
 
-  async createSubscriptionPayment(planType: string, returnUrl?: string): Promise<any> {
+  async validatePromoCode(promoCode: string, planType: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/subscriptions/validate-promo-code', {
+      promoCode,
+      planType,
+    });
+    return response.data.data;
+  }
+
+  async createSubscriptionPayment(planType: string, returnUrl?: string, promoCode?: string): Promise<any> {
     const response = await this.api.post<ApiResponse>('/subscriptions/payment', {
       planType,
       returnUrl,
+      promoCode,
     });
     return response.data.data;
   }
@@ -798,6 +807,22 @@ class ApiService {
 
   async checkResourceLimit(resource: string): Promise<any> {
     const response = await this.api.get<ApiResponse>(`/subscriptions/check-limit?resource=${resource}`);
+    return response.data.data;
+  }
+
+  // Admin Dashboard methods
+  async getAdminDashboard(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard');
+    return response.data.data;
+  }
+
+  async updateAdminSettings(data: { reservePercentage?: number; reserveAmount?: number }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/settings', data);
+    return response.data.data;
+  }
+
+  async getTenantDetails(tenantId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/admin-dashboard/tenants/${tenantId}`);
     return response.data.data;
   }
 }

@@ -34,6 +34,7 @@ const MarketerPanel = lazy(() => import('./pages/MarketerPanel'));
 const MarketerLogin = lazy(() => import('./pages/MarketerLogin'));
 const PromoCodeAdminLogin = lazy(() => import('./pages/PromoCodeAdminLogin'));
 const Settings = lazy(() => import('./pages/Settings'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -364,6 +365,16 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <AppLayout>
                 <Settings />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <AdminDashboard />
               </AppLayout>
             </ProtectedRoute>
           }

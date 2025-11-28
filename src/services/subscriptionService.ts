@@ -523,9 +523,13 @@ export class SubscriptionService {
         tenantId,
         planType,
         subscriptionId: subscription.id,
-        promoCodeId: validatedPromoCode?.id || null,
         originalAmount: PLAN_PRICES[planType].toString(),
         discountAmount: discountAmount.toString(),
+        ...(validatedPromoCode && {
+          promoCodeId: validatedPromoCode.id,
+          promoCode: validatedPromoCode.code,
+          marketerId: validatedPromoCode.marketerId || '',
+        }),
       },
     };
 
@@ -560,23 +564,9 @@ export class SubscriptionService {
       },
     });
 
-    // Сохраняем использование промокода, если был применен
-    // НЕ увеличиваем счетчик использования здесь - это будет сделано только после успешной оплаты через webhook
-    if (validatedPromoCode) {
-      await prisma.promoCodeUsage.create({
-        data: {
-          promoCodeId: validatedPromoCode.id,
-          subscriptionPaymentId: subscriptionPayment.id,
-          discountAmount: discountAmount,
-          tenantId: tenantId,
-        },
-      });
-
-      // Если это промокод маркетолога, создаем связь tenant -> marketer
-      if (validatedPromoCode.marketerId) {
-        await this.linkTenantToMarketer(tenantId, validatedPromoCode.marketerId);
-      }
-    }
+    // НЕ создаем PromoCodeUsage и НЕ связываем tenant с marketer здесь
+    // Это будет сделано только после успешной оплаты через webhook
+    // Информация о промокоде уже сохранена в metadata платежа YooKassa
 
     return {
       paymentId: subscriptionPayment.id,
@@ -647,11 +637,6 @@ export class SubscriptionService {
       where: { yookassaPaymentId: paymentId },
       include: { 
         subscription: true,
-        promoCodeUsage: {
-          include: {
-            promoCode: true
-          }
-        }
       },
     });
 
@@ -718,18 +703,45 @@ export class SubscriptionService {
         paymentMetadata: payment.metadata
       });
       
-      // Увеличиваем счетчик использования промокода, если он был применен
-      if (subscriptionPayment.promoCodeUsage) {
-        const promoCode = subscriptionPayment.promoCodeUsage.promoCode;
-        await prisma.promoCode.update({
-          where: { id: promoCode.id },
-          data: { usedCount: { increment: 1 } },
+      // Обрабатываем промокод только при успешной оплате
+      const promoCodeId = payment.metadata?.promoCodeId;
+      const marketerId = payment.metadata?.marketerId;
+      const discountAmount = payment.metadata?.discountAmount 
+        ? parseFloat(payment.metadata.discountAmount) 
+        : 0;
+
+      if (promoCodeId) {
+        // Создаем запись об использовании промокода только после успешной оплаты
+        await prisma.promoCodeUsage.create({
+          data: {
+            promoCodeId: promoCodeId,
+            subscriptionPaymentId: subscriptionPayment.id,
+            discountAmount: discountAmount,
+            tenantId: tenantId,
+          },
         });
-        console.log('Promo code usage count incremented:', {
-          promoCodeId: promoCode.id,
-          code: promoCode.code,
-          newCount: promoCode.usedCount + 1
+
+        // Увеличиваем счетчик использования промокода
+        const promoCode = await prisma.promoCode.findUnique({
+          where: { id: promoCodeId },
         });
+
+        if (promoCode) {
+          await prisma.promoCode.update({
+            where: { id: promoCodeId },
+            data: { usedCount: { increment: 1 } },
+          });
+          console.log('Promo code usage count incremented:', {
+            promoCodeId: promoCode.id,
+            code: promoCode.code,
+            newCount: promoCode.usedCount + 1
+          });
+        }
+
+        // Если это промокод маркетолога, создаем связь tenant -> marketer только после успешной оплаты
+        if (marketerId) {
+          await this.linkTenantToMarketer(tenantId, marketerId);
+        }
       }
       
       if (planType && tenantId) {
@@ -742,7 +754,7 @@ export class SubscriptionService {
           console.log('Subscription activated successfully:', updatedSubscription);
 
           // Начисляем комиссию маркетологу за успешную оплату подписки
-          // Используем оригинальную сумму из metadata или сумму платежа
+          // Используем оригинальную сумму из metadata
           const originalAmount = payment.metadata?.originalAmount 
             ? parseFloat(payment.metadata.originalAmount) 
             : Number(subscriptionPayment.amount);

@@ -700,3 +700,15 @@ model TenantMarketer {
 
   @@map("tenant_marketers")
 }
+
+// ==================== SUPER ADMIN SETTINGS (НАСТРОЙКИ СУПЕРАДМИНА) ====================
+
+model SuperAdminSettings {
+  id                    String   @id @default(cuid())
+  reservePercentage     Decimal? // Процент от общей суммы для резерва
+  reserveAmount         Decimal? // Фиксированная сумма резерва
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("super_admin_settings")
+}

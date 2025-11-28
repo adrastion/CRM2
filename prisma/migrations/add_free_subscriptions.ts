@@ -11,8 +11,9 @@ async function main() {
 
   // Получаем всех tenant'ов
   const tenants = await prisma.tenant.findMany({
-    include: {
-      subscription: true,
+    select: {
+      id: true,
+      name: true,
     },
   });
 
@@ -22,8 +23,14 @@ async function main() {
   let skipped = 0;
 
   for (const tenant of tenants) {
-    if (tenant.subscription) {
-      console.log(`⏭️  Tenant ${tenant.name} (${tenant.id}) already has subscription: ${tenant.subscription.planType}`);
+    // Проверяем, есть ли уже подписка у этого tenant'а
+    const existingSubscription = await prisma.subscription.findUnique({
+      where: { tenantId: tenant.id },
+      select: { id: true, planType: true },
+    });
+
+    if (existingSubscription) {
+      console.log(`⏭️  Tenant ${tenant.name} (${tenant.id}) already has subscription: ${existingSubscription.planType}`);
       skipped++;
       continue;
     }

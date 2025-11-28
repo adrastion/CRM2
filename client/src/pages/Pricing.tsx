@@ -19,6 +19,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  TextField,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -30,6 +33,8 @@ import {
   CalendarToday,
   Support,
   TrendingUp,
+  LocalOffer,
+  Close,
 } from '@mui/icons-material';
 import PublicFooter from '../components/PublicFooter';
 import { useAuth } from '../contexts/AuthContext';
@@ -141,6 +146,15 @@ const planTypes: PlanType[] = [
   },
 ];
 
+interface PromoCodeData {
+  promoCode: string;
+  discountAmount: number;
+  originalAmount: number;
+  finalAmount: number;
+  discountType: string;
+  discountValue: number;
+}
+
 const Pricing: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
@@ -152,6 +166,11 @@ const Pricing: React.FC = () => {
     open: false,
     plan: null,
   });
+  const [promoCode, setPromoCode] = useState<string>('');
+  const [appliedPromoCode, setAppliedPromoCode] = useState<PromoCodeData | null>(null);
+  const [promoCodeError, setPromoCodeError] = useState<string | null>(null);
+  const [validatingPromoCode, setValidatingPromoCode] = useState(false);
+  const [promoCodeByPlan, setPromoCodeByPlan] = useState<Record<string, PromoCodeData>>({});
 
   useEffect(() => {
     if (isAuthenticated && user?.role === 'OWNER') {
@@ -166,6 +185,50 @@ const Pricing: React.FC = () => {
     } catch (err: any) {
       console.error('Error loading subscription:', err);
     }
+  };
+
+  const handleApplyPromoCode = async (planType: string) => {
+    if (!promoCode.trim()) {
+      setPromoCodeError('Введите промокод');
+      return;
+    }
+
+    setValidatingPromoCode(true);
+    setPromoCodeError(null);
+
+    try {
+      const result = await apiService.validatePromoCode(promoCode.trim().toUpperCase(), planType);
+      
+      // Сохраняем примененный промокод для этого тарифа
+      setPromoCodeByPlan(prev => ({
+        ...prev,
+        [planType]: result,
+      }));
+      
+      setAppliedPromoCode(result);
+      setPromoCodeError(null);
+    } catch (err: any) {
+      setPromoCodeError(err.response?.data?.error || 'Неверный промокод');
+      setAppliedPromoCode(null);
+      // Удаляем промокод для этого тарифа при ошибке
+      setPromoCodeByPlan(prev => {
+        const newState = { ...prev };
+        delete newState[planType];
+        return newState;
+      });
+    } finally {
+      setValidatingPromoCode(false);
+    }
+  };
+
+  const handleRemovePromoCode = (planType: string) => {
+    setPromoCodeByPlan(prev => {
+      const newState = { ...prev };
+      delete newState[planType];
+      return newState;
+    });
+    setPromoCode('');
+    setPromoCodeError(null);
   };
 
   const handleSelectPlan = (plan: PlanType) => {
@@ -197,9 +260,13 @@ const Pricing: React.FC = () => {
 
     try {
       const returnUrl = `${window.location.origin}/subscription/success`;
+      const appliedPromo = promoCodeByPlan[confirmDialog.plan.planType];
+      const promoCodeToUse = appliedPromo ? appliedPromo.promoCode : undefined;
+      
       const payment = await apiService.createSubscriptionPayment(
         confirmDialog.plan.planType,
-        returnUrl
+        returnUrl,
+        promoCodeToUse
       );
 
       if (payment.paymentUrl) {
@@ -210,6 +277,8 @@ const Pricing: React.FC = () => {
         setSuccess('Подписка успешно активирована!');
         await loadSubscription();
         setConfirmDialog({ open: false, plan: null });
+        // Очищаем промокод после успешной оплаты
+        handleRemovePromoCode(confirmDialog.plan.planType);
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка при создании платежа');
@@ -303,6 +372,7 @@ const Pricing: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {plan.description}
                 </Typography>
+                
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
                   <Typography variant="h3" component="div" fontWeight="bold" color="primary.main">
                     {plan.price}
@@ -399,7 +469,13 @@ const Pricing: React.FC = () => {
       </Grid>
 
       {/* Dialog для подтверждения платежа */}
-      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, plan: null })}>
+      <Dialog open={confirmDialog.open} onClose={() => {
+        setConfirmDialog({ open: false, plan: null });
+        // Очищаем промокод при закрытии диалога
+        if (confirmDialog.plan) {
+          handleRemovePromoCode(confirmDialog.plan.planType);
+        }
+      }} maxWidth="sm" fullWidth>
         <DialogTitle>Подтверждение выбора тарифа</DialogTitle>
         <DialogContent>
           {confirmDialog.plan && (
@@ -407,9 +483,69 @@ const Pricing: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Тариф: {confirmDialog.plan.name}
               </Typography>
-              <Typography variant="body1" gutterBottom>
-                Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
-              </Typography>
+              
+              {/* Поле для ввода промокода */}
+              {confirmDialog.plan.planType !== 'FREE' && confirmDialog.plan.planType !== 'ENTERPRISE' && (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Введите промокод для получения скидки
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Промокод"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      error={!!promoCodeError}
+                      helperText={promoCodeError}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LocalOffer fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={() => handleApplyPromoCode(confirmDialog.plan!.planType)}
+                      disabled={!promoCode.trim() || validatingPromoCode}
+                    >
+                      {validatingPromoCode ? <CircularProgress size={20} /> : 'Применить'}
+                    </Button>
+                  </Box>
+                  {promoCodeByPlan[confirmDialog.plan.planType] && (
+                    <Alert severity="success" sx={{ mt: 1 }}>
+                      Промокод <strong>{promoCodeByPlan[confirmDialog.plan.planType].promoCode}</strong> применен!
+                    </Alert>
+                  )}
+                </Box>
+              )}
+
+              {/* Отображение цены */}
+              <Box sx={{ mt: 2 }}>
+                {promoCodeByPlan[confirmDialog.plan.planType] ? (
+                  <Box>
+                    <Typography variant="body1" gutterBottom>
+                      <Box component="span" sx={{ textDecoration: 'line-through', color: 'text.secondary', mr: 1 }}>
+                        {confirmDialog.plan.price}/месяц
+                      </Box>
+                    </Typography>
+                    <Typography variant="h6" color="success.main" gutterBottom>
+                      Стоимость со скидкой: <strong>{promoCodeByPlan[confirmDialog.plan.planType].finalAmount.toLocaleString('ru-RU')}₽/месяц</strong>
+                    </Typography>
+                    <Typography variant="body2" color="success.main">
+                      Скидка: {promoCodeByPlan[confirmDialog.plan.planType].discountAmount.toLocaleString('ru-RU')}₽
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Typography variant="body1" gutterBottom>
+                    Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
+                  </Typography>
+                )}
+              </Box>
+
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                 После подтверждения вы будете перенаправлены на страницу оплаты YooKassa.
               </Typography>
@@ -417,7 +553,15 @@ const Pricing: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialog({ open: false, plan: null })}>Отмена</Button>
+          <Button onClick={() => {
+            setConfirmDialog({ open: false, plan: null });
+            // Очищаем промокод при закрытии диалога
+            if (confirmDialog.plan) {
+              handleRemovePromoCode(confirmDialog.plan.planType);
+            }
+          }}>
+            Отмена
+          </Button>
           <Button
             onClick={handleConfirmPayment}
             variant="contained"

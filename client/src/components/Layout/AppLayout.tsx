@@ -61,6 +61,7 @@ const navigationItems = [
   { label: 'Тарифы', path: '/memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Настройки', path: '/settings', icon: <Settings />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Панель администратора', path: '/admin/dashboard', icon: <Dashboard />, roles: ['OWNER'] },
   { label: 'FAQ', path: '/faq', icon: <HelpOutline />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
 ];
 
