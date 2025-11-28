@@ -78,12 +78,13 @@ const PageLoader: React.FC = () => (
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Clear marketer tokens if trying to access regular routes
+  // Clear other tokens if trying to access regular routes
   React.useEffect(() => {
     const marketerToken = localStorage.getItem('marketerToken');
     const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
-    if (marketerToken || promoCodeAdminToken) {
-      // User is trying to access regular routes but has marketer/admin token
+    const superAdminToken = localStorage.getItem('superAdminToken');
+    if (marketerToken || promoCodeAdminToken || superAdminToken) {
+      // User is trying to access regular routes but has other tokens
       // Clear it to prevent conflicts
       if (marketerToken) {
         localStorage.removeItem('marketerToken');
@@ -95,6 +96,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
         localStorage.removeItem('promoCodeAdminToken');
         localStorage.removeItem('promoCodeAdmin');
         localStorage.removeItem('promoCodeAdminTenant');
+      }
+      if (superAdminToken) {
+        localStorage.removeItem('superAdminToken');
+        localStorage.removeItem('superAdmin');
       }
     }
   }, []);
@@ -110,12 +115,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Clear marketer tokens if trying to access regular login
+  // Clear other tokens if trying to access regular login
   React.useEffect(() => {
     const marketerToken = localStorage.getItem('marketerToken');
     const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
-    if (marketerToken || promoCodeAdminToken) {
-      // User is trying to access regular login but has marketer/admin token
+    const superAdminToken = localStorage.getItem('superAdminToken');
+    if (marketerToken || promoCodeAdminToken || superAdminToken) {
+      // User is trying to access regular login but has other tokens
       // Clear it to prevent conflicts
       if (marketerToken) {
         localStorage.removeItem('marketerToken');
@@ -127,6 +133,10 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         localStorage.removeItem('promoCodeAdminToken');
         localStorage.removeItem('promoCodeAdmin');
         localStorage.removeItem('promoCodeAdminTenant');
+      }
+      if (superAdminToken) {
+        localStorage.removeItem('superAdminToken');
+        localStorage.removeItem('superAdmin');
       }
     }
   }, []);

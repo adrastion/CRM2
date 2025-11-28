@@ -53,6 +53,11 @@ class ApiService {
           // Token expired or invalid
           const url = error.config?.url || '';
           
+          // Check if it's a super admin route
+          const isSuperAdminRoute = url.includes('/super-admin/') || 
+                                    url.includes('/admin-dashboard') ||
+                                    localStorage.getItem('superAdminToken');
+          
           // Check if it's a marketer route (marketers/me/stats, or any /marketers route with marketer token)
           const isMarketerRoute = url.includes('/marketers/me/') || 
                                   (url.includes('/marketers/') && localStorage.getItem('marketerToken'));
@@ -62,7 +67,11 @@ class ApiService {
                                         url.includes('/referral-links') ||
                                         (url.includes('/marketers/') && !localStorage.getItem('marketerToken') && localStorage.getItem('promoCodeAdminToken'));
           
-          if (isMarketerRoute) {
+          if (isSuperAdminRoute) {
+            localStorage.removeItem('superAdminToken');
+            localStorage.removeItem('superAdmin');
+            window.location.href = '/super-admin/login';
+          } else if (isMarketerRoute) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
