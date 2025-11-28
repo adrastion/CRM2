@@ -283,3 +283,256 @@ export const getTenantDetails = asyncHandler(async (req: AuthenticatedRequest, r
   });
 });
 
+/**
+ * Получение всех аккаунтов с детальной статистикой
+ */
+export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const tenants = await prisma.tenant.findMany({
+    include: {
+      subscription: true,
+      _count: {
+        select: {
+          users: {
+            where: {
+              role: { in: ['OWNER', 'ADMIN'] },
+            },
+          },
+          clients: true,
+          trainers: true,
+          branches: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  const tenantsWithStats = tenants.map(tenant => ({
+    id: tenant.id,
+    name: tenant.name,
+    email: tenant.email,
+    subdomain: tenant.subdomain,
+    isActive: tenant.isActive,
+    createdAt: tenant.createdAt,
+    subscription: tenant.subscription ? {
+      planType: tenant.subscription.planType,
+      status: tenant.subscription.status,
+      endDate: tenant.subscription.endDate,
+    } : null,
+    stats: {
+      admins: tenant._count.users,
+      clients: tenant._count.clients,
+      trainers: tenant._count.trainers,
+      branches: tenant._count.branches,
+    },
+  }));
+
+  res.json({
+    success: true,
+    data: tenantsWithStats,
+  });
+});
+
+/**
+ * Получение истории транзакций
+ */
+export const getTransactionHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { type, limit = 100, offset = 0 } = req.query;
+
+  const where: any = {};
+  if (type && type !== 'all') {
+    where.type = type;
+  }
+
+  const [transactions, total] = await Promise.all([
+    prisma.adminTransaction.findMany({
+      where,
+      include: {
+        marketer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        superAdmin: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: Number(limit),
+      skip: Number(offset),
+    }),
+    prisma.adminTransaction.count({ where }),
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      transactions: transactions.map(t => ({
+        id: t.id,
+        type: t.type,
+        amount: Number(t.amount),
+        description: t.description,
+        marketer: t.marketer,
+        superAdmin: t.superAdmin,
+        createdAt: t.createdAt,
+      })),
+      total,
+      limit: Number(limit),
+      offset: Number(offset),
+    },
+  });
+});
+
+/**
+ * Создание расхода
+ */
+export const createExpense = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { amount, description } = req.body;
+  const superAdmin = (req as any).superAdmin;
+
+  if (!amount || !description) {
+    res.status(400).json({
+      success: false,
+      error: 'Amount and description are required',
+    });
+    return;
+  }
+
+  const transaction = await prisma.adminTransaction.create({
+    data: {
+      type: 'expense',
+      amount: parseFloat(amount),
+      description: description.trim(),
+      superAdminId: superAdmin?.id,
+    },
+    include: {
+      superAdmin: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      id: transaction.id,
+      type: transaction.type,
+      amount: Number(transaction.amount),
+      description: transaction.description,
+      superAdmin: transaction.superAdmin,
+      createdAt: transaction.createdAt,
+    },
+  });
+});
+
+/**
+ * Выплата маркетологу
+ */
+export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { marketerId, amount, description } = req.body;
+  const superAdmin = (req as any).superAdmin;
+
+  if (!marketerId || !amount) {
+    res.status(400).json({
+      success: false,
+      error: 'Marketer ID and amount are required',
+    });
+    return;
+  }
+
+  // Проверяем, что маркетолог существует
+  const marketer = await prisma.marketer.findUnique({
+    where: { id: marketerId },
+  });
+
+  if (!marketer) {
+    res.status(404).json({
+      success: false,
+      error: 'Marketer not found',
+    });
+    return;
+  }
+
+  const paymentAmount = parseFloat(amount);
+  const currentBalance = Number(marketer.balance);
+
+  if (paymentAmount > currentBalance) {
+    res.status(400).json({
+      success: false,
+      error: `Insufficient balance. Current balance: ${currentBalance}, requested: ${paymentAmount}`,
+    });
+    return;
+  }
+
+  // Создаем транзакцию и уменьшаем баланс маркетолога
+  const [transaction, updatedMarketer] = await Promise.all([
+    prisma.adminTransaction.create({
+      data: {
+        type: 'marketer_payment',
+        amount: paymentAmount,
+        description: description?.trim() || `Выплата маркетологу ${marketer.name}`,
+        marketerId: marketerId,
+        superAdminId: superAdmin?.id,
+      },
+      include: {
+        marketer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        superAdmin: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+    }),
+    prisma.marketer.update({
+      where: { id: marketerId },
+      data: {
+        balance: currentBalance - paymentAmount,
+      },
+    }),
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      transaction: {
+        id: transaction.id,
+        type: transaction.type,
+        amount: Number(transaction.amount),
+        description: transaction.description,
+        marketer: transaction.marketer,
+        superAdmin: transaction.superAdmin,
+        createdAt: transaction.createdAt,
+      },
+      marketer: {
+        id: updatedMarketer.id,
+        name: updatedMarketer.name,
+        balance: Number(updatedMarketer.balance),
+      },
+    },
+  });
+});
+

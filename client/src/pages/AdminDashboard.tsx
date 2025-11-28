@@ -24,6 +24,12 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  Tabs,
+  Tab,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -33,6 +39,10 @@ import {
   Settings,
   Visibility,
   CalendarToday,
+  History,
+  Add,
+  Payment,
+  AccountBox,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -100,6 +110,7 @@ interface DashboardData {
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
+  const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,10 +118,71 @@ const AdminDashboard: React.FC = () => {
   const [reservePercentage, setReservePercentage] = useState<string>('');
   const [reserveAmount, setReserveAmount] = useState<string>('');
   const [savingSettings, setSavingSettings] = useState(false);
+  
+  // История транзакций
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
+  
+  // Все аккаунты
+  const [allTenants, setAllTenants] = useState<any[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(false);
+  
+  // Диалоги
+  const [expenseDialog, setExpenseDialog] = useState(false);
+  const [paymentDialog, setPaymentDialog] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState<string>('');
+  const [expenseDescription, setExpenseDescription] = useState<string>('');
+  const [paymentMarketerId, setPaymentMarketerId] = useState<string>('');
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentDescription, setPaymentDescription] = useState<string>('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (tabValue === 1) {
+      loadTransactions();
+    } else if (tabValue === 2) {
+      loadAllTenants();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabValue]);
+
+  useEffect(() => {
+    if (tabValue === 1) {
+      loadTransactions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactionTypeFilter]);
+
+  const loadTransactions = async () => {
+    try {
+      setTransactionsLoading(true);
+      const result = await apiService.getTransactionHistory({
+        type: transactionTypeFilter !== 'all' ? transactionTypeFilter : undefined,
+      });
+      setTransactions(result.transactions || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки истории транзакций');
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  const loadAllTenants = async () => {
+    try {
+      setTenantsLoading(true);
+      const tenants = await apiService.getAllTenants();
+      setAllTenants(tenants || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки аккаунтов');
+    } finally {
+      setTenantsLoading(false);
+    }
+  };
 
   const loadDashboard = async () => {
     try {
@@ -166,6 +238,68 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('ru-RU', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleCreateExpense = async () => {
+    if (!expenseAmount || !expenseDescription) {
+      setError('Заполните все поля');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiService.createExpense({
+        amount: parseFloat(expenseAmount),
+        description: expenseDescription,
+      });
+      setExpenseDialog(false);
+      setExpenseAmount('');
+      setExpenseDescription('');
+      await loadTransactions();
+      await loadDashboard();
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка создания расхода');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePayMarketer = async () => {
+    if (!paymentMarketerId || !paymentAmount) {
+      setError('Выберите маркетолога и укажите сумму');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiService.payMarketer({
+        marketerId: paymentMarketerId,
+        amount: parseFloat(paymentAmount),
+        description: paymentDescription || undefined,
+      });
+      setPaymentDialog(false);
+      setPaymentMarketerId('');
+      setPaymentAmount('');
+      setPaymentDescription('');
+      await loadTransactions();
+      await loadDashboard();
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка выплаты маркетологу');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -207,6 +341,18 @@ const AdminDashboard: React.FC = () => {
         </Alert>
       )}
 
+      {/* Вкладки */}
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+          <Tab icon={<TrendingUp />} label="Общая статистика" />
+          <Tab icon={<History />} label="История поступления средств" />
+          <Tab icon={<AccountBox />} label="Все аккаунты" />
+        </Tabs>
+      </Paper>
+
+      {/* Контент вкладок */}
+      {tabValue === 0 && data && (
+        <>
       {/* Бюджет и финансы */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} md={4}>
@@ -522,6 +668,281 @@ const AdminDashboard: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+        </>
+      )}
+
+      {/* Вкладка: История поступления средств */}
+      {tabValue === 1 && (
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h5" fontWeight="bold">
+              История поступления средств
+            </Typography>
+            <Box display="flex" gap={2}>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Тип транзакции</InputLabel>
+                <Select
+                  value={transactionTypeFilter}
+                  label="Тип транзакции"
+                  onChange={(e) => {
+                    setTransactionTypeFilter(e.target.value);
+                  }}
+                >
+                  <MenuItem value="all">Все</MenuItem>
+                  <MenuItem value="income">Поступления</MenuItem>
+                  <MenuItem value="expense">Расходы</MenuItem>
+                  <MenuItem value="marketer_payment">Выплаты маркетологам</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={() => setExpenseDialog(true)}
+              >
+                Создать расход
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Payment />}
+                onClick={() => setPaymentDialog(true)}
+                disabled={!data?.marketers.list.length}
+              >
+                Выплатить маркетологу
+              </Button>
+            </Box>
+          </Box>
+
+          {transactionsLoading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Дата</TableCell>
+                      <TableCell>Тип</TableCell>
+                      <TableCell>Описание</TableCell>
+                      <TableCell>Маркетолог</TableCell>
+                      <TableCell align="right">Сумма</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {transactions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography color="text.secondary" sx={{ py: 4 }}>
+                            Нет транзакций
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      transactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={
+                                transaction.type === 'income'
+                                  ? 'Поступление'
+                                  : transaction.type === 'expense'
+                                  ? 'Расход'
+                                  : 'Выплата маркетологу'
+                              }
+                              color={
+                                transaction.type === 'income'
+                                  ? 'success'
+                                  : transaction.type === 'expense'
+                                  ? 'error'
+                                  : 'warning'
+                              }
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{transaction.description}</TableCell>
+                          <TableCell>
+                            {transaction.marketer ? (
+                              `${transaction.marketer.name} (${transaction.marketer.email})`
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            {transaction.type === 'income' ? '+' : '-'}
+                            {formatCurrency(transaction.amount)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Вкладка: Все аккаунты */}
+      {tabValue === 2 && (
+        <Box>
+          <Typography variant="h5" fontWeight="bold" mb={3}>
+            Все аккаунты
+          </Typography>
+
+          {tenantsLoading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Название</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell>Поддомен</TableCell>
+                      <TableCell>Тариф</TableCell>
+                      <TableCell align="right">Админов</TableCell>
+                      <TableCell align="right">Клиентов</TableCell>
+                      <TableCell align="right">Тренеров</TableCell>
+                      <TableCell align="right">Филиалов</TableCell>
+                      <TableCell>Статус</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {allTenants.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} align="center">
+                          <Typography color="text.secondary" sx={{ py: 4 }}>
+                            Нет аккаунтов
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      allTenants.map((tenant) => (
+                        <TableRow key={tenant.id}>
+                          <TableCell>{tenant.name}</TableCell>
+                          <TableCell>{tenant.email}</TableCell>
+                          <TableCell>{tenant.subdomain}</TableCell>
+                          <TableCell>
+                            {tenant.subscription ? (
+                              <Chip label={tenant.subscription.planType} size="small" />
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell align="right">{tenant.stats.admins}</TableCell>
+                          <TableCell align="right">{tenant.stats.clients}</TableCell>
+                          <TableCell align="right">{tenant.stats.trainers}</TableCell>
+                          <TableCell align="right">{tenant.stats.branches}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={tenant.isActive ? 'Активен' : 'Неактивен'}
+                              color={tenant.isActive ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Диалог создания расхода */}
+      <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Создать расход</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Сумма (₽)"
+              type="number"
+              value={expenseAmount}
+              onChange={(e) => setExpenseAmount(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Описание"
+              multiline
+              rows={3}
+              value={expenseDescription}
+              onChange={(e) => setExpenseDescription(e.target.value)}
+              required
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExpenseDialog(false)}>Отмена</Button>
+          <Button
+            onClick={handleCreateExpense}
+            variant="contained"
+            disabled={submitting || !expenseAmount || !expenseDescription}
+          >
+            {submitting ? <CircularProgress size={24} /> : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог выплаты маркетологу */}
+      <Dialog open={paymentDialog} onClose={() => setPaymentDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Выплата маркетологу</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Маркетолог</InputLabel>
+              <Select
+                value={paymentMarketerId}
+                label="Маркетолог"
+                onChange={(e) => setPaymentMarketerId(e.target.value)}
+                required
+              >
+                {data?.marketers.list.map((marketer) => (
+                  <MenuItem key={marketer.id} value={marketer.id}>
+                    {marketer.name} ({marketer.email}) - Баланс: {formatCurrency(marketer.balance)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Сумма (₽)"
+              type="number"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Описание (необязательно)"
+              multiline
+              rows={2}
+              value={paymentDescription}
+              onChange={(e) => setPaymentDescription(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog(false)}>Отмена</Button>
+          <Button
+            onClick={handlePayMarketer}
+            variant="contained"
+            disabled={submitting || !paymentMarketerId || !paymentAmount}
+          >
+            {submitting ? <CircularProgress size={24} /> : 'Выплатить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Диалог настроек резерва */}
       <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="sm" fullWidth>

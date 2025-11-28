@@ -523,6 +523,7 @@ model Marketer {
   promoCodes        PromoCode[]
   referralLinks     ReferralLink[]
   referredTenants   TenantMarketer[] // Tenant'ы, привлеченные этим маркетологом
+  adminTransactions AdminTransaction[] // Выплаты от администратора
 
   @@map("marketers")
 }
@@ -726,5 +727,24 @@ model SuperAdmin {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  transactions AdminTransaction[]
+
   @@map("super_admins")
+}
+
+// ==================== ADMIN TRANSACTIONS (ТРАНЗАКЦИИ АДМИНИСТРАТОРА) ====================
+
+model AdminTransaction {
+  id              String   @id @default(cuid())
+  type            String   // 'income' (поступление), 'expense' (расход), 'marketer_payment' (выплата маркетологу)
+  amount          Decimal
+  description     String
+  marketerId      String?  // Для выплат маркетологу
+  marketer        Marketer? @relation(fields: [marketerId], references: [id], onDelete: SetNull)
+  superAdminId   String?  // Кто создал транзакцию
+  superAdmin      SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("admin_transactions")
 }

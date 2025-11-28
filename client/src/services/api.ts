@@ -852,6 +852,27 @@ class ApiService {
       localStorage.removeItem('superAdminToken');
     }
   }
+
+  // Admin Dashboard additional methods
+  async getAllTenants(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/tenants');
+    return response.data.data;
+  }
+
+  async getTransactionHistory(params?: { type?: string; limit?: number; offset?: number }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/transactions', { params });
+    return response.data.data;
+  }
+
+  async createExpense(data: { amount: number; description: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/expenses', data);
+    return response.data.data;
+  }
+
+  async payMarketer(data: { marketerId: string; amount: number; description?: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/marketers/pay', data);
+    return response.data.data;
+  }
 }
 
 export const apiService = new ApiService();
