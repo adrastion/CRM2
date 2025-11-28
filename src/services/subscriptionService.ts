@@ -134,6 +134,41 @@ export class SubscriptionService {
   static async validatePromoCode(tenantId: string, promoCode: string, planPrice: number) {
     console.log('Validating promo code:', { tenantId, promoCode: promoCode.toUpperCase(), planPrice });
     
+    // Проверяем, существует ли tenant
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, name: true, subdomain: true },
+    });
+    
+    if (!tenant) {
+      console.error('Tenant not found:', tenantId);
+      throw new Error('Аккаунт не найден. Пожалуйста, войдите заново.');
+    }
+    
+    console.log('Tenant found:', tenant);
+    
+    // Проверяем, существует ли промокод вообще (без фильтра по tenant)
+    const codeWithoutTenant = await prisma.promoCode.findFirst({
+      where: {
+        code: promoCode.toUpperCase(),
+      },
+    });
+    
+    console.log('Promo code exists (any tenant):', codeWithoutTenant ? {
+      id: codeWithoutTenant.id,
+      code: codeWithoutTenant.code,
+      tenantId: codeWithoutTenant.tenantId,
+      isActive: codeWithoutTenant.isActive,
+      requestedTenantId: tenantId
+    } : 'NOT FOUND IN DATABASE');
+    
+    // Проверяем все промокоды для этого tenant
+    const allTenantPromoCodes = await prisma.promoCode.findMany({
+      where: { tenantId },
+      select: { code: true, isActive: true },
+    });
+    console.log('All promo codes for this tenant:', allTenantPromoCodes);
+    
     const code = await prisma.promoCode.findFirst({
       where: {
         code: promoCode.toUpperCase(),
@@ -153,6 +188,14 @@ export class SubscriptionService {
     console.log('Promo code found:', code ? { id: code.id, code: code.code, usageLimit: code.usageLimit, usedCount: code.usedCount } : 'NOT FOUND');
 
     if (!code) {
+      // Более детальное сообщение об ошибке
+      if (codeWithoutTenant) {
+        if (codeWithoutTenant.tenantId !== tenantId) {
+          throw new Error('Промокод не найден для вашего аккаунта');
+        } else if (!codeWithoutTenant.isActive) {
+          throw new Error('Промокод неактивен');
+        }
+      }
       console.log('Promo code not found or inactive');
       throw new Error('Промокод не найден или неактивен');
     }
