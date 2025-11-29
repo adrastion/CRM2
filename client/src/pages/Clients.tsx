@@ -30,6 +30,8 @@ import {
   Select,
   MenuItem,
   TableSortLabel,
+  Checkbox,
+  ListItemText,
 } from '@mui/material';
 import CustomModalFull from '../components/CustomModalFull';
 import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera } from '@mui/icons-material';
@@ -94,6 +96,9 @@ const Clients: React.FC = () => {
   const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
   const [membershipTypes, setMembershipTypes] = useState<any[]>([]);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string>('');
+  const [selectedStandardsForChart, setSelectedStandardsForChart] = useState<string[]>([]);
+  const [clientStandardsForEdit, setClientStandardsForEdit] = useState<any[]>([]);
+  const [loadingClientStandardsForEdit, setLoadingClientStandardsForEdit] = useState(false);
   const [formData, setFormData] = useState<ClientFormData>({
     // Данные ребенка
     firstName: '',
@@ -344,6 +349,33 @@ const Clients: React.FC = () => {
         setPhotoFile(null);
         setEditDialog(true);
         setEditDialogOpen(true);
+        
+        // Загружаем нормативы клиента для отображения в карточке
+        setLoadingClientStandardsForEdit(true);
+        (async () => {
+          try {
+            const standardsRes = await apiService.getClientStandards(client.id);
+            setClientStandardsForEdit(standardsRes.data);
+            // Автоматически выбираем первый норматив, если есть
+            const uniqueStandardIds = Array.from(new Set(
+              standardsRes.data
+                .filter((cs: any) => cs.standard?.id && cs.result !== null && cs.result !== undefined)
+                .map((cs: any) => cs.standard.id)
+            ));
+            if (uniqueStandardIds.length > 0) {
+              setSelectedStandardsForChart([uniqueStandardIds[0] as string]);
+            } else {
+              setSelectedStandardsForChart([]);
+            }
+          } catch (err: any) {
+            console.error('Error loading client standards for edit:', err);
+            setClientStandardsForEdit([]);
+            setSelectedStandardsForChart([]);
+          } finally {
+            setLoadingClientStandardsForEdit(false);
+          }
+        })();
+        
         // Remove clientId from URL
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('clientId');
@@ -482,7 +514,7 @@ const Clients: React.FC = () => {
     validateFieldValue(fieldName, value, index);
   };
 
-  const handleEditClient = (client: Client) => {
+  const handleEditClient = async (client: Client) => {
     setEditingClient(client);
     setFormData({
       firstName: client.firstName || '',
@@ -520,6 +552,30 @@ const Clients: React.FC = () => {
     setValidFields(new Set());
     setError('');
     setEditDialog(true);
+    
+    // Загружаем нормативы клиента для отображения в карточке
+    setLoadingClientStandardsForEdit(true);
+    try {
+      const standardsRes = await apiService.getClientStandards(client.id);
+      setClientStandardsForEdit(standardsRes.data);
+      // Автоматически выбираем первый норматив, если есть
+      const uniqueStandardIds = Array.from(new Set(
+        standardsRes.data
+          .filter((cs: any) => cs.standard?.id && cs.result !== null && cs.result !== undefined)
+          .map((cs: any) => cs.standard.id)
+      ));
+      if (uniqueStandardIds.length > 0) {
+        setSelectedStandardsForChart([uniqueStandardIds[0] as string]);
+      } else {
+        setSelectedStandardsForChart([]);
+      }
+    } catch (err: any) {
+      console.error('Error loading client standards for edit:', err);
+      setClientStandardsForEdit([]);
+      setSelectedStandardsForChart([]);
+    } finally {
+      setLoadingClientStandardsForEdit(false);
+    }
   };
 
   const handleValidateForm = (e?: React.MouseEvent<HTMLButtonElement>) => {
@@ -2332,6 +2388,78 @@ const Clients: React.FC = () => {
                 }}
               />
             </Grid>
+            {/* График нормативов над адресом */}
+            {editingClient && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                    <Typography variant="h6" fontWeight="bold">
+                      Графики нормативов
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 250 }}>
+                      <InputLabel>Выберите нормативы для отображения</InputLabel>
+                      <Select
+                        multiple
+                        value={selectedStandardsForChart}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSelectedStandardsForChart(typeof value === 'string' ? value.split(',') : value as string[]);
+                        }}
+                        label="Выберите нормативы для отображения"
+                        renderValue={(selected) => {
+                          const selectedNames = (selected as string[]).map(id => {
+                            const cs = clientStandardsForEdit.find((cs: any) => cs.standard?.id === id);
+                            return cs?.standard?.name || id;
+                          });
+                          return selectedNames.join(', ');
+                        }}
+                      >
+                        {Array.from(new Set(
+                          clientStandardsForEdit
+                            .filter((cs: any) => cs.standard?.id && cs.result !== null && cs.result !== undefined)
+                            .map((cs: any) => cs.standard.id)
+                        )).map((standardId: string) => {
+                          const cs = clientStandardsForEdit.find((cs: any) => cs.standard?.id === standardId);
+                          return (
+                            <MenuItem key={standardId} value={standardId}>
+                              <Checkbox checked={selectedStandardsForChart.indexOf(standardId) > -1} />
+                              <ListItemText primary={cs?.standard?.name || standardId} />
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  {loadingClientStandardsForEdit ? (
+                    <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                      <CircularProgress />
+                    </Box>
+                  ) : selectedStandardsForChart.length > 0 ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {selectedStandardsForChart.map((standardId: string) => {
+                        const cs = clientStandardsForEdit.find((cs: any) => cs.standard?.id === standardId);
+                        if (!cs?.standard) return null;
+                        return (
+                          <Box key={standardId}>
+                            <StandardChart
+                              standardId={standardId}
+                              standardName={cs.standard.name}
+                              unit={cs.standard.unit}
+                              targetValue={cs.standard.targetValue ? Number(cs.standard.targetValue) : undefined}
+                              clientStandards={clientStandardsForEdit}
+                            />
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                      Выберите нормативы для отображения графиков
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
