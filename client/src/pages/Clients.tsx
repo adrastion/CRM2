@@ -110,7 +110,9 @@ const Clients: React.FC = () => {
     gender: '',
     address: '',
     birthCertificateNumber: '',
+    birthCertificate: '',
     medicalCertificateNumber: '',
+    medicalCertificate: '',
     schoolOrKindergarten: '',
     photo: '',
     weight: '',
@@ -129,6 +131,12 @@ const Clients: React.FC = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
+  const [birthCertificatePreview, setBirthCertificatePreview] = useState<string | null>(null);
+  const birthCertificateInputRef = useRef<HTMLInputElement>(null);
+  const [medicalCertificateFile, setMedicalCertificateFile] = useState<File | null>(null);
+  const [medicalCertificatePreview, setMedicalCertificatePreview] = useState<string | null>(null);
+  const medicalCertificateInputRef = useRef<HTMLInputElement>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
@@ -328,7 +336,9 @@ const Clients: React.FC = () => {
           gender: client.gender || '',
           address: client.address || '',
           birthCertificateNumber: client.birthCertificateNumber || '',
+          birthCertificate: client.birthCertificate || '',
           medicalCertificateNumber: client.medicalCertificateNumber || '',
+          medicalCertificate: client.medicalCertificate || '',
           schoolOrKindergarten: client.schoolOrKindergarten || '',
           photo: client.photo || '',
           weight: client.weight ? String(client.weight) : '',
@@ -347,6 +357,10 @@ const Clients: React.FC = () => {
         });
         setPhotoPreview(client.photo || null);
         setPhotoFile(null);
+        setBirthCertificatePreview(client.birthCertificate || null);
+        setBirthCertificateFile(null);
+        setMedicalCertificatePreview(client.medicalCertificate || null);
+        setMedicalCertificateFile(null);
         setEditDialog(true);
         setEditDialogOpen(true);
         
@@ -431,7 +445,9 @@ const Clients: React.FC = () => {
         gender: '',
         address: '',
         birthCertificateNumber: '',
+        birthCertificate: '',
         medicalCertificateNumber: '',
+        medicalCertificate: '',
         schoolOrKindergarten: '',
         photo: '',
         weight: '',
@@ -441,8 +457,18 @@ const Clients: React.FC = () => {
       });
       setPhotoPreview(null);
       setPhotoFile(null);
+      setBirthCertificatePreview(null);
+      setBirthCertificateFile(null);
+      setMedicalCertificatePreview(null);
+      setMedicalCertificateFile(null);
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
+      }
+      if (birthCertificateInputRef.current) {
+        birthCertificateInputRef.current.value = '';
+      }
+      if (medicalCertificateInputRef.current) {
+        medicalCertificateInputRef.current.value = '';
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания клиента');
@@ -526,7 +552,9 @@ const Clients: React.FC = () => {
       gender: client.gender || '',
       address: client.address || '',
       birthCertificateNumber: client.birthCertificateNumber || '',
+      birthCertificate: client.birthCertificate || '',
       medicalCertificateNumber: client.medicalCertificateNumber || '',
+      medicalCertificate: client.medicalCertificate || '',
       schoolOrKindergarten: client.schoolOrKindergarten || '',
       photo: client.photo || '',
       weight: client.weight ? String(client.weight) : '',
@@ -545,6 +573,10 @@ const Clients: React.FC = () => {
     });
     setPhotoPreview(client.photo || null);
     setPhotoFile(null);
+    setBirthCertificatePreview(client.birthCertificate || null);
+    setBirthCertificateFile(null);
+    setMedicalCertificatePreview(client.medicalCertificate || null);
+    setMedicalCertificateFile(null);
     setFormErrors({});
     currentErrorsRef.current = {};
     shouldPreventCloseRef.current = false;
@@ -765,7 +797,9 @@ const Clients: React.FC = () => {
         gender: '',
         address: '',
         birthCertificateNumber: '',
+        birthCertificate: '',
         medicalCertificateNumber: '',
+        medicalCertificate: '',
         schoolOrKindergarten: '',
         photo: '',
         weight: '',
@@ -775,8 +809,18 @@ const Clients: React.FC = () => {
       });
       setPhotoPreview(null);
       setPhotoFile(null);
+      setBirthCertificatePreview(null);
+      setBirthCertificateFile(null);
+      setMedicalCertificatePreview(null);
+      setMedicalCertificateFile(null);
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
+      }
+      if (birthCertificateInputRef.current) {
+        birthCertificateInputRef.current.value = '';
+      }
+      if (medicalCertificateInputRef.current) {
+        medicalCertificateInputRef.current.value = '';
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления клиента');
@@ -1249,7 +1293,20 @@ const Clients: React.FC = () => {
                   .map((client) => (
                   <TableRow key={client.id}>
                     <TableCell>
-                      {client.firstName} {client.lastName}
+                      <Typography
+                        sx={{
+                          cursor: 'pointer',
+                          color: 'primary.main',
+                          fontWeight: 'medium',
+                          '&:hover': {
+                            textDecoration: 'underline',
+                            color: 'primary.dark',
+                          }
+                        }}
+                        onClick={() => handleEditClient(client)}
+                      >
+                        {client.firstName} {client.lastName}
+                      </Typography>
                     </TableCell>
                     <TableCell>{client.email || '-'}</TableCell>
                     <TableCell>
@@ -1726,6 +1783,168 @@ const Clients: React.FC = () => {
                 onChange={(e) => handleInputChange('schoolOrKindergarten', e.target.value)}
               />
             </Grid>
+            {/* Загрузка свидетельства о рождении */}
+            <Grid item xs={12} sm={6}>
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
+                  Свидетельство о рождении (фото/документ)
+                </Typography>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  ref={birthCertificateInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setBirthCertificateFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setBirthCertificatePreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, birthCertificate: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    minHeight: 100,
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => birthCertificateInputRef.current?.click()}
+                >
+                  {birthCertificatePreview ? (
+                    <Box sx={{ textAlign: 'center', width: '100%' }}>
+                      <img
+                        src={birthCertificatePreview}
+                        alt="Свидетельство о рождении"
+                        style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBirthCertificatePreview(null);
+                          setBirthCertificateFile(null);
+                          setFormData(prev => ({ ...prev, birthCertificate: '' }));
+                          if (birthCertificateInputRef.current) {
+                            birthCertificateInputRef.current.value = '';
+                          }
+                        }}
+                        sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить файл
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                        (изображение или PDF)
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            </Grid>
+            {/* Загрузка справки */}
+            <Grid item xs={12} sm={6}>
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
+                  Справка (фото/документ)
+                </Typography>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  ref={medicalCertificateInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setMedicalCertificateFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setMedicalCertificatePreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, medicalCertificate: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    minHeight: 100,
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => medicalCertificateInputRef.current?.click()}
+                >
+                  {medicalCertificatePreview ? (
+                    <Box sx={{ textAlign: 'center', width: '100%' }}>
+                      <img
+                        src={medicalCertificatePreview}
+                        alt="Справка"
+                        style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMedicalCertificatePreview(null);
+                          setMedicalCertificateFile(null);
+                          setFormData(prev => ({ ...prev, medicalCertificate: '' }));
+                          if (medicalCertificateInputRef.current) {
+                            medicalCertificateInputRef.current.value = '';
+                          }
+                        }}
+                        sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить файл
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                        (изображение или PDF)
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Категория клиента</InputLabel>
@@ -1952,7 +2171,9 @@ const Clients: React.FC = () => {
                 gender: '',
                 address: '',
                 birthCertificateNumber: '',
+                birthCertificate: '',
                 medicalCertificateNumber: '',
+                medicalCertificate: '',
                 schoolOrKindergarten: '',
                 photo: '',
                 weight: '',
@@ -2493,6 +2714,168 @@ const Clients: React.FC = () => {
                 value={formData.schoolOrKindergarten}
                 onChange={(e) => handleInputChange('schoolOrKindergarten', e.target.value)}
               />
+            </Grid>
+            {/* Загрузка свидетельства о рождении */}
+            <Grid item xs={12} sm={6}>
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
+                  Свидетельство о рождении (фото/документ)
+                </Typography>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  ref={birthCertificateInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setBirthCertificateFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setBirthCertificatePreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, birthCertificate: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    minHeight: 100,
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => birthCertificateInputRef.current?.click()}
+                >
+                  {birthCertificatePreview ? (
+                    <Box sx={{ textAlign: 'center', width: '100%' }}>
+                      <img
+                        src={birthCertificatePreview}
+                        alt="Свидетельство о рождении"
+                        style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBirthCertificatePreview(null);
+                          setBirthCertificateFile(null);
+                          setFormData(prev => ({ ...prev, birthCertificate: '' }));
+                          if (birthCertificateInputRef.current) {
+                            birthCertificateInputRef.current.value = '';
+                          }
+                        }}
+                        sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить файл
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                        (изображение или PDF)
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            </Grid>
+            {/* Загрузка справки */}
+            <Grid item xs={12} sm={6}>
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
+                  Справка (фото/документ)
+                </Typography>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  ref={medicalCertificateInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setMedicalCertificateFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setMedicalCertificatePreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, medicalCertificate: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    minHeight: 100,
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => medicalCertificateInputRef.current?.click()}
+                >
+                  {medicalCertificatePreview ? (
+                    <Box sx={{ textAlign: 'center', width: '100%' }}>
+                      <img
+                        src={medicalCertificatePreview}
+                        alt="Справка"
+                        style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMedicalCertificatePreview(null);
+                          setMedicalCertificateFile(null);
+                          setFormData(prev => ({ ...prev, medicalCertificate: '' }));
+                          if (medicalCertificateInputRef.current) {
+                            medicalCertificateInputRef.current.value = '';
+                          }
+                        }}
+                        sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить файл
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                        (изображение или PDF)
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>

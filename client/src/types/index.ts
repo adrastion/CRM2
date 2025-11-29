@@ -51,7 +51,9 @@ export interface Client {
   gender?: string;
   address?: string;
   birthCertificateNumber?: string;
+  birthCertificate?: string; // Фото/документ свидетельства о рождении (base64)
   medicalCertificateNumber?: string;
+  medicalCertificate?: string; // Фото/документ справки (base64)
   schoolOrKindergarten?: string;
   emergencyContact?: string;
   emergencyPhone?: string;
@@ -318,7 +320,9 @@ export interface CreateClientForm {
   gender?: string;
   address?: string;
   birthCertificateNumber?: string;
+  birthCertificate?: string; // Фото/документ свидетельства о рождении (base64)
   medicalCertificateNumber?: string;
+  medicalCertificate?: string; // Фото/документ справки (base64)
   schoolOrKindergarten?: string;
   // Родители
   parents?: ParentForm[];

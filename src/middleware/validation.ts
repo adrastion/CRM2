@@ -91,7 +91,9 @@ export const clientSchemas = {
     gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
     address: Joi.string().max(500).optional().allow('', null),
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    birthCertificate: Joi.string().optional().allow('', null), // Фото/документ свидетельства о рождении (base64)
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    medicalCertificate: Joi.string().optional().allow('', null), // Фото/документ справки (base64)
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
@@ -119,7 +121,9 @@ export const clientSchemas = {
     gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
     address: Joi.string().max(500).optional().allow('', null),
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    birthCertificate: Joi.string().optional().allow('', null), // Фото/документ свидетельства о рождении (base64)
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
+    medicalCertificate: Joi.string().optional().allow('', null), // Фото/документ справки (base64)
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),

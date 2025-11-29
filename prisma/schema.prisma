@@ -150,7 +150,9 @@ model Client {
   gender                String?
   address               String?
   birthCertificateNumber String?  // Номер свидетельства о рождении
+  birthCertificate       String?  // Фото/документ свидетельства о рождении (base64)
   medicalCertificateNumber String? // Номер справки
+  medicalCertificate     String?  // Фото/документ справки (base64)
   schoolOrKindergarten  String?   // Место учебы/дет.сада
   emergencyContact      String?
   emergencyPhone        String?

@@ -12,7 +12,9 @@ export interface ClientFormData {
   gender: string;
   address: string;
   birthCertificateNumber: string;
+  birthCertificate: string; // Фото/документ свидетельства о рождении (base64)
   medicalCertificateNumber: string;
+  medicalCertificate: string; // Фото/документ справки (base64)
   schoolOrKindergarten: string;
   photo: string;
   weight: string;
