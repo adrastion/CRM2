@@ -57,6 +57,7 @@ export interface Client {
   emergencyPhone?: string;
   medicalNotes?: string;
   photo?: string;
+  weight?: number;
   categoryId?: string;
   balance?: number;
   isActive: boolean;

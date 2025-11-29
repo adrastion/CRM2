@@ -148,6 +148,13 @@ export const validateClientForm = (formData: any): Record<string, string> => {
   // Валидация родителей (если добавлены)
   if (formData.parents && Array.isArray(formData.parents)) {
     formData.parents.forEach((parent: any, index: number) => {
+      // Валидация ФИО родителя (обязательно, если родитель добавлен)
+      if (parent.fullName && parent.fullName.trim() !== '') {
+        const fullNameError = validateRequired(parent.fullName.trim(), `ФИО родителя ${index + 1}`, 2);
+        if (fullNameError) {
+          errors[`parent_${index}_fullName`] = fullNameError;
+        }
+      }
       if (parent.email && parent.email.trim() !== '') {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(parent.email.trim())) {
@@ -275,6 +282,11 @@ export const validatePaymentForm = (formData: any): Record<string, string> => {
 
   if (!formData.status) {
     errors.status = 'Выберите статус платежа';
+  }
+
+  // Если тип платежа - абонемент, проверяем наличие membershipId
+  if (formData.type === 'membership' && !formData.membershipId) {
+    errors.membershipId = 'Выберите абонемент';
   }
 
   return errors;

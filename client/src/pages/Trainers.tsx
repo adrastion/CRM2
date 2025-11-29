@@ -27,6 +27,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Snackbar,
 } from '@mui/material';
 import { Add, Edit, Delete, Business, AttachMoney } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -54,6 +55,8 @@ const Trainers: React.FC = () => {
   const [earningsStartDate, setEarningsStartDate] = useState<Date | null>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [earningsEndDate, setEarningsEndDate] = useState<Date | null>(new Date());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -138,12 +141,13 @@ const Trainers: React.FC = () => {
   };
 
   const handleCreateTrainer = async () => {
-    // Validate form
+    // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateTrainerForm(formData);
-    setFormErrors(errors);
     
     if (Object.keys(errors).length > 0) {
       setError('Пожалуйста, исправьте ошибки в форме');
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
       return;
     }
 
@@ -215,12 +219,13 @@ const Trainers: React.FC = () => {
   const handleUpdateTrainer = async () => {
     if (!editingTrainer) return;
     
-    // Validate form
+    // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateTrainerForm(formData);
-    setFormErrors(errors);
     
     if (Object.keys(errors).length > 0) {
       setError('Пожалуйста, исправьте ошибки в форме');
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
       return;
     }
     
@@ -370,6 +375,21 @@ const Trainers: React.FC = () => {
             setOpenDialog(true);
             setFormErrors({});
             setError('');
+            setFormData({
+              email: '',
+              password: '',
+              firstName: '',
+              lastName: '',
+              middleName: '',
+              phone: '',
+              qualification: '',
+              experience: '',
+              specialization: '',
+              salaryType: 'fixed',
+              salaryAmount: '',
+              salaryPercentage: '',
+              canViewAllGroups: false,
+            });
           }}
           data-onboarding="add-trainer-button"
         >
@@ -538,16 +558,24 @@ const Trainers: React.FC = () => {
       <Dialog 
         open={openDialog} 
         onClose={(event, reason) => {
-          // Предотвращаем закрытие при наличии ошибок
-          if (Object.keys(formErrors).length > 0 || error) {
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = Object.keys(formErrors).length > 0;
+          
+          // Если есть ошибки, не закрываем диалог
+          if (hasErrors || error) {
+            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+            setSnackbarOpen(true);
             return;
           }
+          
+          // Разрешаем закрытие только если нет ошибок
           setOpenDialog(false);
           setFormErrors({});
           setError('');
         }}
         maxWidth="md" 
         fullWidth
+        disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
         <DialogTitle>Добавить нового тренера</DialogTitle>
         <DialogContent>
@@ -726,15 +754,58 @@ const Trainers: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            // Разрешаем закрытие только если нет ошибок
-            if (Object.keys(formErrors).length === 0 && !error) {
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Отмена всегда закрывает форму без применения изменений
               setOpenDialog(false);
               setFormErrors({});
               setError('');
-            }
-          }}>Отмена</Button>
-          <Button onClick={handleCreateTrainer} variant="contained">
+              setFormData({
+                email: '',
+                password: '',
+                firstName: '',
+                lastName: '',
+                middleName: '',
+                phone: '',
+                qualification: '',
+                experience: '',
+                specialization: '',
+                salaryType: 'fixed',
+                salaryAmount: '',
+                salaryPercentage: '',
+                canViewAllGroups: false,
+              });
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateTrainerForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (Object.keys(validationErrors).length > 0) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                return; // Не создаем тренера, если есть ошибки
+              }
+              
+              // Если нет ошибок, вызываем handleCreateTrainer для сохранения
+              handleCreateTrainer();
+            }} 
+            variant="contained"
+            type="button"
+          >
             Создать тренера
           </Button>
         </DialogActions>
@@ -744,16 +815,24 @@ const Trainers: React.FC = () => {
       <Dialog 
         open={editDialog} 
         onClose={(event, reason) => {
-          // Предотвращаем закрытие при наличии ошибок
-          if (Object.keys(formErrors).length > 0 || error) {
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = Object.keys(formErrors).length > 0;
+          
+          // Если есть ошибки, не закрываем диалог
+          if (hasErrors || error) {
+            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+            setSnackbarOpen(true);
             return;
           }
+          
+          // Разрешаем закрытие только если нет ошибок
           setEditDialog(false);
           setFormErrors({});
           setError('');
         }}
         maxWidth="md" 
         fullWidth
+        disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
         <DialogTitle>Редактировать тренера</DialogTitle>
         <DialogContent>
@@ -775,6 +854,8 @@ const Trainers: React.FC = () => {
                 value={formData.firstName}
                 onChange={(e) => handleInputChange('firstName', e.target.value)}
                 required
+                error={!!formErrors.firstName}
+                helperText={formErrors.firstName}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -783,6 +864,8 @@ const Trainers: React.FC = () => {
                 label="Отчество"
                 value={formData.middleName}
                 onChange={(e) => handleInputChange('middleName', e.target.value)}
+                error={!!formErrors.middleName}
+                helperText={formErrors.middleName}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -792,6 +875,8 @@ const Trainers: React.FC = () => {
                 value={formData.lastName}
                 onChange={(e) => handleInputChange('lastName', e.target.value)}
                 required
+                error={!!formErrors.lastName}
+                helperText={formErrors.lastName}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -802,6 +887,8 @@ const Trainers: React.FC = () => {
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
                 required
+                error={!!formErrors.email}
+                helperText={formErrors.email}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -812,6 +899,8 @@ const Trainers: React.FC = () => {
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
                 placeholder="Введите новый пароль или оставьте пустым"
+                error={!!formErrors.password}
+                helperText={formErrors.password}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -820,6 +909,8 @@ const Trainers: React.FC = () => {
                 label="Телефон"
                 value={formData.phone}
                 onChange={(e) => handleInputChange('phone', e.target.value)}
+                error={!!formErrors.phone}
+                helperText={formErrors.phone}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -829,7 +920,8 @@ const Trainers: React.FC = () => {
                 value={formData.qualification}
                 onChange={(e) => handleInputChange('qualification', e.target.value)}
                 placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
-                helperText="Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"
+                helperText={formErrors.qualification || "Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"}
+                error={!!formErrors.qualification}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -839,6 +931,8 @@ const Trainers: React.FC = () => {
                 type="number"
                 value={formData.experience}
                 onChange={(e) => handleInputChange('experience', e.target.value)}
+                error={!!formErrors.experience}
+                helperText={formErrors.experience}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -848,10 +942,12 @@ const Trainers: React.FC = () => {
                 value={formData.specialization}
                 onChange={(e) => handleInputChange('specialization', e.target.value)}
                 placeholder="например: Карате, Тхэквондо"
+                error={!!formErrors.specialization}
+                helperText={formErrors.specialization}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth error={!!formErrors.salaryType}>
                 <InputLabel>Тип зарплаты</InputLabel>
                 <Select
                   value={formData.salaryType}
@@ -863,6 +959,11 @@ const Trainers: React.FC = () => {
                   <MenuItem value="per_training">Оплата за тренировку</MenuItem>
                   <MenuItem value="individual">Индивидуальное занятие</MenuItem>
                 </Select>
+                {formErrors.salaryType && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                    {formErrors.salaryType}
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -884,6 +985,8 @@ const Trainers: React.FC = () => {
                   formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
                   'Введите сумму'
                 }
+                error={!!formErrors.salaryAmount}
+                helperText={formErrors.salaryAmount}
               />
             </Grid>
             {formData.salaryType === 'individual' && (
@@ -895,7 +998,8 @@ const Trainers: React.FC = () => {
                   value={formData.salaryPercentage}
                   onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
                   placeholder="Например: 50"
-                  helperText="Остальная часть идет в зал"
+                  helperText={formErrors.salaryPercentage || "Остальная часть идет в зал"}
+                  error={!!formErrors.salaryPercentage}
                 />
               </Grid>
             )}
@@ -920,16 +1024,44 @@ const Trainers: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            // Разрешаем закрытие только если нет ошибок
-            if (Object.keys(formErrors).length === 0 && !error) {
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Отмена всегда закрывает форму без применения изменений
               setEditDialog(false);
               setEditingTrainer(null);
               setFormErrors({});
               setError('');
-            }
-          }}>Отмена</Button>
-          <Button onClick={handleUpdateTrainer} variant="contained">
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateTrainerForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (Object.keys(validationErrors).length > 0) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                return; // Не сохраняем, если есть ошибки
+              }
+              
+              // Если нет ошибок, вызываем handleUpdateTrainer для сохранения
+              handleUpdateTrainer();
+            }} 
+            variant="contained"
+            type="button"
+          >
             Сохранить изменения
           </Button>
         </DialogActions>
@@ -1192,6 +1324,15 @@ const Trainers: React.FC = () => {
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar для показа сообщений о валидации */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 };

@@ -28,6 +28,7 @@ import {
   CircularProgress,
   Alert,
   InputAdornment,
+  Snackbar,
 } from '@mui/material';
 import { Add, Edit, Delete, Visibility, Search, FilterList } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -37,6 +38,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Payment, Client, Branch, Group } from '../types';
+import { validatePaymentForm } from '../utils/validation';
 
 interface PaymentFormData {
   amount: string;
@@ -64,6 +66,9 @@ const Payments: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const debouncedSearchQuery = useDebounce(searchQuery, 500); // Debounce search with 500ms delay
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState<PaymentFormData>({
     amount: '',
     type: 'membership',
@@ -171,16 +176,6 @@ const Payments: React.FC = () => {
 
   const handleCreatePayment = async () => {
     try {
-      if (!formData.clientId || !formData.branchId || !formData.amount) {
-        alert('Пожалуйста, заполните все обязательные поля');
-        return;
-      }
-
-      if (formData.type === 'membership' && !formData.membershipId) {
-        alert('Пожалуйста, выберите абонемент');
-        return;
-      }
-
       const paymentData: any = {
         ...formData,
         amount: parseFloat(formData.amount),
@@ -198,6 +193,7 @@ const Payments: React.FC = () => {
       await apiService.createPayment(paymentData);
       await fetchData();
       setOpenDialog(false);
+      setFormErrors({});
       resetForm();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания платежа');
@@ -242,6 +238,7 @@ const Payments: React.FC = () => {
       await apiService.updatePayment(editingPayment.id, paymentData);
       await fetchData();
       setEditDialog(false);
+      setFormErrors({});
       resetForm();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления платежа');
@@ -363,7 +360,12 @@ const Payments: React.FC = () => {
           variant="contained"
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
-            onClick={() => setOpenDialog(true)}
+            onClick={() => {
+              setOpenDialog(true);
+              setFormErrors({});
+              setError(null);
+              resetForm();
+            }}
         >
             Добавить платеж
         </Button>
@@ -512,12 +514,43 @@ const Payments: React.FC = () => {
       </Card>
 
         {/* Create Payment Dialog */}
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+        <Dialog 
+          open={openDialog} 
+          onClose={(event, reason) => {
+            // Всегда проверяем ошибки перед закрытием
+            const hasErrors = Object.keys(formErrors).length > 0;
+            
+            // Если есть ошибки, не закрываем диалог
+            if (hasErrors || error) {
+              setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+              setSnackbarOpen(true);
+              return;
+            }
+            
+            // Разрешаем закрытие только если нет ошибок
+            setOpenDialog(false);
+            setFormErrors({});
+            setError(null);
+          }} 
+          maxWidth="md" 
+          fullWidth
+          disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
+        >
           <DialogTitle>Добавить платеж</DialogTitle>
           <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+                {error}
+              </Alert>
+            )}
+            {Object.keys(formErrors).length > 0 && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+              </Alert>
+            )}
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!formErrors.clientId}>
                   <InputLabel>Клиент</InputLabel>
                   <Select
                     value={formData.clientId}
@@ -581,10 +614,15 @@ const Payments: React.FC = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  {formErrors.clientId && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.clientId}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!formErrors.branchId}>
                   <InputLabel>Филиал</InputLabel>
                   <Select
                     value={formData.branchId}
@@ -597,6 +635,11 @@ const Payments: React.FC = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  {formErrors.branchId && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.branchId}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -610,10 +653,12 @@ const Payments: React.FC = () => {
                   InputProps={{
                     endAdornment: <InputAdornment position="end">₽</InputAdornment>,
                   }}
+                  error={!!formErrors.amount}
+                  helperText={formErrors.amount}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!formErrors.type}>
                   <InputLabel>Тип платежа</InputLabel>
                   <Select
                     value={formData.type}
@@ -624,11 +669,16 @@ const Payments: React.FC = () => {
                     <MenuItem value="single">Разовое</MenuItem>
                     <MenuItem value="penalty">Штраф</MenuItem>
                   </Select>
+                  {formErrors.type && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.type}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               {formData.type === 'membership' && (
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
+                  <FormControl fullWidth required error={!!formErrors.membershipId}>
                     <InputLabel>Абонемент</InputLabel>
                     <Select
                       value={formData.membershipId}
@@ -644,11 +694,16 @@ const Payments: React.FC = () => {
                         </MenuItem>
                       ))}
                     </Select>
+                    {formErrors.membershipId && (
+                      <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                        {formErrors.membershipId}
+                      </Typography>
+                    )}
                   </FormControl>
                 </Grid>
               )}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!formErrors.status}>
                   <InputLabel>Статус</InputLabel>
                   <Select
                     value={formData.status}
@@ -660,6 +715,11 @@ const Payments: React.FC = () => {
                     <MenuItem value="cancelled">Отменен</MenuItem>
                     <MenuItem value="refunded">Возвращен</MenuItem>
                   </Select>
+                  {formErrors.status && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.status}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -701,23 +761,87 @@ const Payments: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              setOpenDialog(false);
-              resetForm();
-            }}>Отмена</Button>
-            <Button onClick={handleCreatePayment} variant="contained">
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Отмена всегда закрывает форму без применения изменений
+                setOpenDialog(false);
+                setFormErrors({});
+                setError(null);
+                resetForm();
+              }}
+              type="button"
+            >
+              Отмена
+            </Button>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                
+                // Выполняем валидацию синхронно
+                const validationErrors = validatePaymentForm(formData);
+                setFormErrors(validationErrors);
+                
+                // Если есть ошибки, показываем их и оставляем диалог открытым
+                if (Object.keys(validationErrors).length > 0) {
+                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                  setSnackbarOpen(true);
+                  return; // Не создаем платеж, если есть ошибки
+                }
+                
+                // Если нет ошибок, вызываем handleCreatePayment для сохранения
+                handleCreatePayment();
+              }} 
+              variant="contained"
+              type="button"
+            >
               Создать платеж
             </Button>
           </DialogActions>
         </Dialog>
 
         {/* Edit Payment Dialog */}
-        <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="md" fullWidth>
+        <Dialog 
+          open={editDialog} 
+          onClose={(event, reason) => {
+            // Всегда проверяем ошибки перед закрытием
+            const hasErrors = Object.keys(formErrors).length > 0;
+            
+            // Если есть ошибки, не закрываем диалог
+            if (hasErrors || error) {
+              setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+              setSnackbarOpen(true);
+              return;
+            }
+            
+            // Разрешаем закрытие только если нет ошибок
+            setEditDialog(false);
+            setFormErrors({});
+            setError(null);
+          }} 
+          maxWidth="md" 
+          fullWidth
+          disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
+        >
           <DialogTitle>Редактировать платеж</DialogTitle>
           <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+                {error}
+              </Alert>
+            )}
+            {Object.keys(formErrors).length > 0 && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+              </Alert>
+            )}
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!formErrors.clientId}>
                   <InputLabel>Клиент</InputLabel>
                   <Select
                     value={formData.clientId}
@@ -781,10 +905,15 @@ const Payments: React.FC = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  {formErrors.clientId && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.clientId}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!formErrors.branchId}>
                   <InputLabel>Филиал</InputLabel>
                   <Select
                     value={formData.branchId}
@@ -797,6 +926,11 @@ const Payments: React.FC = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  {formErrors.branchId && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.branchId}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -810,10 +944,12 @@ const Payments: React.FC = () => {
                   InputProps={{
                     endAdornment: <InputAdornment position="end">₽</InputAdornment>,
                   }}
+                  error={!!formErrors.amount}
+                  helperText={formErrors.amount}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!formErrors.type}>
                   <InputLabel>Тип платежа</InputLabel>
                   <Select
                     value={formData.type}
@@ -824,11 +960,16 @@ const Payments: React.FC = () => {
                     <MenuItem value="single">Разовое</MenuItem>
                     <MenuItem value="penalty">Штраф</MenuItem>
                   </Select>
+                  {formErrors.type && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.type}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               {formData.type === 'membership' && (
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
+                  <FormControl fullWidth required error={!!formErrors.membershipId}>
                     <InputLabel>Абонемент</InputLabel>
                     <Select
                       value={formData.membershipId}
@@ -844,11 +985,16 @@ const Payments: React.FC = () => {
                         </MenuItem>
                       ))}
                     </Select>
+                    {formErrors.membershipId && (
+                      <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                        {formErrors.membershipId}
+                      </Typography>
+                    )}
                   </FormControl>
                 </Grid>
               )}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!formErrors.status}>
                   <InputLabel>Статус</InputLabel>
                   <Select
                     value={formData.status}
@@ -860,6 +1006,11 @@ const Payments: React.FC = () => {
                     <MenuItem value="cancelled">Отменен</MenuItem>
                     <MenuItem value="refunded">Возвращен</MenuItem>
                   </Select>
+                  {formErrors.status && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                      {formErrors.status}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -901,15 +1052,58 @@ const Payments: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              setEditDialog(false);
-              resetForm();
-            }}>Отмена</Button>
-            <Button onClick={handleUpdatePayment} variant="contained">
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Отмена всегда закрывает форму без применения изменений
+                setEditDialog(false);
+                setEditingPayment(null);
+                setFormErrors({});
+                setError(null);
+                resetForm();
+              }}
+              type="button"
+            >
+              Отмена
+            </Button>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                
+                // Выполняем валидацию синхронно
+                const validationErrors = validatePaymentForm(formData);
+                setFormErrors(validationErrors);
+                
+                // Если есть ошибки, показываем их и оставляем диалог открытым
+                if (Object.keys(validationErrors).length > 0) {
+                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                  setSnackbarOpen(true);
+                  return; // Не обновляем платеж, если есть ошибки
+                }
+                
+                // Если нет ошибок, вызываем handleUpdatePayment для сохранения
+                handleUpdatePayment();
+              }} 
+              variant="contained"
+              type="button"
+            >
               Сохранить изменения
             </Button>
           </DialogActions>
         </Dialog>
+
+      {/* Snackbar для отображения ошибок валидации */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
     </LocalizationProvider>
   );

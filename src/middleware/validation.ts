@@ -93,6 +93,8 @@ export const clientSchemas = {
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
+    photo: Joi.string().optional().allow('', null),
+    weight: Joi.number().min(0).max(500).optional().allow(null),
     categoryId: commonSchemas.id.allow(null, '').optional(),
     parents: Joi.array().items(
       Joi.object({
@@ -119,6 +121,8 @@ export const clientSchemas = {
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
+    photo: Joi.string().optional().allow('', null),
+    weight: Joi.number().min(0).max(500).optional().allow(null),
     categoryId: commonSchemas.id.allow(null, '').optional(),
     parents: Joi.array().items(
       Joi.object({

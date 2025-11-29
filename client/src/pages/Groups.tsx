@@ -30,10 +30,12 @@ import {
   Checkbox,
   ListItemText,
   Link,
+  Snackbar,
 } from '@mui/material';
 import { Add, Edit, Delete, Visibility, People } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Group, Branch, Trainer, Client } from '../types';
+import { validateGroupForm } from '../utils/validation';
 
 const Groups: React.FC = () => {
   const navigate = useNavigate();
@@ -50,6 +52,9 @@ const Groups: React.FC = () => {
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -138,6 +143,7 @@ const Groups: React.FC = () => {
       await apiService.createGroup(groupData);
       await fetchData();
       setOpenDialog(false);
+      setFormErrors({});
       setFormData({
         name: '',
         description: '',
@@ -193,6 +199,7 @@ const Groups: React.FC = () => {
       await fetchData();
       setEditDialog(false);
       setEditingGroup(null);
+      setFormErrors({});
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления группы');
       console.error('Error updating group:', err);
@@ -329,7 +336,22 @@ const Groups: React.FC = () => {
           variant="contained"
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
-          onClick={() => setOpenDialog(true)}
+          onClick={() => {
+            setOpenDialog(true);
+            setFormErrors({});
+            setError(null);
+            setFormData({
+              name: '',
+              description: '',
+              maxMembers: '',
+              ageMin: '',
+              ageMax: '',
+              color: '#1976d2',
+              trainingPrice: '',
+              branchId: '',
+              trainerId: '',
+            });
+          }}
           data-onboarding="add-group-button"
         >
           Добавить группу
@@ -466,9 +488,41 @@ const Groups: React.FC = () => {
       </Card>
 
       {/* Диалог добавления группы */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth data-onboarding="group-form-dialog">
+      <Dialog 
+        open={openDialog} 
+        onClose={(event, reason) => {
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = Object.keys(formErrors).length > 0;
+          
+          // Если есть ошибки, не закрываем диалог
+          if (hasErrors || error) {
+            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+            setSnackbarOpen(true);
+            return;
+          }
+          
+          // Разрешаем закрытие только если нет ошибок
+          setOpenDialog(false);
+          setFormErrors({});
+          setError(null);
+        }} 
+        maxWidth="md" 
+        fullWidth 
+        data-onboarding="group-form-dialog"
+        disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
+      >
         <DialogTitle>Добавить новую группу</DialogTitle>
         <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+          {Object.keys(formErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -477,6 +531,8 @@ const Groups: React.FC = () => {
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 required
+                error={!!formErrors.name}
+                helperText={formErrors.name}
               />
             </Grid>
             <Grid item xs={12}>
@@ -487,10 +543,12 @@ const Groups: React.FC = () => {
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 multiline
                 rows={3}
+                error={!!formErrors.description}
+                helperText={formErrors.description}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!!formErrors.branchId}>
                 <InputLabel>Филиал</InputLabel>
                 <Select
                   value={formData.branchId}
@@ -503,10 +561,15 @@ const Groups: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {formErrors.branchId && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                    {formErrors.branchId}
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!!formErrors.trainerId}>
                 <InputLabel>Тренер</InputLabel>
                 <Select
                   value={formData.trainerId}
@@ -521,6 +584,11 @@ const Groups: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {formErrors.trainerId && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                    {formErrors.trainerId}
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -531,6 +599,8 @@ const Groups: React.FC = () => {
                 value={formData.maxMembers}
                 onChange={(e) => handleInputChange('maxMembers', e.target.value)}
                 inputProps={{ min: 1 }}
+                error={!!formErrors.maxMembers}
+                helperText={formErrors.maxMembers}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -541,6 +611,8 @@ const Groups: React.FC = () => {
                 value={formData.ageMin}
                 onChange={(e) => handleInputChange('ageMin', e.target.value)}
                 inputProps={{ min: 0 }}
+                error={!!formErrors.ageMin}
+                helperText={formErrors.ageMin}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -551,6 +623,8 @@ const Groups: React.FC = () => {
                 value={formData.ageMax}
                 onChange={(e) => handleInputChange('ageMax', e.target.value)}
                 inputProps={{ min: 0 }}
+                error={!!formErrors.ageMax}
+                helperText={formErrors.ageMax}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -589,11 +663,53 @@ const Groups: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Отмена</Button>
           <Button 
-            onClick={handleCreateGroup} 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Отмена всегда закрывает форму без применения изменений
+              setOpenDialog(false);
+              setFormErrors({});
+              setError(null);
+              setFormData({
+                name: '',
+                description: '',
+                maxMembers: '',
+                ageMin: '',
+                ageMax: '',
+                color: '#1976d2',
+                trainingPrice: '',
+                branchId: '',
+                trainerId: '',
+              });
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateGroupForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (Object.keys(validationErrors).length > 0) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                return; // Не создаем группу, если есть ошибки
+              }
+              
+              // Если нет ошибок, вызываем handleCreateGroup для сохранения
+              handleCreateGroup();
+            }} 
             variant="contained"
-            disabled={!formData.name || !formData.branchId || !formData.trainerId}
+            type="button"
           >
             Создать группу
           </Button>
@@ -601,9 +717,40 @@ const Groups: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования группы */}
-      <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="md" fullWidth>
+      <Dialog 
+        open={editDialog} 
+        onClose={(event, reason) => {
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = Object.keys(formErrors).length > 0;
+          
+          // Если есть ошибки, не закрываем диалог
+          if (hasErrors || error) {
+            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+            setSnackbarOpen(true);
+            return;
+          }
+          
+          // Разрешаем закрытие только если нет ошибок
+          setEditDialog(false);
+          setFormErrors({});
+          setError(null);
+        }} 
+        maxWidth="md" 
+        fullWidth
+        disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
+      >
         <DialogTitle>Редактировать группу</DialogTitle>
         <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+          {Object.keys(formErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -612,6 +759,8 @@ const Groups: React.FC = () => {
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 required
+                error={!!formErrors.name}
+                helperText={formErrors.name}
               />
             </Grid>
             <Grid item xs={12}>
@@ -622,10 +771,12 @@ const Groups: React.FC = () => {
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 multiline
                 rows={3}
+                error={!!formErrors.description}
+                helperText={formErrors.description}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!!formErrors.branchId}>
                 <InputLabel>Филиал</InputLabel>
                 <Select
                   value={formData.branchId}
@@ -638,10 +789,15 @@ const Groups: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {formErrors.branchId && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                    {formErrors.branchId}
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!!formErrors.trainerId}>
                 <InputLabel>Тренер</InputLabel>
                 <Select
                   value={formData.trainerId}
@@ -656,6 +812,11 @@ const Groups: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {formErrors.trainerId && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                    {formErrors.trainerId}
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -666,6 +827,8 @@ const Groups: React.FC = () => {
                 value={formData.maxMembers}
                 onChange={(e) => handleInputChange('maxMembers', e.target.value)}
                 inputProps={{ min: 1 }}
+                error={!!formErrors.maxMembers}
+                helperText={formErrors.maxMembers}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -676,6 +839,8 @@ const Groups: React.FC = () => {
                 value={formData.ageMin}
                 onChange={(e) => handleInputChange('ageMin', e.target.value)}
                 inputProps={{ min: 0 }}
+                error={!!formErrors.ageMin}
+                helperText={formErrors.ageMin}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -686,6 +851,8 @@ const Groups: React.FC = () => {
                 value={formData.ageMax}
                 onChange={(e) => handleInputChange('ageMax', e.target.value)}
                 inputProps={{ min: 0 }}
+                error={!!formErrors.ageMax}
+                helperText={formErrors.ageMax}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -724,14 +891,43 @@ const Groups: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setEditDialog(false);
-            setEditingGroup(null);
-          }}>Отмена</Button>
           <Button 
-            onClick={handleUpdateGroup} 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Отмена всегда закрывает форму без применения изменений
+              setEditDialog(false);
+              setEditingGroup(null);
+              setFormErrors({});
+              setError(null);
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateGroupForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (Object.keys(validationErrors).length > 0) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                return; // Не обновляем группу, если есть ошибки
+              }
+              
+              // Если нет ошибок, вызываем handleUpdateGroup для сохранения
+              handleUpdateGroup();
+            }} 
             variant="contained"
-            disabled={!formData.name || !formData.branchId || !formData.trainerId}
+            type="button"
           >
             Сохранить изменения
           </Button>
@@ -906,6 +1102,15 @@ const Groups: React.FC = () => {
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar для отображения ошибок валидации */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 };

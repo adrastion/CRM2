@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { validateClientForm } from '../utils/validation';
+import { validateClientForm, validateField, hasFormErrors, ClientFormData, ValidationErrors } from '../utils/clientValidation';
 import {
   Box,
   Typography,
@@ -18,6 +18,7 @@ import {
   IconButton,
   CircularProgress,
   Alert,
+  Snackbar,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -29,14 +30,9 @@ import {
   Select,
   MenuItem,
   TableSortLabel,
-  Tabs,
-  Tab,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Remove, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart } from '@mui/icons-material';
+import CustomModalFull from '../components/CustomModalFull';
+import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
@@ -48,10 +44,16 @@ const Clients: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [hasValidationErrors, setHasValidationErrors] = useState(false);
-  const hasErrorsRef = useRef(false);
+  const [formErrors, setFormErrors] = useState<ValidationErrors>({});
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+  const [validFields, setValidFields] = useState<Set<string>>(new Set());
+  const isValidatingRef = useRef(false);
+  const currentErrorsRef = useRef<ValidationErrors>({});
+  const shouldPreventCloseRef = useRef(false);
+  const editDialogStateRef = useRef(false);
+  const isCancellingRef = useRef(false);
   const [importDialog, setImportDialog] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
@@ -92,7 +94,7 @@ const Clients: React.FC = () => {
   const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
   const [membershipTypes, setMembershipTypes] = useState<any[]>([]);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string>('');
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ClientFormData>({
     // Данные ребенка
     firstName: '',
     lastName: '',
@@ -105,6 +107,8 @@ const Clients: React.FC = () => {
     birthCertificateNumber: '',
     medicalCertificateNumber: '',
     schoolOrKindergarten: '',
+    photo: '',
+    weight: '',
     categoryId: '',
     groupIds: [] as string[],
     // Родители
@@ -116,6 +120,12 @@ const Clients: React.FC = () => {
       workplaceContact: string;
     }>,
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const fetchClients = async () => {
     try {
@@ -174,6 +184,127 @@ const Clients: React.FC = () => {
     };
   }, [filterBranchId, filterCategoryId, filterGroupId, sortBy, sortOrder]);
 
+  // Синхронизируем editDialogOpen с editDialog
+  useEffect(() => {
+    setEditDialogOpen(editDialog);
+  }, [editDialog]);
+
+  // Принудительно открываем диалог, если он был закрыт при наличии ошибок
+  useEffect(() => {
+    const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+    if (hasErrors && shouldPreventCloseRef.current && !editDialogOpen && editingClient) {
+      // Если есть ошибки и диалог был закрыт, принудительно открываем его
+      // Используем requestAnimationFrame для немедленного открытия
+      requestAnimationFrame(() => {
+        if (!editDialogOpen && (hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current))) {
+          setEditDialogOpen(true);
+          setEditDialog(true);
+        }
+      });
+      // Также используем несколько таймеров для надежности
+      const timers: NodeJS.Timeout[] = [];
+      for (let i = 0; i < 50; i++) {
+        const timer = setTimeout(() => {
+          const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+          if (!editDialogOpen && stillHasErrors && editingClient) {
+            setEditDialogOpen(true);
+            setEditDialog(true);
+          }
+        }, i * 5);
+        timers.push(timer);
+      }
+      return () => {
+        timers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [editDialogOpen, formErrors, editingClient]);
+  
+  // Дополнительный useEffect для отслеживания изменений editDialogOpen
+  // Этот эффект будет срабатывать каждый раз, когда editDialogOpen меняется
+  useEffect(() => {
+    const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+    if (hasErrors && (shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+      // Если диалог закрыт, но есть ошибки, открываем его немедленно
+      if (!editDialogOpen) {
+        // Используем несколько методов для гарантии открытия
+        requestAnimationFrame(() => {
+          setEditDialogOpen(true);
+          setEditDialog(true);
+        });
+        // Используем множественные таймеры для гарантии открытия
+        const timers: NodeJS.Timeout[] = [];
+        for (let i = 0; i < 200; i++) {
+          const timer = setTimeout(() => {
+            const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+            if (!editDialogOpen && (stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+              setEditDialogOpen(true);
+              setEditDialog(true);
+            }
+          }, i * 5);
+          timers.push(timer);
+        }
+        return () => {
+          timers.forEach(timer => clearTimeout(timer));
+        };
+      }
+    }
+  }, [editDialogOpen, formErrors, editingClient]);
+  
+  // Агрессивный useEffect для отслеживания изменений editDialogOpen
+  // Если модальное окно закрылось при наличии ошибок, немедленно переоткрываем его
+  useEffect(() => {
+    const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+    
+    // Если диалог закрыт, но есть ошибки или идет валидация, открываем его немедленно
+    if (!editDialogOpen && (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+      console.log('Dialog closed with errors, reopening...', { hasErrors, shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current });
+      
+      // Используем множественные методы для гарантии открытия
+      requestAnimationFrame(() => {
+        const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+        if ((stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+          console.log('Reopening dialog via requestAnimationFrame');
+          setEditDialogOpen(true);
+          setEditDialog(true);
+        }
+      });
+      
+      // Используем множественные таймеры для гарантии открытия
+      const timers: NodeJS.Timeout[] = [];
+      for (let i = 0; i < 1000; i++) {
+        const timer = setTimeout(() => {
+          const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+          if (!editDialogOpen && (stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+            setEditDialogOpen(true);
+            setEditDialog(true);
+          }
+        }, i * 1);
+        timers.push(timer);
+      }
+      
+      return () => {
+        timers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [editDialogOpen, formErrors, editingClient]);
+  
+  // Постоянный мониторинг состояния диалога с помощью setInterval
+  useEffect(() => {
+    if (!editingClient) return;
+    
+    const interval = setInterval(() => {
+      const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+      // Если диалог закрыт, но есть ошибки или идет валидация, открываем его немедленно
+      if (!editDialogOpen && (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
+        console.log('Reopening dialog via setInterval', { hasErrors, shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current });
+        setEditDialogOpen(true);
+        setEditDialog(true);
+      }
+    }, 1); // Проверяем каждые 1ms
+    
+    return () => clearInterval(interval);
+  }, [editDialogOpen, formErrors, editingClient]);
+
   // Handle clientId from URL params
   useEffect(() => {
     const clientIdFromUrl = searchParams.get('clientId');
@@ -194,6 +325,8 @@ const Clients: React.FC = () => {
           birthCertificateNumber: client.birthCertificateNumber || '',
           medicalCertificateNumber: client.medicalCertificateNumber || '',
           schoolOrKindergarten: client.schoolOrKindergarten || '',
+          photo: client.photo || '',
+          weight: client.weight ? String(client.weight) : '',
           categoryId: (client as any).categoryId || '',
           groupIds: client.groupMemberships
             ?.filter((gm: any) => gm.isActive)
@@ -207,7 +340,10 @@ const Clients: React.FC = () => {
             workplaceContact: p.workplaceContact || '',
           })) || [],
         });
+        setPhotoPreview(client.photo || null);
+        setPhotoFile(null);
         setEditDialog(true);
+        setEditDialogOpen(true);
         // Remove clientId from URL
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('clientId');
@@ -217,27 +353,23 @@ const Clients: React.FC = () => {
   }, [clients, searchParams, editDialog, setSearchParams]);
 
   const handleCreateClient = async () => {
-    // Validate form
+    // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateClientForm(formData);
-    const hasErrors = Object.keys(errors).length > 0;
     
-    // Устанавливаем флаги синхронно
-    hasErrorsRef.current = hasErrors;
-    setFormErrors(errors);
-    setHasValidationErrors(hasErrors);
-    
-    if (hasErrors) {
+    if (hasFormErrors(errors)) {
       setError('Пожалуйста, исправьте ошибки в форме');
-      // Убеждаемся, что диалог остается открытым
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
       return;
     }
-    
-    // Если ошибок нет, сбрасываем флаг
-    hasErrorsRef.current = false;
 
     try {
       const { groupIds, ...clientData } = formData;
-      const createdClient = await apiService.createClient(clientData);
+      const dataToSend = {
+        ...clientData,
+        weight: clientData.weight ? parseFloat(clientData.weight) : null,
+      };
+      const createdClient = await apiService.createClient(dataToSend);
       
       // Добавляем клиента в выбранные группы
       if (groupIds && groupIds.length > 0 && createdClient?.id) {
@@ -252,11 +384,10 @@ const Clients: React.FC = () => {
       }
       
       await fetchClients();
-      // Сбрасываем все флаги и закрываем диалог только после успешного создания
-      hasErrorsRef.current = false;
+      // Сбрасываем все и закрываем диалог только после успешного создания
       setFormErrors({});
+      setTouchedFields(new Set());
       setError('');
-      setHasValidationErrors(false);
       setOpenDialog(false);
       setFormData({
         firstName: '',
@@ -270,14 +401,39 @@ const Clients: React.FC = () => {
         birthCertificateNumber: '',
         medicalCertificateNumber: '',
         schoolOrKindergarten: '',
+        photo: '',
+        weight: '',
         categoryId: '',
         groupIds: [],
         parents: [],
       });
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания клиента');
       console.error('Error creating client:', err);
     }
+  };
+
+  // Validate field in real-time
+  const validateFieldValue = (fieldName: string, value: any, parentIndex?: number) => {
+    const fieldError = validateField(fieldName, value, formData, parentIndex);
+    
+    setFormErrors(prev => {
+      const newErrors = { ...prev };
+      const errorKey = parentIndex !== undefined ? `parent_${parentIndex}_${fieldName.replace('parent_', '')}` : fieldName;
+      
+      if (fieldError) {
+        newErrors[errorKey] = fieldError;
+      } else {
+        delete newErrors[errorKey];
+      }
+      
+      return newErrors;
+    });
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -285,23 +441,45 @@ const Clients: React.FC = () => {
       ...prev,
       [field]: value
     }));
-    // Clear error for this field when user starts typing
-    if (formErrors[field]) {
-      setFormErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        // Если все ошибки исправлены, сбрасываем флаги
-        if (Object.keys(newErrors).length === 0) {
-          setHasValidationErrors(false);
-          hasErrorsRef.current = false;
-        }
-        return newErrors;
-      });
+    
+    // Validate field if it was touched
+    if (touchedFields.has(field)) {
+      validateFieldValue(field, value);
     }
+    
     // Clear general error when user starts typing
     if (error) {
       setError('');
     }
+  };
+
+  const handleFieldBlur = (field: string, value: string) => {
+    setTouchedFields(prev => new Set(prev).add(field));
+    validateFieldValue(field, value);
+  };
+
+  const handleParentFieldChange = (index: number, field: string, value: string) => {
+    const newParents = [...formData.parents];
+    newParents[index] = { ...newParents[index], [field]: value };
+    setFormData(prev => ({ ...prev, parents: newParents }));
+    
+    // Validate field if it was touched
+    const errorKey = `parent_${index}_${field}`;
+    if (touchedFields.has(errorKey)) {
+      const fieldName = field === 'fullName' ? 'parent_fullName' : 
+                       field === 'email' ? 'parent_email' : 
+                       field === 'phone' ? 'parent_phone' : field;
+      validateFieldValue(fieldName, value, index);
+    }
+  };
+
+  const handleParentFieldBlur = (index: number, field: string, value: string) => {
+    const errorKey = `parent_${index}_${field}`;
+    setTouchedFields(prev => new Set(prev).add(errorKey));
+    const fieldName = field === 'fullName' ? 'parent_fullName' : 
+                     field === 'email' ? 'parent_email' : 
+                     field === 'phone' ? 'parent_phone' : field;
+    validateFieldValue(fieldName, value, index);
   };
 
   const handleEditClient = (client: Client) => {
@@ -318,6 +496,8 @@ const Clients: React.FC = () => {
       birthCertificateNumber: client.birthCertificateNumber || '',
       medicalCertificateNumber: client.medicalCertificateNumber || '',
       schoolOrKindergarten: client.schoolOrKindergarten || '',
+      photo: client.photo || '',
+      weight: client.weight ? String(client.weight) : '',
       categoryId: (client as any).categoryId || '',
       groupIds: client.groupMemberships
         ?.filter((gm: any) => gm.isActive)
@@ -331,24 +511,154 @@ const Clients: React.FC = () => {
         workplaceContact: p.workplaceContact || '',
       })) || [],
     });
+    setPhotoPreview(client.photo || null);
+    setPhotoFile(null);
+    setFormErrors({});
+    currentErrorsRef.current = {};
+    shouldPreventCloseRef.current = false;
+    setTouchedFields(new Set());
+    setValidFields(new Set());
+    setError('');
     setEditDialog(true);
+  };
+
+  const handleValidateForm = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    // Prevent form submission and event bubbling
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // Set flag to prevent dialog from closing during validation
+    isValidatingRef.current = true;
+    shouldPreventCloseRef.current = true;
+    
+    // Mark all fields as touched to show all validation errors
+    const allFields = ['firstName', 'lastName', 'email', 'phone', 'dateOfBirth', 'weight'];
+    const newTouchedFields = new Set<string>();
+    allFields.forEach(field => newTouchedFields.add(field));
+    formData.parents.forEach((_, index) => {
+      ['fullName', 'email', 'phone'].forEach(field => {
+        newTouchedFields.add(`parent_${index}_${field}`);
+      });
+    });
+    setTouchedFields(newTouchedFields);
+
+    // Validate entire form
+    const errors = validateClientForm(formData);
+    
+    // Update ref immediately so onClose can check it synchronously
+    currentErrorsRef.current = errors;
+    
+    // Set errors immediately using functional update to ensure state is updated
+    setFormErrors(() => errors);
+    
+    // If there are errors, show them in Snackbar and keep dialog open
+    if (hasFormErrors(errors)) {
+      setError('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      setValidFields(new Set()); // Clear valid fields if there are errors
+      // Set flag to prevent closing - keep it true
+      shouldPreventCloseRef.current = true;
+      editDialogStateRef.current = true;
+      // Принудительно оставляем диалог открытым
+      setEditDialogOpen(true);
+      setEditDialog(true);
+      // Используем множественные таймеры для гарантии открытия
+      requestAnimationFrame(() => {
+        setEditDialogOpen(true);
+        setEditDialog(true);
+      });
+      for (let i = 0; i < 100; i++) {
+        setTimeout(() => {
+          setEditDialogOpen(true);
+          setEditDialog(true);
+        }, i * 5);
+      }
+      // Reset validation flag after a delay
+      setTimeout(() => {
+        isValidatingRef.current = false;
+        // Keep prevent close flag true as long as there are errors
+        if (hasFormErrors(errors)) {
+          shouldPreventCloseRef.current = true;
+        }
+      }, 100);
+      return;
+    }
+    
+    // Clear prevent close flag if no errors
+    shouldPreventCloseRef.current = false;
+    editDialogStateRef.current = false;
+    
+    // If no errors, mark all validated fields as valid (only fields that have values and no errors)
+    const newValidFields = new Set<string>();
+    allFields.forEach(field => {
+      const value = formData[field as keyof ClientFormData];
+      if (value && String(value).trim() !== '') {
+        // Check if field is valid (no error for this field)
+        if (!errors[field]) {
+          newValidFields.add(field);
+        }
+      }
+    });
+    formData.parents.forEach((parent, index) => {
+      if (parent.fullName && parent.fullName.trim() !== '' && !errors[`parent_${index}_fullName`]) {
+        newValidFields.add(`parent_${index}_fullName`);
+      }
+      if (parent.email && parent.email.trim() !== '' && !errors[`parent_${index}_email`]) {
+        newValidFields.add(`parent_${index}_email`);
+      }
+      if (parent.phone && parent.phone.trim() !== '' && !errors[`parent_${index}_phone`]) {
+        newValidFields.add(`parent_${index}_phone`);
+      }
+    });
+    setValidFields(newValidFields);
+    setError('');
+    
+    // Reset flag after validation is complete
+    setTimeout(() => {
+      isValidatingRef.current = false;
+      shouldPreventCloseRef.current = false;
+    }, 100);
   };
 
   const handleUpdateClient = async () => {
     if (!editingClient) return;
     
-    // Validate form
+    // Mark all fields as touched to show all validation errors
+    const allFields = ['firstName', 'lastName', 'email', 'phone', 'dateOfBirth', 'weight'];
+    const newTouchedFields = new Set<string>();
+    allFields.forEach(field => newTouchedFields.add(field));
+    formData.parents.forEach((_, index) => {
+      ['fullName', 'email', 'phone'].forEach(field => {
+        newTouchedFields.add(`parent_${index}_${field}`);
+      });
+    });
+    setTouchedFields(newTouchedFields);
+
+    // Validate entire form
     const errors = validateClientForm(formData);
     setFormErrors(errors);
     
-    if (Object.keys(errors).length > 0) {
-      setError('Пожалуйста, исправьте ошибки в форме');
-      return;
+    // If there are errors, show them and keep the form open
+    if (hasFormErrors(errors)) {
+      setError('Пожалуйста, исправьте ошибки в форме перед сохранением');
+      setValidFields(new Set()); // Clear valid fields if there are errors
+      return; // Don't close the form, don't save
     }
+    
+    // Clear error if validation passed
+    setError('');
+    setValidFields(new Set()); // Clear valid fields before saving
     
     try {
       const { groupIds, ...clientData } = formData;
-      await apiService.updateClient(editingClient.id, clientData);
+      const dataToSend = {
+        ...clientData,
+        weight: clientData.weight ? parseFloat(clientData.weight) : null,
+      };
+      await apiService.updateClient(editingClient.id, dataToSend);
       
       // Обновляем группы клиента
       const currentGroupIds = editingClient.groupMemberships
@@ -380,9 +690,14 @@ const Clients: React.FC = () => {
       }
       
       await fetchClients();
+      shouldPreventCloseRef.current = false;
+      setEditDialogOpen(false);
       setEditDialog(false);
       setEditingClient(null);
       setFormErrors({});
+      currentErrorsRef.current = {};
+      setTouchedFields(new Set());
+      setValidFields(new Set());
       setError('');
       setFormData({
         firstName: '',
@@ -396,10 +711,17 @@ const Clients: React.FC = () => {
         birthCertificateNumber: '',
         medicalCertificateNumber: '',
         schoolOrKindergarten: '',
+        photo: '',
+        weight: '',
         categoryId: '',
         groupIds: [],
         parents: [],
       });
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления клиента');
       console.error('Error updating client:', err);
@@ -660,9 +982,8 @@ const Clients: React.FC = () => {
           onClick={() => {
             setOpenDialog(true);
             setFormErrors({});
+            setTouchedFields(new Set());
             setError('');
-            setHasValidationErrors(false);
-            hasErrorsRef.current = false;
           }}
           data-onboarding="add-client-button"
         >
@@ -1118,83 +1439,145 @@ const Clients: React.FC = () => {
 
       {/* Диалог добавления клиента */}
       <Dialog 
-        open={(() => {
-          // Если openDialog true, диалог открыт
-          if (openDialog) return true;
-          // Если есть ошибки, принудительно оставляем открытым
-          const hasErrors = Boolean(
-            hasErrorsRef.current || 
-            hasValidationErrors || 
-            Object.keys(formErrors).length > 0 || 
-            (error && error.length > 0)
-          );
-          return hasErrors;
-        })()}
+        open={openDialog}
         onClose={(event: React.SyntheticEvent, reason?: string) => {
-          // Проверяем наличие ошибок
-          const hasErrors = hasErrorsRef.current || hasValidationErrors || Object.keys(formErrors).length > 0 || error;
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = hasFormErrors(formErrors);
+          
+          // Если есть ошибки, не закрываем диалог
           if (hasErrors) {
-            // Если есть ошибки, НЕ закрываем диалог - просто игнорируем попытку закрытия
+            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+            setSnackbarOpen(true);
             return;
           }
+          
           // Разрешаем закрытие только если нет ошибок
-          hasErrorsRef.current = false;
           setOpenDialog(false);
           setFormErrors({});
+          setTouchedFields(new Set());
           setError('');
-          setHasValidationErrors(false);
         }}
         maxWidth="md" 
         fullWidth
-        disableEscapeKeyDown={hasErrorsRef.current || hasValidationErrors || Object.keys(formErrors).length > 0}
+        disableEscapeKeyDown={hasFormErrors(formErrors)}
       >
         <DialogTitle>Добавить нового клиента</DialogTitle>
         <DialogContent>
-          {Object.keys(formErrors).length > 0 && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              <strong>Обнаружены ошибки в форме:</strong>
-              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-                {Object.entries(formErrors).map(([field, message]) => (
-                  <li key={field} style={{ marginBottom: '4px' }}>{message}</li>
-                ))}
-              </ul>
-            </Alert>
-          )}
-          {error && Object.keys(formErrors).length === 0 && (
+          {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Имя"
-                value={formData.firstName}
-                onChange={(e) => handleInputChange('firstName', e.target.value)}
-                required
-                error={!!formErrors.firstName}
-                helperText={formErrors.firstName}
-              />
+            {/* Фото клиента слева от первых строк */}
+            <Grid item xs={12} sm={3}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={photoInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setPhotoFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPhotoPreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, photo: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: 1,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {photoPreview ? (
+                    <img
+                      src={photoPreview}
+                      alt="Фото клиента"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <Box sx={{ textAlign: 'center', p: 1 }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить фото
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+                {photoPreview ? (
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      setPhotoPreview(null);
+                      setPhotoFile(null);
+                      setFormData(prev => ({ ...prev, photo: '' }));
+                      if (photoInputRef.current) {
+                        photoInputRef.current.value = '';
+                      }
+                    }}
+                    sx={{ mt: 1 }}
+                  >
+                    Удалить
+                  </Button>
+                ) : null}
+              </Box>
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Фамилия"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                required
-                error={!!formErrors.lastName}
-                helperText={formErrors.lastName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Отчество"
-                value={formData.middleName}
-                onChange={(e) => handleInputChange('middleName', e.target.value)}
-              />
+            <Grid item xs={12} sm={9}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Имя"
+                    value={formData.firstName}
+                    onChange={(e) => handleInputChange('firstName', e.target.value)}
+                    required
+                    error={!!formErrors.firstName}
+                    helperText={formErrors.firstName}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Фамилия"
+                    value={formData.lastName}
+                    onChange={(e) => handleInputChange('lastName', e.target.value)}
+                    required
+                    error={!!formErrors.lastName}
+                    helperText={formErrors.lastName}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Отчество"
+                    value={formData.middleName}
+                    onChange={(e) => handleInputChange('middleName', e.target.value)}
+                  />
+                </Grid>
+              </Grid>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -1243,6 +1626,16 @@ const Clients: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Вес (кг)"
+                type="number"
+                value={formData.weight}
+                onChange={(e) => handleInputChange('weight', e.target.value)}
+                inputProps={{ min: 0, max: 500, step: 0.1 }}
+              />
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -1384,36 +1777,63 @@ const Clients: React.FC = () => {
                           fullWidth
                           label="Полное ФИО родителя"
                           value={parent.fullName}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].fullName = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'fullName', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'fullName', e.target.value)}
+                          error={!!formErrors[`parent_${index}_fullName`]}
+                          helperText={formErrors[`parent_${index}_fullName`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_fullName`) && !formErrors[`parent_${index}_fullName`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_fullName`) && !formErrors[`parent_${index}_fullName`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
                           label="Телефон"
                           value={parent.phone}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].phone = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'phone', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'phone', e.target.value)}
+                          placeholder="+1234567890"
+                          error={!!formErrors[`parent_${index}_phone`]}
+                          helperText={formErrors[`parent_${index}_phone`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_phone`) && !formErrors[`parent_${index}_phone`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_phone`) && !formErrors[`parent_${index}_phone`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
-                placeholder="+1234567890"
-              />
-            </Grid>
+                        />
+                      </Grid>
                       <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
+                        <TextField
+                          fullWidth
                           label="Email"
                           type="email"
                           value={parent.email}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].email = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'email', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'email', e.target.value)}
+                          error={!!formErrors[`parent_${index}_email`]}
+                          helperText={formErrors[`parent_${index}_email`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_email`) && !formErrors[`parent_${index}_email`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_email`) && !formErrors[`parent_${index}_email`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
                         />
                       </Grid>
@@ -1456,37 +1876,74 @@ const Clients: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            // Разрешаем закрытие только если нет ошибок
-            if (!hasErrorsRef.current && !hasValidationErrors && Object.keys(formErrors).length === 0 && !error) {
-              hasErrorsRef.current = false;
-              setOpenDialog(false);
-              setFormErrors({});
-              setError('');
-              setHasValidationErrors(false);
-            }
-          }}>Отмена</Button>
           <Button 
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              // Валидируем форму перед отправкой
-              const errors = validateClientForm(formData);
-              const hasErrors = Object.keys(errors).length > 0;
               
-              // Устанавливаем флаги синхронно
-              hasErrorsRef.current = hasErrors;
+              // Отмена всегда закрывает форму без применения изменений
+              setOpenDialog(false);
+              setFormErrors({});
+              setTouchedFields(new Set());
+              setError('');
+              setFormData({
+                firstName: '',
+                lastName: '',
+                middleName: '',
+                email: '',
+                phone: '',
+                dateOfBirth: '',
+                gender: '',
+                address: '',
+                birthCertificateNumber: '',
+                medicalCertificateNumber: '',
+                schoolOrKindergarten: '',
+                photo: '',
+                weight: '',
+                categoryId: '',
+                groupIds: [],
+                parents: [],
+              });
+              setPhotoPreview(null);
+              setPhotoFile(null);
+              if (photoInputRef.current) {
+                photoInputRef.current.value = '';
+              }
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
               
-              if (hasErrors) {
-                setFormErrors(errors);
-                setHasValidationErrors(true);
-                setError('Пожалуйста, исправьте ошибки в форме');
-                return;
+              // Выполняем валидацию синхронно
+              const validationErrors = validateClientForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Отмечаем все поля как touched для отображения ошибок
+              const allFields = ['firstName', 'lastName', 'email', 'phone', 'dateOfBirth', 'weight'];
+              const newTouchedFields = new Set<string>();
+              allFields.forEach(field => newTouchedFields.add(field));
+              formData.parents.forEach((_, index) => {
+                ['fullName', 'email', 'phone'].forEach(field => {
+                  newTouchedFields.add(`parent_${index}_${field}`);
+                });
+              });
+              setTouchedFields(newTouchedFields);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (hasFormErrors(validationErrors)) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                setValidFields(new Set());
+                return; // Не создаем клиента, если есть ошибки
               }
               
-              // Если ошибок нет, сбрасываем флаги и вызываем создание
-              hasErrorsRef.current = false;
-              setHasValidationErrors(false);
+              // Если нет ошибок, вызываем handleCreateClient для сохранения
               handleCreateClient();
             }} 
             variant="contained"
@@ -1498,58 +1955,279 @@ const Clients: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования клиента */}
-      <Dialog 
-        open={editDialog} 
+      <CustomModalFull
+        open={editDialogOpen}
+        shouldPreventCloseRef={shouldPreventCloseRef}
+        isValidatingRef={isValidatingRef}
+        isCancellingRef={isCancellingRef}
         onClose={(event, reason) => {
-          // Предотвращаем закрытие при наличии ошибок
-          if (Object.keys(formErrors).length > 0 || error) {
-            return;
+          console.log('onClose called', { reason, hasErrors: hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current), shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current, isCancelling: isCancellingRef.current });
+          
+          // Если нажата кнопка "Отмена", всегда разрешаем закрытие
+          if (isCancellingRef.current) {
+            console.log('Allowing close - cancel button clicked');
+            shouldPreventCloseRef.current = false;
+            isValidatingRef.current = false;
+            editDialogStateRef.current = false;
+            setEditDialogOpen(false);
+            setEditDialog(false);
+            setFormErrors({});
+            currentErrorsRef.current = {};
+            setTouchedFields(new Set());
+            setValidFields(new Set());
+            setError('');
+            return true;
           }
+          
+          // Всегда проверяем ошибки перед закрытием
+          const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+          
+          // Если есть ошибки или идет валидация, НЕ закрываем диалог
+          if (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) {
+            console.log('Preventing close due to errors or validation');
+            // Показываем ошибки в Snackbar
+            if (hasErrors) {
+              setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+              setSnackbarOpen(true);
+            }
+            // Устанавливаем флаг для предотвращения закрытия
+            shouldPreventCloseRef.current = true;
+            // НЕ закрываем диалог - оставляем его открытым
+            // Принудительно оставляем диалог открытым
+            setEditDialogOpen(true);
+            setEditDialog(true);
+            // Используем множественные таймеры для гарантии открытия
+            requestAnimationFrame(() => {
+              setEditDialogOpen(true);
+              setEditDialog(true);
+            });
+            for (let i = 0; i < 200; i++) {
+              setTimeout(() => {
+                setEditDialogOpen(true);
+                setEditDialog(true);
+              }, i * 5);
+            }
+            return false; // Возвращаем false, чтобы предотвратить закрытие
+          }
+          
+          // Разрешаем закрытие только если нет ошибок
+          console.log('Allowing close - no errors');
+          shouldPreventCloseRef.current = false;
+          editDialogStateRef.current = false;
+          setEditDialogOpen(false);
           setEditDialog(false);
           setFormErrors({});
+          currentErrorsRef.current = {};
+          setTouchedFields(new Set());
+          setValidFields(new Set());
           setError('');
+          return true;
         }}
-        maxWidth="md" 
+        maxWidth="md"
         fullWidth
+        disableEscapeKeyDown={hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current) || shouldPreventCloseRef.current || isValidatingRef.current}
+        disableBackdropClick={hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current) || shouldPreventCloseRef.current || isValidatingRef.current}
+        closeAfterTransition={false}
+        onBackdropClick={(e) => {
+          // Блокируем закрытие при клике на backdrop, если есть ошибки
+          const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+          if (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
       >
-        <DialogTitle>Редактировать клиента</DialogTitle>
-        <DialogContent>
+        <Paper
+          elevation={24}
+          sx={{
+            position: 'relative',
+            width: '100%',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            outline: 'none',
+          }}
+          onClick={(e) => {
+            // Предотвращаем закрытие при клике на содержимое
+            e.stopPropagation();
+          }}
+          onMouseDown={(e) => {
+            // Предотвращаем закрытие при mousedown на содержимое
+            e.stopPropagation();
+          }}
+          onMouseUp={(e) => {
+            // Предотвращаем закрытие при mouseup на содержимое
+            e.stopPropagation();
+          }}
+        >
+          <Box 
+            component="form"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent?.stopImmediatePropagation?.();
+              // Блокируем отправку формы, если есть ошибки
+              const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
+              if (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) {
+                // Принудительно оставляем диалог открытым
+                setEditDialogOpen(true);
+                setEditDialog(true);
+                return false;
+              }
+            }}
+            sx={{ p: 3 }}
+            onClick={(e) => {
+              // Предотвращаем всплытие всех событий
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            onMouseUp={(e) => {
+              e.stopPropagation();
+            }}
+          >
+              <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold' }}>
+                Редактировать клиента
+              </Typography>
+              <Box sx={{ mt: 2 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
-          {Object.keys(formErrors).length > 0 && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
-            </Alert>
-          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Имя"
-                value={formData.firstName}
-                onChange={(e) => handleInputChange('firstName', e.target.value)}
-                required
-              />
+            {/* Фото клиента слева от первых строк */}
+            <Grid item xs={12} sm={3}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={photoInputRef}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setPhotoFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPhotoPreview(reader.result as string);
+                        setFormData(prev => ({ ...prev, photo: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: 1,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    bgcolor: 'background.default',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {photoPreview || editingClient?.photo ? (
+                    <img
+                      src={photoPreview || editingClient?.photo || ''}
+                      alt="Фото клиента"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <Box sx={{ textAlign: 'center', p: 1 }}>
+                      <PhotoCamera sx={{ fontSize: 32, color: 'text.secondary', mb: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Загрузить фото
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+                {photoPreview || editingClient?.photo ? (
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      setPhotoPreview(null);
+                      setPhotoFile(null);
+                      setFormData(prev => ({ ...prev, photo: '' }));
+                      if (photoInputRef.current) {
+                        photoInputRef.current.value = '';
+                      }
+                    }}
+                    sx={{ mt: 1 }}
+                  >
+                    Удалить
+                  </Button>
+                ) : null}
+              </Box>
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Фамилия"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Отчество"
-                value={formData.middleName}
-                onChange={(e) => handleInputChange('middleName', e.target.value)}
-              />
+            <Grid item xs={12} sm={9}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Имя"
+                    value={formData.firstName}
+                    onChange={(e) => handleInputChange('firstName', e.target.value)}
+                    onBlur={(e) => handleFieldBlur('firstName', e.target.value)}
+                    required
+                    error={!!formErrors.firstName}
+                    helperText={formErrors.firstName}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
+                        },
+                        '& fieldset': {
+                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
+                        },
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Фамилия"
+                    value={formData.lastName}
+                    onChange={(e) => handleInputChange('lastName', e.target.value)}
+                    onBlur={(e) => handleFieldBlur('lastName', e.target.value)}
+                    required
+                    error={!!formErrors.lastName}
+                    helperText={formErrors.lastName}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: validFields.has('lastName') && !formErrors.lastName ? 'success.main' : undefined,
+                        },
+                        '& fieldset': {
+                          borderColor: validFields.has('lastName') && !formErrors.lastName ? 'success.main' : undefined,
+                        },
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Отчество"
+                    value={formData.middleName}
+                    onChange={(e) => handleInputChange('middleName', e.target.value)}
+                  />
+                </Grid>
+              </Grid>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -1558,6 +2236,19 @@ const Clients: React.FC = () => {
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
+                onBlur={(e) => handleFieldBlur('email', e.target.value)}
+                error={!!formErrors.email}
+                helperText={formErrors.email}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
+                    },
+                    '& fieldset': {
+                      borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
+                    },
+                  },
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1566,7 +2257,20 @@ const Clients: React.FC = () => {
                 label="Телефон"
                 value={formData.phone}
                 onChange={(e) => handleInputChange('phone', e.target.value)}
+                onBlur={(e) => handleFieldBlur('phone', e.target.value)}
                 placeholder="+1234567890"
+                error={!!formErrors.phone}
+                helperText={formErrors.phone}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
+                    },
+                    '& fieldset': {
+                      borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
+                    },
+                  },
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1576,9 +2280,20 @@ const Clients: React.FC = () => {
                 type="date"
                 value={formData.dateOfBirth}
                 onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                onBlur={(e) => handleFieldBlur('dateOfBirth', e.target.value)}
                 InputLabelProps={{ shrink: true }}
                 error={!!formErrors.dateOfBirth}
                 helperText={formErrors.dateOfBirth}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: validFields.has('dateOfBirth') && !formErrors.dateOfBirth ? 'success.main' : undefined,
+                    },
+                    '& fieldset': {
+                      borderColor: validFields.has('dateOfBirth') && !formErrors.dateOfBirth ? 'success.main' : undefined,
+                    },
+                  },
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1594,6 +2309,29 @@ const Clients: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Вес (кг)"
+                type="number"
+                value={formData.weight}
+                onChange={(e) => handleInputChange('weight', e.target.value)}
+                onBlur={(e) => handleFieldBlur('weight', e.target.value)}
+                inputProps={{ min: 0, max: 500, step: 0.1 }}
+                error={!!formErrors.weight}
+                helperText={formErrors.weight}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+                    },
+                    '& fieldset': {
+                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+                    },
+                  },
+                }}
+              />
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -1735,36 +2473,63 @@ const Clients: React.FC = () => {
                           fullWidth
                           label="Полное ФИО родителя"
                           value={parent.fullName}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].fullName = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'fullName', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'fullName', e.target.value)}
+                          error={!!formErrors[`parent_${index}_fullName`]}
+                          helperText={formErrors[`parent_${index}_fullName`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_fullName`) && !formErrors[`parent_${index}_fullName`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_fullName`) && !formErrors[`parent_${index}_fullName`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
                           label="Телефон"
                           value={parent.phone}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].phone = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'phone', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'phone', e.target.value)}
+                          placeholder="+1234567890"
+                          error={!!formErrors[`parent_${index}_phone`]}
+                          helperText={formErrors[`parent_${index}_phone`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_phone`) && !formErrors[`parent_${index}_phone`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_phone`) && !formErrors[`parent_${index}_phone`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
-                placeholder="+1234567890"
-              />
-            </Grid>
+                        />
+                      </Grid>
                       <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
+                        <TextField
+                          fullWidth
                           label="Email"
                           type="email"
                           value={parent.email}
-                          onChange={(e) => {
-                            const newParents = [...formData.parents];
-                            newParents[index].email = e.target.value;
-                            setFormData({ ...formData, parents: newParents });
+                          onChange={(e) => handleParentFieldChange(index, 'email', e.target.value)}
+                          onBlur={(e) => handleParentFieldBlur(index, 'email', e.target.value)}
+                          error={!!formErrors[`parent_${index}_email`]}
+                          helperText={formErrors[`parent_${index}_email`]}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              '&.Mui-focused fieldset': {
+                                borderColor: validFields.has(`parent_${index}_email`) && !formErrors[`parent_${index}_email`] ? 'success.main' : undefined,
+                              },
+                              '& fieldset': {
+                                borderColor: validFields.has(`parent_${index}_email`) && !formErrors[`parent_${index}_email`] ? 'success.main' : undefined,
+                              },
+                            },
                           }}
                         />
                       </Grid>
@@ -1805,22 +2570,143 @@ const Clients: React.FC = () => {
               </Box>
             </Grid>
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            // Разрешаем закрытие только если нет ошибок
-            if (Object.keys(formErrors).length === 0 && !error) {
-              setEditDialog(false);
+              </Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 2,
+                  mt: 3,
+                  pt: 2,
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                }}
+                onClick={(e) => {
+                  // Предотвращаем всплытие всех событий
+                  e.stopPropagation();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Устанавливаем флаг отмены, чтобы onClose разрешил закрытие
+              isCancellingRef.current = true;
+              shouldPreventCloseRef.current = false;
+              isValidatingRef.current = false;
+              
+              // Сбрасываем все состояния
               setEditingClient(null);
               setFormErrors({});
+              currentErrorsRef.current = {};
+              setTouchedFields(new Set());
+              setValidFields(new Set());
               setError('');
-            }
-          }}>Отмена</Button>
-          <Button onClick={handleUpdateClient} variant="contained">
+              
+              // Закрываем диалог - флаг isCancellingRef позволит закрыться
+              // Используем requestAnimationFrame для гарантии, что состояние обновится
+              requestAnimationFrame(() => {
+                setEditDialogOpen(false);
+                setEditDialog(false);
+              });
+              
+              // Также устанавливаем напрямую через setTimeout для надежности
+              setTimeout(() => {
+                setEditDialogOpen(false);
+                setEditDialog(false);
+              }, 0);
+              
+              // Сбрасываем флаг отмены после достаточной задержки, чтобы все useEffect успели проверить
+              setTimeout(() => {
+                isCancellingRef.current = false;
+              }, 500);
+            }}
+            type="button"
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Устанавливаем флаг для валидации ДО вызова handleUpdateClient
+              isValidatingRef.current = true;
+              shouldPreventCloseRef.current = true;
+              
+              // Принудительно оставляем диалог открытым СРАЗУ
+              setEditDialogOpen(true);
+              setEditDialog(true);
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateClientForm(formData);
+              currentErrorsRef.current = validationErrors;
+              setFormErrors(validationErrors);
+              
+              // Отмечаем все поля как touched для отображения ошибок
+              const allFields = ['firstName', 'lastName', 'email', 'phone', 'dateOfBirth', 'weight'];
+              const newTouchedFields = new Set<string>();
+              allFields.forEach(field => newTouchedFields.add(field));
+              formData.parents.forEach((_, index) => {
+                ['fullName', 'email', 'phone'].forEach(field => {
+                  newTouchedFields.add(`parent_${index}_${field}`);
+                });
+              });
+              setTouchedFields(newTouchedFields);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (hasFormErrors(validationErrors)) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                setValidFields(new Set());
+                
+                // Принудительно оставляем диалог открытым
+                setEditDialogOpen(true);
+                setEditDialog(true);
+                
+                // Используем множественные таймеры для гарантии открытия
+                requestAnimationFrame(() => {
+                  setEditDialogOpen(true);
+                  setEditDialog(true);
+                });
+                for (let i = 0; i < 200; i++) {
+                  setTimeout(() => {
+                    setEditDialogOpen(true);
+                    setEditDialog(true);
+                  }, i * 5);
+                }
+                
+                // Сбрасываем флаг валидации после небольшой задержки
+                setTimeout(() => {
+                  isValidatingRef.current = false;
+                  // Оставляем shouldPreventCloseRef = true, так как есть ошибки
+                }, 100);
+                
+                return; // Не сохраняем, если есть ошибки
+              }
+              
+              // Если нет ошибок, сбрасываем флаги и вызываем handleUpdateClient
+              shouldPreventCloseRef.current = false;
+              isValidatingRef.current = false;
+              
+              // Вызываем handleUpdateClient для сохранения
+              handleUpdateClient();
+            }} 
+            variant="contained"
+            type="button"
+          >
             Сохранить изменения
           </Button>
-        </DialogActions>
-      </Dialog>
+              </Box>
+            </Box>
+          </Paper>
+      </CustomModalFull>
 
       {/* Import Dialog */}
       <Dialog open={importDialog} onClose={() => {
@@ -2431,13 +3317,38 @@ const Clients: React.FC = () => {
       >
         <DialogTitle>
           График выполнения норматива
-          {selectedStandardForChart && (
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {selectedStandardForChart.name}
-            </Typography>
-          )}
         </DialogTitle>
         <DialogContent>
+          <Box sx={{ mb: 3 }}>
+            <FormControl fullWidth>
+              <InputLabel>Выберите норматив для отображения</InputLabel>
+              <Select
+                value={selectedStandardForChart?.id || ''}
+                onChange={(e) => {
+                  const standard = clientStandards.find((cs: any) => cs.standard?.id === e.target.value);
+                  if (standard && standard.standard) {
+                    setSelectedStandardForChart({
+                      id: standard.standard.id,
+                      name: standard.standard.name,
+                      unit: standard.standard.unit,
+                      targetValue: standard.standard.targetValue ? Number(standard.standard.targetValue) : undefined,
+                    });
+                  }
+                }}
+                label="Выберите норматив для отображения"
+              >
+                {Array.from(new Map(
+                  clientStandards
+                    .filter((cs: any) => cs.standard && cs.result !== null && cs.result !== undefined)
+                    .map((cs: any) => [cs.standard.id, cs])
+                ).values()).map((cs: any) => (
+                  <MenuItem key={cs.id} value={cs.standard.id}>
+                    {cs.standard.name} {cs.standard.unit && `(${cs.standard.unit})`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
           {selectedStandardForChart && (
             <StandardChart
               standardId={selectedStandardForChart.id}
@@ -2446,6 +3357,13 @@ const Clients: React.FC = () => {
               targetValue={selectedStandardForChart.targetValue}
               clientStandards={clientStandards}
             />
+          )}
+          {!selectedStandardForChart && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="body1" color="text.secondary">
+                Выберите норматив для отображения графика
+              </Typography>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
@@ -2459,6 +3377,15 @@ const Clients: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar для показа сообщений о валидации */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 };

@@ -156,6 +156,7 @@ model Client {
   emergencyPhone        String?
   medicalNotes          String?
   photo                 String?
+  weight                Decimal?   // Вес клиента
   categoryId            String?   // Категория клиента
   balance               Decimal   @default(0) // Внутренний кошелек клиента
   isActive              Boolean   @default(true)
