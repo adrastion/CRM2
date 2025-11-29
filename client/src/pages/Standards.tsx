@@ -149,7 +149,7 @@ const Standards: React.FC = () => {
           }}
           data-onboarding="add-standard-button"
         >
-          Создать шаблон норматива
+          Создать норматив
         </Button>
       </Box>
 
