@@ -7,7 +7,10 @@ import { ApiResponse } from '../types';
  */
 export const validate = (schema: Joi.ObjectSchema) => {
   return (req: Request, res: Response<ApiResponse>, next: NextFunction): void => {
-    const { error } = schema.validate(req.body, { abortEarly: false });
+    const { error, value } = schema.validate(req.body, { 
+      abortEarly: false,
+      convert: true // Enable automatic type conversion
+    });
     
     if (error) {
       const errorMessages = error.details.map(detail => ({
@@ -15,6 +18,9 @@ export const validate = (schema: Joi.ObjectSchema) => {
         message: detail.message,
         value: detail.context?.value
       }));
+
+      console.error('Validation error:', errorMessages);
+      console.error('Request body:', JSON.stringify(req.body, null, 2));
 
       res.status(400).json({
         success: false,
@@ -24,6 +30,8 @@ export const validate = (schema: Joi.ObjectSchema) => {
       return;
     }
 
+    // Replace req.body with validated and converted values
+    req.body = value;
     next();
   };
 };
@@ -64,7 +72,7 @@ export const commonSchemas = {
   phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(100).default(10),
+    limit: Joi.number().integer().min(1).max(10000).default(10),
     sortBy: Joi.string().optional(),
     sortOrder: Joi.string().valid('asc', 'desc').default('asc')
   }),
@@ -191,6 +199,64 @@ export const groupSchemas = {
 /**
  * Training validation schemas
  */
+export const competitionSchemas = {
+  create: Joi.object({
+    name: Joi.string().min(2).max(200).required(),
+    location: Joi.string().min(2).max(200).required(),
+    startDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).required(),
+    endDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).required()
+      .custom((value, helpers) => {
+        const { startDate } = helpers.state.ancestors[0];
+        if (!startDate) return value;
+        
+        const start = new Date(startDate);
+        const end = new Date(value);
+        
+        if (end < start) {
+          return helpers.error('date.min', { limit: startDate });
+        }
+        return value;
+      }),
+    registrationDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).required(),
+    registrationTime: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).optional().allow(null, ''),
+    isElectronicRegistration: Joi.boolean().default(false),
+    positionDocument: Joi.string().optional().allow('', null),
+    regulationsDocument: Joi.string().optional().allow('', null),
+    trainerIds: Joi.array().items(Joi.string()).min(0).optional().default([]),
+    participantIds: Joi.array().items(Joi.string()).min(0).optional().default([])
+  }),
+  update: Joi.object({
+    name: Joi.string().min(2).max(200).optional(),
+    location: Joi.string().min(2).max(200).optional(),
+    startDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).optional(),
+    endDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).optional(),
+    registrationDate: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).optional(),
+    registrationTime: Joi.alternatives().try(Joi.date(), Joi.string().isoDate()).optional().allow(null, ''),
+    isElectronicRegistration: Joi.boolean().optional(),
+    positionDocument: Joi.string().optional().allow('', null),
+    regulationsDocument: Joi.string().optional().allow('', null),
+    trainerIds: Joi.array().items(Joi.string()).min(0).optional(),
+    participantIds: Joi.array().items(Joi.string()).min(0).optional()
+  }),
+  addResult: Joi.object({
+    participantId: commonSchemas.id.required(),
+    result: Joi.string().optional().allow('', null),
+    resultValue: Joi.number().optional().allow(null),
+    category: Joi.string().optional().allow('', null),
+    performanceTime: Joi.date().optional().allow(null)
+  }),
+  updateResult: Joi.object({
+    result: Joi.string().optional().allow('', null),
+    resultValue: Joi.number().optional().allow(null),
+    category: Joi.string().optional().allow('', null),
+    performanceTime: Joi.date().optional().allow(null)
+  }),
+  updateAttendance: Joi.object({
+    status: Joi.string().valid('PRESENT', 'ABSENT', 'EXCUSED').required(),
+    notes: Joi.string().optional().allow('', null)
+  })
+};
+
 export const trainingSchemas = {
   create: Joi.object({
     title: Joi.string().min(2).max(200).required(),

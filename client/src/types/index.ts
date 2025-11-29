@@ -257,6 +257,78 @@ export interface Attendance {
   training?: Training;
 }
 
+// Competition Types
+export interface Competition {
+  id: string;
+  name: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  registrationDate: string;
+  registrationTime?: string;
+  isElectronicRegistration: boolean;
+  positionDocument?: string; // Положение о соревновании (base64)
+  regulationsDocument?: string; // Регламент (base64)
+  tenantId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  participants?: CompetitionParticipant[];
+  results?: CompetitionResult[];
+  trainers?: CompetitionTrainer[];
+  attendances?: CompetitionAttendance[];
+}
+
+export interface CompetitionParticipant {
+  id: string;
+  competitionId: string;
+  clientId: string;
+  tenantId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  competition?: Competition;
+  client?: Client;
+  results?: CompetitionResult[];
+  attendance?: CompetitionAttendance;
+}
+
+export interface CompetitionResult {
+  id: string;
+  competitionId: string;
+  participantId: string;
+  result?: string; // Результат (текст)
+  resultValue?: number; // Результат (число)
+  category?: string; // Категория (опционально)
+  performanceTime?: string; // Время категории (выступления)
+  createdAt?: string;
+  updatedAt?: string;
+  competition?: Competition;
+  participant?: CompetitionParticipant;
+}
+
+export interface CompetitionTrainer {
+  id: string;
+  competitionId: string;
+  trainerId: string;
+  tenantId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  competition?: Competition;
+  trainer?: Trainer;
+}
+
+export interface CompetitionAttendance {
+  id: string;
+  competitionId: string;
+  participantId: string;
+  status: 'PRESENT' | 'ABSENT' | 'EXCUSED';
+  notes?: string;
+  tenantId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  competition?: Competition;
+  participant?: CompetitionParticipant;
+}
+
 // API Response Types
 export interface ApiResponse<T = any> {
   success: boolean;

@@ -4,6 +4,7 @@ import { AuthenticatedRequest, ApiResponse, SearchQuery, CreateClientData, Updat
 import { asyncHandler } from '../middleware/errorHandler';
 import { validate, validateQuery } from '../middleware/validation';
 import { clientSchemas, commonSchemas } from '../middleware/validation';
+import Joi from 'joi';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
 
@@ -846,4 +847,13 @@ export const upload = multer({
 // Validation middleware
 export const validateCreateClient = validate(clientSchemas.create);
 export const validateUpdateClient = validate(clientSchemas.update);
-export const validateClientQuery = validateQuery(commonSchemas.pagination.concat(commonSchemas.search));
+export const validateClientQuery = validateQuery(
+  Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(10000).default(10),
+    sortBy: Joi.string().optional(),
+    sortOrder: Joi.string().valid('asc', 'desc').default('asc'),
+    search: Joi.string().optional(),
+    filter: Joi.string().optional()
+  })
+);

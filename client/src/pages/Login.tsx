@@ -198,18 +198,21 @@ const Login: React.FC = () => {
         </Paper>
 
         <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Демо-аккаунты:
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Владелец: owner@dragonacademy.com / password123
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Администратор: admin@dragonacademy.com / password123
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Тренер: trainer1@dragonacademy.com / password123
-          </Typography>
+          <Link
+            href="https://t.me/profsportcrm"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="body2"
+            sx={{ 
+              textDecoration: 'none',
+              color: 'primary.main',
+              '&:hover': {
+                textDecoration: 'underline'
+              }
+            }}
+          >
+            Новостной телеграм канал
+          </Link>
         </Box>
       </Box>
     </Container>

@@ -45,6 +45,7 @@ import {
   HelpOutline,
   Delete,
   Remove,
+  EmojiEvents,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
@@ -53,7 +54,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { Training, Group, Branch, Trainer, Client, Attendance } from '../types';
+import { Training, Group, Branch, Trainer, Client, Attendance, Competition } from '../types';
 
 interface DaySchedule {
   dayOfWeek: number;
@@ -89,6 +90,7 @@ interface TrainingFormData {
 const Schedule: React.FC = () => {
   const navigate = useNavigate();
   const [trainings, setTrainings] = useState<Training[]>([]);
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -152,8 +154,9 @@ const Schedule: React.FC = () => {
       try {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
-        const [trainingsRes, groupsRes, trainersRes, branchesRes, settingsRes] = await Promise.all([
+        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, settingsRes] = await Promise.all([
           apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 тренировок
+          apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
           apiService.getGroups(undefined, abortController.signal),
           apiService.getTrainers(undefined, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
@@ -162,6 +165,7 @@ const Schedule: React.FC = () => {
         
         if (!isMounted || abortController.signal.aborted) return;
         setTrainings(trainingsRes.data);
+        setCompetitions(competitionsRes.data);
         setGroups(groupsRes.data);
         setTrainers(trainersRes.data);
         setBranches(branchesRes.data);
@@ -820,6 +824,18 @@ const Schedule: React.FC = () => {
     return endTime;
   };
 
+  const getCompetitionsForDate = (date: Date): Competition[] => {
+    return competitions.filter((competition: Competition) => {
+      const startDate = new Date(competition.startDate);
+      const endDate = new Date(competition.endDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      const checkDate = new Date(date);
+      checkDate.setHours(0, 0, 0, 0);
+      return checkDate >= startDate && checkDate <= endDate;
+    });
+  };
+
   const getTrainingsForDate = (date: Date) => {
     let filtered = trainings.filter(training => 
       !training.isCancelled && isSameDay(new Date(training.startTime), date)
@@ -944,6 +960,7 @@ const Schedule: React.FC = () => {
         <Grid container spacing={1}>
           {weekDays.map((day, index) => {
             const dayTrainings = getTrainingsForDate(day);
+            const dayCompetitions = getCompetitionsForDate(day);
             const isToday = isSameDay(day, new Date());
             
             return (
@@ -976,6 +993,42 @@ const Schedule: React.FC = () => {
                     </Typography>
                     
                     <List dense>
+                      {/* Competitions - displayed at the top */}
+                      {dayCompetitions.map((competition: Competition) => (
+                        <ListItem key={competition.id} sx={{ p: 0, mb: 0.5 }}>
+                          <Paper 
+                            sx={{ 
+                              p: 1, 
+                              width: '100%', 
+                              bgcolor: 'warning.main',
+                              color: '#fff',
+                              position: 'relative',
+                              cursor: 'pointer',
+                              '&:hover': {
+                                opacity: 0.9,
+                                transform: 'scale(1.02)',
+                                transition: 'all 0.2s'
+                              }
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // TODO: Open competition dialog
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <EmojiEvents sx={{ fontSize: 14 }} />
+                              <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                                {competition.name}
+                              </Typography>
+                            </Box>
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.9 }}>
+                              {competition.location}
+                            </Typography>
+                          </Paper>
+                        </ListItem>
+                      ))}
+                      
+                      {/* Trainings */}
                       {dayTrainings.map((training) => {
                         const group = groups.find(g => g.id === training.groupId);
                         const groupColor = group?.color || '#1976d2';

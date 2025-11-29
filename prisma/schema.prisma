@@ -49,6 +49,10 @@ model Tenant {
   transactions Transaction[]
   subscription Subscription?
   referredBy  TenantMarketer? // Связь с маркетологом, который привел этого tenant
+  competitions Competition[]
+  competitionParticipants CompetitionParticipant[]
+  competitionTrainers CompetitionTrainer[]
+  competitionAttendances CompetitionAttendance[]
 
   @@map("tenants")
 }
@@ -179,6 +183,7 @@ model Client {
   clientMemberships     ClientMembership[]
   clientStandards       ClientStandard[]
   transactions          Transaction[]
+  competitionParticipants CompetitionParticipant[]
 
   @@map("clients")
 }
@@ -288,6 +293,7 @@ model Trainer {
   trainings       Training[]
   branches        TrainerBranch[]
   transactions    Transaction[]
+  competitionTrainers CompetitionTrainer[]
 
   @@map("trainers")
 }
@@ -754,4 +760,103 @@ model AdminTransaction {
   updatedAt       DateTime @updatedAt
 
   @@map("admin_transactions")
+}
+
+// ==================== COMPETITIONS ====================
+
+model Competition {
+  id                    String   @id @default(cuid())
+  name                  String   // Название соревнования
+  location              String   // Место проведения
+  startDate             DateTime // Дата начала соревнования
+  endDate               DateTime // Дата окончания соревнования (может быть несколько дней)
+  registrationDate      DateTime // Дата и время регистрации
+  registrationTime      DateTime? // Время регистрации (если отличается от даты)
+  isElectronicRegistration Boolean @default(false) // Электронная регистрация
+  positionDocument      String?  // Положение о соревновании (base64 или путь к файлу)
+  regulationsDocument  String?  // Регламент (base64 или путь к файлу)
+  tenantId              String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants          CompetitionParticipant[]
+  results                CompetitionResult[]
+  trainers               CompetitionTrainer[]
+  attendances            CompetitionAttendance[]
+
+  @@map("competitions")
+}
+
+model CompetitionParticipant {
+  id            String   @id @default(cuid())
+  competitionId String
+  clientId      String
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  results       CompetitionResult[]
+  attendance    CompetitionAttendance?
+
+  @@unique([competitionId, clientId])
+  @@map("competition_participants")
+}
+
+model CompetitionResult {
+  id            String   @id @default(cuid())
+  competitionId String
+  participantId String
+  result        String?  // Результат (текст)
+  resultValue   Decimal? // Результат (число)
+  category      String?  // Категория (опционально)
+  performanceTime DateTime? // Время категории (выступления)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  participant   CompetitionParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@map("competition_results")
+}
+
+model CompetitionTrainer {
+  id            String   @id @default(cuid())
+  competitionId String
+  trainerId     String
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  trainer       Trainer     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionId, trainerId])
+  @@map("competition_trainers")
+}
+
+model CompetitionAttendance {
+  id            String   @id @default(cuid())
+  competitionId String
+  participantId String   @unique // One-to-one relation with CompetitionParticipant
+  status        String   // 'PRESENT' | 'ABSENT' | 'EXCUSED'
+  notes         String?
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  participant   CompetitionParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("competition_attendances")
 }

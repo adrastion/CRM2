@@ -31,6 +31,7 @@ import standardRoutes from './routes/standard';
 import subscriptionRoutes from './routes/subscription';
 import adminDashboardRoutes from './routes/adminDashboard';
 import superAdminAuthRoutes from './routes/superAdminAuth';
+import competitionRoutes from './routes/competition';
 
 // Load environment variables
 dotenv.config();
@@ -103,6 +104,7 @@ app.use('/api/memberships', membershipRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/trainings', trainingRoutes);
 app.use('/api/attendances', attendanceRoutes);
+app.use('/api/competitions', competitionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/promo-codes', promoCodeRoutes);
 app.use('/api/referral-links', referralLinkRoutes);

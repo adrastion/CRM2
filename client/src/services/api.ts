@@ -400,6 +400,58 @@ class ApiService {
     await this.api.delete(`/trainings/${id}`);
   }
 
+  // Competition endpoints
+  async getCompetitions(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/competitions', { params, signal });
+    return {
+      data: response.data.data || [],
+      pagination: response.data.pagination
+    };
+  }
+
+  async getCompetition(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/competitions/${id}`);
+    return response.data.data;
+  }
+
+  async createCompetition(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/competitions', data);
+    return response.data.data;
+  }
+
+  async updateCompetition(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/competitions/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteCompetition(id: string): Promise<void> {
+    await this.api.delete(`/competitions/${id}`);
+  }
+
+  async addCompetitionResult(competitionId: string, data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/competitions/${competitionId}/results`, data);
+    return response.data.data;
+  }
+
+  async updateCompetitionResult(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/competitions/results/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteCompetitionResult(id: string): Promise<void> {
+    await this.api.delete(`/competitions/results/${id}`);
+  }
+
+  async updateCompetitionAttendance(competitionId: string, participantId: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/competitions/${competitionId}/attendance/${participantId}`, data);
+    return response.data.data;
+  }
+
+  async getTrainerConflicts(competitionId: string, params?: any): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(`/competitions/${competitionId}/trainer-conflicts`, { params });
+    return response.data.data || [];
+  }
+
   // Attendance endpoints
   async getAttendances(params?: any): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/attendances', { params });

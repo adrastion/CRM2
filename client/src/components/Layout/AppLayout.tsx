@@ -37,6 +37,7 @@ import {
   Settings,
   Assignment,
   MenuBook,
+  EmojiEvents,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -58,6 +59,7 @@ const navigationItems = [
   { label: 'Группы', path: '/groups', icon: <Groups />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Филиалы', path: '/branches', icon: <Business />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Расписание', path: '/schedule', icon: <CalendarToday />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
+  { label: 'Соревнования', path: '/competitions', icon: <EmojiEvents />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Платежи', path: '/payments', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Тарифы', path: '/memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },

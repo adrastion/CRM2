@@ -32,12 +32,19 @@ import {
   TableSortLabel,
   Checkbox,
   ListItemText,
+  List,
+  ListItem,
 } from '@mui/material';
 import CustomModalFull from '../components/CustomModalFull';
-import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera, CalendarToday } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { EmojiEvents } from '@mui/icons-material';
 
 const Clients: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -99,6 +106,12 @@ const Clients: React.FC = () => {
   const [selectedStandardsForChart, setSelectedStandardsForChart] = useState<string[]>([]);
   const [clientStandardsForEdit, setClientStandardsForEdit] = useState<any[]>([]);
   const [loadingClientStandardsForEdit, setLoadingClientStandardsForEdit] = useState(false);
+  const [clientCalendarDialog, setClientCalendarDialog] = useState(false);
+  const [selectedClientForCalendar, setSelectedClientForCalendar] = useState<Client | null>(null);
+  const [clientTrainings, setClientTrainings] = useState<any[]>([]);
+  const [clientCompetitions, setClientCompetitions] = useState<any[]>([]);
+  const [loadingClientCalendar, setLoadingClientCalendar] = useState(false);
+  const [clientCalendarDate, setClientCalendarDate] = useState<Date>(new Date());
   const [formData, setFormData] = useState<ClientFormData>({
     // Данные ребенка
     firstName: '',
@@ -2587,27 +2600,89 @@ const Clients: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Вес (кг)"
-                type="number"
-                value={formData.weight}
-                onChange={(e) => handleInputChange('weight', e.target.value)}
-                onBlur={(e) => handleFieldBlur('weight', e.target.value)}
-                inputProps={{ min: 0, max: 500, step: 0.1 }}
-                error={!!formErrors.weight}
-                helperText={formErrors.weight}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&.Mui-focused fieldset': {
-                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                <TextField
+                  fullWidth
+                  label="Вес (кг)"
+                  type="number"
+                  value={formData.weight}
+                  onChange={(e) => handleInputChange('weight', e.target.value)}
+                  onBlur={(e) => handleFieldBlur('weight', e.target.value)}
+                  inputProps={{ min: 0, max: 500, step: 0.1 }}
+                  error={!!formErrors.weight}
+                  helperText={formErrors.weight}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&.Mui-focused fieldset': {
+                        borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+                      },
+                      '& fieldset': {
+                        borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+                      },
                     },
-                    '& fieldset': {
-                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
-                    },
-                  },
-                }}
-              />
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<CalendarToday />}
+                  onClick={async () => {
+                    if (editingClient) {
+                      setSelectedClientForCalendar(editingClient);
+                      setClientCalendarDialog(true);
+                      setLoadingClientCalendar(true);
+                      try {
+                        // Получаем группы клиента
+                        const clientGroups = editingClient.groupMemberships
+                          ?.filter((gm: any) => gm.isActive)
+                          .map((gm: any) => gm.group?.id)
+                          .filter((id: string) => id) || [];
+                        
+                        // Получаем тренировки клиента через attendances (включают training)
+                        const attendancesRes = await apiService.getAttendances({ clientId: editingClient.id });
+                        const trainingsFromAttendances = attendancesRes.data
+                          .map((a: any) => a.training)
+                          .filter((t: any) => t && !t.isCancelled);
+                        
+                        // Получаем все тренировки групп клиента
+                        const allTrainingsRes = await apiService.getTrainings();
+                        const trainingsFromGroups = allTrainingsRes.data.filter((t: any) => 
+                          clientGroups.includes(t.groupId) && !t.isCancelled
+                        );
+                        
+                        // Объединяем и убираем дубликаты
+                        const allTrainingsMap = new Map();
+                        [...trainingsFromAttendances, ...trainingsFromGroups].forEach((t: any) => {
+                          if (t && t.id) {
+                            allTrainingsMap.set(t.id, t);
+                          }
+                        });
+                        const clientTrainingsList = Array.from(allTrainingsMap.values());
+                        
+                        // Получаем соревнования, где клиент является участником
+                        const allCompetitionsRes = await apiService.getCompetitions();
+                        const clientCompetitionsList = allCompetitionsRes.data.filter((c: any) =>
+                          c.participants?.some((p: any) => p.clientId === editingClient.id)
+                        );
+                        
+                        setClientTrainings(clientTrainingsList);
+                        setClientCompetitions(clientCompetitionsList);
+                      } catch (err: any) {
+                        setError('Не удалось загрузить календарь клиента');
+                        console.error('Error loading client calendar:', err);
+                      } finally {
+                        setLoadingClientCalendar(false);
+                      }
+                    }
+                  }}
+                  sx={{ 
+                    textTransform: 'none',
+                    mt: 0.5,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Личный календарь
+                </Button>
+              </Box>
             </Grid>
             {/* График нормативов над адресом */}
             {editingClient && (
@@ -3884,6 +3959,168 @@ const Clients: React.FC = () => {
               setSelectedStandardForChart(null);
             }}
           >
+            Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог личного календаря клиента */}
+      <Dialog 
+        open={clientCalendarDialog} 
+        onClose={() => {
+          setClientCalendarDialog(false);
+          setSelectedClientForCalendar(null);
+          setClientTrainings([]);
+          setClientCompetitions([]);
+        }} 
+        maxWidth="lg" 
+        fullWidth
+      >
+        <DialogTitle>
+          Личный календарь: {selectedClientForCalendar?.firstName} {selectedClientForCalendar?.lastName}
+        </DialogTitle>
+        <DialogContent>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+            {loadingClientCalendar ? (
+              <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+                <CircularProgress />
+              </Box>
+            ) : (
+              <Box sx={{ mt: 2 }}>
+                {/* Навигация по неделям */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Button
+                    onClick={() => setClientCalendarDate(new Date(clientCalendarDate.getTime() - 7 * 24 * 60 * 60 * 1000))}
+                  >
+                    Предыдущая неделя
+                  </Button>
+                  <Typography variant="h6">
+                    {format(startOfWeek(clientCalendarDate, { weekStartsOn: 1 }), 'MMM d', { locale: ru })} - {format(endOfWeek(clientCalendarDate, { weekStartsOn: 1 }), 'MMM d, yyyy', { locale: ru })}
+                  </Typography>
+                  <Button
+                    onClick={() => setClientCalendarDate(new Date(clientCalendarDate.getTime() + 7 * 24 * 60 * 60 * 1000))}
+                  >
+                    Следующая неделя
+                  </Button>
+                </Box>
+
+                {/* Календарная сетка */}
+                <Grid container spacing={1}>
+                  {eachDayOfInterval({ 
+                    start: startOfWeek(clientCalendarDate, { weekStartsOn: 1 }), 
+                    end: endOfWeek(clientCalendarDate, { weekStartsOn: 1 }) 
+                  }).map((day, index) => {
+                    const dayTrainings = clientTrainings.filter((t: any) => {
+                      const trainingDate = new Date(t.startTime);
+                      return isSameDay(trainingDate, day);
+                    });
+                    const dayCompetitions = clientCompetitions.filter((c: any) => {
+                      const competitionDate = new Date(c.date);
+                      return isSameDay(competitionDate, day);
+                    });
+                    const isToday = isSameDay(day, new Date());
+                    
+                    return (
+                      <Grid item xs={12} sm={6} md={12/7} key={index}>
+                        <Card 
+                          sx={{ 
+                            height: '100%', 
+                            minHeight: 200,
+                            border: isToday ? '2px solid' : '1px solid',
+                            borderColor: isToday ? 'primary.main' : 'divider'
+                          }}
+                        >
+                          <CardContent sx={{ p: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <CalendarToday sx={{ fontSize: 16, mr: 1 }} />
+                              <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal' }}>
+                                {format(day, 'EEE', { locale: ru })}
+                              </Typography>
+                            </Box>
+                            <Typography variant="h6" sx={{ mb: 1, fontWeight: isToday ? 'bold' : 'normal' }}>
+                              {format(day, 'd')}
+                            </Typography>
+                            
+                            <List dense>
+                              {/* Соревнования */}
+                              {dayCompetitions.map((competition: any) => (
+                                <ListItem key={competition.id} sx={{ p: 0, mb: 0.5 }}>
+                                  <Paper 
+                                    sx={{ 
+                                      p: 0.5, 
+                                      width: '100%',
+                                      bgcolor: 'warning.light',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 0.5
+                                    }}
+                                  >
+                                    <EmojiEvents sx={{ fontSize: 14 }} />
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block' }}>
+                                        {competition.name || 'Соревнование'}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                        {format(new Date(competition.date), 'HH:mm', { locale: ru })}
+                                      </Typography>
+                                    </Box>
+                                  </Paper>
+                                </ListItem>
+                              ))}
+                              
+                              {/* Тренировки */}
+                              {dayTrainings.map((training: any) => (
+                                <ListItem key={training.id} sx={{ p: 0, mb: 0.5 }}>
+                                  <Paper 
+                                    sx={{ 
+                                      p: 0.5, 
+                                      width: '100%',
+                                      bgcolor: 'primary.light',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 0.5
+                                    }}
+                                  >
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block' }}>
+                                        {training.title || training.group?.name || 'Тренировка'}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                        {format(new Date(training.startTime), 'HH:mm', { locale: ru })} - {format(new Date(training.endTime), 'HH:mm', { locale: ru })}
+                                      </Typography>
+                                      {training.group?.name && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                          {training.group.name}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </Paper>
+                                </ListItem>
+                              ))}
+                              
+                              {dayTrainings.length === 0 && dayCompetitions.length === 0 && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', py: 1 }}>
+                                  Нет событий
+                                </Typography>
+                              )}
+                            </List>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </Box>
+            )}
+          </LocalizationProvider>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setClientCalendarDialog(false);
+            setSelectedClientForCalendar(null);
+            setClientTrainings([]);
+            setClientCompetitions([]);
+          }}>
             Закрыть
           </Button>
         </DialogActions>
