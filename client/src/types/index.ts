@@ -193,6 +193,18 @@ export interface Branch {
   tenantId: string;
 }
 
+// Hall Types
+export interface Hall {
+  id: string;
+  name: string;
+  description?: string;
+  capacity?: number;
+  isActive: boolean;
+  branchId: string;
+  tenantId: string;
+  branch?: Branch;
+}
+
 // Membership Types
 export interface Membership {
   id: string;
@@ -236,9 +248,11 @@ export interface Training {
   recurrence?: string;
   isCancelled: boolean;
   branchId: string;
+  hallId?: string;
   groupId: string;
   trainerId: string;
   branch?: Branch;
+  hall?: Hall;
   group?: Group;
   trainer?: Trainer;
 }

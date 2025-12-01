@@ -12,6 +12,7 @@ import { notFound } from './middleware/notFound';
 import authRoutes from './routes/auth';
 import tenantRoutes from './routes/tenant';
 import branchRoutes from './routes/branch';
+import hallRoutes from './routes/hall';
 import clientRoutes from './routes/client';
 import trainerRoutes from './routes/trainer';
 import groupRoutes from './routes/group';
@@ -97,6 +98,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/branches', branchRoutes);
+app.use('/api/halls', hallRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/trainers', trainerRoutes);
 app.use('/api/groups', groupRoutes);

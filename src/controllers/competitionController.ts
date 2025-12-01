@@ -14,28 +14,41 @@ export const getCompetitions = async (req: AuthenticatedRequest, res: Response) 
       tenantId: req.tenant?.id
     };
 
+    const andConditions: any[] = [];
+
+    // Фильтр по поисковому запросу
     if (search) {
-      where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { location: { contains: search as string, mode: 'insensitive' } }
-      ];
+      andConditions.push({
+        OR: [
+          { name: { contains: search as string, mode: 'insensitive' } },
+          { location: { contains: search as string, mode: 'insensitive' } }
+        ]
+      });
     }
 
+    // Фильтр по датам - соревнование попадает в диапазон, если его период пересекается с заданным диапазоном
     if (startDate && endDate) {
-      where.OR = [
-        {
-          startDate: {
-            gte: new Date(startDate as string),
-            lte: new Date(endDate as string)
-          }
-        },
-        {
-          endDate: {
-            gte: new Date(startDate as string),
-            lte: new Date(endDate as string)
-          }
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      
+      // Соревнование попадает в диапазон, если:
+      // - startDate соревнования <= end (дата окончания диапазона)
+      // И
+      // - endDate соревнования >= start (дата начала диапазона)
+      andConditions.push({
+        startDate: {
+          lte: end
         }
-      ];
+      });
+      andConditions.push({
+        endDate: {
+          gte: start
+        }
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const [competitions, total] = await Promise.all([
@@ -85,11 +98,12 @@ export const getCompetitions = async (req: AuthenticatedRequest, res: Response) 
       },
       message: 'Competitions retrieved successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get competitions error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve competitions'
+      error: error?.message || 'Failed to retrieve competitions',
+      details: error
     });
   }
 };

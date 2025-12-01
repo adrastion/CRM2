@@ -133,17 +133,51 @@ const Competitions: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [competitionsRes, clientsRes, trainersRes] = await Promise.all([
+      setError('');
+      
+      // Загружаем данные параллельно, но обрабатываем ошибки независимо
+      const results = await Promise.allSettled([
         apiService.getCompetitions({ limit: 1000 }),
         apiService.getClients({ limit: 1000 }),
         apiService.getTrainers(),
       ]);
       
-      setCompetitions(competitionsRes.data);
-      setClients(clientsRes.data);
-      setTrainers(trainersRes.data);
+      const errors: string[] = [];
+      
+      // Обрабатываем результаты соревнований
+      if (results[0].status === 'fulfilled') {
+        setCompetitions(results[0].value.data || []);
+      } else {
+        console.error('Error loading competitions:', results[0].reason);
+        const errReason = results[0].reason as any;
+        errors.push('Ошибка загрузки соревнований: ' + (errReason?.response?.data?.error || errReason?.message || 'Неизвестная ошибка'));
+      }
+      
+      // Обрабатываем результаты клиентов
+      if (results[1].status === 'fulfilled') {
+        setClients(results[1].value.data || []);
+      } else {
+        console.error('Error loading clients:', results[1].reason);
+        const errReason = results[1].reason as any;
+        errors.push('Ошибка загрузки клиентов: ' + (errReason?.response?.data?.error || errReason?.message || 'Неизвестная ошибка'));
+      }
+      
+      // Обрабатываем результаты тренеров
+      if (results[2].status === 'fulfilled') {
+        setTrainers(results[2].value.data || []);
+      } else {
+        console.error('Error loading trainers:', results[2].reason);
+        const errReason = results[2].reason as any;
+        errors.push('Ошибка загрузки тренеров: ' + (errReason?.response?.data?.error || errReason?.message || 'Неизвестная ошибка'));
+      }
+      
+      // Устанавливаем ошибку, если есть хотя бы одна
+      if (errors.length > 0) {
+        setError(errors.join('; '));
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка загрузки данных');
+      console.error('Unexpected error in fetchData:', err);
+      setError(err.response?.data?.error || err.message || 'Ошибка загрузки данных');
     } finally {
       setLoading(false);
     }

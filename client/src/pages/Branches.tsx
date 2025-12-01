@@ -24,9 +24,9 @@ import {
   TextField,
   Grid,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
+import { Add, Edit, Delete, MeetingRoom } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import { Branch } from '../types';
+import { Branch, Hall } from '../types';
 
 const Branches: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -34,6 +34,18 @@ const Branches: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
+  const [hallsDialog, setHallsDialog] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [loadingHalls, setLoadingHalls] = useState(false);
+  const [hallDialog, setHallDialog] = useState(false);
+  const [editingHall, setEditingHall] = useState<Hall | null>(null);
+  const [hallFormData, setHallFormData] = useState({
+    name: '',
+    description: '',
+    capacity: '',
+  });
+  const [hallFormErrors, setHallFormErrors] = useState<Record<string, string>>({});
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
@@ -188,6 +200,111 @@ const Branches: React.FC = () => {
     }
   };
 
+  const handleOpenHallsDialog = async (branch: Branch) => {
+    setSelectedBranch(branch);
+    setHallsDialog(true);
+    await fetchHalls(branch.id);
+  };
+
+  const fetchHalls = async (branchId: string) => {
+    try {
+      setLoadingHalls(true);
+      const response = await apiService.getHalls({ branchId });
+      setHalls(response.data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки залов');
+      console.error('Error fetching halls:', err);
+    } finally {
+      setLoadingHalls(false);
+    }
+  };
+
+  const handleCreateHall = async () => {
+    if (!selectedBranch) return;
+
+    const errors: Record<string, string> = {};
+    if (!hallFormData.name.trim()) {
+      errors.name = 'Название зала обязательно';
+    }
+
+    setHallFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Пожалуйста, исправьте ошибки в форме');
+      return;
+    }
+
+    try {
+      await apiService.createHall({
+        ...hallFormData,
+        branchId: selectedBranch.id,
+        capacity: hallFormData.capacity ? parseInt(hallFormData.capacity) : undefined,
+      });
+      await fetchHalls(selectedBranch.id);
+      setHallDialog(false);
+      setHallFormData({ name: '', description: '', capacity: '' });
+      setHallFormErrors({});
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка создания зала');
+      console.error('Error creating hall:', err);
+    }
+  };
+
+  const handleEditHall = (hall: Hall) => {
+    setEditingHall(hall);
+    setHallFormData({
+      name: hall.name || '',
+      description: hall.description || '',
+      capacity: hall.capacity?.toString() || '',
+    });
+    setHallFormErrors({});
+    setHallDialog(true);
+  };
+
+  const handleUpdateHall = async () => {
+    if (!editingHall || !selectedBranch) return;
+
+    const errors: Record<string, string> = {};
+    if (!hallFormData.name.trim()) {
+      errors.name = 'Название зала обязательно';
+    }
+
+    setHallFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Пожалуйста, исправьте ошибки в форме');
+      return;
+    }
+
+    try {
+      await apiService.updateHall(editingHall.id, {
+        ...hallFormData,
+        capacity: hallFormData.capacity ? parseInt(hallFormData.capacity) : undefined,
+      });
+      await fetchHalls(selectedBranch.id);
+      setHallDialog(false);
+      setEditingHall(null);
+      setHallFormData({ name: '', description: '', capacity: '' });
+      setHallFormErrors({});
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка обновления зала');
+      console.error('Error updating hall:', err);
+    }
+  };
+
+  const handleDeleteHall = async (hallId: string) => {
+    if (!selectedBranch) return;
+    if (window.confirm('Вы уверены, что хотите удалить этот зал?')) {
+      try {
+        await apiService.deleteHall(hallId);
+        await fetchHalls(selectedBranch.id);
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Ошибка удаления зала');
+        console.error('Error deleting hall:', err);
+      }
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -269,6 +386,14 @@ const Branches: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>
+                        <IconButton 
+                          size="small" 
+                          color="primary" 
+                          title="Залы"
+                          onClick={() => handleOpenHallsDialog(branch)}
+                        >
+                          <MeetingRoom />
+                        </IconButton>
                         <IconButton 
                           size="small" 
                           color="primary" 
@@ -505,6 +630,198 @@ const Branches: React.FC = () => {
             disabled={!formData.name || !formData.address}
           >
             Сохранить изменения
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог управления залами */}
+      <Dialog 
+        open={hallsDialog} 
+        onClose={() => {
+          setHallsDialog(false);
+          setSelectedBranch(null);
+          setHalls([]);
+          setError('');
+        }}
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>
+          Залы филиала: {selectedBranch?.name}
+        </DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">Список залов</Typography>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => {
+                setEditingHall(null);
+                setHallFormData({ name: '', description: '', capacity: '' });
+                setHallFormErrors({});
+                setHallDialog(true);
+              }}
+            >
+              Добавить зал
+            </Button>
+          </Box>
+          {loadingHalls ? (
+            <Box display="flex" justifyContent="center" p={3}>
+              <CircularProgress />
+            </Box>
+          ) : halls.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+              Залы не найдены. Добавьте первый зал.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Название</TableCell>
+                    <TableCell>Описание</TableCell>
+                    <TableCell>Вместимость</TableCell>
+                    <TableCell>Статус</TableCell>
+                    <TableCell>Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {halls.map((hall) => (
+                    <TableRow key={hall.id}>
+                      <TableCell>{hall.name}</TableCell>
+                      <TableCell>{hall.description || '-'}</TableCell>
+                      <TableCell>{hall.capacity || '-'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={hall.isActive ? 'Активен' : 'Неактивен'}
+                          color={hall.isActive ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <IconButton 
+                          size="small" 
+                          color="primary" 
+                          title="Редактировать"
+                          onClick={() => handleEditHall(hall)}
+                        >
+                          <Edit />
+                        </IconButton>
+                        <IconButton 
+                          size="small" 
+                          color="error" 
+                          title="Удалить"
+                          onClick={() => handleDeleteHall(hall.id)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setHallsDialog(false);
+            setSelectedBranch(null);
+            setHalls([]);
+            setError('');
+          }}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания/редактирования зала */}
+      <Dialog 
+        open={hallDialog} 
+        onClose={() => {
+          setHallDialog(false);
+          setEditingHall(null);
+          setHallFormData({ name: '', description: '', capacity: '' });
+          setHallFormErrors({});
+          setError('');
+        }}
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          {editingHall ? 'Редактировать зал' : 'Добавить зал'}
+        </DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+          {Object.keys(hallFormErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте ошибки в форме
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Название зала"
+                value={hallFormData.name}
+                onChange={(e) => {
+                  setHallFormData(prev => ({ ...prev, name: e.target.value }));
+                  if (hallFormErrors.name) {
+                    setHallFormErrors(prev => {
+                      const newErrors = { ...prev };
+                      delete newErrors.name;
+                      return newErrors;
+                    });
+                  }
+                }}
+                required
+                error={!!hallFormErrors.name}
+                helperText={hallFormErrors.name}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Описание"
+                value={hallFormData.description}
+                onChange={(e) => setHallFormData(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Вместимость (человек)"
+                type="number"
+                value={hallFormData.capacity}
+                onChange={(e) => setHallFormData(prev => ({ ...prev, capacity: e.target.value }))}
+                inputProps={{ min: 1 }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setHallDialog(false);
+            setEditingHall(null);
+            setHallFormData({ name: '', description: '', capacity: '' });
+            setHallFormErrors({});
+            setError('');
+          }}>Отмена</Button>
+          <Button 
+            onClick={editingHall ? handleUpdateHall : handleCreateHall}
+            variant="contained"
+            disabled={!hallFormData.name.trim()}
+          >
+            {editingHall ? 'Сохранить' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

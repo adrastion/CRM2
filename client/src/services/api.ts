@@ -372,6 +372,34 @@ class ApiService {
     await this.api.delete(`/branches/${id}`);
   }
 
+  // Hall endpoints
+  async getHalls(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/halls', { params, signal });
+    return {
+      data: response.data.data || [],
+      pagination: response.data.pagination
+    };
+  }
+
+  async getHall(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/halls/${id}`);
+    return response.data.data;
+  }
+
+  async createHall(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/halls', data);
+    return response.data.data;
+  }
+
+  async updateHall(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/halls/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteHall(id: string): Promise<void> {
+    await this.api.delete(`/halls/${id}`);
+  }
+
   // Training endpoints
   async getTrainings(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/trainings', { params, signal });

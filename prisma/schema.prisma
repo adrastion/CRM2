@@ -53,6 +53,7 @@ model Tenant {
   competitionParticipants CompetitionParticipant[]
   competitionTrainers CompetitionTrainer[]
   competitionAttendances CompetitionAttendance[]
+  halls       Hall[]
 
   @@map("tenants")
 }
@@ -118,8 +119,30 @@ model Branch {
   trainings   Training[]
   trainers    TrainerBranch[]
   payments    Payment[]
+  halls       Hall[]
 
   @@map("branches")
+}
+
+// ==================== HALLS ====================
+
+model Hall {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  capacity    Int?     // Вместимость зала (опционально)
+  isActive    Boolean  @default(true)
+  branchId    String
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trainings   Training[]
+
+  @@map("halls")
 }
 
 // ==================== CLIENT CATEGORIES ====================
@@ -432,6 +455,7 @@ model Training {
   isCancelled Boolean  @default(false)
   tenantId    String
   branchId    String
+  hallId      String?  // Опциональный зал
   groupId     String
   trainerId   String
   createdAt   DateTime @default(now())
@@ -440,6 +464,7 @@ model Training {
   // Relations
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  hall        Hall?    @relation(fields: [hallId], references: [id], onDelete: SetNull)
   group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   trainer     Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   attendances Attendance[]

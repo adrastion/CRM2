@@ -112,6 +112,8 @@ const Clients: React.FC = () => {
   const [clientCompetitions, setClientCompetitions] = useState<any[]>([]);
   const [loadingClientCalendar, setLoadingClientCalendar] = useState(false);
   const [clientCalendarDate, setClientCalendarDate] = useState<Date>(new Date());
+  const [clientCompetitionResults, setClientCompetitionResults] = useState<any[]>([]);
+  const [loadingClientCompetitionResults, setLoadingClientCompetitionResults] = useState(false);
   const [formData, setFormData] = useState<ClientFormData>({
     // Данные ребенка
     firstName: '',
@@ -620,6 +622,51 @@ const Clients: React.FC = () => {
       setSelectedStandardsForChart([]);
     } finally {
       setLoadingClientStandardsForEdit(false);
+    }
+    
+    // Загружаем результаты соревнований клиента
+    setLoadingClientCompetitionResults(true);
+    try {
+      const allCompetitionsRes = await apiService.getCompetitions();
+      const clientCompetitionsList = allCompetitionsRes.data.filter((c: any) =>
+        c.participants?.some((p: any) => p.clientId === client.id)
+      );
+      
+      // Для каждого соревнования получаем результаты клиента
+      const results: any[] = [];
+      for (const competition of clientCompetitionsList) {
+        if (competition.results && competition.results.length > 0) {
+          const participant = competition.participants?.find((p: any) => p.clientId === client.id);
+          if (participant) {
+            const clientResults = competition.results.filter((r: any) => r.participantId === participant.id);
+            clientResults.forEach((result: any) => {
+              results.push({
+                ...result,
+                competition: {
+                  id: competition.id,
+                  name: competition.name,
+                  date: competition.date,
+                  location: competition.location,
+                }
+              });
+            });
+          }
+        }
+      }
+      
+      // Сортируем по дате соревнования (от новых к старым)
+      results.sort((a, b) => {
+        const dateA = new Date(a.competition.date).getTime();
+        const dateB = new Date(b.competition.date).getTime();
+        return dateB - dateA;
+      });
+      
+      setClientCompetitionResults(results);
+    } catch (err: any) {
+      console.error('Error loading client competition results:', err);
+      setClientCompetitionResults([]);
+    } finally {
+      setLoadingClientCompetitionResults(false);
     }
   };
 
@@ -1703,29 +1750,29 @@ const Clients: React.FC = () => {
                     onChange={(e) => handleInputChange('middleName', e.target.value)}
                   />
                 </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    error={!!formErrors.email}
+                    helperText={formErrors.email}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Телефон"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    placeholder="+1234567890"
+                    error={!!formErrors.phone}
+                    helperText={formErrors.phone}
+                  />
+                </Grid>
               </Grid>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                error={!!formErrors.email}
-                helperText={formErrors.email}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Телефон"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                placeholder="+1234567890"
-                error={!!formErrors.phone}
-                helperText={formErrors.phone}
-              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -2517,51 +2564,51 @@ const Clients: React.FC = () => {
                     onChange={(e) => handleInputChange('middleName', e.target.value)}
                   />
                 </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    onBlur={(e) => handleFieldBlur('email', e.target.value)}
+                    error={!!formErrors.email}
+                    helperText={formErrors.email}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
+                        },
+                        '& fieldset': {
+                          borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
+                        },
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Телефон"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    onBlur={(e) => handleFieldBlur('phone', e.target.value)}
+                    placeholder="+1234567890"
+                    error={!!formErrors.phone}
+                    helperText={formErrors.phone}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
+                        },
+                        '& fieldset': {
+                          borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
+                        },
+                      },
+                    }}
+                  />
+                </Grid>
               </Grid>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                onBlur={(e) => handleFieldBlur('email', e.target.value)}
-                error={!!formErrors.email}
-                helperText={formErrors.email}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&.Mui-focused fieldset': {
-                      borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
-                    },
-                    '& fieldset': {
-                      borderColor: validFields.has('email') && !formErrors.email ? 'success.main' : undefined,
-                    },
-                  },
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Телефон"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                onBlur={(e) => handleFieldBlur('phone', e.target.value)}
-                placeholder="+1234567890"
-                error={!!formErrors.phone}
-                helperText={formErrors.phone}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&.Mui-focused fieldset': {
-                      borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
-                    },
-                    '& fieldset': {
-                      borderColor: validFields.has('phone') && !formErrors.phone ? 'success.main' : undefined,
-                    },
-                  },
-                }}
-              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -2600,89 +2647,89 @@ const Clients: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                <TextField
-                  fullWidth
-                  label="Вес (кг)"
-                  type="number"
-                  value={formData.weight}
-                  onChange={(e) => handleInputChange('weight', e.target.value)}
-                  onBlur={(e) => handleFieldBlur('weight', e.target.value)}
-                  inputProps={{ min: 0, max: 500, step: 0.1 }}
-                  error={!!formErrors.weight}
-                  helperText={formErrors.weight}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      '&.Mui-focused fieldset': {
-                        borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
-                      },
-                      '& fieldset': {
-                        borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
-                      },
+              <TextField
+                fullWidth
+                label="Вес (кг)"
+                type="number"
+                value={formData.weight}
+                onChange={(e) => handleInputChange('weight', e.target.value)}
+                onBlur={(e) => handleFieldBlur('weight', e.target.value)}
+                inputProps={{ min: 0, max: 500, step: 0.1 }}
+                error={!!formErrors.weight}
+                helperText={formErrors.weight}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
                     },
-                  }}
-                />
-                <Button
-                  variant="outlined"
-                  startIcon={<CalendarToday />}
-                  onClick={async () => {
-                    if (editingClient) {
-                      setSelectedClientForCalendar(editingClient);
-                      setClientCalendarDialog(true);
-                      setLoadingClientCalendar(true);
-                      try {
-                        // Получаем группы клиента
-                        const clientGroups = editingClient.groupMemberships
-                          ?.filter((gm: any) => gm.isActive)
-                          .map((gm: any) => gm.group?.id)
-                          .filter((id: string) => id) || [];
-                        
-                        // Получаем тренировки клиента через attendances (включают training)
-                        const attendancesRes = await apiService.getAttendances({ clientId: editingClient.id });
-                        const trainingsFromAttendances = attendancesRes.data
-                          .map((a: any) => a.training)
-                          .filter((t: any) => t && !t.isCancelled);
-                        
-                        // Получаем все тренировки групп клиента
-                        const allTrainingsRes = await apiService.getTrainings();
-                        const trainingsFromGroups = allTrainingsRes.data.filter((t: any) => 
-                          clientGroups.includes(t.groupId) && !t.isCancelled
-                        );
-                        
-                        // Объединяем и убираем дубликаты
-                        const allTrainingsMap = new Map();
-                        [...trainingsFromAttendances, ...trainingsFromGroups].forEach((t: any) => {
-                          if (t && t.id) {
-                            allTrainingsMap.set(t.id, t);
-                          }
-                        });
-                        const clientTrainingsList = Array.from(allTrainingsMap.values());
-                        
-                        // Получаем соревнования, где клиент является участником
-                        const allCompetitionsRes = await apiService.getCompetitions();
-                        const clientCompetitionsList = allCompetitionsRes.data.filter((c: any) =>
-                          c.participants?.some((p: any) => p.clientId === editingClient.id)
-                        );
-                        
-                        setClientTrainings(clientTrainingsList);
-                        setClientCompetitions(clientCompetitionsList);
-                      } catch (err: any) {
-                        setError('Не удалось загрузить календарь клиента');
-                        console.error('Error loading client calendar:', err);
-                      } finally {
-                        setLoadingClientCalendar(false);
-                      }
+                    '& fieldset': {
+                      borderColor: validFields.has('weight') && !formErrors.weight ? 'success.main' : undefined,
+                    },
+                  },
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Button
+                variant="outlined"
+                startIcon={<CalendarToday />}
+                onClick={async () => {
+                  if (editingClient) {
+                    setSelectedClientForCalendar(editingClient);
+                    setClientCalendarDialog(true);
+                    setLoadingClientCalendar(true);
+                    try {
+                      // Получаем группы клиента
+                      const clientGroups = editingClient.groupMemberships
+                        ?.filter((gm: any) => gm.isActive)
+                        .map((gm: any) => gm.group?.id)
+                        .filter((id: string) => id) || [];
+                      
+                      // Получаем тренировки клиента через attendances (включают training)
+                      const attendancesRes = await apiService.getAttendances({ clientId: editingClient.id });
+                      const trainingsFromAttendances = attendancesRes.data
+                        .map((a: any) => a.training)
+                        .filter((t: any) => t && !t.isCancelled);
+                      
+                      // Получаем все тренировки групп клиента
+                      const allTrainingsRes = await apiService.getTrainings();
+                      const trainingsFromGroups = allTrainingsRes.data.filter((t: any) => 
+                        clientGroups.includes(t.groupId) && !t.isCancelled
+                      );
+                      
+                      // Объединяем и убираем дубликаты
+                      const allTrainingsMap = new Map();
+                      [...trainingsFromAttendances, ...trainingsFromGroups].forEach((t: any) => {
+                        if (t && t.id) {
+                          allTrainingsMap.set(t.id, t);
+                        }
+                      });
+                      const clientTrainingsList = Array.from(allTrainingsMap.values());
+                      
+                      // Получаем соревнования, где клиент является участником
+                      const allCompetitionsRes = await apiService.getCompetitions();
+                      const clientCompetitionsList = allCompetitionsRes.data.filter((c: any) =>
+                        c.participants?.some((p: any) => p.clientId === editingClient.id)
+                      );
+                      
+                      setClientTrainings(clientTrainingsList);
+                      setClientCompetitions(clientCompetitionsList);
+                    } catch (err: any) {
+                      setError('Не удалось загрузить календарь клиента');
+                      console.error('Error loading client calendar:', err);
+                    } finally {
+                      setLoadingClientCalendar(false);
                     }
-                  }}
-                  sx={{ 
-                    textTransform: 'none',
-                    mt: 0.5,
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  Личный календарь
-                </Button>
-              </Box>
+                  }
+                }}
+                fullWidth
+                sx={{ 
+                  textTransform: 'none',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Личный календарь
+              </Button>
             </Grid>
             {/* График нормативов над адресом */}
             {editingClient && (
@@ -2756,6 +2803,103 @@ const Clients: React.FC = () => {
                 </Paper>
               </Grid>
             )}
+            
+            {/* Результаты соревнований */}
+            {editingClient && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+                    Результаты на соревнованиях
+                  </Typography>
+                  {loadingClientCompetitionResults ? (
+                    <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                      <CircularProgress />
+                    </Box>
+                  ) : clientCompetitionResults.length > 0 ? (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell><strong>Соревнование</strong></TableCell>
+                            <TableCell><strong>Дата</strong></TableCell>
+                            <TableCell><strong>Место проведения</strong></TableCell>
+                            <TableCell><strong>Результат</strong></TableCell>
+                            <TableCell><strong>Категория</strong></TableCell>
+                            <TableCell><strong>Время выступления</strong></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {clientCompetitionResults.map((result: any) => (
+                            <TableRow key={result.id}>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <EmojiEvents sx={{ fontSize: 18, color: 'warning.main' }} />
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {result.competition?.name || 'Неизвестное соревнование'}
+                                  </Typography>
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                {result.competition?.date 
+                                  ? format(new Date(result.competition.date), 'dd.MM.yyyy', { locale: ru })
+                                  : '-'}
+                              </TableCell>
+                              <TableCell>
+                                {result.competition?.location ? (
+                                  <Typography variant="body2">{result.competition.location}</Typography>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">-</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {result.result ? (
+                                  <Chip 
+                                    label={result.result} 
+                                    size="small" 
+                                    color="primary"
+                                    sx={{ fontWeight: 'bold' }}
+                                  />
+                                ) : result.resultValue ? (
+                                  <Chip 
+                                    label={result.resultValue} 
+                                    size="small" 
+                                    color="primary"
+                                    sx={{ fontWeight: 'bold' }}
+                                  />
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">-</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {result.category ? (
+                                  <Chip label={result.category} size="small" variant="outlined" />
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">-</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {result.performanceTime ? (
+                                  <Typography variant="body2">
+                                    {format(new Date(result.performanceTime), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">-</Typography>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                      Нет результатов на соревнованиях
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+            )}
+            
             <Grid item xs={12}>
               <TextField
                 fullWidth

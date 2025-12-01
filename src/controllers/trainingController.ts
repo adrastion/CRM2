@@ -49,6 +49,7 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
         where,
         include: {
           branch: true,
+          hall: true,
           group: true,
           trainer: {
             include: {
@@ -276,6 +277,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
             groupId: validData.groupId || t.groupId,
             trainerId: validData.trainerId || t.trainerId,
             branchId: validData.branchId || t.branchId,
+            hallId: validData.hallId !== undefined ? validData.hallId : t.hallId,
             recurrence: validData.recurrence || t.recurrence
           }
         })
