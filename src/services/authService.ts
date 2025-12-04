@@ -163,9 +163,12 @@ export class AuthService {
    * Login user
    */
   static async login(email: string, password: string) {
+    // Приводим email к нижнему регистру для поиска
+    const normalizedEmail = email.trim().toLowerCase();
+    
     // Find user with tenant
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       include: { tenant: true }
     });
 
@@ -218,14 +221,17 @@ export class AuthService {
    * Login promo code admin
    */
   static async promoCodeAdminLogin(email: string, password: string) {
+    // Приводим email к нижнему регистру для поиска
+    const normalizedEmail = email.trim().toLowerCase();
+    
     // Find promo code admin with tenant
     const admin = await prisma.promoCodeAdmin.findFirst({
-      where: { email },
+      where: { email: normalizedEmail },
       include: { tenant: true }
     });
 
     if (!admin) {
-      throw new Error('Invalid credentials');
+      throw new Error('Аккаунт не существует');
     }
 
     if (!admin.isActive) {
@@ -239,7 +245,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, admin.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      throw new Error('Неверный пароль');
     }
 
     // Generate JWT token for promo code admin
@@ -279,14 +285,17 @@ export class AuthService {
    * Login marketer
    */
   static async marketerLogin(email: string, password: string) {
+    // Приводим email к нижнему регистру для поиска
+    const normalizedEmail = email.trim().toLowerCase();
+    
     // Find marketer with tenant
     const marketer = await prisma.marketer.findFirst({
-      where: { email },
+      where: { email: normalizedEmail },
       include: { tenant: true }
     });
 
     if (!marketer) {
-      throw new Error('Invalid credentials');
+      throw new Error('Аккаунт не существует');
     }
 
     if (!marketer.isActive) {
@@ -300,7 +309,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, marketer.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      throw new Error('Неверный пароль');
     }
 
     // Generate JWT token for marketer

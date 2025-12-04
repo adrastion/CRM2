@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Paper,
@@ -23,33 +23,85 @@ const Login: React.FC = () => {
   });
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>(() => {
+    // Восстанавливаем ошибки из sessionStorage при монтировании
+    try {
+      const saved = sessionStorage.getItem('loginFieldErrors');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('Restored field errors from sessionStorage:', parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Error restoring field errors:', e);
+    }
+    return {};
+  });
+  // Инициализируем ref из sessionStorage
+  const getInitialRefValue = (): Record<string, string> => {
+    try {
+      const saved = sessionStorage.getItem('loginFieldErrors');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('Restored fieldErrorsRef from sessionStorage:', parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Error restoring fieldErrorsRef:', e);
+    }
+    return {};
+  };
+  const fieldErrorsRef = useRef<Record<string, string>>(getInitialRefValue());
+  const isSubmittingRef = useRef<boolean>(false);
+  const [forceUpdate, setForceUpdate] = useState(0); // Для принудительного обновления
   
   const { login } = useAuth();
   const navigate = useNavigate();
+  
+  // НЕ синхронизируем ref с state автоматически - это очищает sessionStorage когда state пустой
+  // Вместо этого обновляем ref и sessionStorage только когда устанавливаем ошибки
+  // useEffect(() => {
+  //   fieldErrorsRef.current = fieldErrors;
+  //   if (Object.keys(fieldErrors).length > 0) {
+  //     sessionStorage.setItem('loginFieldErrors', JSON.stringify(fieldErrors));
+  //   } else {
+  //     sessionStorage.removeItem('loginFieldErrors');
+  //   }
+  // }, [fieldErrors]);
+
+  // НЕ синхронизируем ref с state автоматически - это очищает ref когда state пустой
+  // Вместо этого обновляем ref только когда устанавливаем ошибки
+  // useEffect(() => {
+  //   fieldErrorsRef.current = fieldErrors;
+  //   console.log('fieldErrors state updated:', fieldErrors);
+  // }, [fieldErrors]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    // Приводим email к нижнему регистру
+    const processedValue = name === 'email' ? value.toLowerCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: processedValue,
     }));
     if (error) setError('');
-    // Clear field error when user starts typing
-    if (fieldErrors[name]) {
-      setFieldErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
-    }
+    // НЕ очищаем ошибку поля при вводе - пусть пользователь видит ошибку до исправления
+    // Это поможет понять, что именно неверно
+    // Ошибка будет очищена только при успешной отправке формы или при новой попытке входа
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    // Предотвращаем повторную отправку
+    if (isLoading || isSubmittingRef.current) {
+      console.log('Already submitting, ignoring');
+      return;
+    }
+    
+    isSubmittingRef.current = true;
     setIsLoading(true);
     setError('');
-    setFieldErrors({});
+    // НЕ очищаем fieldErrors здесь, чтобы сохранить значения полей при ошибке
+    // НЕ очищаем sessionStorage - ошибки должны сохраняться
 
     // Basic validation
     const errors: Record<string, string> = {};
@@ -67,19 +119,116 @@ const Login: React.FC = () => {
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      fieldErrorsRef.current = errors; // Обновляем ref
       setIsLoading(false);
+      isSubmittingRef.current = false;
       return;
     }
 
     try {
-      await login(formData.email, formData.password);
+      // Приводим email к нижнему регистру перед отправкой
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      await login(normalizedEmail, formData.password);
+      // Только при успешной авторизации переходим на dashboard
+      // Очищаем ошибки при успешной авторизации
+      setFieldErrors({});
+      fieldErrorsRef.current = {};
+      sessionStorage.removeItem('loginFieldErrors');
       navigate('/dashboard');
     } catch (err: any) {
+      // КРИТИЧЕСКИ ВАЖНО: предотвращаем любую перезагрузку или навигацию при ошибке
+      console.log('Error caught, preventing navigation');
+      console.error('Login error:', err); // Логируем ошибку для отладки
+      console.error('Error response:', err.response); // Логируем полный ответ
+      console.error('Error response data:', err.response?.data); // Логируем данные ответа
+      
       // Показываем точное сообщение об ошибке с сервера
       const errorMessage = err.response?.data?.error || err.message || 'Ошибка входа. Попробуйте еще раз.';
-      setError(errorMessage);
+      console.error('Extracted error message:', errorMessage);
+      
+      // Привязываем ошибки к конкретным полям
+      const serverErrors: Record<string, string> = {};
+      const lowerErrorMessage = errorMessage.toLowerCase();
+      
+      if (lowerErrorMessage.includes('аккаунт не существует')) {
+        serverErrors.email = 'Аккаунт не существует';
+      } else if (lowerErrorMessage.includes('неверный пароль')) {
+        serverErrors.password = 'Неверный пароль';
+      } else {
+        // Если ошибка не связана с конкретным полем, показываем общее сообщение
+        setError(errorMessage);
+      }
+      
+      // Устанавливаем ошибки полей
+      if (Object.keys(serverErrors).length > 0) {
+        console.log('Setting field errors:', serverErrors);
+        console.log('Current fieldErrors before update:', fieldErrors);
+        console.log('Current fieldErrorsRef:', fieldErrorsRef.current);
+        
+        // ВАЖНО: сначала обновляем ref, потом state
+        // Используем текущее значение из ref, если state пустой
+        const currentErrors = Object.keys(fieldErrors).length > 0 ? fieldErrors : fieldErrorsRef.current;
+        const newFieldErrors = { ...currentErrors, ...serverErrors };
+        
+        console.log('Current errors to merge with:', currentErrors);
+        console.log('New field errors to set:', newFieldErrors);
+        
+        // Обновляем ref СРАЗУ перед обновлением state
+        fieldErrorsRef.current = newFieldErrors;
+        console.log('fieldErrorsRef set to:', fieldErrorsRef.current);
+        
+        // Сохраняем в sessionStorage для восстановления при перемонтировании
+        sessionStorage.setItem('loginFieldErrors', JSON.stringify(newFieldErrors));
+        console.log('Saved to sessionStorage:', newFieldErrors);
+        
+        // Затем обновляем state
+        setFieldErrors(newFieldErrors);
+        console.log('setFieldErrors called with:', newFieldErrors);
+        
+        // Принудительно обновляем компонент
+        setForceUpdate(prev => prev + 1);
+        
+        // Принудительно проверяем и восстанавливаем через несколько таймаутов
+        // Это гарантирует, что ошибки будут отображены даже если что-то их очистит
+        const restoreErrors = () => {
+          setFieldErrors(prev => {
+            const refErrors = fieldErrorsRef.current;
+            const saved = sessionStorage.getItem('loginFieldErrors');
+            let savedErrors = {};
+            try {
+              if (saved) {
+                savedErrors = JSON.parse(saved);
+              }
+            } catch (e) {
+              console.error('Error parsing saved errors:', e);
+            }
+            
+            if (Object.keys(prev).length === 0 && (Object.keys(refErrors).length > 0 || Object.keys(savedErrors).length > 0)) {
+              const toRestore = Object.keys(refErrors).length > 0 ? refErrors : savedErrors;
+              console.warn('Field errors were cleared! Restoring...', toRestore);
+              fieldErrorsRef.current = toRestore;
+              sessionStorage.setItem('loginFieldErrors', JSON.stringify(toRestore));
+              setForceUpdate(prev => prev + 1); // Принудительно обновляем
+              return { ...toRestore };
+            }
+            if (Object.keys(prev).length > 0) {
+              console.log('Field errors still present:', prev);
+            }
+            return prev;
+          });
+        };
+        
+        setTimeout(restoreErrors, 50);
+        setTimeout(restoreErrors, 100);
+        setTimeout(restoreErrors, 200);
+        setTimeout(restoreErrors, 500);
+      }
+      
+      // ВАЖНО: НЕ очищаем formData, чтобы сохранить введенные значения
+      // Пароль можно очистить для безопасности, но email оставляем
+      // setFormData(prev => ({ ...prev, password: '' }));
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Всегда сбрасываем loading
     }
   };
 
@@ -110,7 +259,11 @@ const Login: React.FC = () => {
             </Alert>
           )}
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
+          <Box 
+            component="div"
+            sx={{ mt: 1 }}
+            key={`login-form-${forceUpdate}`}
+          >
             <TextField
               margin="normal"
               required
@@ -123,8 +276,8 @@ const Login: React.FC = () => {
               value={formData.email}
               onChange={handleChange}
               disabled={isLoading}
-              error={!!fieldErrors.email}
-              helperText={fieldErrors.email}
+              error={!!(fieldErrors.email || fieldErrorsRef.current.email)}
+              helperText={fieldErrors.email || fieldErrorsRef.current.email || ''}
             />
             <TextField
               margin="normal"
@@ -135,18 +288,37 @@ const Login: React.FC = () => {
               type="password"
               id="password"
               autoComplete="current-password"
-              value={formData.password}
+              value={formData.password || ''}
               onChange={handleChange}
               disabled={isLoading}
-              error={!!fieldErrors.password}
-              helperText={fieldErrors.password}
+              error={!!(fieldErrors.password || fieldErrorsRef.current.password)}
+              helperText={fieldErrors.password || fieldErrorsRef.current.password || ''}
+              FormHelperTextProps={{
+                style: { 
+                  color: (fieldErrors.password || fieldErrorsRef.current.password) ? '#d32f2f' : undefined,
+                  display: (fieldErrors.password || fieldErrorsRef.current.password) ? 'block' : 'none'
+                }
+              }}
             />
+            {/* Отладочный вывод для проверки состояния */}
+            {process.env.NODE_ENV === 'development' && (
+              <Box sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', fontSize: '12px' }}>
+                Debug: fieldErrors.password = {fieldErrors.password || 'undefined'}<br/>
+                Debug: fieldErrorsRef.current.password = {fieldErrorsRef.current.password || 'undefined'}<br/>
+                Debug: Object.keys(fieldErrors) = {JSON.stringify(Object.keys(fieldErrors))}
+              </Box>
+            )}
             <Button
-              type="submit"
+              type="button"
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2, py: 1.5 }}
               disabled={isLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSubmit();
+              }}
             >
               {isLoading ? (
                 <CircularProgress size={24} color="inherit" />

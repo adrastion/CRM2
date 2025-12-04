@@ -53,6 +53,17 @@ class ApiService {
           // Token expired or invalid
           const url = error.config?.url || '';
           
+          // Don't redirect on login endpoints - let them handle the error
+          const isLoginEndpoint = url.includes('/auth/login') || 
+                                 url.includes('/auth/marketer/login') ||
+                                 url.includes('/auth/promo-code-admin/login') ||
+                                 url.includes('/auth/super-admin/login');
+          
+          // Если это endpoint авторизации - не перенаправляем, просто пробрасываем ошибку
+          if (isLoginEndpoint) {
+            return Promise.reject(error);
+          }
+          
           // Check if it's a super admin route
           const isSuperAdminRoute = url.includes('/super-admin/') || 
                                     url.includes('/admin-dashboard') ||

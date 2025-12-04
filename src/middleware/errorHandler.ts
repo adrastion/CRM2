@@ -59,6 +59,19 @@ export const errorHandler = (
     return;
   }
 
+  // Authentication errors - проверяем сообщение об ошибке
+  if (error.message === 'Аккаунт не существует' || error.message === 'Неверный пароль' || 
+      error.message.toLowerCase().includes('аккаунт не существует') || 
+      error.message.toLowerCase().includes('неверный пароль') ||
+      error.message === 'Invalid credentials' || error.message === 'Account is deactivated' ||
+      error.message === 'Tenant account is deactivated') {
+    res.status(401).json({
+      success: false,
+      error: error.message
+    });
+    return;
+  }
+
   // Default error
   res.status(500).json({
     success: false,

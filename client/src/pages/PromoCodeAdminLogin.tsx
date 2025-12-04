@@ -28,9 +28,11 @@ const PromoCodeAdminLogin: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    // Приводим email к нижнему регистру
+    const processedValue = name === 'email' ? value.toLowerCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: processedValue,
     }));
     if (error) setError('');
     if (fieldErrors[name]) {
@@ -69,13 +71,31 @@ const PromoCodeAdminLogin: React.FC = () => {
     }
 
     try {
-      await login(formData.email, formData.password);
+      // Приводим email к нижнему регистру перед отправкой
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      await login(normalizedEmail, formData.password);
       // Redirect to promo codes admin panel
       navigate('/admin/promo-codes');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка входа. Проверьте email и пароль.');
-    } finally {
-      setIsLoading(false);
+      const errorMessage = err.response?.data?.error || err.message || 'Ошибка входа. Проверьте email и пароль.';
+      
+      // Привязываем ошибки к конкретным полям
+      const serverErrors: Record<string, string> = {};
+      if (errorMessage.includes('Аккаунт не существует') || errorMessage.toLowerCase().includes('аккаунт не существует')) {
+        serverErrors.email = 'Аккаунт не существует';
+      } else if (errorMessage.includes('Неверный пароль') || errorMessage.toLowerCase().includes('неверный пароль')) {
+        serverErrors.password = 'Неверный пароль';
+      } else {
+        // Если ошибка не связана с конкретным полем, показываем общее сообщение
+        setError(errorMessage);
+      }
+      
+      // Устанавливаем ошибки полей
+      if (Object.keys(serverErrors).length > 0) {
+        setFieldErrors(prev => ({ ...prev, ...serverErrors }));
+      }
+      
+      setIsLoading(false); // Убеждаемся, что loading сбрасывается при ошибке
     }
   };
 
