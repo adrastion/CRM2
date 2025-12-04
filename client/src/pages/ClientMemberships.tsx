@@ -198,7 +198,7 @@ const ClientMemberships: React.FC = () => {
                       return (
                         <TableRow key={membership.id}>
                           <TableCell>
-                            {membership.client?.firstName} {membership.client?.lastName}
+                            {membership.client ? [membership.client.lastName, membership.client.firstName, membership.client.middleName].filter(Boolean).join(' ') : '-'}
                           </TableCell>
                           <TableCell>{membership.membership?.name || '-'}</TableCell>
                           <TableCell>
@@ -266,7 +266,7 @@ const ClientMemberships: React.FC = () => {
                   >
                     {clients.filter(c => c.isActive).map((client) => (
                       <MenuItem key={client.id} value={client.id}>
-                        {client.firstName} {client.lastName}
+                        {[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`}
                       </MenuItem>
                     ))}
                   </Select>

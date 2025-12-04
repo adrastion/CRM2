@@ -36,10 +36,11 @@ import {
   ListItem,
 } from '@mui/material';
 import CustomModalFull from '../components/CustomModalFull';
-import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera, CalendarToday } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera, CalendarToday, Payment } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
+import { useAuth } from '../contexts/AuthContext';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -47,6 +48,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { EmojiEvents } from '@mui/icons-material';
 
 const Clients: React.FC = () => {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,6 +178,15 @@ const Clients: React.FC = () => {
       try {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
+        
+        // Автоматический сброс отметок членского взноса (если наступила дата сброса)
+        try {
+          await apiService.resetMembershipFees();
+        } catch (resetErr: any) {
+          // Игнорируем ошибки сброса (может быть не настроена дата)
+          console.log('Membership fee reset check:', resetErr?.response?.data?.message || 'Not needed');
+        }
+        
         const [clientsRes, branchesRes, categoriesRes, membershipsRes, groupsRes] = await Promise.all([
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
@@ -1271,6 +1282,9 @@ const Clients: React.FC = () => {
                   <TableCell>Группы</TableCell>
                   <TableCell>Тарифы</TableCell>
                   <TableCell>Баланс</TableCell>
+                  {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                    <TableCell>Членский взнос</TableCell>
+                  )}
                   <TableCell>Статус</TableCell>
                   <TableCell>
                     <TableSortLabel
@@ -1320,8 +1334,8 @@ const Clients: React.FC = () => {
                     
                     switch (sortBy) {
                       case 'firstName':
-                        aValue = `${a.firstName} ${a.lastName}`;
-                        bValue = `${b.firstName} ${b.lastName}`;
+                        aValue = [a.lastName, a.firstName, a.middleName].filter(Boolean).join(' ') || `${a.firstName} ${a.lastName}`;
+                        bValue = [b.lastName, b.firstName, b.middleName].filter(Boolean).join(' ') || `${b.firstName} ${b.lastName}`;
                         break;
                       case 'email':
                         aValue = a.email || '';
@@ -1365,7 +1379,7 @@ const Clients: React.FC = () => {
                         }}
                         onClick={() => handleEditClient(client)}
                       >
-                        {client.firstName} {client.lastName}
+                        {[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`}
                       </Typography>
                     </TableCell>
                     <TableCell>{client.email || '-'}</TableCell>
@@ -1520,6 +1534,50 @@ const Clients: React.FC = () => {
                         {((client.balance !== undefined ? Number(client.balance) : 0).toFixed(2))} ₽
                       </Typography>
                     </TableCell>
+                    {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip
+                            label={client.membershipFeePaid ? 'Оплачен' : 'Не оплачен'}
+                            color={client.membershipFeePaid ? 'success' : 'default'}
+                            size="small"
+                            icon={client.membershipFeePaid ? <Check /> : <Close />}
+                          />
+                          <IconButton
+                            size="small"
+                            color={client.membershipFeePaid ? 'error' : 'success'}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const updated = await apiService.updateClientMembershipFeeStatus(
+                                  client.id,
+                                  !client.membershipFeePaid
+                                );
+                                // Обновляем клиента в списке
+                                setClients(clients.map(c => c.id === updated.id ? updated : c));
+                                // Обновляем editingClient, если он открыт
+                                if (editingClient && editingClient.id === updated.id) {
+                                  setEditingClient(updated);
+                                }
+                                setSnackbarMessage(
+                                  updated.membershipFeePaid 
+                                    ? 'Членский взнос отмечен как оплаченный' 
+                                    : 'Отметка о членском взносе снята'
+                                );
+                                setSnackbarOpen(true);
+                              } catch (err: any) {
+                                setError(err?.response?.data?.error || 'Не удалось обновить статус членского взноса');
+                                setSnackbarMessage(err?.response?.data?.error || 'Не удалось обновить статус членского взноса');
+                                setSnackbarOpen(true);
+                              }
+                            }}
+                            title={client.membershipFeePaid ? 'Снять отметку' : 'Отметить оплату'}
+                          >
+                            {client.membershipFeePaid ? <Close /> : <Payment />}
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Chip
                         label={client.isActive ? 'Активен' : 'Неактивен'}
@@ -1723,23 +1781,23 @@ const Clients: React.FC = () => {
                 <Grid item xs={12} sm={4}>
                   <TextField
                     fullWidth
-                    label="Имя"
-                    value={formData.firstName}
-                    onChange={(e) => handleInputChange('firstName', e.target.value)}
-                    required
-                    error={!!formErrors.firstName}
-                    helperText={formErrors.firstName}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    fullWidth
                     label="Фамилия"
                     value={formData.lastName}
                     onChange={(e) => handleInputChange('lastName', e.target.value)}
                     required
                     error={!!formErrors.lastName}
                     helperText={formErrors.lastName}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Имя"
+                    value={formData.firstName}
+                    onChange={(e) => handleInputChange('firstName', e.target.value)}
+                    required
+                    error={!!formErrors.firstName}
+                    helperText={formErrors.firstName}
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
@@ -2427,6 +2485,60 @@ const Clients: React.FC = () => {
               <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold' }}>
                 Редактировать клиента
               </Typography>
+              {/* Отметка о членском взносе - только для OWNER и ADMIN */}
+              {(user?.role === 'OWNER' || user?.role === 'ADMIN') && editingClient && (
+                <Box sx={{ mb: 2 }}>
+                  <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Payment color={editingClient.membershipFeePaid ? 'success' : 'disabled'} />
+                        <Typography variant="body1" fontWeight="medium">
+                          Членский взнос
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip
+                          label={editingClient.membershipFeePaid ? 'Оплачен' : 'Не оплачен'}
+                          color={editingClient.membershipFeePaid ? 'success' : 'default'}
+                          size="small"
+                        />
+                        <Button
+                          variant={editingClient.membershipFeePaid ? 'outlined' : 'contained'}
+                          color={editingClient.membershipFeePaid ? 'error' : 'success'}
+                          size="small"
+                          startIcon={editingClient.membershipFeePaid ? <Close /> : <Check />}
+                          onClick={async () => {
+                            try {
+                              const updated = await apiService.updateClientMembershipFeeStatus(
+                                editingClient.id,
+                                !editingClient.membershipFeePaid
+                              );
+                              setEditingClient(updated);
+                              // Обновляем клиента в списке
+                              setClients(clients.map(c => c.id === updated.id ? updated : c));
+                              setSnackbarMessage(
+                                updated.membershipFeePaid 
+                                  ? 'Членский взнос отмечен как оплаченный' 
+                                  : 'Отметка о членском взносе снята'
+                              );
+                              setSnackbarOpen(true);
+                            } catch (err: any) {
+                              setError(err?.response?.data?.error || 'Не удалось обновить статус членского взноса');
+                            }
+                          }}
+                        >
+                          {editingClient.membershipFeePaid ? 'Снять отметку' : 'Отметить оплату'}
+                        </Button>
+                      </Box>
+                    </Box>
+                    {editingClient.membershipFeePaid && editingClient.membershipFeePaidAt && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Оплачен: {new Date(editingClient.membershipFeePaidAt).toLocaleDateString('ru-RU')}
+                      </Typography>
+                    )}
+                  </Paper>
+                </Box>
+              )}
               <Box sx={{ mt: 2 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -2515,28 +2627,6 @@ const Clients: React.FC = () => {
                 <Grid item xs={12} sm={4}>
                   <TextField
                     fullWidth
-                    label="Имя"
-                    value={formData.firstName}
-                    onChange={(e) => handleInputChange('firstName', e.target.value)}
-                    onBlur={(e) => handleFieldBlur('firstName', e.target.value)}
-                    required
-                    error={!!formErrors.firstName}
-                    helperText={formErrors.firstName}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '&.Mui-focused fieldset': {
-                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
-                        },
-                        '& fieldset': {
-                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
-                        },
-                      },
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    fullWidth
                     label="Фамилия"
                     value={formData.lastName}
                     onChange={(e) => handleInputChange('lastName', e.target.value)}
@@ -2551,6 +2641,28 @@ const Clients: React.FC = () => {
                         },
                         '& fieldset': {
                           borderColor: validFields.has('lastName') && !formErrors.lastName ? 'success.main' : undefined,
+                        },
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Имя"
+                    value={formData.firstName}
+                    onChange={(e) => handleInputChange('firstName', e.target.value)}
+                    onBlur={(e) => handleFieldBlur('firstName', e.target.value)}
+                    required
+                    error={!!formErrors.firstName}
+                    helperText={formErrors.firstName}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '&.Mui-focused fieldset': {
+                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
+                        },
+                        '& fieldset': {
+                          borderColor: validFields.has('firstName') && !formErrors.firstName ? 'success.main' : undefined,
                         },
                       },
                     }}
@@ -3616,7 +3728,7 @@ const Clients: React.FC = () => {
       {/* Диалог статистики посещаемости */}
       <Dialog open={statsDialog} onClose={() => setStatsDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Статистика посещаемости: {selectedClientForStats?.firstName} {selectedClientForStats?.lastName}
+          Статистика посещаемости: {selectedClientForStats ? [selectedClientForStats.lastName, selectedClientForStats.firstName, selectedClientForStats.middleName].filter(Boolean).join(' ') : ''}
         </DialogTitle>
         <DialogContent>
           {loadingStats ? (
@@ -3684,7 +3796,7 @@ const Clients: React.FC = () => {
       {/* Диалог выдачи тарифа */}
       <Dialog open={membershipDialog} onClose={() => { setMembershipDialog(false); setSelectedMembershipId(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>
-          Выдать тариф клиенту: {selectedClientForMembership?.firstName} {selectedClientForMembership?.lastName}
+          Выдать тариф клиенту: {selectedClientForMembership ? [selectedClientForMembership.lastName, selectedClientForMembership.firstName, selectedClientForMembership.middleName].filter(Boolean).join(' ') : ''}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -3727,7 +3839,7 @@ const Clients: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Управление группами: {selectedClientForGroups?.firstName} {selectedClientForGroups?.lastName}
+          Управление группами: {selectedClientForGroups ? [selectedClientForGroups.lastName, selectedClientForGroups.firstName, selectedClientForGroups.middleName].filter(Boolean).join(' ') : ''}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -3829,7 +3941,7 @@ const Clients: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Нормативы: {selectedClientForStandards?.firstName} {selectedClientForStandards?.lastName}
+          Нормативы: {selectedClientForStandards ? [selectedClientForStandards.lastName, selectedClientForStandards.firstName, selectedClientForStandards.middleName].filter(Boolean).join(' ') : ''}
         </DialogTitle>
         <DialogContent>
           {loadingClientStandards ? (
@@ -4121,7 +4233,7 @@ const Clients: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Личный календарь: {selectedClientForCalendar?.firstName} {selectedClientForCalendar?.lastName}
+          Личный календарь: {selectedClientForCalendar ? [selectedClientForCalendar.lastName, selectedClientForCalendar.firstName, selectedClientForCalendar.middleName].filter(Boolean).join(' ') : ''}
         </DialogTitle>
         <DialogContent>
           <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>

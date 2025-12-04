@@ -66,6 +66,7 @@ model TenantSettings {
   defaultTrainingDuration Int      @default(60) // Длительность тренировки по умолчанию в минутах
   hasCompletedOnboarding  Boolean  @default(false) // Прошел ли аккаунт интерактивное обучение
   onboardingDeclined      Boolean  @default(false) // Отказался ли аккаунт от обучения
+  membershipFeeResetDate  String?  // Дата автоматического сброса отметок членского взноса (формат: "MM-DD", например "12-01" для 1 декабря)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -188,6 +189,9 @@ model Client {
   weight                Decimal?   // Вес клиента
   categoryId            String?   // Категория клиента
   balance               Decimal   @default(0) // Внутренний кошелек клиента
+  membershipFeePaid     Boolean   @default(false) // Отметка о сдаче членского взноса
+  membershipFeePaidAt   DateTime? // Дата когда был оплачен членский взнос
+  membershipFeePaidBy   String?   // ID пользователя, который отметил оплату (OWNER или ADMIN)
   isActive              Boolean   @default(true)
   tenantId              String
   createdAt             DateTime  @default(now())

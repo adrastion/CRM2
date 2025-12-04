@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireOwnerOrAdmin } from '../middleware/auth';
-import { getSettings, updateSettings, updateOnboardingStatus } from '../controllers/settingsController';
+import { getSettings, updateSettings, updateOnboardingStatus, resetMembershipFees } from '../controllers/settingsController';
 
 const router = Router();
 
@@ -11,6 +11,7 @@ router.use(authenticate);
 router.get('/', getSettings);
 router.put('/', requireOwnerOrAdmin, updateSettings);
 router.post('/onboarding', updateOnboardingStatus);
+router.post('/reset-membership-fees', requireOwnerOrAdmin, resetMembershipFees);
 
 export default router;
 

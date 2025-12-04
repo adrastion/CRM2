@@ -67,6 +67,7 @@ const Settings: React.FC = () => {
   
   // Настройки расписания
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60);
+  const [membershipFeeResetDate, setMembershipFeeResetDate] = useState<string>('');
   
   // Смена email
   const [newEmail, setNewEmail] = useState('');
@@ -126,6 +127,7 @@ const Settings: React.FC = () => {
         const response = await apiService.getSettings();
         if (response.data) {
           setDefaultTrainingDuration(response.data.defaultTrainingDuration || 60);
+          setMembershipFeeResetDate(response.data.membershipFeeResetDate || '12-01');
         }
         
         // Загрузить настройки видимых вкладок
@@ -178,7 +180,8 @@ const Settings: React.FC = () => {
       setSuccess(false);
 
       await apiService.updateSettings({
-        defaultTrainingDuration
+        defaultTrainingDuration,
+        membershipFeeResetDate: membershipFeeResetDate || '12-01'
       });
 
       setSuccess(true);
@@ -351,6 +354,32 @@ const Settings: React.FC = () => {
                   helperText="Минимум: 15 минут, максимум: 480 минут (8 часов)"
                   sx={{ mb: 2 }}
                 />
+                {/* Настройка даты сброса членского взноса */}
+                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                  <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                      Автоматический сброс отметок членского взноса
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Укажите дату, когда автоматически будут сбрасываться все отметки о членском взносе (формат: ММ-ДД, например 12-01 для 1 декабря)
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Дата сброса (ММ-ДД)"
+                      value={membershipFeeResetDate}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Разрешаем только формат MM-DD
+                        if (value === '' || /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])?$/.test(value)) {
+                          setMembershipFeeResetDate(value);
+                        }
+                      }}
+                      placeholder="12-01"
+                      helperText="Формат: ММ-ДД (например, 12-01 для 1 декабря). По умолчанию: 1 декабря"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                )}
                 <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
                   <Button
                     variant="contained"

@@ -335,7 +335,7 @@ const Payments: React.FC = () => {
     }
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const clientName = `${payment.client?.firstName || ''} ${payment.client?.lastName || ''}`.toLowerCase();
+      const clientName = payment.client ? [payment.client.lastName, payment.client.firstName, payment.client.middleName].filter(Boolean).join(' ').toLowerCase() : '';
       return clientName.includes(query) || payment.notes?.toLowerCase().includes(query);
     }
     return true;
@@ -461,7 +461,7 @@ const Payments: React.FC = () => {
                     filteredPayments.map((payment) => (
                       <TableRow key={payment.id}>
                   <TableCell>
-                          {payment.client?.firstName} {payment.client?.lastName}
+                          {payment.client ? [payment.client.lastName, payment.client.firstName, payment.client.middleName].filter(Boolean).join(' ') : '-'}
                   </TableCell>
                   <TableCell>
                           <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
@@ -610,7 +610,7 @@ const Payments: React.FC = () => {
                   >
                     {clients.filter(c => c.isActive).map((client) => (
                       <MenuItem key={client.id} value={client.id}>
-                        {client.firstName} {client.lastName}
+                        {[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`}
                       </MenuItem>
                     ))}
                   </Select>
@@ -901,7 +901,7 @@ const Payments: React.FC = () => {
                   >
                     {clients.filter(c => c.isActive).map((client) => (
                       <MenuItem key={client.id} value={client.id}>
-                        {client.firstName} {client.lastName}
+                        {[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`}
                       </MenuItem>
                     ))}
                   </Select>

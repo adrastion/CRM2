@@ -168,6 +168,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async updateClientMembershipFeeStatus(id: string, membershipFeePaid: boolean): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/clients/${id}/membership-fee`, { membershipFeePaid });
+    return response.data.data;
+  }
+
   async deleteClient(id: string): Promise<void> {
     await this.api.delete(`/clients/${id}`);
   }
@@ -853,6 +858,11 @@ class ApiService {
 
   async updateOnboardingStatus(data: { hasCompletedOnboarding?: boolean; onboardingDeclined?: boolean }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/settings/onboarding', data);
+    return response.data;
+  }
+
+  async resetMembershipFees(): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/settings/reset-membership-fees');
     return response.data;
   }
 

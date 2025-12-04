@@ -269,7 +269,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               }}
             />
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
-              {user?.firstName} {user?.lastName}
+              {user ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ') : ''}
             </Typography>
             <IconButton
               size="large"

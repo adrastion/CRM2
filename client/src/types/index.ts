@@ -62,6 +62,9 @@ export interface Client {
   weight?: number;
   categoryId?: string;
   balance?: number;
+  membershipFeePaid?: boolean;
+  membershipFeePaidAt?: string;
+  membershipFeePaidBy?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

@@ -14,9 +14,10 @@ import {
   exportClients,
   importClients,
   downloadClientTemplate,
-  upload
+  upload,
+  updateMembershipFeeStatus
 } from '../controllers/clientController';
-import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 
 const router = Router();
@@ -42,5 +43,8 @@ router.delete('/:id/achievements/:achievementId', requireOwnerAdminOrTrainer, re
 
 // Client statistics
 router.get('/:id/stats', getClientStats);
+
+// Membership fee status (only OWNER or ADMIN)
+router.put('/:id/membership-fee', requireOwnerOrAdmin, updateMembershipFeeStatus);
 
 export default router;

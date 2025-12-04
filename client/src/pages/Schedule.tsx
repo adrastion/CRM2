@@ -2720,7 +2720,7 @@ const Schedule: React.FC = () => {
                                 },
                               }}
                             >
-                            {item.client.firstName} {item.client.lastName}
+                            {[item.client.lastName, item.client.firstName, item.client.middleName].filter(Boolean).join(' ') || `${item.client.firstName} ${item.client.lastName}`}
                             </Link>
                           </TableCell>
                           <TableCell>{item.client.phone || '-'}</TableCell>
@@ -2819,22 +2819,6 @@ const Schedule: React.FC = () => {
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
-                  label="Имя"
-                  required
-                  value={clientFormData.firstName}
-                  onChange={(e) => {
-                    setClientFormData({ ...clientFormData, firstName: e.target.value });
-                    if (clientFormErrors.firstName) {
-                      setClientFormErrors({ ...clientFormErrors, firstName: '' });
-                    }
-                  }}
-                  error={!!clientFormErrors.firstName}
-                  helperText={clientFormErrors.firstName}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
                   label="Фамилия"
                   required
                   value={clientFormData.lastName}
@@ -2846,6 +2830,22 @@ const Schedule: React.FC = () => {
                   }}
                   error={!!clientFormErrors.lastName}
                   helperText={clientFormErrors.lastName}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Имя"
+                  required
+                  value={clientFormData.firstName}
+                  onChange={(e) => {
+                    setClientFormData({ ...clientFormData, firstName: e.target.value });
+                    if (clientFormErrors.firstName) {
+                      setClientFormErrors({ ...clientFormErrors, firstName: '' });
+                    }
+                  }}
+                  error={!!clientFormErrors.firstName}
+                  helperText={clientFormErrors.firstName}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>

@@ -11,6 +11,59 @@ import multer from 'multer';
 const prisma = new PrismaClient();
 
 /**
+ * Update client membership fee status
+ * Only OWNER or ADMIN can update this field
+ */
+export const updateMembershipFeeStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { id } = req.params;
+  const { membershipFeePaid } = req.body;
+  const userId = req.user?.id;
+
+  // Check if user has permission (OWNER or ADMIN only)
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец или администратор могут изменять статус членского взноса'
+    });
+    return;
+  }
+
+  // Check if client exists and belongs to tenant
+  const existingClient = await prisma.client.findFirst({
+    where: { id, tenantId }
+  });
+
+  if (!existingClient) {
+    res.status(404).json({
+      success: false,
+      error: 'Client not found'
+    });
+    return;
+  }
+
+  // Update membership fee status
+  const updatedClient = await prisma.client.update({
+    where: { id },
+    data: {
+      membershipFeePaid: membershipFeePaid === true,
+      membershipFeePaidAt: membershipFeePaid === true ? new Date() : null,
+      membershipFeePaidBy: membershipFeePaid === true ? userId : null
+    },
+    include: {
+      category: true,
+      parents: true
+    }
+  });
+
+  res.json({
+    success: true,
+    data: updatedClient,
+    message: membershipFeePaid ? 'Членский взнос отмечен как оплаченный' : 'Отметка о членском взносе снята'
+  });
+});
+
+/**
  * Get all clients with pagination and search
  */
 export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {

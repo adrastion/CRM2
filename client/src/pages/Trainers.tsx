@@ -593,6 +593,17 @@ const Trainers: React.FC = () => {
             <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
+                label="Фамилия"
+                value={formData.lastName}
+                onChange={(e) => handleInputChange('lastName', e.target.value)}
+                required
+                error={!!formErrors.lastName}
+                helperText={formErrors.lastName}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
                 label="Имя"
                 value={formData.firstName}
                 onChange={(e) => handleInputChange('firstName', e.target.value)}
@@ -609,17 +620,6 @@ const Trainers: React.FC = () => {
                 onChange={(e) => handleInputChange('middleName', e.target.value)}
                 error={!!formErrors.middleName}
                 helperText={formErrors.middleName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Фамилия"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                required
-                error={!!formErrors.lastName}
-                helperText={formErrors.lastName}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -850,6 +850,17 @@ const Trainers: React.FC = () => {
             <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
+                label="Фамилия"
+                value={formData.lastName}
+                onChange={(e) => handleInputChange('lastName', e.target.value)}
+                required
+                error={!!formErrors.lastName}
+                helperText={formErrors.lastName}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
                 label="Имя"
                 value={formData.firstName}
                 onChange={(e) => handleInputChange('firstName', e.target.value)}
@@ -866,17 +877,6 @@ const Trainers: React.FC = () => {
                 onChange={(e) => handleInputChange('middleName', e.target.value)}
                 error={!!formErrors.middleName}
                 helperText={formErrors.middleName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Фамилия"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                required
-                error={!!formErrors.lastName}
-                helperText={formErrors.lastName}
               />
             </Grid>
             <Grid item xs={12} sm={6}>

@@ -269,7 +269,7 @@ const Groups: React.FC = () => {
           successes.push(clientId);
         } catch (err: any) {
           const client = clients.find(c => c.id === clientId);
-          const clientName = client ? `${client.firstName} ${client.lastName}` : clientId;
+          const clientName = client ? [client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}` : clientId;
           errors.push(`${clientName}: ${err.response?.data?.error || 'Ошибка добавления'}`);
         }
       }
@@ -968,7 +968,7 @@ const Groups: React.FC = () => {
                         {(selected as string[]).map((clientId) => {
                           const client = getAvailableClients().find(c => c.id === clientId);
                           return client ? (
-                            <Chip key={clientId} label={`${client.firstName} ${client.lastName}`} size="small" />
+                            <Chip key={clientId} label={[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`} size="small" />
                           ) : null;
                         })}
                       </Box>
@@ -977,7 +977,7 @@ const Groups: React.FC = () => {
                     {getAvailableClients().map((client) => (
                       <MenuItem key={client.id} value={client.id}>
                         <Checkbox checked={selectedClientIds.indexOf(client.id) > -1} />
-                        <ListItemText primary={`${client.firstName} ${client.lastName}`} secondary={client.email || client.phone || ''} />
+                        <ListItemText primary={[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`} secondary={client.email || client.phone || ''} />
                       </MenuItem>
                     ))}
                   </Select>
@@ -1064,7 +1064,7 @@ const Groups: React.FC = () => {
                                   },
                                 }}
                               >
-                                {membership.client.firstName} {membership.client.lastName}
+                                {[membership.client.lastName, membership.client.firstName, membership.client.middleName].filter(Boolean).join(' ') || `${membership.client.firstName} ${membership.client.lastName}`}
                               </Link>
                             ) : (
                               '-'
