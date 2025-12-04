@@ -18,7 +18,13 @@ export interface ClientFormData {
   schoolOrKindergarten: string;
   photo: string;
   weight: string;
-  categoryId: string;
+  // Паспорт РФ
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportIssuedBy?: string;
+  passportDivisionCode?: string;
+  passportBirthPlace?: string;
   groupIds: string[];
   parents: Array<{
     fullName: string;

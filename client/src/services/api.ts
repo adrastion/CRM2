@@ -866,30 +866,6 @@ class ApiService {
     return response.data;
   }
 
-  // Client Categories
-  async getClientCategories(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/client-categories');
-    return response.data;
-  }
-
-  async getClientCategory(id: string): Promise<any> {
-    const response = await this.api.get<ApiResponse>(`/client-categories/${id}`);
-    return response.data.data;
-  }
-
-  async createClientCategory(data: any): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/client-categories', data);
-    return response.data.data;
-  }
-
-  async updateClientCategory(id: string, data: any): Promise<any> {
-    const response = await this.api.put<ApiResponse>(`/client-categories/${id}`, data);
-    return response.data.data;
-  }
-
-  async deleteClientCategory(id: string): Promise<void> {
-    await this.api.delete(`/client-categories/${id}`);
-  }
 
   // Subscription methods
   async getSubscription(): Promise<any> {

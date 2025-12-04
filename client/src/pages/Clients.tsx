@@ -72,11 +72,76 @@ const Clients: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [branches, setBranches] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
-  const [filterCategoryId, setFilterCategoryId] = useState<string>('');
   const [filterGroupId, setFilterGroupId] = useState<string>('');
+  const [passportDialog, setPassportDialog] = useState(false);
+  const [passportData, setPassportData] = useState({
+    passportSeries: '',
+    passportNumber: '',
+    passportIssueDate: '',
+    passportIssuedBy: '',
+    passportDivisionCode: '',
+    passportBirthPlace: '',
+  });
+  const [passportErrors, setPassportErrors] = useState<Record<string, string>>({});
+
+  // Функция валидации паспорта
+  const validatePassport = (data: typeof passportData): Record<string, string> => {
+    const errors: Record<string, string> = {};
+
+    // Валидация серии паспорта (4 цифры)
+    if (data.passportSeries && data.passportSeries.trim() !== '') {
+      if (!/^\d{4}$/.test(data.passportSeries)) {
+        errors.passportSeries = 'Серия паспорта должна содержать 4 цифры';
+      }
+    }
+
+    // Валидация номера паспорта (6 цифр)
+    if (data.passportNumber && data.passportNumber.trim() !== '') {
+      if (!/^\d{6}$/.test(data.passportNumber)) {
+        errors.passportNumber = 'Номер паспорта должен содержать 6 цифр';
+      }
+    }
+
+    // Валидация кода подразделения (6 цифр, формат: 123-456 или 123456)
+    if (data.passportDivisionCode && data.passportDivisionCode.trim() !== '') {
+      const cleanedCode = data.passportDivisionCode.replace(/-/g, '');
+      if (!/^\d{6}$/.test(cleanedCode)) {
+        errors.passportDivisionCode = 'Код подразделения должен содержать 6 цифр (формат: 123-456)';
+      }
+    }
+
+    // Валидация даты выдачи
+    if (data.passportIssueDate && data.passportIssueDate.trim() !== '') {
+      const issueDate = new Date(data.passportIssueDate);
+      const today = new Date();
+      if (issueDate > today) {
+        errors.passportIssueDate = 'Дата выдачи не может быть в будущем';
+      }
+    }
+
+    // Валидация "Кем выдан" (минимум 3 символа, если заполнено)
+    if (data.passportIssuedBy && data.passportIssuedBy.trim() !== '') {
+      if (data.passportIssuedBy.trim().length < 3) {
+        errors.passportIssuedBy = 'Поле должно содержать минимум 3 символа';
+      }
+    }
+
+    // Валидация места рождения (минимум 3 символа, если заполнено)
+    if (data.passportBirthPlace && data.passportBirthPlace.trim() !== '') {
+      if (data.passportBirthPlace.trim().length < 3) {
+        errors.passportBirthPlace = 'Поле должно содержать минимум 3 символа';
+      }
+    }
+
+    return errors;
+  };
+
+  // Проверка наличия ошибок валидации
+  const hasPassportErrors = (errors: Record<string, string>): boolean => {
+    return Object.keys(errors).length > 0;
+  };
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [editingPhoneClientId, setEditingPhoneClientId] = useState<string | null>(null);
@@ -133,7 +198,6 @@ const Clients: React.FC = () => {
     schoolOrKindergarten: '',
     photo: '',
     weight: '',
-    categoryId: '',
     groupIds: [] as string[],
     // Родители
     parents: [] as Array<{
@@ -187,17 +251,15 @@ const Clients: React.FC = () => {
           console.log('Membership fee reset check:', resetErr?.response?.data?.message || 'Not needed');
         }
         
-        const [clientsRes, branchesRes, categoriesRes, membershipsRes, groupsRes] = await Promise.all([
+        const [clientsRes, branchesRes, membershipsRes, groupsRes] = await Promise.all([
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
-          apiService.getClientCategories().catch(() => ({ data: [] })),
           apiService.getMemberships().catch(() => ({ data: [] })),
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [] }))
         ]);
         if (!isMounted || abortController.signal.aborted) return;
         setClients(clientsRes.data);
         setBranches(branchesRes.data);
-        setCategories(categoriesRes.data || []);
         setMembershipTypes(membershipsRes.data || []);
         setGroups(groupsRes.data || []);
       } catch (err: any) {
@@ -221,7 +283,7 @@ const Clients: React.FC = () => {
       isMounted = false;
       abortController.abort();
     };
-  }, [filterBranchId, filterCategoryId, filterGroupId, sortBy, sortOrder]);
+  }, [filterBranchId, filterGroupId, sortBy, sortOrder]);
 
   // Синхронизируем editDialogOpen с editDialog
   useEffect(() => {
@@ -368,7 +430,6 @@ const Clients: React.FC = () => {
           schoolOrKindergarten: client.schoolOrKindergarten || '',
           photo: client.photo || '',
           weight: client.weight ? String(client.weight) : '',
-          categoryId: (client as any).categoryId || '',
           groupIds: client.groupMemberships
             ?.filter((gm: any) => gm.isActive)
             .map((gm: any) => gm.group?.id)
@@ -440,6 +501,13 @@ const Clients: React.FC = () => {
       const dataToSend = {
         ...clientData,
         weight: clientData.weight ? parseFloat(clientData.weight) : null,
+        // Преобразуем пустые строки паспорта в null
+        passportSeries: clientData.passportSeries && clientData.passportSeries.trim() !== '' ? clientData.passportSeries : null,
+        passportNumber: clientData.passportNumber && clientData.passportNumber.trim() !== '' ? clientData.passportNumber : null,
+        passportIssueDate: clientData.passportIssueDate && clientData.passportIssueDate.trim() !== '' ? clientData.passportIssueDate : null,
+        passportIssuedBy: clientData.passportIssuedBy && clientData.passportIssuedBy.trim() !== '' ? clientData.passportIssuedBy : null,
+        passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
+        passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
       };
       const createdClient = await apiService.createClient(dataToSend);
       
@@ -477,7 +545,6 @@ const Clients: React.FC = () => {
         schoolOrKindergarten: '',
         photo: '',
         weight: '',
-        categoryId: '',
         groupIds: [],
         parents: [],
       });
@@ -584,7 +651,6 @@ const Clients: React.FC = () => {
       schoolOrKindergarten: client.schoolOrKindergarten || '',
       photo: client.photo || '',
       weight: client.weight ? String(client.weight) : '',
-      categoryId: (client as any).categoryId || '',
       groupIds: client.groupMemberships
         ?.filter((gm: any) => gm.isActive)
         .map((gm: any) => gm.group?.id)
@@ -816,6 +882,13 @@ const Clients: React.FC = () => {
       const dataToSend = {
         ...clientData,
         weight: clientData.weight ? parseFloat(clientData.weight) : null,
+        // Преобразуем пустые строки паспорта в null
+        passportSeries: clientData.passportSeries && clientData.passportSeries.trim() !== '' ? clientData.passportSeries : null,
+        passportNumber: clientData.passportNumber && clientData.passportNumber.trim() !== '' ? clientData.passportNumber : null,
+        passportIssueDate: clientData.passportIssueDate && clientData.passportIssueDate.trim() !== '' ? clientData.passportIssueDate : null,
+        passportIssuedBy: clientData.passportIssuedBy && clientData.passportIssuedBy.trim() !== '' ? clientData.passportIssuedBy : null,
+        passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
+        passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
       };
       await apiService.updateClient(editingClient.id, dataToSend);
       
@@ -874,7 +947,6 @@ const Clients: React.FC = () => {
         schoolOrKindergarten: '',
         photo: '',
         weight: '',
-        categoryId: '',
         groupIds: [],
         parents: [],
       });
@@ -1151,10 +1223,44 @@ const Clients: React.FC = () => {
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
           onClick={() => {
-            setOpenDialog(true);
+            // Сбрасываем форму при открытии диалога создания
+            setFormData({
+              firstName: '',
+              lastName: '',
+              middleName: '',
+              email: '',
+              phone: '',
+              dateOfBirth: '',
+              gender: '',
+              address: '',
+              birthCertificateNumber: '',
+              birthCertificate: '',
+              medicalCertificateNumber: '',
+              medicalCertificate: '',
+              schoolOrKindergarten: '',
+              photo: '',
+              weight: '',
+              passportSeries: '',
+              passportNumber: '',
+              passportIssueDate: '',
+              passportIssuedBy: '',
+              passportDivisionCode: '',
+              passportBirthPlace: '',
+              groupIds: [],
+              parents: [],
+            });
+            setPhotoPreview(null);
+            setPhotoFile(null);
+            setBirthCertificatePreview(null);
+            setBirthCertificateFile(null);
+            setMedicalCertificatePreview(null);
+            setMedicalCertificateFile(null);
+            setEditingClient(null);
             setFormErrors({});
             setTouchedFields(new Set());
+            setValidFields(new Set());
             setError('');
+            setOpenDialog(true);
           }}
           data-onboarding="add-client-button"
         >
@@ -1181,21 +1287,6 @@ const Clients: React.FC = () => {
           </Select>
         </FormControl>
         <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel>Категория</InputLabel>
-          <Select
-            value={filterCategoryId}
-            onChange={(e) => setFilterCategoryId(e.target.value)}
-            label="Категория"
-          >
-            <MenuItem value="">Все категории</MenuItem>
-            {categories.map((category) => (
-              <MenuItem key={category.id} value={category.id}>
-                {category.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl sx={{ minWidth: 200 }}>
           <InputLabel>Группа</InputLabel>
           <Select
             value={filterGroupId}
@@ -1210,12 +1301,11 @@ const Clients: React.FC = () => {
             ))}
           </Select>
         </FormControl>
-        {(filterBranchId || filterCategoryId || filterGroupId) && (
+        {(filterBranchId || filterGroupId) && (
           <Button
             variant="outlined"
             onClick={() => {
               setFilterBranchId('');
-              setFilterCategoryId('');
               setFilterGroupId('');
             }}
           >
@@ -1278,7 +1368,6 @@ const Clients: React.FC = () => {
                       Телефон
                     </TableSortLabel>
                   </TableCell>
-                  <TableCell>Категория</TableCell>
                   <TableCell>Группы</TableCell>
                   <TableCell>Тарифы</TableCell>
                   <TableCell>Баланс</TableCell>
@@ -1314,10 +1403,6 @@ const Clients: React.FC = () => {
                         (gm) => gm.group?.branchId === filterBranchId
                       );
                       if (!hasBranchGroup) return false;
-                    }
-                    // Фильтр по категории
-                    if (filterCategoryId) {
-                      if ((client as any).categoryId !== filterCategoryId) return false;
                     }
                     // Фильтр по группе
                     if (filterGroupId) {
@@ -1441,20 +1526,6 @@ const Clients: React.FC = () => {
                           <Phone sx={{ fontSize: 16 }} />
                           {client.phone || '-'}
                         </Box>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {(client as any).category ? (
-                        <Chip
-                          label={(client as any).category.name}
-                          size="small"
-                          sx={{
-                            backgroundColor: (client as any).category.color || 'primary.light',
-                            color: 'white'
-                          }}
-                        />
-                      ) : (
-                        '-'
                       )}
                     </TableCell>
                     <TableCell>
@@ -1684,8 +1755,42 @@ const Clients: React.FC = () => {
           
           // Разрешаем закрытие только если нет ошибок
           setOpenDialog(false);
+          // Сбрасываем форму при закрытии
+          setFormData({
+            firstName: '',
+            lastName: '',
+            middleName: '',
+            email: '',
+            phone: '',
+            dateOfBirth: '',
+            gender: '',
+            address: '',
+            birthCertificateNumber: '',
+            birthCertificate: '',
+            medicalCertificateNumber: '',
+            medicalCertificate: '',
+            schoolOrKindergarten: '',
+            photo: '',
+            weight: '',
+            passportSeries: '',
+            passportNumber: '',
+            passportIssueDate: '',
+            passportIssuedBy: '',
+            passportDivisionCode: '',
+            passportBirthPlace: '',
+            groupIds: [],
+            parents: [],
+          });
+          setPhotoPreview(null);
+          setPhotoFile(null);
+          setBirthCertificatePreview(null);
+          setBirthCertificateFile(null);
+          setMedicalCertificatePreview(null);
+          setMedicalCertificateFile(null);
+          setEditingClient(null);
           setFormErrors({});
           setTouchedFields(new Set());
+          setValidFields(new Set());
           setError('');
         }}
         maxWidth="md" 
@@ -2064,21 +2169,39 @@ const Clients: React.FC = () => {
               </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Категория клиента</InputLabel>
-                <Select
-                  value={formData.categoryId}
-                  onChange={(e) => handleInputChange('categoryId', e.target.value)}
-                  label="Категория клиента"
-                >
-                  <MenuItem value="">Без категории</MenuItem>
-                  {categories.map((category) => (
-                    <MenuItem key={category.id} value={category.id}>
-                      {category.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<Assignment />}
+                onClick={() => {
+                  if (editingClient) {
+                    // Обновляем данные паспорта из editingClient
+                    const client = editingClient;
+                    setPassportData({
+                      passportSeries: client.passportSeries || '',
+                      passportNumber: client.passportNumber || '',
+                      passportIssueDate: client.passportIssueDate ? new Date(client.passportIssueDate).toISOString().split('T')[0] : '',
+                      passportIssuedBy: client.passportIssuedBy || '',
+                      passportDivisionCode: client.passportDivisionCode || '',
+                      passportBirthPlace: client.passportBirthPlace || '',
+                    });
+                  } else {
+                    setPassportData({
+                      passportSeries: formData.passportSeries || '',
+                      passportNumber: formData.passportNumber || '',
+                      passportIssueDate: formData.passportIssueDate || '',
+                      passportIssuedBy: formData.passportIssuedBy || '',
+                      passportDivisionCode: formData.passportDivisionCode || '',
+                      passportBirthPlace: formData.passportBirthPlace || '',
+                    });
+                  }
+                  setPassportErrors({});
+                  setPassportDialog(true);
+                }}
+                sx={{ height: '56px' }}
+              >
+                Паспорт спортсмена
+              </Button>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
@@ -2295,7 +2418,6 @@ const Clients: React.FC = () => {
                 schoolOrKindergarten: '',
                 photo: '',
                 weight: '',
-                categoryId: '',
                 groupIds: [],
                 parents: [],
               });
@@ -2366,6 +2488,39 @@ const Clients: React.FC = () => {
             editDialogStateRef.current = false;
             setEditDialogOpen(false);
             setEditDialog(false);
+            setEditingClient(null);
+            // Сбрасываем форму при закрытии
+            setFormData({
+              firstName: '',
+              lastName: '',
+              middleName: '',
+              email: '',
+              phone: '',
+              dateOfBirth: '',
+              gender: '',
+              address: '',
+              birthCertificateNumber: '',
+              birthCertificate: '',
+              medicalCertificateNumber: '',
+              medicalCertificate: '',
+              schoolOrKindergarten: '',
+              photo: '',
+              weight: '',
+              passportSeries: '',
+              passportNumber: '',
+              passportIssueDate: '',
+              passportIssuedBy: '',
+              passportDivisionCode: '',
+              passportBirthPlace: '',
+              groupIds: [],
+              parents: [],
+            });
+            setPhotoPreview(null);
+            setPhotoFile(null);
+            setBirthCertificatePreview(null);
+            setBirthCertificateFile(null);
+            setMedicalCertificatePreview(null);
+            setMedicalCertificateFile(null);
             setFormErrors({});
             currentErrorsRef.current = {};
             setTouchedFields(new Set());
@@ -2411,6 +2566,39 @@ const Clients: React.FC = () => {
           editDialogStateRef.current = false;
           setEditDialogOpen(false);
           setEditDialog(false);
+          setEditingClient(null);
+          // Сбрасываем форму при закрытии
+          setFormData({
+            firstName: '',
+            lastName: '',
+            middleName: '',
+            email: '',
+            phone: '',
+            dateOfBirth: '',
+            gender: '',
+            address: '',
+            birthCertificateNumber: '',
+            birthCertificate: '',
+            medicalCertificateNumber: '',
+            medicalCertificate: '',
+            schoolOrKindergarten: '',
+            photo: '',
+            weight: '',
+            passportSeries: '',
+            passportNumber: '',
+            passportIssueDate: '',
+            passportIssuedBy: '',
+            passportDivisionCode: '',
+            passportBirthPlace: '',
+            groupIds: [],
+            parents: [],
+          });
+          setPhotoPreview(null);
+          setPhotoFile(null);
+          setBirthCertificatePreview(null);
+          setBirthCertificateFile(null);
+          setMedicalCertificatePreview(null);
+          setMedicalCertificateFile(null);
           setFormErrors({});
           currentErrorsRef.current = {};
           setTouchedFields(new Set());
@@ -3209,21 +3397,39 @@ const Clients: React.FC = () => {
               </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Категория клиента</InputLabel>
-                <Select
-                  value={formData.categoryId}
-                  onChange={(e) => handleInputChange('categoryId', e.target.value)}
-                  label="Категория клиента"
-                >
-                  <MenuItem value="">Без категории</MenuItem>
-                  {categories.map((category) => (
-                    <MenuItem key={category.id} value={category.id}>
-                      {category.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<Assignment />}
+                onClick={() => {
+                  if (editingClient) {
+                    // Обновляем данные паспорта из editingClient
+                    const client = editingClient;
+                    setPassportData({
+                      passportSeries: client.passportSeries || '',
+                      passportNumber: client.passportNumber || '',
+                      passportIssueDate: client.passportIssueDate ? new Date(client.passportIssueDate).toISOString().split('T')[0] : '',
+                      passportIssuedBy: client.passportIssuedBy || '',
+                      passportDivisionCode: client.passportDivisionCode || '',
+                      passportBirthPlace: client.passportBirthPlace || '',
+                    });
+                  } else {
+                    setPassportData({
+                      passportSeries: formData.passportSeries || '',
+                      passportNumber: formData.passportNumber || '',
+                      passportIssueDate: formData.passportIssueDate || '',
+                      passportIssuedBy: formData.passportIssuedBy || '',
+                      passportDivisionCode: formData.passportDivisionCode || '',
+                      passportBirthPlace: formData.passportBirthPlace || '',
+                    });
+                  }
+                  setPassportErrors({});
+                  setPassportDialog(true);
+                }}
+                sx={{ height: '56px' }}
+              >
+                Паспорт спортсмена
+              </Button>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
@@ -4378,6 +4584,204 @@ const Clients: React.FC = () => {
             setClientCompetitions([]);
           }}>
             Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог паспорта спортсмена */}
+      <Dialog
+        open={passportDialog}
+        onClose={() => setPassportDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Паспорт спортсмена</DialogTitle>
+        <DialogContent>
+          {hasPassportErrors(passportErrors) && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(passportErrors).length} {Object.keys(passportErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Серия паспорта"
+                value={passportData.passportSeries}
+                onChange={(e) => {
+                  setPassportData({ ...passportData, passportSeries: e.target.value });
+                  if (passportErrors.passportSeries) {
+                    setPassportErrors({ ...passportErrors, passportSeries: '' });
+                  }
+                }}
+                inputProps={{ maxLength: 4 }}
+                placeholder="1234"
+                error={!!passportErrors.passportSeries}
+                helperText={passportErrors.passportSeries || '4 цифры'}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Номер паспорта"
+                value={passportData.passportNumber}
+                onChange={(e) => {
+                  setPassportData({ ...passportData, passportNumber: e.target.value });
+                  if (passportErrors.passportNumber) {
+                    setPassportErrors({ ...passportErrors, passportNumber: '' });
+                  }
+                }}
+                inputProps={{ maxLength: 6 }}
+                placeholder="123456"
+                error={!!passportErrors.passportNumber}
+                helperText={passportErrors.passportNumber || '6 цифр'}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Дата выдачи"
+                type="date"
+                value={passportData.passportIssueDate}
+                onChange={(e) => {
+                  setPassportData({ ...passportData, passportIssueDate: e.target.value });
+                  if (passportErrors.passportIssueDate) {
+                    setPassportErrors({ ...passportErrors, passportIssueDate: '' });
+                  }
+                }}
+                InputLabelProps={{ shrink: true }}
+                error={!!passportErrors.passportIssueDate}
+                helperText={passportErrors.passportIssueDate}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Код подразделения"
+                value={passportData.passportDivisionCode}
+                onChange={(e) => {
+                  // Удаляем все нецифровые символы
+                  let value = e.target.value.replace(/\D/g, '');
+                  
+                  // Ограничиваем до 6 цифр
+                  if (value.length > 6) {
+                    value = value.substring(0, 6);
+                  }
+                  
+                  // Добавляем тире после третьей цифры
+                  if (value.length > 3) {
+                    value = value.substring(0, 3) + '-' + value.substring(3);
+                  }
+                  
+                  setPassportData({ ...passportData, passportDivisionCode: value });
+                  if (passportErrors.passportDivisionCode) {
+                    setPassportErrors({ ...passportErrors, passportDivisionCode: '' });
+                  }
+                }}
+                inputProps={{ maxLength: 7 }}
+                placeholder="123-456"
+                error={!!passportErrors.passportDivisionCode}
+                helperText={passportErrors.passportDivisionCode || '6 цифр (формат: 123-456)'}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Кем выдан"
+                value={passportData.passportIssuedBy}
+                onChange={(e) => {
+                  setPassportData({ ...passportData, passportIssuedBy: e.target.value });
+                  if (passportErrors.passportIssuedBy) {
+                    setPassportErrors({ ...passportErrors, passportIssuedBy: '' });
+                  }
+                }}
+                multiline
+                rows={2}
+                error={!!passportErrors.passportIssuedBy}
+                helperText={passportErrors.passportIssuedBy}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Место рождения"
+                value={passportData.passportBirthPlace}
+                onChange={(e) => {
+                  setPassportData({ ...passportData, passportBirthPlace: e.target.value });
+                  if (passportErrors.passportBirthPlace) {
+                    setPassportErrors({ ...passportErrors, passportBirthPlace: '' });
+                  }
+                }}
+                multiline
+                rows={2}
+                error={!!passportErrors.passportBirthPlace}
+                helperText={passportErrors.passportBirthPlace}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setPassportDialog(false);
+            setPassportErrors({});
+          }}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              // Выполняем валидацию
+              const validationErrors = validatePassport(passportData);
+              setPassportErrors(validationErrors);
+
+              // Если есть ошибки, не сохраняем
+              if (hasPassportErrors(validationErrors)) {
+                setSnackbarMessage('Пожалуйста, исправьте ошибки в форме паспорта');
+                setSnackbarOpen(true);
+                return;
+              }
+
+              if (editingClient) {
+                // Редактирование существующего клиента
+                try {
+                  await apiService.updateClient(editingClient.id, {
+                    passportSeries: passportData.passportSeries && passportData.passportSeries.trim() !== '' ? passportData.passportSeries : null,
+                    passportNumber: passportData.passportNumber && passportData.passportNumber.trim() !== '' ? passportData.passportNumber : null,
+                    passportIssueDate: passportData.passportIssueDate && passportData.passportIssueDate.trim() !== '' ? passportData.passportIssueDate : null,
+                    passportIssuedBy: passportData.passportIssuedBy && passportData.passportIssuedBy.trim() !== '' ? passportData.passportIssuedBy : null,
+                    passportDivisionCode: passportData.passportDivisionCode && passportData.passportDivisionCode.trim() !== '' ? passportData.passportDivisionCode : null,
+                    passportBirthPlace: passportData.passportBirthPlace && passportData.passportBirthPlace.trim() !== '' ? passportData.passportBirthPlace : null,
+                  });
+                  await fetchClients();
+                  // Загружаем обновленные данные клиента
+                  const refreshedClient = await apiService.getClient(editingClient.id);
+                  setEditingClient(refreshedClient);
+                  setPassportDialog(false);
+                  setPassportErrors({});
+                  setSnackbarMessage('Данные паспорта сохранены');
+                  setSnackbarOpen(true);
+                } catch (err: any) {
+                  setError(err?.response?.data?.error || 'Не удалось сохранить данные паспорта');
+                  setSnackbarMessage(err?.response?.data?.error || 'Не удалось сохранить данные паспорта');
+                  setSnackbarOpen(true);
+                }
+              } else {
+                // Создание нового клиента - сохраняем в formData
+                setFormData({
+                  ...formData,
+                  passportSeries: passportData.passportSeries || '',
+                  passportNumber: passportData.passportNumber || '',
+                  passportIssueDate: passportData.passportIssueDate || '',
+                  passportIssuedBy: passportData.passportIssuedBy || '',
+                  passportDivisionCode: passportData.passportDivisionCode || '',
+                  passportBirthPlace: passportData.passportBirthPlace || '',
+                });
+                setPassportDialog(false);
+                setPassportErrors({});
+                setSnackbarMessage('Данные паспорта добавлены в форму');
+                setSnackbarOpen(true);
+              }
+            }}
+          >
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>

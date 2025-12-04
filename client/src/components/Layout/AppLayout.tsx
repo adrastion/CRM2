@@ -53,7 +53,6 @@ interface AppLayoutProps {
 const navigationItems = [
   { label: 'Панель управления', path: '/dashboard', icon: <Dashboard />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Клиенты', path: '/clients', icon: <People />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
-  { label: 'Категории клиентов', path: '/client-categories', icon: <Groups />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Нормативы', path: '/standards', icon: <Assignment />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Тренеры', path: '/trainers', icon: <Person />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Мой заработок', path: '/trainer/earnings', icon: <AttachMoney />, roles: ['TRAINER'] },
@@ -125,7 +124,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const tabKeyMap: { [key: string]: string } = {
     '/dashboard': 'dashboard',
     '/clients': 'clients',
-    '/client-categories': 'clientCategories',
     '/standards': 'standards',
     '/trainers': 'trainers',
     '/trainer/earnings': 'trainerEarnings',

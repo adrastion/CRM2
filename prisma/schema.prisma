@@ -43,7 +43,6 @@ model Tenant {
   referralLinks ReferralLink[]
   referralClicks ReferralClick[]
   tenantSettings TenantSettings?
-  clientCategories ClientCategory[]
   clientMemberships ClientMembership[]
   standards Standard[]
   transactions Transaction[]
@@ -148,22 +147,6 @@ model Hall {
 
 // ==================== CLIENT CATEGORIES ====================
 
-model ClientCategory {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  color       String?  // Цвет для отображения (hex формат)
-  isActive    Boolean  @default(true)
-  tenantId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clients     Client[]
-
-  @@map("client_categories")
-}
 
 // ==================== CLIENTS ====================
 
@@ -187,7 +170,13 @@ model Client {
   medicalNotes          String?
   photo                 String?
   weight                Decimal?   // Вес клиента
-  categoryId            String?   // Категория клиента
+  // Паспорт РФ
+  passportSeries        String?   // Серия паспорта (4 цифры)
+  passportNumber        String?   // Номер паспорта (6 цифр)
+  passportIssueDate     DateTime? // Дата выдачи паспорта
+  passportIssuedBy      String?   // Кем выдан паспорт
+  passportDivisionCode  String?   // Код подразделения (6 цифр)
+  passportBirthPlace    String?   // Место рождения
   balance               Decimal   @default(0) // Внутренний кошелек клиента
   membershipFeePaid     Boolean   @default(false) // Отметка о сдаче членского взноса
   membershipFeePaidAt   DateTime? // Дата когда был оплачен членский взнос
@@ -199,7 +188,6 @@ model Client {
 
   // Relations
   tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category              ClientCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   achievements          Achievement[]
   groupMemberships      GroupMembership[]
   payments              Payment[]

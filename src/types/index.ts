@@ -67,13 +67,18 @@ export interface CreateClientData {
   birthCertificateNumber?: string;
   medicalCertificateNumber?: string;
   schoolOrKindergarten?: string;
-  categoryId?: string | null;
+  // Паспорт РФ
+  passportSeries?: string | null;
+  passportNumber?: string | null;
+  passportIssueDate?: string | null;
+  passportIssuedBy?: string | null;
+  passportDivisionCode?: string | null;
+  passportBirthPlace?: string | null;
   parents?: CreateParentData[];
 }
 
 export interface UpdateClientData extends Partial<Omit<CreateClientData, 'parents'>> {
   isActive?: boolean;
-  categoryId?: string | null;
   parents?: CreateParentData[];
 }
 

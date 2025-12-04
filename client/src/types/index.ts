@@ -60,7 +60,13 @@ export interface Client {
   medicalNotes?: string;
   photo?: string;
   weight?: number;
-  categoryId?: string;
+  // Паспорт РФ
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportIssuedBy?: string;
+  passportDivisionCode?: string;
+  passportBirthPlace?: string;
   balance?: number;
   membershipFeePaid?: boolean;
   membershipFeePaidAt?: string;
@@ -72,7 +78,6 @@ export interface Client {
   groupMemberships?: GroupMembership[];
   memberships?: Payment[];
   parents?: Parent[];
-  category?: ClientCategory;
   attendances?: Attendance[];
 }
 
@@ -141,18 +146,6 @@ export interface TrainerBranch {
   createdAt: string;
   branch?: Branch;
   trainer?: Trainer;
-}
-
-// Client Category Types
-export interface ClientCategory {
-  id: string;
-  name: string;
-  description?: string;
-  color?: string; // Цвет для отображения (hex формат)
-  isActive: boolean;
-  tenantId: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 // Group Types

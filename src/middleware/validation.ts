@@ -105,7 +105,16 @@ export const clientSchemas = {
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
-    categoryId: commonSchemas.id.allow(null, '').optional(),
+    // Паспорт РФ
+    passportSeries: Joi.string().pattern(/^\d{4}$/).optional().allow('', null),
+    passportNumber: Joi.string().pattern(/^\d{6}$/).optional().allow('', null),
+    passportIssueDate: Joi.alternatives().try(
+      Joi.date().max('now'),
+      Joi.string().allow('', null)
+    ).optional(),
+    passportIssuedBy: Joi.string().max(500).optional().allow('', null),
+    passportDivisionCode: Joi.string().pattern(/^\d{3}-?\d{3}$/).optional().allow('', null),
+    passportBirthPlace: Joi.string().max(500).optional().allow('', null),
     parents: Joi.array().items(
       Joi.object({
         fullName: Joi.string().min(2).max(100).required(),
@@ -135,7 +144,16 @@ export const clientSchemas = {
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
-    categoryId: commonSchemas.id.allow(null, '').optional(),
+    // Паспорт РФ
+    passportSeries: Joi.string().pattern(/^\d{4}$/).optional().allow('', null),
+    passportNumber: Joi.string().pattern(/^\d{6}$/).optional().allow('', null),
+    passportIssueDate: Joi.alternatives().try(
+      Joi.date().max('now'),
+      Joi.string().allow('', null)
+    ).optional(),
+    passportIssuedBy: Joi.string().max(500).optional().allow('', null),
+    passportDivisionCode: Joi.string().pattern(/^\d{3}-?\d{3}$/).optional().allow('', null),
+    passportBirthPlace: Joi.string().max(500).optional().allow('', null),
     parents: Joi.array().items(
       Joi.object({
         fullName: Joi.string().min(2).max(100).required(),
