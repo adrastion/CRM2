@@ -428,6 +428,11 @@ class ApiService {
     await this.api.delete(`/trainings/${id}`);
   }
 
+  async removeDuplicateTrainings(): Promise<{ removedCount: number; removedIds: string[] }> {
+    const response = await this.api.post<ApiResponse>('/trainings/remove-duplicates');
+    return response.data.data;
+  }
+
   // Competition endpoints
   async getCompetitions(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/competitions', { params, signal });

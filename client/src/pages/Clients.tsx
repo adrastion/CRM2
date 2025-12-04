@@ -181,7 +181,7 @@ const Clients: React.FC = () => {
           apiService.getBranches(undefined, abortController.signal),
           apiService.getClientCategories().catch(() => ({ data: [] })),
           apiService.getMemberships().catch(() => ({ data: [] })),
-          apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] }))
+          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [] }))
         ]);
         if (!isMounted || abortController.signal.aborted) return;
         setClients(clientsRes.data);

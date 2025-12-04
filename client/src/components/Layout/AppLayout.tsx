@@ -38,9 +38,11 @@ import {
   Assignment,
   MenuBook,
   EmojiEvents,
+  Support,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import TelegramIcon from '../TelegramIcon';
 
 const drawerWidth = 240;
 
@@ -221,7 +223,51 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {tenant?.name || 'ПрофСпортСРМ'}
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {/* Иконка новостного Telegram канала */}
+            <IconButton
+              color="inherit"
+              aria-label="Новостной Telegram канал"
+              onClick={() => window.open('https://t.me/profsportcrm', '_blank')}
+              sx={{ 
+                '&:hover': { 
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  transform: 'scale(1.1)',
+                },
+                transition: 'all 0.2s',
+                padding: '8px',
+              }}
+              title="Новостной Telegram канал"
+            >
+              <TelegramIcon sx={{ fontSize: 24 }} />
+            </IconButton>
+            {/* Иконка технической поддержки Telegram */}
+            <IconButton
+              color="inherit"
+              aria-label="Техническая поддержка Telegram"
+              onClick={() => window.open('https://t.me/profsportcrm_ts', '_blank')}
+              sx={{ 
+                '&:hover': { 
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  transform: 'scale(1.1)',
+                },
+                transition: 'all 0.2s',
+                padding: '8px',
+              }}
+              title="Техническая поддержка"
+            >
+              <Support sx={{ fontSize: 24 }} />
+            </IconButton>
+            {/* Разделитель */}
+            <Box
+              sx={{
+                width: '1px',
+                height: '24px',
+                backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                mx: 1,
+                display: { xs: 'none', sm: 'block' },
+              }}
+            />
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
               {user?.firstName} {user?.lastName}
             </Typography>

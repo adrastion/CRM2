@@ -185,11 +185,49 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       return;
     }
 
+    const startTime = new Date(validData.startTime);
+    const endTime = new Date(validData.endTime);
+
+    // Проверка на существование дубликата тренировки
+    const existingTraining = await prisma.training.findFirst({
+      where: {
+        tenantId,
+        title: validData.title,
+        groupId: validData.groupId,
+        trainerId: validData.trainerId,
+        branchId: validData.branchId,
+        startTime: startTime,
+        endTime: endTime,
+        isCancelled: false
+      },
+      include: {
+        branch: true,
+        group: true,
+        trainer: {
+          include: {
+            user: true
+          }
+        }
+      }
+    });
+
+    // Если дубликат существует, возвращаем существующую тренировку
+    if (existingTraining) {
+      console.log(`Duplicate training detected, returning existing training ${existingTraining.id}`);
+      res.status(200).json({
+        success: true,
+        data: existingTraining,
+        message: 'Training already exists',
+        duplicate: true
+      });
+      return;
+    }
+
     const trainingData = {
       ...validData,
       tenantId,
-      startTime: new Date(validData.startTime),
-      endTime: new Date(validData.endTime)
+      startTime,
+      endTime
     };
 
     const training = await prisma.training.create({
@@ -367,6 +405,78 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
     res.status(500).json({
       success: false,
       error: 'Failed to delete training'
+    });
+  }
+};
+
+// Функция для удаления дубликатов тренировок
+export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id;
+    
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+      return;
+    }
+
+    // Получаем все активные тренировки
+    const allTrainings = await prisma.training.findMany({
+      where: {
+        tenantId,
+        isCancelled: false
+      },
+      orderBy: { createdAt: 'asc' } // Сохраняем самую раннюю созданную
+    });
+
+    // Группируем по ключевым полям для определения дубликатов
+    const trainingMap = new Map<string, string[]>();
+    
+    for (const training of allTrainings) {
+      // Создаем уникальный ключ на основе параметров тренировки
+      const key = `${training.title}|${training.groupId}|${training.trainerId}|${training.branchId}|${training.startTime.toISOString()}|${training.endTime.toISOString()}`;
+      
+      if (!trainingMap.has(key)) {
+        trainingMap.set(key, []);
+      }
+      trainingMap.get(key)!.push(training.id);
+    }
+
+    // Находим и удаляем дубликаты (оставляем первый, удаляем остальные)
+    const duplicateIds: string[] = [];
+    
+    for (const [key, ids] of trainingMap.entries()) {
+      if (ids.length > 1) {
+        // Пропускаем первый (оригинал), добавляем остальные в список на удаление
+        duplicateIds.push(...ids.slice(1));
+      }
+    }
+
+    if (duplicateIds.length > 0) {
+      // Мягкое удаление дубликатов (помечаем как отмененные)
+      await prisma.training.updateMany({
+        where: {
+          id: { in: duplicateIds }
+        },
+        data: { isCancelled: true }
+      });
+
+      console.log(`Removed ${duplicateIds.length} duplicate trainings for tenant ${tenantId}`);
+    }
+
+    res.json({
+      success: true,
+      message: `Удалено ${duplicateIds.length} дублирующихся тренировок`,
+      removedCount: duplicateIds.length,
+      removedIds: duplicateIds
+    });
+  } catch (error) {
+    console.error('Remove duplicate trainings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to remove duplicate trainings'
     });
   }
 };

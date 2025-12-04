@@ -126,6 +126,7 @@ const Schedule: React.FC = () => {
   const [filterHallId, setFilterHallId] = useState<string>('');
   const [filterTrainerId, setFilterTrainerId] = useState<string>('');
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60); // Длительность тренировки в минутах по умолчанию
+  const [isSubmitting, setIsSubmitting] = useState(false); // Защита от двойного нажатия при создании тренировки
   const [formData, setFormData] = useState<TrainingFormData>({
     title: '',
     description: '',
@@ -151,9 +152,9 @@ const Schedule: React.FC = () => {
       setLoading(true);
       const [trainingsRes, groupsRes, trainersRes, branchesRes] = await Promise.all([
         apiService.getTrainings({ limit: 1000, page: 1 }), // Загружаем до 1000 тренировок
-        apiService.getGroups(),
-        apiService.getTrainers(),
-        apiService.getBranches()
+        apiService.getGroups({ limit: 1000, page: 1 }), // Загружаем все группы
+        apiService.getTrainers({ limit: 1000, page: 1 }),
+        apiService.getBranches({ limit: 1000, page: 1 })
       ]);
       
       setTrainings(trainingsRes.data);
@@ -175,12 +176,26 @@ const Schedule: React.FC = () => {
       try {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
+        
+        // Автоматически удаляем дубликаты тренировок при загрузке
+        try {
+          const duplicateResult = await apiService.removeDuplicateTrainings();
+          if (duplicateResult?.removedCount > 0) {
+            console.log(`Автоматически удалено ${duplicateResult.removedCount} дублирующихся тренировок`);
+          }
+        } catch (duplicateError) {
+          // Игнорируем ошибки удаления дубликатов, продолжаем загрузку
+          console.warn('Не удалось проверить дубликаты тренировок:', duplicateError);
+        }
+        
+        if (!isMounted || abortController.signal.aborted) return;
+        
         const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes] = await Promise.all([
           apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 тренировок
           apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
-          apiService.getGroups(undefined, abortController.signal),
-          apiService.getTrainers(undefined, abortController.signal),
-          apiService.getBranches(undefined, abortController.signal),
+          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
+          apiService.getTrainers({ limit: 1000, page: 1 }, abortController.signal),
+          apiService.getBranches({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getHalls({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [], pagination: {} })),
           apiService.getSettings().catch(() => null) // Загружаем настройки, игнорируем ошибки если нет настроек
         ]);
@@ -220,7 +235,12 @@ const Schedule: React.FC = () => {
   }, []);
 
   const handleCreateTraining = async () => {
+    // Защита от двойного нажатия
+    if (isSubmitting) return;
+    
     try {
+      setIsSubmitting(true);
+      
       // Проверка обязательных полей
       if (!formData.title || !formData.title.trim()) {
         alert('Пожалуйста, укажите название тренировки');
@@ -401,6 +421,8 @@ const Schedule: React.FC = () => {
       } else {
         alert(errorMessage);
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2144,9 +2166,9 @@ const Schedule: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenDialog(false)}>Отмена</Button>
-            <Button onClick={handleCreateTraining} variant="contained">
-              Создать тренировку
+            <Button onClick={() => setOpenDialog(false)} disabled={isSubmitting}>Отмена</Button>
+            <Button onClick={handleCreateTraining} variant="contained" disabled={isSubmitting}>
+              {isSubmitting ? 'Создание...' : 'Создать тренировку'}
             </Button>
           </DialogActions>
         </Dialog>

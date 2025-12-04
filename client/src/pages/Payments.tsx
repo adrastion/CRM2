@@ -98,7 +98,7 @@ const Payments: React.FC = () => {
         apiService.getPayments(params),
         apiService.getClients({ limit: 100 }),
         apiService.getBranches(),
-        apiService.getGroups().catch(() => ({ data: [] })),
+        apiService.getGroups({ limit: 1000, page: 1 }).catch(() => ({ data: [] })),
         apiService.getMemberships().catch(() => ({ data: [] })),
       ]);
       
@@ -137,7 +137,7 @@ const Payments: React.FC = () => {
           apiService.getPayments(params, abortController.signal),
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
-          apiService.getGroups(undefined, abortController.signal).catch(() => ({ data: [] })),
+          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [] })),
           apiService.getMemberships(undefined, abortController.signal).catch(() => ({ data: [] })),
         ]);
         

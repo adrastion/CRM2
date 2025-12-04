@@ -6,7 +6,8 @@ import {
   getTrainingById,
   createTraining,
   updateTraining,
-  deleteTraining
+  deleteTraining,
+  removeDuplicateTrainings
 } from '../controllers/trainingController';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use(authenticate);
 
 // Training management routes
 router.get('/', getTrainings);
+router.post('/remove-duplicates', requireOwnerAdminOrTrainer, removeDuplicateTrainings); // Удаление дубликатов
 router.get('/:id', getTrainingById);
 router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainings'), createTraining);
 router.put('/:id', requireOwnerAdminOrTrainer, updateTraining);

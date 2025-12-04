@@ -48,6 +48,7 @@
     ]
   },
   "devDependencies": {
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@types/jest": "^29.5.8"
   },
   "proxy": "http://localhost:3001"
