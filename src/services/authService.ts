@@ -170,7 +170,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error('Invalid credentials');
+      throw new Error('Аккаунт не существует');
     }
 
     if (!user.isActive) {
@@ -184,7 +184,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      throw new Error('Неверный пароль');
     }
 
     // Update last login

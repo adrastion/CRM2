@@ -31,10 +31,19 @@ import {
   ListItemText,
   Link,
   Snackbar,
+  Divider,
+  FormControlLabel,
+  RadioGroup,
+  Radio,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, People } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, People, Delete as DeleteIcon, CalendarToday } from '@mui/icons-material';
+import { TimePicker } from '@mui/x-date-pickers/TimePicker';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { Group, Branch, Trainer, Client } from '../types';
+import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm } from '../utils/validation';
 
 const Groups: React.FC = () => {
@@ -48,6 +57,7 @@ const Groups: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [membersDialog, setMembersDialog] = useState(false);
+  const [trainingDialog, setTrainingDialog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -55,6 +65,25 @@ const Groups: React.FC = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [trainingFormData, setTrainingFormData] = useState({
+    title: '',
+    description: '',
+    date: new Date() as Date | null,
+    startTime: null as Date | null,
+    endTime: null as Date | null,
+    groupId: '',
+    trainerId: '',
+    branchId: '',
+    hallId: '',
+    isRecurring: false,
+    recurrence: 'weekly',
+    daysOfWeek: [] as number[],
+    recurrenceStartDate: new Date() as Date | null,
+    recurrenceEndDate: null as Date | null,
+    recurrenceMode: 'days' as 'days' | 'dates',
+    daySchedules: [] as Array<{ dayOfWeek: number; startTime: Date | null; endTime: Date | null }>,
+  });
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -65,6 +94,7 @@ const Groups: React.FC = () => {
     trainingPrice: '',
     branchId: '',
     trainerId: '',
+    schedule: [] as GroupScheduleItem[],
   });
 
   const fetchData = async () => {
@@ -82,8 +112,14 @@ const Groups: React.FC = () => {
       setTrainers(trainersRes.data);
       setClients(clientsRes.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка загрузки данных');
+      const errorMessage = err.response?.data?.error || err.message || 'Ошибка загрузки данных';
+      setError(errorMessage);
       console.error('Error fetching data:', err);
+      console.error('Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
     } finally {
       setLoading(false);
     }
@@ -132,18 +168,45 @@ const Groups: React.FC = () => {
     };
   }, []);
 
-  const handleCreateGroup = async () => {
+  const handleCreateGroup = async (openTrainingDialog: boolean = false) => {
     try {
       const groupData = {
         ...formData,
         maxMembers: formData.maxMembers ? parseInt(formData.maxMembers) : undefined,
         ageMin: formData.ageMin ? parseInt(formData.ageMin) : undefined,
         ageMax: formData.ageMax ? parseInt(formData.ageMax) : undefined,
+        trainingPrice: formData.trainingPrice ? parseFloat(formData.trainingPrice) : undefined,
+        schedule: formData.schedule.length > 0 ? formData.schedule : undefined,
       };
-      await apiService.createGroup(groupData);
-      await fetchData();
+      const createdGroup = await apiService.createGroup(groupData);
+      
+      // Обновляем данные, но не блокируем процесс, если будет ошибка
+      try {
+        await fetchData();
+      } catch (fetchErr: any) {
+        console.error('Error fetching data after group creation:', fetchErr);
+        // Показываем предупреждение, но не блокируем процесс
+        const fetchErrorMessage = fetchErr.response?.data?.error || fetchErr.message || 'Ошибка обновления списка групп';
+        console.warn(`Группа создана, но возникла ошибка при обновлении данных: ${fetchErrorMessage}`);
+        // Не показываем ошибку пользователю, так как группа уже создана
+      }
+      
       setOpenDialog(false);
       setFormErrors({});
+      
+      // Если нужно открыть диалог создания тренировки
+      if (openTrainingDialog && createdGroup && createdGroup.id) {
+        // Загружаем полные данные группы для корректного отображения
+        try {
+          const fullGroup = await apiService.getGroup(createdGroup.id);
+          await handleOpenTrainingDialog(fullGroup);
+        } catch (err) {
+          console.error('Error fetching created group:', err);
+          // Если не удалось загрузить, используем созданную группу
+          await handleOpenTrainingDialog(createdGroup);
+        }
+      }
+      
       setFormData({
         name: '',
         description: '',
@@ -154,10 +217,18 @@ const Groups: React.FC = () => {
         trainingPrice: '',
         branchId: '',
         trainerId: '',
+        schedule: [],
       });
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка создания группы');
+      const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания группы';
+      setError(errorMessage);
       console.error('Error creating group:', err);
+      console.error('Error details:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+        stack: err.stack
+      });
     }
   };
 
@@ -168,8 +239,47 @@ const Groups: React.FC = () => {
     }));
   };
 
+  // Функции для управления графиком тренировок
+  const addScheduleItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: [...prev.schedule, { dayOfWeek: 1, startTime: '18:00', endTime: '19:30' }]
+    }));
+  };
+
+  const removeScheduleItem = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateScheduleItem = (index: number, field: 'dayOfWeek' | 'startTime' | 'endTime', value: number | string) => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
   const handleEditGroup = (group: Group) => {
     setEditingGroup(group);
+    // Парсим schedule из JSON строки, если она есть
+    let schedule: GroupScheduleItem[] = [];
+    if (group.schedule) {
+      if (typeof group.schedule === 'string') {
+        try {
+          schedule = JSON.parse(group.schedule);
+        } catch (e) {
+          console.error('Error parsing schedule:', e);
+        }
+      } else if (Array.isArray(group.schedule)) {
+        schedule = group.schedule;
+      }
+    }
     setFormData({
       name: group.name || '',
       description: group.description || '',
@@ -180,6 +290,7 @@ const Groups: React.FC = () => {
       trainingPrice: (group as any).trainingPrice?.toString() || '',
       branchId: group.branchId || '',
       trainerId: group.trainerId || '',
+      schedule: schedule,
     });
     setEditDialog(true);
   };
@@ -194,6 +305,7 @@ const Groups: React.FC = () => {
         ageMin: formData.ageMin ? parseInt(formData.ageMin) : undefined,
         ageMax: formData.ageMax ? parseInt(formData.ageMax) : undefined,
         trainingPrice: formData.trainingPrice ? parseFloat(formData.trainingPrice) : undefined,
+        schedule: formData.schedule.length > 0 ? formData.schedule : undefined,
       };
       await apiService.updateGroup(editingGroup.id, groupData);
       await fetchData();
@@ -228,6 +340,295 @@ const Groups: React.FC = () => {
       console.error('Error fetching group:', err);
     }
     setMembersDialog(true);
+  };
+
+  const handleOpenTrainingDialog = async (group: Group | any) => {
+    // Если группа только что создана, загружаем полные данные
+    let fullGroup = group;
+    if (group && group.id) {
+      try {
+        fullGroup = await apiService.getGroup(group.id);
+        setSelectedGroup(fullGroup);
+      } catch (err) {
+        console.error('Error fetching group:', err);
+        setSelectedGroup(group);
+      }
+    } else {
+      setSelectedGroup(group);
+    }
+    
+    // Загружаем залы для филиала группы
+    if (fullGroup.branchId) {
+      try {
+        const hallsRes = await apiService.getHalls({ branchId: fullGroup.branchId });
+        setHalls(hallsRes.data);
+      } catch (err) {
+        console.error('Error fetching halls:', err);
+        setHalls([]);
+      }
+    }
+
+    // Предзаполняем форму данными группы
+    const today = new Date();
+    today.setHours(18, 0, 0, 0); // По умолчанию 18:00
+    const endTime = new Date(today);
+    endTime.setHours(19, 30, 0, 0); // По умолчанию 19:30
+
+    // Если у группы есть график, используем первый день для предзаполнения
+    let scheduleStartTime = today;
+    let scheduleEndTime = endTime;
+    
+    // Парсим schedule, если он в виде строки
+    let schedule: GroupScheduleItem[] = [];
+    if (fullGroup.schedule) {
+      if (typeof fullGroup.schedule === 'string') {
+        try {
+          schedule = JSON.parse(fullGroup.schedule);
+        } catch (e) {
+          console.error('Error parsing schedule:', e);
+        }
+      } else if (Array.isArray(fullGroup.schedule)) {
+        schedule = fullGroup.schedule;
+      }
+    }
+    
+    if (schedule && schedule.length > 0) {
+      const firstSchedule = schedule[0];
+      const [startHours, startMinutes] = firstSchedule.startTime.split(':').map(Number);
+      const [endHours, endMinutes] = firstSchedule.endTime.split(':').map(Number);
+      scheduleStartTime = new Date(today);
+      scheduleStartTime.setHours(startHours, startMinutes, 0, 0);
+      scheduleEndTime = new Date(today);
+      scheduleEndTime.setHours(endHours, endMinutes, 0, 0);
+    }
+
+    setTrainingFormData({
+      title: fullGroup.name,
+      description: fullGroup.description || '',
+      date: new Date(),
+      startTime: scheduleStartTime,
+      endTime: scheduleEndTime,
+      groupId: fullGroup.id,
+      trainerId: fullGroup.trainerId,
+      branchId: fullGroup.branchId,
+      hallId: '',
+      isRecurring: false,
+      recurrence: 'weekly',
+      daysOfWeek: [],
+      recurrenceStartDate: new Date(),
+      recurrenceEndDate: null,
+      recurrenceMode: 'days',
+      daySchedules: [],
+    });
+    setTrainingDialog(true);
+  };
+
+  const handleCreateTraining = async () => {
+    if (!selectedGroup) return;
+
+    // Валидация
+    if (!trainingFormData.title || !trainingFormData.title.trim()) {
+      alert('Пожалуйста, укажите название тренировки');
+      return;
+    }
+
+    // Для нерегулярных тренировок проверяем дату и время
+    if (!trainingFormData.isRecurring) {
+      if (!trainingFormData.date || !trainingFormData.startTime || !trainingFormData.endTime) {
+        alert('Пожалуйста, выберите дату, время начала и окончания');
+        return;
+      }
+    }
+
+    // Для регулярных тренировок проверяем расписание
+    if (trainingFormData.isRecurring) {
+      if (trainingFormData.recurrenceMode === 'days') {
+        if (trainingFormData.daySchedules.length === 0) {
+          alert('Пожалуйста, добавьте хотя бы один день недели с расписанием');
+          return;
+        }
+        // Проверяем, что для всех дней задано время
+        for (const daySchedule of trainingFormData.daySchedules) {
+          if (!daySchedule.startTime || !daySchedule.endTime) {
+            alert('Пожалуйста, укажите время для всех выбранных дней недели');
+            return;
+          }
+        }
+        if (!trainingFormData.recurrenceStartDate || !trainingFormData.recurrenceEndDate) {
+          alert('Пожалуйста, выберите дату начала и окончания регулярных тренировок');
+          return;
+        }
+        if (trainingFormData.recurrenceEndDate < trainingFormData.recurrenceStartDate) {
+          alert('Дата окончания не может быть раньше даты начала');
+          return;
+        }
+      }
+    }
+
+    try {
+      const trainingData = {
+        title: trainingFormData.title.trim(),
+        description: trainingFormData.description.trim() || undefined,
+        groupId: trainingFormData.groupId,
+        trainerId: trainingFormData.trainerId,
+        branchId: trainingFormData.branchId,
+        hallId: trainingFormData.hallId || undefined,
+        isRecurring: trainingFormData.isRecurring,
+        recurrence: trainingFormData.recurrence,
+        daysOfWeek: trainingFormData.daysOfWeek,
+      };
+
+      if (trainingFormData.isRecurring) {
+        const trainings = [];
+        
+        if (trainingFormData.recurrenceMode === 'days') {
+          const startDate = new Date(trainingFormData.recurrenceStartDate!);
+          startDate.setHours(0, 0, 0, 0);
+          
+          const endDate = new Date(trainingFormData.recurrenceEndDate!);
+          endDate.setHours(23, 59, 59, 999);
+          
+          const currentDate = new Date(startDate);
+          currentDate.setHours(0, 0, 0, 0);
+          
+          while (currentDate <= endDate) {
+            const dayOfWeek = currentDate.getDay();
+            const daySchedule = trainingFormData.daySchedules.find(ds => ds.dayOfWeek === dayOfWeek);
+            if (daySchedule && daySchedule.startTime && daySchedule.endTime) {
+              const trainingDate = new Date(currentDate);
+              trainingDate.setHours(0, 0, 0, 0);
+              
+              const recurringStartTime = new Date(trainingDate);
+              recurringStartTime.setHours(daySchedule.startTime.getHours(), daySchedule.startTime.getMinutes(), 0, 0);
+              
+              const recurringEndTime = new Date(trainingDate);
+              recurringEndTime.setHours(daySchedule.endTime.getHours(), daySchedule.endTime.getMinutes(), 0, 0);
+
+              trainings.push({
+                ...trainingData,
+                startTime: recurringStartTime.toISOString(),
+                endTime: recurringEndTime.toISOString()
+              });
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+        }
+
+        // Используем batch создание для быстрого создания множества тренировок
+        if (trainings.length > 1) {
+          try {
+            const batchResult = await apiService.createTrainingsBatch(trainings);
+            if (batchResult.failedCount > 0) {
+              const errorMessages = batchResult.failed.map((ft: any) => ft.error).join('; ');
+              alert(`Создано тренировок: ${batchResult.createdCount}. Ошибок: ${batchResult.failedCount}. ${errorMessages}`);
+            } else {
+              alert(`Успешно создано ${batchResult.createdCount} тренировок`);
+            }
+          } catch (batchErr: any) {
+            console.error('Error creating trainings batch:', batchErr);
+            // Если batch не удался, пробуем создавать по одной с задержками
+            const createdTrainings = [];
+            const failedTrainings = [];
+            for (let i = 0; i < trainings.length; i++) {
+              const training = trainings[i];
+              try {
+                await apiService.createTraining(training);
+                createdTrainings.push(training);
+                // Увеличиваем задержку между запросами (500ms), чтобы избежать 429 ошибки
+                if (i < trainings.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              } catch (err: any) {
+                console.error('Error creating training:', err);
+                failedTrainings.push({
+                  training,
+                  error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
+                });
+              }
+            }
+            
+            if (failedTrainings.length > 0) {
+              const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
+              alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
+            } else {
+              alert(`Успешно создано ${createdTrainings.length} тренировок`);
+            }
+          }
+        } else if (trainings.length === 1) {
+          // Для одной тренировки используем обычный метод
+          try {
+            await apiService.createTraining(trainings[0]);
+            alert('Тренировка успешно создана');
+          } catch (err: any) {
+            const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
+            alert(`Ошибка создания тренировки: ${errorMessage}`);
+            throw err;
+          }
+        }
+      } else {
+        // Создаем одну нерегулярную тренировку
+        const startTime = new Date(trainingFormData.date!);
+        startTime.setHours(trainingFormData.startTime!.getHours(), trainingFormData.startTime!.getMinutes(), 0, 0);
+        
+        const endTime = new Date(trainingFormData.date!);
+        endTime.setHours(trainingFormData.endTime!.getHours(), trainingFormData.endTime!.getMinutes(), 0, 0);
+
+        try {
+          await apiService.createTraining({
+            ...trainingData,
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+          });
+        } catch (err: any) {
+          const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
+          alert(`Ошибка создания тренировки: ${errorMessage}`);
+          console.error('Error creating training:', err);
+          throw err; // Пробрасываем ошибку, чтобы не закрывать диалог
+        }
+      }
+
+      // Обновляем данные после создания тренировок
+      try {
+        await fetchData();
+      } catch (fetchErr: any) {
+        console.error('Error fetching data after training creation:', fetchErr);
+        // Не блокируем процесс, так как тренировки уже созданы
+      }
+      
+      setTrainingDialog(false);
+      setSelectedGroup(null);
+      setTrainingFormData({
+        title: '',
+        description: '',
+        date: new Date(),
+        startTime: null,
+        endTime: null,
+        groupId: '',
+        trainerId: '',
+        branchId: '',
+        hallId: '',
+        isRecurring: false,
+        recurrence: 'weekly',
+        daysOfWeek: [],
+        recurrenceStartDate: new Date(),
+        recurrenceEndDate: null,
+        recurrenceMode: 'days',
+        daySchedules: [],
+      });
+      
+      // Показываем сообщение только для нерегулярных тренировок (для регулярных уже показано выше)
+      if (!trainingFormData.isRecurring) {
+        alert('Тренировка успешно создана');
+      }
+      
+      // Перенаправляем на страницу расписания
+      navigate('/schedule');
+    } catch (err: any) {
+      // Ошибка уже обработана выше, просто логируем
+      console.error('Error in handleCreateTraining:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
+      alert(errorMessage);
+    }
   };
 
   const handleAddClientToGroup = async () => {
@@ -350,6 +751,7 @@ const Groups: React.FC = () => {
               trainingPrice: '',
               branchId: '',
               trainerId: '',
+              schedule: [],
             });
           }}
           data-onboarding="add-group-button"
@@ -404,6 +806,19 @@ const Groups: React.FC = () => {
                           }}
                           onClick={() => {
                             setEditingGroup(group);
+                            // Парсим schedule из JSON строки, если она есть
+                            let schedule: GroupScheduleItem[] = [];
+                            if (group.schedule) {
+                              if (typeof group.schedule === 'string') {
+                                try {
+                                  schedule = JSON.parse(group.schedule);
+                                } catch (e) {
+                                  console.error('Error parsing schedule:', e);
+                                }
+                              } else if (Array.isArray(group.schedule)) {
+                                schedule = group.schedule;
+                              }
+                            }
                             setFormData({
                               name: group.name,
                               description: group.description || '',
@@ -414,6 +829,7 @@ const Groups: React.FC = () => {
                               trainingPrice: group.trainingPrice?.toString() || '',
                               branchId: group.branchId,
                               trainerId: group.trainerId,
+                              schedule: schedule,
                             });
                             setEditDialog(true);
                           }}
@@ -453,6 +869,14 @@ const Groups: React.FC = () => {
                         />
                   </TableCell>
                   <TableCell>
+                        <IconButton 
+                          size="small" 
+                          color="primary" 
+                          title="Создать тренировку для группы"
+                          onClick={() => handleOpenTrainingDialog(group)}
+                        >
+                          <CalendarToday />
+                    </IconButton>
                         <IconButton 
                           size="small" 
                           color="primary" 
@@ -682,6 +1106,7 @@ const Groups: React.FC = () => {
                 trainingPrice: '',
                 branchId: '',
                 trainerId: '',
+                schedule: [],
               });
             }}
             type="button"
@@ -706,12 +1131,38 @@ const Groups: React.FC = () => {
               }
               
               // Если нет ошибок, вызываем handleCreateGroup для сохранения
-              handleCreateGroup();
+              handleCreateGroup(false);
             }} 
-            variant="contained"
+            variant="outlined"
             type="button"
           >
             Создать группу
+          </Button>
+          <Button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              
+              // Выполняем валидацию синхронно
+              const validationErrors = validateGroupForm(formData);
+              setFormErrors(validationErrors);
+              
+              // Если есть ошибки, показываем их и оставляем диалог открытым
+              if (Object.keys(validationErrors).length > 0) {
+                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                setSnackbarOpen(true);
+                return; // Не создаем группу, если есть ошибки
+              }
+              
+              // Если нет ошибок, вызываем handleCreateGroup с флагом открытия диалога тренировки
+              handleCreateGroup(true);
+            }} 
+            variant="contained"
+            type="button"
+            startIcon={<CalendarToday />}
+          >
+            Создать группу и тренировку
           </Button>
         </DialogActions>
       </Dialog>
@@ -887,6 +1338,76 @@ const Groups: React.FC = () => {
                 inputProps={{ min: 0, step: 0.01 }}
                 helperText="Стоимость одной тренировки в этой группе для одного клиента"
               />
+            </Grid>
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" gutterBottom>
+                График тренировок
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Укажите дни недели и время проведения тренировок для этой группы
+              </Typography>
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                {formData.schedule.map((item, index) => (
+                  <Grid container spacing={2} key={index} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Grid item xs={12} sm={3}>
+                      <FormControl fullWidth>
+                        <InputLabel>День недели</InputLabel>
+                        <Select
+                          value={item.dayOfWeek}
+                          onChange={(e) => updateScheduleItem(index, 'dayOfWeek', e.target.value as number)}
+                          label="День недели"
+                        >
+                          {dayNames.map((day, dayIndex) => (
+                            <MenuItem key={dayIndex} value={dayIndex}>
+                              {day}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Время начала"
+                        type="time"
+                        value={item.startTime}
+                        onChange={(e) => updateScheduleItem(index, 'startTime', e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ step: 300 }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Время окончания"
+                        type="time"
+                        value={item.endTime}
+                        onChange={(e) => updateScheduleItem(index, 'endTime', e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ step: 300 }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={1}>
+                      <IconButton
+                        color="error"
+                        onClick={() => removeScheduleItem(index)}
+                        sx={{ mt: 1 }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Grid>
+                  </Grid>
+                ))}
+              </LocalizationProvider>
+              <Button
+                variant="outlined"
+                onClick={addScheduleItem}
+                startIcon={<Add />}
+                sx={{ mt: 1 }}
+              >
+                Добавить день тренировки
+              </Button>
             </Grid>
           </Grid>
         </DialogContent>
@@ -1100,6 +1621,410 @@ const Groups: React.FC = () => {
             setSelectedClientId('');
             setSelectedClientIds([]);
           }}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания тренировки для группы */}
+      <Dialog 
+        open={trainingDialog} 
+        onClose={() => {
+          setTrainingDialog(false);
+          setSelectedGroup(null);
+          setTrainingFormData({
+            title: '',
+            description: '',
+            date: new Date(),
+            startTime: null,
+            endTime: null,
+            groupId: '',
+            trainerId: '',
+            branchId: '',
+            hallId: '',
+            isRecurring: false,
+            recurrence: 'weekly',
+            daysOfWeek: [],
+            recurrenceStartDate: new Date(),
+            recurrenceEndDate: null,
+            recurrenceMode: 'days',
+            daySchedules: [],
+          });
+        }} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>Создать тренировку для группы</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Название тренировки"
+                value={trainingFormData.title}
+                onChange={(e) => setTrainingFormData(prev => ({ ...prev, title: e.target.value }))}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Описание"
+                value={trainingFormData.description}
+                onChange={(e) => setTrainingFormData(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Группа</InputLabel>
+                <Select
+                  value={trainingFormData.groupId}
+                  onChange={(e) => setTrainingFormData(prev => ({ ...prev, groupId: e.target.value }))}
+                  label="Группа"
+                  disabled
+                >
+                  {groups.map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Тренер</InputLabel>
+                <Select
+                  value={trainingFormData.trainerId}
+                  onChange={(e) => setTrainingFormData(prev => ({ ...prev, trainerId: e.target.value }))}
+                  label="Тренер"
+                >
+                  {trainers.map((trainer) => (
+                    <MenuItem key={trainer.id} value={trainer.id}>
+                      {trainer.user 
+                        ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
+                        : `Тренер #${trainer.id}`}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Филиал</InputLabel>
+                <Select
+                  value={trainingFormData.branchId}
+                  onChange={(e) => {
+                    setTrainingFormData(prev => ({ ...prev, branchId: e.target.value, hallId: '' }));
+                    // Загружаем залы для выбранного филиала
+                    if (e.target.value) {
+                      apiService.getHalls({ branchId: e.target.value })
+                        .then(res => setHalls(res.data))
+                        .catch(err => {
+                          console.error('Error fetching halls:', err);
+                          setHalls([]);
+                        });
+                    } else {
+                      setHalls([]);
+                    }
+                  }}
+                  label="Филиал"
+                >
+                  {branches.map((branch) => (
+                    <MenuItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Зал</InputLabel>
+                <Select
+                  value={trainingFormData.hallId}
+                  onChange={(e) => setTrainingFormData(prev => ({ ...prev, hallId: e.target.value }))}
+                  label="Зал"
+                  disabled={!trainingFormData.branchId}
+                >
+                  <MenuItem value="">
+                    <em>Не выбран</em>
+                  </MenuItem>
+                  {halls.map((hall) => (
+                    <MenuItem key={hall.id} value={hall.id}>
+                      {hall.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
+                <FormControl>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Checkbox
+                      checked={trainingFormData.isRecurring}
+                      onChange={(e) => {
+                        setTrainingFormData(prev => ({
+                          ...prev,
+                          isRecurring: e.target.checked,
+                          daySchedules: e.target.checked ? prev.daySchedules : [],
+                        }));
+                      }}
+                    />
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      Создать регулярную тренировку
+                    </Typography>
+                  </Box>
+                </FormControl>
+              </Box>
+            </Grid>
+
+            {/* Показываем эти поля только если НЕ регулярная тренировка */}
+            {!trainingFormData.isRecurring && (
+              <>
+                <Grid item xs={12} sm={4}>
+                  <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                    <DatePicker
+                      label="Дата тренировки"
+                      value={trainingFormData.date}
+                      onChange={(date) => {
+                        setTrainingFormData(prev => {
+                          const newData = { ...prev, date: date };
+                          if (date && prev.startTime) {
+                            const newStartTime = new Date(date);
+                            newStartTime.setHours(prev.startTime.getHours(), prev.startTime.getMinutes(), 0, 0);
+                            newData.startTime = newStartTime;
+                          }
+                          if (date && prev.endTime) {
+                            const newEndTime = new Date(date);
+                            newEndTime.setHours(prev.endTime.getHours(), prev.endTime.getMinutes(), 0, 0);
+                            newData.endTime = newEndTime;
+                          }
+                          return newData;
+                        });
+                      }}
+                      slotProps={{ textField: { fullWidth: true } }}
+                    />
+                  </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                    <TimePicker
+                      label="Время начала"
+                      value={trainingFormData.startTime}
+                      onChange={(time) => {
+                        setTrainingFormData(prev => {
+                          if (time && prev.date) {
+                            const newTime = new Date(prev.date);
+                            newTime.setHours(time.getHours(), time.getMinutes(), 0, 0);
+                            return { ...prev, startTime: newTime };
+                          } else {
+                            return { ...prev, startTime: time };
+                          }
+                        });
+                      }}
+                      slotProps={{ textField: { fullWidth: true } }}
+                    />
+                  </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                    <TimePicker
+                      label="Время окончания"
+                      value={trainingFormData.endTime}
+                      onChange={(time) => {
+                        setTrainingFormData(prev => {
+                          if (time && prev.date) {
+                            const newTime = new Date(prev.date);
+                            newTime.setHours(time.getHours(), time.getMinutes(), 0, 0);
+                            return { ...prev, endTime: newTime };
+                          } else {
+                            return { ...prev, endTime: time };
+                          }
+                        });
+                      }}
+                      slotProps={{ textField: { fullWidth: true } }}
+                    />
+                  </LocalizationProvider>
+                </Grid>
+              </>
+            )}
+
+            {/* Настройки регулярных тренировок */}
+            {trainingFormData.isRecurring && (
+              <Grid item xs={12}>
+                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'rgba(25, 118, 210, 0.05)' }}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                    Настройки регулярных тренировок
+                  </Typography>
+                  
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    <Grid item xs={12} sm={6}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                        <DatePicker
+                          label="Дата начала регулярных тренировок"
+                          value={trainingFormData.recurrenceStartDate}
+                          onChange={(date) => setTrainingFormData(prev => ({ ...prev, recurrenceStartDate: date }))}
+                          slotProps={{ textField: { fullWidth: true } }}
+                        />
+                      </LocalizationProvider>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                        <DatePicker
+                          label="Дата окончания регулярных тренировок"
+                          value={trainingFormData.recurrenceEndDate}
+                          onChange={(date) => setTrainingFormData(prev => ({ ...prev, recurrenceEndDate: date }))}
+                          slotProps={{ textField: { fullWidth: true } }}
+                        />
+                      </LocalizationProvider>
+                    </Grid>
+                    
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Добавьте дни недели с расписанием:
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {[
+                          { value: 0, label: 'Воскресенье' },
+                          { value: 1, label: 'Понедельник' },
+                          { value: 2, label: 'Вторник' },
+                          { value: 3, label: 'Среда' },
+                          { value: 4, label: 'Четверг' },
+                          { value: 5, label: 'Пятница' },
+                          { value: 6, label: 'Суббота' }
+                        ].map((day) => {
+                          const daySchedule = trainingFormData.daySchedules.find(ds => ds.dayOfWeek === day.value);
+                          const isSelected = !!daySchedule;
+                          
+                          return (
+                            <Paper key={day.value} sx={{ p: 2, border: isSelected ? '2px solid' : '1px solid', borderColor: isSelected ? 'primary.main' : 'divider' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                                <Checkbox
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      // Добавляем день с расписанием
+                                      const defaultStartTime = trainingFormData.startTime || new Date();
+                                      defaultStartTime.setHours(18, 0, 0, 0);
+                                      const defaultEndTime = trainingFormData.endTime || new Date();
+                                      defaultEndTime.setHours(19, 30, 0, 0);
+                                      
+                                      setTrainingFormData(prev => ({
+                                        ...prev,
+                                        daySchedules: [
+                                          ...prev.daySchedules,
+                                          {
+                                            dayOfWeek: day.value,
+                                            startTime: new Date(defaultStartTime),
+                                            endTime: new Date(defaultEndTime)
+                                          }
+                                        ],
+                                        daysOfWeek: [...prev.daysOfWeek, day.value]
+                                      }));
+                                    } else {
+                                      // Удаляем день
+                                      setTrainingFormData(prev => ({
+                                        ...prev,
+                                        daySchedules: prev.daySchedules.filter(ds => ds.dayOfWeek !== day.value),
+                                        daysOfWeek: prev.daysOfWeek.filter(d => d !== day.value)
+                                      }));
+                                    }
+                                  }}
+                                />
+                                <Typography sx={{ minWidth: 120 }}>{day.label}</Typography>
+                                {isSelected && daySchedule && (
+                                  <>
+                                    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                                      <TimePicker
+                                        label="Начало"
+                                        value={daySchedule.startTime}
+                                        onChange={(time) => {
+                                          setTrainingFormData(prev => ({
+                                            ...prev,
+                                            daySchedules: prev.daySchedules.map(ds =>
+                                              ds.dayOfWeek === day.value
+                                                ? { ...ds, startTime: time }
+                                                : ds
+                                            )
+                                          }));
+                                        }}
+                                        slotProps={{
+                                          textField: {
+                                            size: 'small',
+                                            sx: { width: 140 }
+                                          }
+                                        }}
+                                      />
+                                      <TimePicker
+                                        label="Окончание"
+                                        value={daySchedule.endTime}
+                                        onChange={(time) => {
+                                          setTrainingFormData(prev => ({
+                                            ...prev,
+                                            daySchedules: prev.daySchedules.map(ds =>
+                                              ds.dayOfWeek === day.value
+                                                ? { ...ds, endTime: time }
+                                                : ds
+                                            )
+                                          }));
+                                        }}
+                                        slotProps={{
+                                          textField: {
+                                            size: 'small',
+                                            sx: { width: 140 }
+                                          }
+                                        }}
+                                      />
+                                    </LocalizationProvider>
+                                  </>
+                                )}
+                              </Box>
+                            </Paper>
+                          );
+                        })}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setTrainingDialog(false);
+              setSelectedGroup(null);
+              setTrainingFormData({
+                title: '',
+                description: '',
+                date: new Date(),
+                startTime: null,
+                endTime: null,
+                groupId: '',
+                trainerId: '',
+                branchId: '',
+                hallId: '',
+                isRecurring: false,
+                recurrence: 'weekly',
+                daysOfWeek: [],
+                recurrenceStartDate: new Date(),
+                recurrenceEndDate: null,
+                recurrenceMode: 'days',
+                daySchedules: [],
+              });
+            }}
+          >
+            Отмена
+          </Button>
+          <Button 
+            onClick={handleCreateTraining}
+            variant="contained"
+          >
+            Создать тренировку
+          </Button>
         </DialogActions>
       </Dialog>
 

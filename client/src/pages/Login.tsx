@@ -75,7 +75,9 @@ const Login: React.FC = () => {
       await login(formData.email, formData.password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка входа. Попробуйте еще раз.');
+      // Показываем точное сообщение об ошибке с сервера
+      const errorMessage = err.response?.data?.error || err.message || 'Ошибка входа. Попробуйте еще раз.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

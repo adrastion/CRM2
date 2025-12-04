@@ -258,6 +258,149 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
   }
 };
 
+// Batch создание тренировок для быстрого создания множества тренировок
+export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id || req.tenantId;
+    
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+      return;
+    }
+
+    const { trainings } = req.body;
+
+    if (!Array.isArray(trainings) || trainings.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Trainings array is required and must not be empty'
+      });
+      return;
+    }
+
+    if (trainings.length > 50) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 50 trainings can be created in one batch'
+      });
+      return;
+    }
+
+    // Проверяем лимит подписки перед созданием
+    const { SubscriptionService } = await import('../services/subscriptionService');
+    const hasAccess = await SubscriptionService.checkLimit(tenantId, 'trainings');
+    if (!hasAccess) {
+      const subscription = await SubscriptionService.getSubscription(tenantId);
+      const limits = await SubscriptionService.getLimits(tenantId);
+      const limit = limits.trainings;
+      res.status(403).json({
+        success: false,
+        error: `Лимит тренировок превышен для тарифа ${subscription?.planType || 'unknown'}. Текущий лимит: ${limit === 'unlimited' ? 'безлимит' : limit}`
+      });
+      return;
+    }
+
+    const createdTrainings = [];
+    const failedTrainings = [];
+
+    // Создаем тренировки последовательно, но без задержек между отдельными запросами
+    // так как все выполняется в одном HTTP запросе
+    for (const trainingData of trainings) {
+      try {
+        // Extract only valid fields for Training model
+        const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = trainingData;
+        
+        // Validate required fields
+        if (!validData.title || !validData.groupId || !validData.trainerId || !validData.branchId || !validData.startTime || !validData.endTime) {
+          failedTrainings.push({
+            training: trainingData,
+            error: 'Missing required fields'
+          });
+          continue;
+        }
+
+        const startTime = new Date(validData.startTime);
+        const endTime = new Date(validData.endTime);
+
+        // Проверка на существование дубликата тренировки
+        const existingTraining = await prisma.training.findFirst({
+          where: {
+            tenantId,
+            title: validData.title,
+            groupId: validData.groupId,
+            trainerId: validData.trainerId,
+            branchId: validData.branchId,
+            startTime: startTime,
+            endTime: endTime,
+            isCancelled: false
+          },
+          include: {
+            branch: true,
+            group: true,
+            trainer: {
+              include: {
+                user: true
+              }
+            }
+          }
+        });
+
+        // Если дубликат существует, добавляем существующую тренировку
+        if (existingTraining) {
+          createdTrainings.push(existingTraining);
+          continue;
+        }
+
+        const training = await prisma.training.create({
+          data: {
+            ...validData,
+            tenantId,
+            startTime,
+            endTime
+          },
+          include: {
+            branch: true,
+            group: true,
+            trainer: {
+              include: {
+                user: true
+              }
+            }
+          }
+        });
+
+        createdTrainings.push(training);
+      } catch (error: any) {
+        failedTrainings.push({
+          training: trainingData,
+          error: error?.message || 'Failed to create training'
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        created: createdTrainings,
+        failed: failedTrainings,
+        createdCount: createdTrainings.length,
+        failedCount: failedTrainings.length
+      },
+      message: `Created ${createdTrainings.length} trainings, ${failedTrainings.length} failed`
+    });
+  } catch (error: any) {
+    console.error('Create trainings batch error:', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to create trainings batch',
+      details: error
+    });
+  }
+};
+
 export const updateTraining = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -372,6 +515,64 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
   }
 };
 
+// Batch удаление тренировок
+export const deleteTrainingsBatch = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id || req.tenantId;
+    
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+      return;
+    }
+
+    const { trainingIds } = req.body;
+
+    if (!Array.isArray(trainingIds) || trainingIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Training IDs array is required and must not be empty'
+      });
+      return;
+    }
+
+    if (trainingIds.length > 50) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 50 trainings can be deleted in one batch'
+      });
+      return;
+    }
+
+    // Мягкое удаление всех тренировок одним запросом
+    const result = await prisma.training.updateMany({
+      where: {
+        id: { in: trainingIds },
+        tenantId,
+        isCancelled: false
+      },
+      data: {
+        isCancelled: true
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} trainings successfully`,
+      deletedCount: result.count
+    });
+  } catch (error: any) {
+    console.error('Delete trainings batch error:', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to delete trainings batch',
+      details: error
+    });
+  }
+};
+
 export const deleteTraining = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -409,7 +610,7 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
   }
 };
 
-// Функция для удаления дубликатов тренировок
+// Функция для удаления дубликатов тренировок и тренировок без группы
 export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tenantId = req.tenant?.id;
@@ -428,13 +629,30 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
         tenantId,
         isCancelled: false
       },
+      include: {
+        group: true
+      },
       orderBy: { createdAt: 'asc' } // Сохраняем самую раннюю созданную
     });
 
-    // Группируем по ключевым полям для определения дубликатов
+    // 1. Проверяем тренировки без активной группы
+    const trainingsWithoutGroup: string[] = [];
+    for (const training of allTrainings) {
+      // Проверяем, существует ли группа и активна ли она
+      if (!training.group || !training.group.isActive) {
+        trainingsWithoutGroup.push(training.id);
+      }
+    }
+
+    // 2. Группируем по ключевым полям для определения дубликатов
     const trainingMap = new Map<string, string[]>();
     
     for (const training of allTrainings) {
+      // Пропускаем тренировки без группы
+      if (trainingsWithoutGroup.includes(training.id)) {
+        continue;
+      }
+      
       // Создаем уникальный ключ на основе параметров тренировки
       const key = `${training.title}|${training.groupId}|${training.trainerId}|${training.branchId}|${training.startTime.toISOString()}|${training.endTime.toISOString()}`;
       
@@ -444,7 +662,7 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
       trainingMap.get(key)!.push(training.id);
     }
 
-    // Находим и удаляем дубликаты (оставляем первый, удаляем остальные)
+    // 3. Находим и удаляем дубликаты (оставляем первый, удаляем остальные)
     const duplicateIds: string[] = [];
     
     for (const [key, ids] of trainingMap.entries()) {
@@ -454,23 +672,28 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
       }
     }
 
-    if (duplicateIds.length > 0) {
-      // Мягкое удаление дубликатов (помечаем как отмененные)
+    // 4. Объединяем все ID для удаления (тренировки без группы + дубликаты)
+    const allIdsToRemove = [...trainingsWithoutGroup, ...duplicateIds];
+
+    if (allIdsToRemove.length > 0) {
+      // Мягкое удаление (помечаем как отмененные)
       await prisma.training.updateMany({
         where: {
-          id: { in: duplicateIds }
+          id: { in: allIdsToRemove }
         },
         data: { isCancelled: true }
       });
 
-      console.log(`Removed ${duplicateIds.length} duplicate trainings for tenant ${tenantId}`);
+      console.log(`Removed ${trainingsWithoutGroup.length} trainings without active group and ${duplicateIds.length} duplicate trainings for tenant ${tenantId}`);
     }
 
     res.json({
       success: true,
-      message: `Удалено ${duplicateIds.length} дублирующихся тренировок`,
-      removedCount: duplicateIds.length,
-      removedIds: duplicateIds
+      message: `Удалено ${trainingsWithoutGroup.length} тренировок без группы и ${duplicateIds.length} дублирующихся тренировок`,
+      removedCount: allIdsToRemove.length,
+      removedIds: allIdsToRemove,
+      withoutGroupCount: trainingsWithoutGroup.length,
+      duplicateCount: duplicateIds.length
     });
   } catch (error) {
     console.error('Remove duplicate trainings error:', error);

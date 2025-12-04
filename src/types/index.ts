@@ -93,6 +93,12 @@ export interface CreateTrainerData {
 }
 
 // Group interfaces
+export interface GroupScheduleItem {
+  dayOfWeek: number; // 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
+  startTime: string; // Формат "HH:mm"
+  endTime: string; // Формат "HH:mm"
+}
+
 export interface CreateGroupData {
   name: string;
   description?: string;
@@ -100,6 +106,7 @@ export interface CreateGroupData {
   ageMin?: number;
   ageMax?: number;
   color?: string; // Цвет для отображения в расписании (hex формат)
+  schedule?: GroupScheduleItem[]; // График тренировок по дням недели
   branchId: string;
   trainerId: string;
 }

@@ -48,13 +48,17 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Rate limiting
+// Rate limiting - увеличенные лимиты для поддержки batch операций
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // limit each IP to 100 requests per windowMs
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '500'), // limit each IP to 500 requests per windowMs (увеличено для batch операций)
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Исключаем batch endpoints из строгого лимитирования
+  skip: (req) => {
+    return req.path.includes('/batch') || req.path.includes('/remove-duplicates');
+  }
 });
 app.use(limiter);
 

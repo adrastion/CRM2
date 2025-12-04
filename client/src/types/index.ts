@@ -149,6 +149,12 @@ export interface TrainerBranch {
 }
 
 // Group Types
+export interface GroupScheduleItem {
+  dayOfWeek: number; // 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
+  startTime: string; // Формат "HH:mm"
+  endTime: string; // Формат "HH:mm"
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -158,6 +164,7 @@ export interface Group {
   ageMax?: number;
   color?: string; // Цвет для отображения в расписании (hex формат)
   trainingPrice?: number; // Стоимость одной тренировки в группе
+  schedule?: GroupScheduleItem[]; // График тренировок по дням недели
   isActive: boolean;
   branchId: string;
   trainerId: string;

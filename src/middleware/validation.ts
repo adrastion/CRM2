@@ -200,6 +200,13 @@ export const groupSchemas = {
     ageMin: Joi.number().integer().min(0).max(100).optional(),
     ageMax: Joi.number().integer().min(0).max(100).optional(),
     color: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
+    schedule: Joi.array().items(
+      Joi.object({
+        dayOfWeek: Joi.number().integer().min(0).max(6).required(),
+        startTime: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required(),
+        endTime: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required()
+      })
+    ).optional(),
     branchId: commonSchemas.id,
     trainerId: commonSchemas.id
   }),
@@ -210,6 +217,13 @@ export const groupSchemas = {
     ageMin: Joi.number().integer().min(0).max(100).optional(),
     ageMax: Joi.number().integer().min(0).max(100).optional(),
     color: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
+    schedule: Joi.array().items(
+      Joi.object({
+        dayOfWeek: Joi.number().integer().min(0).max(6).required(),
+        startTime: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required(),
+        endTime: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required()
+      })
+    ).optional(),
     isActive: Joi.boolean().optional()
   })
 };

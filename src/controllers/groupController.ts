@@ -61,9 +61,21 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
       prisma.group.count({ where })
     ]);
 
+    // Парсим schedule для каждой группы
+    const groupsWithParsedSchedule = groups.map(group => {
+      if (group.schedule) {
+        try {
+          return { ...group, schedule: JSON.parse(group.schedule) };
+        } catch (e) {
+          return group;
+        }
+      }
+      return group;
+    });
+
     res.json({
       success: true,
-      data: groups,
+      data: groupsWithParsedSchedule,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -114,6 +126,15 @@ export const getGroupById = async (req: AuthenticatedRequest, res: Response) => 
       return;
     }
 
+    // Парсим schedule обратно в массив для ответа
+    if (group.schedule) {
+      try {
+        (group as any).schedule = JSON.parse(group.schedule);
+      } catch (e) {
+        // Если не удалось распарсить, оставляем как есть
+      }
+    }
+
     res.json({
       success: true,
       data: group,
@@ -130,10 +151,29 @@ export const getGroupById = async (req: AuthenticatedRequest, res: Response) => 
 
 export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const groupData = {
+    const groupData: any = {
       ...req.body,
       tenantId: req.tenant?.id
     };
+
+    // Преобразуем schedule в JSON строку, если это массив
+    if (groupData.schedule && Array.isArray(groupData.schedule)) {
+      groupData.schedule = JSON.stringify(groupData.schedule);
+    } else if (groupData.schedule === undefined || groupData.schedule === null) {
+      groupData.schedule = null;
+    }
+
+    // Преобразуем trainingPrice: пустые строки в null/undefined
+    if (groupData.trainingPrice === '' || groupData.trainingPrice === null || groupData.trainingPrice === undefined) {
+      delete groupData.trainingPrice;
+    } else if (typeof groupData.trainingPrice === 'string') {
+      const price = parseFloat(groupData.trainingPrice);
+      if (isNaN(price)) {
+        delete groupData.trainingPrice;
+      } else {
+        groupData.trainingPrice = price;
+      }
+    }
 
     const group = await prisma.group.create({
       data: groupData,
@@ -146,6 +186,15 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
         }
       }
     });
+
+    // Парсим schedule обратно в массив для ответа
+    if (group.schedule) {
+      try {
+        (group as any).schedule = JSON.parse(group.schedule);
+      } catch (e) {
+        // Если не удалось распарсить, оставляем как есть
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -180,9 +229,34 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
+    const updateData: any = { ...req.body };
+    
+    // Преобразуем schedule в JSON строку, если это массив
+    if (updateData.schedule !== undefined) {
+      if (Array.isArray(updateData.schedule)) {
+        updateData.schedule = JSON.stringify(updateData.schedule);
+      } else if (updateData.schedule === null) {
+        updateData.schedule = null;
+      }
+    }
+
+    // Преобразуем trainingPrice: пустые строки в null/undefined
+    if (updateData.trainingPrice !== undefined) {
+      if (updateData.trainingPrice === '' || updateData.trainingPrice === null) {
+        delete updateData.trainingPrice;
+      } else if (typeof updateData.trainingPrice === 'string') {
+        const price = parseFloat(updateData.trainingPrice);
+        if (isNaN(price)) {
+          delete updateData.trainingPrice;
+        } else {
+          updateData.trainingPrice = price;
+        }
+      }
+    }
+
     const updatedGroup = await prisma.group.update({
       where: { id },
-      data: req.body,
+      data: updateData,
       include: {
         branch: true,
         trainer: {
@@ -192,6 +266,15 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
         }
       }
     });
+
+    // Парсим schedule обратно в массив для ответа
+    if (updatedGroup.schedule) {
+      try {
+        (updatedGroup as any).schedule = JSON.parse(updatedGroup.schedule);
+      } catch (e) {
+        // Если не удалось распарсить, оставляем как есть
+      }
+    }
 
     res.json({
       success: true,
@@ -226,6 +309,19 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
+    // Удаляем все тренировки этой группы (мягкое удаление - помечаем как отмененные)
+    await prisma.training.updateMany({
+      where: {
+        groupId: id,
+        tenantId: req.tenant?.id,
+        isCancelled: false
+      },
+      data: {
+        isCancelled: true
+      }
+    });
+
+    // Удаляем группу (мягкое удаление)
     await prisma.group.update({
       where: { id },
       data: { isActive: false }

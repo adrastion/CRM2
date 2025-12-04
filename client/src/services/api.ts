@@ -424,6 +424,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async createTrainingsBatch(trainings: any[]): Promise<{ created: any[]; failed: any[]; createdCount: number; failedCount: number }> {
+    const response = await this.api.post<ApiResponse>('/trainings/batch', { trainings });
+    return response.data.data;
+  }
+
   async updateTraining(id: string, data: any): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/trainings/${id}`, data);
     return response.data.data;
@@ -431,6 +436,11 @@ class ApiService {
 
   async deleteTraining(id: string): Promise<void> {
     await this.api.delete(`/trainings/${id}`);
+  }
+
+  async deleteTrainingsBatch(trainingIds: string[]): Promise<{ deletedCount: number }> {
+    const response = await this.api.delete<ApiResponse>('/trainings/batch', { data: { trainingIds } });
+    return response.data.data;
   }
 
   async removeDuplicateTrainings(): Promise<{ removedCount: number; removedIds: string[] }> {

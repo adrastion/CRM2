@@ -324,6 +324,7 @@ model Group {
   ageMax        Int?
   color         String?  // Цвет для отображения в расписании (hex формат)
   trainingPrice Decimal? // Стоимость одной тренировки в группе
+  schedule      String?  // JSON: график тренировок по дням недели [{"dayOfWeek": 1, "startTime": "18:00", "endTime": "19:30"}]
   isActive      Boolean  @default(true)
   tenantId      String
   branchId      String

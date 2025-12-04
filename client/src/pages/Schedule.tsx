@@ -34,6 +34,7 @@ import {
   Link,
   ToggleButton,
   ToggleButtonGroup,
+  CircularProgress,
 } from '@mui/material';
 import { 
   Add, 
@@ -127,6 +128,7 @@ const Schedule: React.FC = () => {
   const [filterTrainerId, setFilterTrainerId] = useState<string>('');
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60); // Длительность тренировки в минутах по умолчанию
   const [isSubmitting, setIsSubmitting] = useState(false); // Защита от двойного нажатия при создании тренировки
+  const [isUpdating, setIsUpdating] = useState(false); // Индикатор обновления тренировки
   const [formData, setFormData] = useState<TrainingFormData>({
     title: '',
     description: '',
@@ -384,8 +386,56 @@ const Schedule: React.FC = () => {
         }
         
         // Create all recurring trainings
-        for (const training of trainings) {
-          await apiService.createTraining(training);
+        // Используем batch создание для быстрого создания множества тренировок
+        if (trainings.length > 1) {
+          try {
+            const batchResult = await apiService.createTrainingsBatch(trainings);
+            if (batchResult.failedCount > 0) {
+              const errorMessages = batchResult.failed.map((ft: any) => ft.error).join('; ');
+              alert(`Создано тренировок: ${batchResult.createdCount}. Ошибок: ${batchResult.failedCount}. ${errorMessages}`);
+            } else {
+              alert(`Успешно создано ${batchResult.createdCount} тренировок`);
+            }
+          } catch (batchErr: any) {
+            console.error('Error creating trainings batch:', batchErr);
+            // Если batch не удался, пробуем создавать по одной с задержками
+            const createdTrainings = [];
+            const failedTrainings = [];
+            for (let i = 0; i < trainings.length; i++) {
+              const training = trainings[i];
+              try {
+                await apiService.createTraining(training);
+                createdTrainings.push(training);
+                // Увеличиваем задержку между запросами (500ms), чтобы избежать 429 ошибки
+                if (i < trainings.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              } catch (err: any) {
+                console.error('Error creating training:', err);
+                failedTrainings.push({
+                  training,
+                  error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
+                });
+              }
+            }
+            
+            if (failedTrainings.length > 0) {
+              const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
+              alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
+            } else {
+              alert(`Успешно создано ${createdTrainings.length} тренировок`);
+            }
+          }
+        } else if (trainings.length === 1) {
+          // Для одной тренировки используем обычный метод
+          try {
+            await apiService.createTraining(trainings[0]);
+            alert('Тренировка успешно создана');
+          } catch (err: any) {
+            const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
+            alert(`Ошибка создания тренировки: ${errorMessage}`);
+            throw err;
+          }
         }
       } else {
         // Create single training
@@ -542,9 +592,10 @@ const Schedule: React.FC = () => {
   };
 
   const handleUpdateTraining = async () => {
-    if (!editingTraining) return;
+    if (!editingTraining || isUpdating) return;
 
     try {
+      setIsUpdating(true);
       // Для нерегулярных тренировок проверяем дату и время
       if (!formData.isRecurring) {
       if (!formData.startTime || !formData.endTime || !formData.date) {
@@ -593,7 +644,7 @@ const Schedule: React.FC = () => {
       if (formData.isRecurring) {
         // Если редактируем регулярную тренировку - удаляем всю серию и создаем заново
         if (editingTraining.isRecurring) {
-          // Находим и удаляем все тренировки из серии
+          // Находим все тренировки из серии
           const allTrainings = await apiService.getTrainings({ limit: 1000, page: 1 });
           const seriesTrainings = allTrainings.data.filter((t: Training) => 
             t.title === editingTraining.title &&
@@ -604,9 +655,23 @@ const Schedule: React.FC = () => {
             !t.isCancelled
           );
           
-          // Удаляем все тренировки из серии
-          for (const t of seriesTrainings) {
-            await apiService.deleteTraining(t.id);
+          // Используем batch удаление для быстрого удаления всех тренировок серии
+          if (seriesTrainings.length > 0) {
+            const trainingIds = seriesTrainings.map(t => t.id);
+            try {
+              await apiService.deleteTrainingsBatch(trainingIds);
+            } catch (err: any) {
+              console.error('Error deleting trainings batch:', err);
+              // Если batch не удался, пробуем удалять по одной
+              for (const t of seriesTrainings) {
+                try {
+                  await apiService.deleteTraining(t.id);
+                } catch (deleteErr: any) {
+                  console.error('Error deleting training:', deleteErr);
+                  // Продолжаем удаление остальных
+                }
+              }
+            }
           }
         } else {
           // Если нерегулярная тренировка становится регулярной - удаляем старую
@@ -679,9 +744,59 @@ const Schedule: React.FC = () => {
           }
         }
 
-        // Create all recurring trainings
-        for (const training of trainings) {
-          await apiService.createTraining(training);
+        // Create all recurring trainings with error handling and rate limiting
+        const createdTrainings = [];
+        const failedTrainings = [];
+        for (let i = 0; i < trainings.length; i++) {
+          const training = trainings[i];
+          try {
+            await apiService.createTraining(training);
+            createdTrainings.push(training);
+            // Увеличиваем задержку между запросами (300ms), чтобы избежать 429 ошибки
+            if (i < trainings.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+          } catch (err: any) {
+            console.error('Error creating training:', err);
+            // Если ошибка 429, ждем дольше и повторяем
+            if (err.response?.status === 429) {
+              console.warn('Rate limit hit, waiting before retry...');
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              try {
+                await apiService.createTraining(training);
+                createdTrainings.push(training);
+                // После успешного повтора добавляем дополнительную задержку
+                if (i < trainings.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              } catch (retryErr: any) {
+                console.error('Error creating training after retry:', retryErr);
+                failedTrainings.push({
+                  training,
+                  error: retryErr.response?.data?.error || retryErr.message || 'Неизвестная ошибка (после повтора)'
+                });
+                // Если повторная попытка тоже не удалась, ждем перед следующим запросом
+                if (i < trainings.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              }
+            } else {
+              failedTrainings.push({
+                training,
+                error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
+              });
+            }
+          }
+        }
+        
+        // Если были ошибки при создании, показываем предупреждение
+        if (failedTrainings.length > 0) {
+          const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
+          alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
+          // Если не удалось создать ни одной тренировки, не обновляем список
+          if (createdTrainings.length === 0) {
+            throw new Error('Не удалось создать ни одной тренировки');
+          }
         }
       } else {
         // Обновляем одну нерегулярную тренировку
@@ -733,12 +848,35 @@ const Schedule: React.FC = () => {
       await apiService.updateTraining(editingTraining.id, trainingData);
       }
 
-      await fetchData();
+      // Обновляем данные только если все прошло успешно
+      try {
+        await fetchData();
+      } catch (fetchErr: any) {
+        console.error('Error fetching data after training update:', fetchErr);
+        // Не блокируем процесс, но логируем ошибку
+      }
+      
       setEditDialog(false);
       resetForm();
-    } catch (error) {
+      setIsUpdating(false);
+    } catch (error: any) {
       console.error('Error updating training:', error);
-      alert('Не удалось обновить тренировку');
+      const errorMessage = error.response?.data?.error || error.message || 'Не удалось обновить тренировку';
+      alert(`Ошибка обновления тренировки: ${errorMessage}`);
+      
+      // Важно: перезагружаем данные даже при ошибке, чтобы восстановить список тренировок
+      // Это необходимо, так как при обновлении регулярной тренировки старые тренировки могли быть удалены
+      try {
+        await fetchData();
+      } catch (fetchErr: any) {
+        console.error('Error fetching data after failed training update:', fetchErr);
+        // Показываем дополнительное предупреждение, если не удалось загрузить данные
+        alert('Внимание: произошла ошибка при обновлении тренировки. Пожалуйста, обновите страницу.');
+      }
+      
+      setIsUpdating(false);
+      // Не закрываем диалог при ошибке, чтобы пользователь мог исправить данные
+      // setEditDialog(false); - убрано, чтобы диалог оставался открытым
     }
   };
 
@@ -2174,9 +2312,28 @@ const Schedule: React.FC = () => {
         </Dialog>
 
         {/* Edit Training Dialog */}
-        <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Редактировать тренировку</DialogTitle>
+        <Dialog open={editDialog} onClose={() => !isUpdating && setEditDialog(false)} maxWidth="md" fullWidth>
+          <DialogTitle>
+            Редактировать тренировку
+            {isUpdating && (
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', ml: 2 }}>
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Обновление...
+                </Typography>
+              </Box>
+            )}
+          </DialogTitle>
           <DialogContent>
+            {isUpdating && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 3 }}>
+                <CircularProgress />
+                <Typography variant="body2" sx={{ ml: 2 }}>
+                  Идет обновление тренировки. Пожалуйста, подождите...
+                </Typography>
+              </Box>
+            )}
+            <Box sx={{ opacity: isUpdating ? 0.5 : 1, pointerEvents: isUpdating ? 'none' : 'auto' }}>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <TextField
@@ -2626,14 +2783,27 @@ const Schedule: React.FC = () => {
                 </Grid>
               )}
             </Grid>
+            </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              setEditDialog(false);
-              resetForm();
-            }}>Отмена</Button>
-            <Button onClick={handleUpdateTraining} variant="contained">
-              Сохранить изменения
+            <Button 
+              onClick={() => {
+                if (!isUpdating) {
+                  setEditDialog(false);
+                  resetForm();
+                }
+              }}
+              disabled={isUpdating}
+            >
+              Отмена
+            </Button>
+            <Button 
+              onClick={handleUpdateTraining} 
+              variant="contained"
+              disabled={isUpdating}
+              startIcon={isUpdating ? <CircularProgress size={16} /> : null}
+            >
+              {isUpdating ? 'Обновление...' : 'Сохранить изменения'}
             </Button>
           </DialogActions>
         </Dialog>
