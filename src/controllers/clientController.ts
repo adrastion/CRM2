@@ -316,6 +316,70 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 /**
  * Delete client (soft delete)
  */
+/**
+ * Approve client account (for personal cabinet access)
+ * Only OWNER, ADMIN, or TRAINER can approve
+ */
+export const approveClientAccount = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { id } = req.params;
+  const userId = req.user?.id;
+
+  // Check if user has permission
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN' && req.user?.role !== 'TRAINER') {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец, администратор или тренер могут подтверждать аккаунты клиентов'
+    });
+    return;
+  }
+
+  // Check if client exists and belongs to tenant
+  const existingClient = await prisma.client.findFirst({
+    where: { id, tenantId }
+  });
+
+  if (!existingClient) {
+    res.status(404).json({
+      success: false,
+      error: 'Client not found'
+    });
+    return;
+  }
+
+  if (!existingClient.password) {
+    res.status(400).json({
+      success: false,
+      error: 'Client has not registered yet'
+    });
+    return;
+  }
+
+  if (existingClient.isAccountApproved) {
+    res.status(400).json({
+      success: false,
+      error: 'Client account is already approved'
+    });
+    return;
+  }
+
+  // Approve client account
+  const updatedClient = await prisma.client.update({
+    where: { id },
+    data: {
+      isAccountApproved: true,
+      accountApprovedAt: new Date(),
+      accountApprovedBy: userId || null
+    }
+  });
+
+  res.json({
+    success: true,
+    data: updatedClient,
+    message: 'Client account approved successfully'
+  });
+});
+
 export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
   const { id } = req.params;

@@ -59,6 +59,9 @@ model TenantSettings {
   hasCompletedOnboarding  Boolean  @default(false)
   onboardingDeclined      Boolean  @default(false)
   membershipFeeResetDate  String?
+  // Настройки личного кабинета клиента
+  clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
+  clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
   tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
@@ -156,6 +159,12 @@ model Client {
   passportIssuedBy         String?
   passportNumber           String?
   passportSeries           String?
+  // Поля для личного кабинета клиента
+  password                 String?                  // Пароль для авторизации
+  isAccountApproved        Boolean                  @default(false) // Подтвержден ли аккаунт администратором
+  accountApprovedAt        DateTime?                // Дата подтверждения
+  accountApprovedBy        String?                  // Кто подтвердил (userId)
+  lastLogin                DateTime?                // Последний вход
   achievements             Achievement[]
   attendances              Attendance[]
   clientMemberships        ClientMembership[]

@@ -45,7 +45,7 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
  */
 export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
-  const { defaultTrainingDuration, membershipFeeResetDate } = req.body;
+  const { defaultTrainingDuration, membershipFeeResetDate, clientCanViewAllTrainers, clientCanViewAllBranches } = req.body;
 
   if (!tenantId) {
     res.status(400).json({
@@ -83,12 +83,16 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     where: { tenantId },
     update: {
       defaultTrainingDuration: defaultTrainingDuration !== undefined ? defaultTrainingDuration : undefined,
-      membershipFeeResetDate: membershipFeeResetDate !== undefined ? membershipFeeResetDate : undefined
+      membershipFeeResetDate: membershipFeeResetDate !== undefined ? membershipFeeResetDate : undefined,
+      clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : undefined,
+      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : undefined
     },
     create: {
       tenantId,
       defaultTrainingDuration: defaultTrainingDuration || 60,
-      membershipFeeResetDate: membershipFeeResetDate || null
+      membershipFeeResetDate: membershipFeeResetDate || null,
+      clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : false,
+      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false
     }
   });
 

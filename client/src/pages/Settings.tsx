@@ -68,6 +68,8 @@ const Settings: React.FC = () => {
   // Настройки расписания
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60);
   const [membershipFeeResetDate, setMembershipFeeResetDate] = useState<string>('');
+  const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
+  const [clientCanViewAllBranches, setClientCanViewAllBranches] = useState<boolean>(false);
   
   // Смена email
   const [newEmail, setNewEmail] = useState('');
@@ -128,6 +130,8 @@ const Settings: React.FC = () => {
         if (response.data) {
           setDefaultTrainingDuration(response.data.defaultTrainingDuration || 60);
           setMembershipFeeResetDate(response.data.membershipFeeResetDate || '12-01');
+          setClientCanViewAllTrainers(response.data.clientCanViewAllTrainers || false);
+          setClientCanViewAllBranches(response.data.clientCanViewAllBranches || false);
         }
         
         // Загрузить настройки видимых вкладок
@@ -181,7 +185,9 @@ const Settings: React.FC = () => {
 
       await apiService.updateSettings({
         defaultTrainingDuration,
-        membershipFeeResetDate: membershipFeeResetDate || '12-01'
+        membershipFeeResetDate: membershipFeeResetDate || '12-01',
+        clientCanViewAllTrainers,
+        clientCanViewAllBranches
       });
 
       setSuccess(true);
@@ -378,6 +384,67 @@ const Settings: React.FC = () => {
                       helperText="Формат: ММ-ДД (например, 12-01 для 1 декабря). По умолчанию: 1 декабря"
                       sx={{ mb: 2 }}
                     />
+                  </Box>
+                )}
+                {/* Настройки личного кабинета клиента */}
+                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                  <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                      Настройки личного кабинета клиента
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Управляйте тем, какую информацию видят клиенты в своем личном кабинете. Эти настройки влияют на отображение данных в расписании и профиле клиента.
+                    </Typography>
+                    
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'rgba(25, 118, 210, 0.02)' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={clientCanViewAllTrainers}
+                            onChange={(e) => setClientCanViewAllTrainers(e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label={
+                          <Box>
+                            <Typography variant="body1" fontWeight="medium">
+                              Клиенты могут видеть всех тренеров
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {clientCanViewAllTrainers 
+                                ? 'Клиенты видят всех тренеров школы в своем расписании и профиле'
+                                : 'Клиенты видят только своего тренера (тренера из их группы)'}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ display: 'flex', alignItems: 'flex-start', width: '100%', m: 0 }}
+                      />
+                    </Paper>
+
+                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: 'rgba(25, 118, 210, 0.02)' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={clientCanViewAllBranches}
+                            onChange={(e) => setClientCanViewAllBranches(e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label={
+                          <Box>
+                            <Typography variant="body1" fontWeight="medium">
+                              Клиенты могут видеть все филиалы
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {clientCanViewAllBranches 
+                                ? 'Клиенты видят все филиалы школы в своем расписании и профиле'
+                                : 'Клиенты видят только свой филиал (филиал из их группы)'}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ display: 'flex', alignItems: 'flex-start', width: '100%', m: 0 }}
+                      />
+                    </Paper>
                   </Box>
                 )}
                 <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>

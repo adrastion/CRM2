@@ -10,6 +10,7 @@ import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import authRoutes from './routes/auth';
+import clientAuthRoutes from './routes/clientAuth';
 import tenantRoutes from './routes/tenant';
 import branchRoutes from './routes/branch';
 import hallRoutes from './routes/hall';
@@ -99,6 +100,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/client-auth', clientAuthRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/halls', hallRoutes);

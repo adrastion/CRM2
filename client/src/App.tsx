@@ -39,6 +39,10 @@ const PromoCodeAdminLogin = lazy(() => import('./pages/PromoCodeAdminLogin'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
+const ClientRegister = lazy(() => import('./pages/ClientRegister'));
+const ClientLogin = lazy(() => import('./pages/ClientLogin'));
+const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
+const UserTypeSelection = lazy(() => import('./pages/UserTypeSelection'));
 
 // Create Material-UI theme with dark mode support
 const getTheme = (darkMode: boolean) => createTheme({
@@ -111,7 +115,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 // Public Route Component (redirect to dashboard if already authenticated)
@@ -321,6 +325,11 @@ const AppContent: React.FC = () => {
       )}
       <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* User Type Selection - Entry point for unauthenticated users */}
+        <Route
+          path="/auth"
+          element={<UserTypeSelection />}
+        />
         {/* Public Routes */}
         <Route
           path="/login"
@@ -337,6 +346,18 @@ const AppContent: React.FC = () => {
               <Register />
             </PublicRoute>
           }
+        />
+        <Route
+          path="/client/register"
+          element={<ClientRegister />}
+        />
+        <Route
+          path="/client/login"
+          element={<ClientLogin />}
+        />
+        <Route
+          path="/client/dashboard"
+          element={<ClientDashboard />}
         />
           {/* Public routes - accessible for both authenticated and non-authenticated users */}
           <Route
@@ -571,10 +592,10 @@ const AppContent: React.FC = () => {
         />
 
         {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/auth" replace />} />
         
         {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>
       </Suspense>
     </Router>

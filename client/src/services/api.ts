@@ -20,6 +20,7 @@ class ApiService {
         const superAdminToken = localStorage.getItem('superAdminToken');
         const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
         const marketerToken = localStorage.getItem('marketerToken');
+        const clientToken = localStorage.getItem('clientToken');
         const regularToken = localStorage.getItem('token');
         
         if (superAdminToken) {
@@ -28,6 +29,8 @@ class ApiService {
           config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
         } else if (marketerToken) {
           config.headers.Authorization = `Bearer ${marketerToken}`;
+        } else if (clientToken) {
+          config.headers.Authorization = `Bearer ${clientToken}`;
         } else if (regularToken) {
           config.headers.Authorization = `Bearer ${regularToken}`;
         }
@@ -57,7 +60,9 @@ class ApiService {
           const isLoginEndpoint = url.includes('/auth/login') || 
                                  url.includes('/auth/marketer/login') ||
                                  url.includes('/auth/promo-code-admin/login') ||
-                                 url.includes('/auth/super-admin/login');
+                                 url.includes('/auth/super-admin/login') ||
+                                 url.includes('/client-auth/login') ||
+                                 url.includes('/client-auth/register');
           
           // Если это endpoint авторизации - не перенаправляем, просто пробрасываем ошибку
           if (isLoginEndpoint) {
@@ -92,6 +97,11 @@ class ApiService {
             localStorage.removeItem('promoCodeAdmin');
             localStorage.removeItem('promoCodeAdminTenant');
             window.location.href = '/promo-code-admin/login';
+          } else if (url.includes('/client-auth/')) {
+            localStorage.removeItem('clientToken');
+            localStorage.removeItem('client');
+            localStorage.removeItem('clientTenant');
+            window.location.href = '/client/login';
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -982,6 +992,49 @@ class ApiService {
 
   async updateTenantPlan(tenantId: string, planType: string): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, { planType });
+    return response.data.data;
+  }
+
+  // Client auth endpoints
+  async findClientsForRegistration(phone?: string, email?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/find', { phone, email });
+    return response.data.data;
+  }
+
+  async registerClient(clientId: string, tenantId: string, password: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/register', {
+      clientId,
+      tenantId,
+      password
+    });
+    return response.data;
+  }
+
+  async loginClient(phone: string | undefined, email: string | undefined, password: string, tenantId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/login', {
+      phone,
+      email,
+      password,
+      tenantId
+    });
+    return response.data.data;
+  }
+
+  async getClientProfile(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/client-auth/profile');
+    return response.data.data;
+  }
+
+  async approveClientAccount(clientId: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/clients/${clientId}/approve-account`);
+    return response.data.data;
+  }
+
+  async getClientTrainings(startDate?: string, endDate?: string): Promise<any> {
+    const params: any = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    const response = await this.api.get<ApiResponse>('/client-auth/trainings', { params });
     return response.data.data;
   }
 }

@@ -15,7 +15,8 @@ import {
   importClients,
   downloadClientTemplate,
   upload,
-  updateMembershipFeeStatus
+  updateMembershipFeeStatus,
+  approveClientAccount
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
@@ -46,5 +47,8 @@ router.get('/:id/stats', getClientStats);
 
 // Membership fee status (only OWNER or ADMIN)
 router.put('/:id/membership-fee', requireOwnerOrAdmin, updateMembershipFeeStatus);
+
+// Approve client account (OWNER, ADMIN, or TRAINER)
+router.put('/:id/approve-account', requireOwnerAdminOrTrainer, approveClientAccount);
 
 export default router;

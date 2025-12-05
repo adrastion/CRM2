@@ -1383,6 +1383,9 @@ const Clients: React.FC = () => {
                   {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                     <TableCell>Членский взнос</TableCell>
                   )}
+                  {(user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER') && (
+                    <TableCell>Аккаунт</TableCell>
+                  )}
                   <TableCell>Статус</TableCell>
                   <TableCell>
                     <TableSortLabel
@@ -1666,6 +1669,48 @@ const Clients: React.FC = () => {
                             {client.membershipFeePaid ? <Close /> : <Payment />}
                           </IconButton>
                         </Box>
+                      </TableCell>
+                    )}
+                    {(user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER') && (
+                      <TableCell>
+                        {(client as any).password ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip
+                              label={(client as any).isAccountApproved ? 'Подтвержден' : 'Ожидает подтверждения'}
+                              color={(client as any).isAccountApproved ? 'success' : 'warning'}
+                              size="small"
+                            />
+                            {!(client as any).isAccountApproved && (
+                              <IconButton
+                                size="small"
+                                color="success"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const updated = await apiService.approveClientAccount(client.id);
+                                    setClients(clients.map(c => c.id === updated.id ? updated : c));
+                                    if (editingClient && editingClient.id === updated.id) {
+                                      setEditingClient(updated);
+                                    }
+                                    setSnackbarMessage('Аккаунт клиента подтвержден');
+                                    setSnackbarOpen(true);
+                                  } catch (err: any) {
+                                    setError(err?.response?.data?.error || 'Не удалось подтвердить аккаунт');
+                                    setSnackbarMessage(err?.response?.data?.error || 'Не удалось подтвердить аккаунт');
+                                    setSnackbarOpen(true);
+                                  }
+                                }}
+                                title="Подтвердить аккаунт"
+                              >
+                                <Check />
+                              </IconButton>
+                            )}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            Не зарегистрирован
+                          </Typography>
+                        )}
                       </TableCell>
                     )}
                     <TableCell>
