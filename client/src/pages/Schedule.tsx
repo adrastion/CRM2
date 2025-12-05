@@ -20,6 +20,7 @@ import {
   Chip,
   List,
   ListItem,
+  ListItemText,
   IconButton,
   Table,
   TableBody,
@@ -36,6 +37,7 @@ import {
   ToggleButtonGroup,
   CircularProgress,
 } from '@mui/material';
+import { Autocomplete } from '@mui/material';
 import { 
   Add, 
   CalendarToday,
@@ -81,7 +83,9 @@ interface TrainingFormData {
   date: Date | null;
   startTime: Date | null;
   endTime: Date | null;
+  trainingType: 'group' | 'individual'; // Тип тренировки: групповая или индивидуальная
   groupId: string;
+  selectedClientIds: string[]; // Выбранные клиенты для индивидуальной тренировки
   trainerId: string;
   branchId: string;
   hallId: string;
@@ -103,12 +107,17 @@ const Schedule: React.FC = () => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
+  const [clients, setClients] = useState<Client[]>([]); // Все клиенты для выбора в индивидуальной тренировке
+  const [clientSearchQuery, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
   const [loading, setLoading] = useState(true);
+  const [trainingTypeDialog, setTrainingTypeDialog] = useState(false); // Диалог выбора типа тренировки
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [attendanceDialog, setAttendanceDialog] = useState(false);
   const [competitionDialog, setCompetitionDialog] = useState(false);
   const [createClientDialog, setCreateClientDialog] = useState(false);
+  const [addClientDialog, setAddClientDialog] = useState(false); // Диалог добавления существующего клиента
+  const [selectedClientsToAdd, setSelectedClientsToAdd] = useState<Client[]>([]); // Выбранные клиенты для добавления
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
   const [editingTraining, setEditingTraining] = useState<Training | null>(null);
   const [selectedTraining, setSelectedTraining] = useState<Training | null>(null);
@@ -135,7 +144,9 @@ const Schedule: React.FC = () => {
     date: new Date(),
     startTime: null,
     endTime: null,
+    trainingType: 'group', // По умолчанию групповая тренировка
     groupId: '',
+    selectedClientIds: [], // Выбранные клиенты для индивидуальной тренировки
     trainerId: '',
     branchId: '',
     hallId: '',
@@ -152,17 +163,32 @@ const Schedule: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [trainingsRes, groupsRes, trainersRes, branchesRes] = await Promise.all([
+      const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes] = await Promise.all([
         apiService.getTrainings({ limit: 1000, page: 1 }), // Загружаем до 1000 тренировок
         apiService.getGroups({ limit: 1000, page: 1 }), // Загружаем все группы
         apiService.getTrainers({ limit: 1000, page: 1 }),
-        apiService.getBranches({ limit: 1000, page: 1 })
+        apiService.getBranches({ limit: 1000, page: 1 }),
+        apiService.getClients({ limit: 1000, page: 1 }) // Загружаем всех клиентов
       ]);
+      
+      // Логируем для отладки
+      const individualTrainings = trainingsRes.data.filter((t: Training) => !t.groupId);
+      console.log('Total trainings loaded:', trainingsRes.data.length);
+      console.log('Individual trainings:', individualTrainings.length);
+      if (individualTrainings.length > 0) {
+        console.log('Individual training examples:', individualTrainings.slice(0, 3).map((t: Training) => ({
+          id: t.id,
+          title: t.title,
+          startTime: t.startTime,
+          groupId: t.groupId
+        })));
+      }
       
       setTrainings(trainingsRes.data);
       setGroups(groupsRes.data);
       setTrainers(trainersRes.data);
       setBranches(branchesRes.data);
+      setClients(clientsRes.data || []); // Сохраняем клиентов
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -192,14 +218,15 @@ const Schedule: React.FC = () => {
         
         if (!isMounted || abortController.signal.aborted) return;
         
-        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes] = await Promise.all([
+        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes] = await Promise.all([
           apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 тренировок
           apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
           apiService.getTrainers({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getBranches({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getHalls({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [], pagination: {} })),
-          apiService.getSettings().catch(() => null) // Загружаем настройки, игнорируем ошибки если нет настроек
+          apiService.getSettings().catch(() => null), // Загружаем настройки, игнорируем ошибки если нет настроек
+          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })) // Загружаем клиентов для индивидуальных тренировок
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
@@ -209,6 +236,7 @@ const Schedule: React.FC = () => {
         setTrainers(trainersRes.data);
         setBranches(branchesRes.data);
         setHalls(hallsRes.data || []);
+        setClients(clientsRes?.data || []);
         
         // Устанавливаем длительность тренировки по умолчанию из настроек
         if (settingsRes?.data?.defaultTrainingDuration) {
@@ -248,9 +276,18 @@ const Schedule: React.FC = () => {
         alert('Пожалуйста, укажите название тренировки');
         return;
       }
-      if (!formData.groupId) {
-        alert('Пожалуйста, выберите группу');
-        return;
+      // Для групповой тренировки группа обязательна, для индивидуальной - клиенты
+      if (formData.trainingType === 'group') {
+        if (!formData.groupId) {
+          alert('Пожалуйста, выберите группу');
+          return;
+        }
+      } else {
+        // Индивидуальная тренировка
+        if (!formData.selectedClientIds || formData.selectedClientIds.length === 0) {
+          alert('Пожалуйста, выберите хотя бы одного клиента');
+          return;
+        }
       }
       if (!formData.trainerId) {
         alert('Пожалуйста, выберите тренера');
@@ -306,10 +343,9 @@ const Schedule: React.FC = () => {
       }
 
       // Базовые данные для тренировки
-      const trainingData = {
+      const trainingData: any = {
         title: formData.title,
         description: formData.description,
-        groupId: formData.groupId,
         trainerId: formData.trainerId,
         branchId: formData.branchId,
         hallId: formData.hallId || undefined,
@@ -317,6 +353,13 @@ const Schedule: React.FC = () => {
         recurrence: formData.recurrence,
         daysOfWeek: formData.daysOfWeek
       };
+      
+      // Для групповой тренировки добавляем groupId, для индивидуальной - явно null
+      if (formData.trainingType === 'group') {
+        trainingData.groupId = formData.groupId;
+      } else {
+        trainingData.groupId = null; // Явно устанавливаем null для индивидуальных тренировок
+      }
 
       if (formData.isRecurring) {
         const trainings = [];
@@ -396,6 +439,71 @@ const Schedule: React.FC = () => {
             } else {
               alert(`Успешно создано ${batchResult.createdCount} тренировок`);
             }
+            
+            // Для индивидуальных тренировок создаем записи посещаемости для всех созданных тренировок
+            if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && batchResult.created) {
+              try {
+                console.log('Creating attendances for batch individual trainings:', {
+                  trainingsCount: batchResult.created.length,
+                  selectedClientIds: formData.selectedClientIds
+                });
+                // Создаем посещаемость для каждой созданной тренировки
+                for (const createdTraining of batchResult.created) {
+                  if (createdTraining?.id) {
+                    try {
+                      // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                      
+                      const attendances = formData.selectedClientIds.map(clientId => ({
+                        clientId,
+                        status: 'PRESENT',
+                        notes: '',
+                        shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
+                      }));
+                      
+                      await apiService.bulkUpdateAttendance(createdTraining.id, attendances);
+                      console.log(`Attendances created for training ${createdTraining.id}`);
+                      
+                      // Небольшая задержка между запросами
+                      await new Promise(resolve => setTimeout(resolve, 200));
+                    } catch (attendanceError: any) {
+                      console.error(`Error creating attendances for training ${createdTraining.id}:`, attendanceError);
+                      console.error('Error details:', attendanceError.response?.data);
+                    }
+                  }
+                }
+                console.log('All attendances created for batch trainings');
+                // Обновляем данные после создания посещаемости
+                await fetchData();
+                // Обновляем данные посещаемости для созданных тренировок
+                if (batchResult.created && batchResult.created.length > 0) {
+                  for (const createdTraining of batchResult.created) {
+                    if (createdTraining?.id) {
+                      try {
+                        // Небольшая задержка для обеспечения, что данные посещаемости уже созданы
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        const response = await apiService.getAttendancesByTraining(createdTraining.id);
+                        console.log(`Refreshed attendance data for training ${createdTraining.id}:`, response);
+                        // Если диалог посещаемости открыт для этой тренировки, обновляем данные
+                        if (selectedTraining && selectedTraining.id === createdTraining.id) {
+                          setAttendanceData(response.clients || []);
+                        }
+                      } catch (err) {
+                        console.error(`Error refreshing attendance data for training ${createdTraining.id}:`, err);
+                      }
+                    }
+                  }
+                }
+              } catch (attendanceError: any) {
+                console.error('Error creating attendances for recurring individual trainings:', attendanceError);
+                console.error('Error details:', attendanceError.response?.data);
+                alert('Тренировки созданы, но не удалось добавить клиентов в посещаемость для некоторых тренировок');
+                await fetchData();
+              }
+            } else {
+              // Обновляем данные после создания регулярных тренировок (если не индивидуальные)
+              await fetchData();
+            }
           } catch (batchErr: any) {
             console.error('Error creating trainings batch:', batchErr);
             // Если batch не удался, пробуем создавать по одной с задержками
@@ -404,8 +512,28 @@ const Schedule: React.FC = () => {
             for (let i = 0; i < trainings.length; i++) {
               const training = trainings[i];
               try {
-                await apiService.createTraining(training);
-                createdTrainings.push(training);
+                const createdTraining = await apiService.createTraining(training);
+                createdTrainings.push({ training, createdTraining });
+                
+                // Для индивидуальных тренировок создаем записи посещаемости
+                const trainingIdForFallback = createdTraining?.id || createdTraining?.data?.id;
+                if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingIdForFallback) {
+                  try {
+                    // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const attendances = formData.selectedClientIds.map(clientId => ({
+                      clientId,
+                      status: 'PRESENT',
+                      notes: '',
+                      shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
+                    }));
+                    await apiService.bulkUpdateAttendance(trainingIdForFallback, attendances);
+                  } catch (attendanceError) {
+                    console.error('Error creating attendances for individual training:', attendanceError);
+                  }
+                }
+                
                 // Увеличиваем задержку между запросами (500ms), чтобы избежать 429 ошибки
                 if (i < trainings.length - 1) {
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -425,12 +553,44 @@ const Schedule: React.FC = () => {
             } else {
               alert(`Успешно создано ${createdTrainings.length} тренировок`);
             }
+            // Обновляем данные после создания тренировок
+            await fetchData();
           }
         } else if (trainings.length === 1) {
           // Для одной тренировки используем обычный метод
           try {
-            await apiService.createTraining(trainings[0]);
+            const createdTraining = await apiService.createTraining(trainings[0]);
             alert('Тренировка успешно создана');
+            
+            // Для индивидуальных тренировок создаем записи посещаемости
+            const trainingIdForRecurring = createdTraining?.id || createdTraining?.data?.id;
+            if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingIdForRecurring) {
+              try {
+                // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                const attendances = formData.selectedClientIds.map(clientId => ({
+                  clientId,
+                  status: 'PRESENT',
+                  notes: '',
+                  shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
+                }));
+                console.log('Creating attendances for individual training (recurring single):', {
+                  trainingId: trainingIdForRecurring,
+                  attendances: attendances
+                });
+                await apiService.bulkUpdateAttendance(trainingIdForRecurring, attendances);
+                console.log('Attendances created successfully for recurring training');
+                await fetchData();
+              } catch (attendanceError: any) {
+                console.error('Error creating attendances for individual training:', attendanceError);
+                console.error('Error details:', attendanceError.response?.data);
+                alert('Тренировка создана, но не удалось добавить клиентов в посещаемость: ' + (attendanceError.response?.data?.error || attendanceError.message));
+                await fetchData();
+              }
+            } else {
+              await fetchData();
+            }
           } catch (err: any) {
             const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
             alert(`Ошибка создания тренировки: ${errorMessage}`);
@@ -451,13 +611,107 @@ const Schedule: React.FC = () => {
         const endTime = new Date(baseDate);
         endTime.setHours(formData.endTime.getHours(), formData.endTime.getMinutes());
 
-        await apiService.createTraining({
+        const trainingToCreate = {
           ...trainingData,
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString()
+        };
+        
+        console.log('Creating training with data:', JSON.stringify(trainingToCreate, null, 2));
+        console.log('Training type:', formData.trainingType);
+        console.log('Selected client IDs:', formData.selectedClientIds);
+        
+        const createdTraining = await apiService.createTraining(trainingToCreate);
+        console.log('Training created:', createdTraining);
+        console.log('Training ID:', createdTraining?.id);
+        console.log('Training data structure:', {
+          hasId: !!createdTraining?.id,
+          hasData: !!createdTraining?.data,
+          hasDataId: !!createdTraining?.data?.id
         });
+        
+        // Для индивидуальной тренировки создаем записи посещаемости для выбранных клиентов
+        const trainingId = createdTraining?.id || createdTraining?.data?.id;
+        if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingId) {
+          console.log('Creating attendances for individual training. Training ID:', trainingId);
+          try {
+            // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            const attendances = formData.selectedClientIds.map(clientId => ({
+              clientId,
+              status: 'PRESENT',
+              notes: '',
+              shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
+            }));
+            console.log('Creating attendances for individual training:', {
+              trainingId: trainingId,
+              attendances: attendances
+            });
+            console.log('Calling bulkUpdateAttendance with:', {
+              trainingId: trainingId,
+              attendances: attendances
+            });
+            
+            const attendanceResult = await apiService.bulkUpdateAttendance(trainingId, attendances);
+            console.log('Attendances created successfully:', attendanceResult);
+            console.log('Attendance result type:', typeof attendanceResult);
+            console.log('Attendance result is array:', Array.isArray(attendanceResult));
+            console.log('Attendance result length:', Array.isArray(attendanceResult) ? attendanceResult.length : 'not an array');
+            console.log('Attendance result keys:', attendanceResult ? Object.keys(attendanceResult) : 'null');
+            
+            // Проверяем, что записи действительно созданы
+            if (Array.isArray(attendanceResult) && attendanceResult.length > 0) {
+              console.log('Successfully created', attendanceResult.length, 'attendance records');
+              attendanceResult.forEach((att: any, index: number) => {
+                console.log(`Attendance ${index + 1}:`, {
+                  id: att.id,
+                  clientId: att.clientId,
+                  trainingId: att.trainingId,
+                  status: att.status,
+                  client: att.client ? `${att.client.lastName} ${att.client.firstName}` : 'no client data'
+                });
+              });
+            } else {
+              console.warn('WARNING: No attendance records were created or result is not an array!');
+              console.warn('Result:', attendanceResult);
+            }
+            
+            // Дополнительная задержка перед обновлением данных
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Обновляем данные после создания посещаемости
+            await fetchData();
+            
+            // Обновляем данные посещаемости для созданной тренировки
+            try {
+              console.log('Fetching attendance data for training:', trainingId);
+              const response = await apiService.getAttendancesByTraining(trainingId);
+              console.log('Refreshed attendance data:', response);
+              console.log('Clients in response:', response.clients?.length || 0);
+              console.log('Full response:', JSON.stringify(response, null, 2));
+              
+              // Всегда обновляем данные посещаемости, если диалог открыт для этой тренировки
+              if (selectedTraining && selectedTraining.id === trainingId) {
+                console.log('Updating attendance data in dialog');
+                setAttendanceData(response.clients || []);
+              } else {
+                console.log('Dialog not open for this training. selectedTraining:', selectedTraining?.id, 'trainingId:', trainingId);
+              }
+            } catch (err) {
+              console.error('Error refreshing attendance data:', err);
+            }
+          } catch (attendanceError: any) {
+            console.error('Error creating attendances for individual training:', attendanceError);
+            console.error('Error details:', attendanceError.response?.data);
+            alert('Тренировка создана, но не удалось добавить клиентов в посещаемость: ' + (attendanceError.response?.data?.error || attendanceError.message));
+            await fetchData();
+          }
+        } else {
+          await fetchData();
+        }
       }
-
+      
       await fetchData();
       setOpenDialog(false);
       resetForm();
@@ -483,7 +737,9 @@ const Schedule: React.FC = () => {
       date: new Date(),
       startTime: null,
       endTime: null,
+      trainingType: 'group',
       groupId: '',
+      selectedClientIds: [],
       trainerId: '',
       branchId: '',
       hallId: '',
@@ -563,7 +819,9 @@ const Schedule: React.FC = () => {
       date: startDate,
       startTime: startDate,
       endTime: endDate,
+      trainingType: training.groupId ? 'group' : 'individual', // Определяем тип на основе наличия groupId
       groupId: training.groupId || '',
+      selectedClientIds: [], // При редактировании клиенты загружаются отдельно через attendance
       trainerId: training.trainerId || '',
       branchId: training.branchId || '',
       hallId: training.hallId || '',
@@ -900,11 +1158,15 @@ const Schedule: React.FC = () => {
 
   const handleOpenAttendanceDialog = async (training: Training) => {
     setSelectedTraining(training);
+    setAttendanceDialog(true);
+    // Загружаем данные посещаемости асинхронно после открытия диалога
     try {
+      // Небольшая задержка для обеспечения, что данные посещаемости уже созданы
+      await new Promise(resolve => setTimeout(resolve, 300));
       const response = await apiService.getAttendancesByTraining(training.id);
+      console.log('Attendance data loaded:', response);
       // API returns { training, clients: [...] }
       setAttendanceData(response.clients || []);
-      setAttendanceDialog(true);
     } catch (error) {
       console.error('Error fetching attendance data:', error);
       alert('Не удалось загрузить данные о посещаемости');
@@ -1429,7 +1691,7 @@ const Schedule: React.FC = () => {
             onClick={() => {
               setSelectedDayForTraining(null);
               setFormData({ ...formData, date: new Date() });
-              setOpenDialog(true);
+              setTrainingTypeDialog(true);
             }}
           >
             Добавить тренировку
@@ -1610,7 +1872,7 @@ const Schedule: React.FC = () => {
                       onClick={() => {
                         setSelectedDayForTraining(day);
                         setFormData({ ...formData, date: day });
-                        setOpenDialog(true);
+                        setTrainingTypeDialog(true);
                       }}
                     >
                       {/* Competitions in header */}
@@ -1688,7 +1950,7 @@ const Schedule: React.FC = () => {
                           const trainerName = trainer?.user 
                             ? `${trainer.user.lastName} ${trainer.user.firstName.charAt(0)}.`
                             : 'Тренер';
-                          const availableSpots = group?.maxMembers ? group.maxMembers : '?';
+                          const availableSpots = group?.maxMembers ? group.maxMembers : (training.groupId ? '?' : 'Индивидуальная');
                           
                           return (
                             <Paper
@@ -1742,7 +2004,7 @@ const Schedule: React.FC = () => {
                                 </Typography>
                               )}
                               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.65rem', mt: 0.25 }}>
-                                Свободно {availableSpots} мест
+                                {training.groupId ? `Свободно ${availableSpots} мест` : 'Индивидуальная тренировка'}
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.25 }}>
                                 <People sx={{ fontSize: 10 }} />
@@ -1783,7 +2045,7 @@ const Schedule: React.FC = () => {
                   onClick={() => {
                     setSelectedDayForTraining(day);
                     setFormData({ ...formData, date: day });
-                    setOpenDialog(true);
+                    setTrainingTypeDialog(true);
                   }}
                 >
                   <CardContent sx={{ p: 1 }}>
@@ -1845,6 +2107,58 @@ const Schedule: React.FC = () => {
         </Grid>
         )}
 
+        {/* Training Type Selection Dialog */}
+        <Dialog open={trainingTypeDialog} onClose={() => setTrainingTypeDialog(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            Какое занятие вы хотите добавить?
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                size="large"
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, trainingType: 'group', groupId: '', selectedClientIds: [] }));
+                  setTrainingTypeDialog(false);
+                  setOpenDialog(true);
+                }}
+                sx={{ py: 2 }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <GroupIcon sx={{ fontSize: 40 }} />
+                  <Typography variant="h6">Тренировка группы</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Создать тренировку для группы
+                  </Typography>
+                </Box>
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                size="large"
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, trainingType: 'individual', groupId: '', selectedClientIds: [] }));
+                  setTrainingTypeDialog(false);
+                  setOpenDialog(true);
+                }}
+                sx={{ py: 2 }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <Person sx={{ fontSize: 40 }} />
+                  <Typography variant="h6">Индивидуальная тренировка</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Создать разовую тренировку для выбранных клиентов
+                  </Typography>
+                </Box>
+              </Button>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTrainingTypeDialog(false)}>Отмена</Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Create Training Dialog */}
         <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
           <DialogTitle>
@@ -1874,6 +2188,18 @@ const Schedule: React.FC = () => {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
+              </Grid>
+              
+              {/* Тип тренировки отображается как информационный блок (уже выбран в предыдущем диалоге) */}
+              <Grid item xs={12}>
+                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Тип тренировки
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                    {formData.trainingType === 'group' ? 'Тренировка для группы' : 'Индивидуальная тренировка (разовая)'}
+                  </Typography>
+                </Box>
               </Grid>
               
               {/* Recurring Training Checkbox - moved to top */}
@@ -1945,21 +2271,97 @@ const Schedule: React.FC = () => {
               </Grid>
                 </>
               )}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Группа</InputLabel>
-                  <Select
-                    value={formData.groupId}
-                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
-                  >
-                    {groups.map((group) => (
-                      <MenuItem key={group.id} value={group.id}>
-                        {group.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+              
+              {/* Поле выбора группы - показывается только для групповой тренировки */}
+              {formData.trainingType === 'group' && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Группа</InputLabel>
+                    <Select
+                      value={formData.groupId}
+                      onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                    >
+                      {groups.map((group) => (
+                        <MenuItem key={group.id} value={group.id}>
+                          {group.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+              
+              {/* Выбор клиентов для индивидуальной тренировки */}
+              {formData.trainingType === 'individual' && (
+                <Grid item xs={12}>
+                  <Autocomplete
+                    multiple
+                    disableCloseOnSelect
+                    options={clients.filter(c => c.isActive)}
+                    getOptionLabel={(option) => {
+                      const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim();
+                      return fullName || `${option.firstName} ${option.lastName}`;
+                    }}
+                    value={clients.filter(c => formData.selectedClientIds.includes(c.id))}
+                    onChange={(event, newValue) => {
+                      setFormData({
+                        ...formData,
+                        selectedClientIds: newValue.map(client => client.id)
+                      });
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Клиенты"
+                        placeholder="Начните вводить ФИО, телефон или email..."
+                        required
+                      />
+                    )}
+                    renderOption={(props, option) => {
+                      const isSelected = formData.selectedClientIds.includes(option.id);
+                      return (
+                        <li {...props} key={option.id}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                            <Checkbox
+                              checked={isSelected}
+                              sx={{ mr: 1 }}
+                            />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="body1">
+                                {[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                              </Typography>
+                              {(option.phone || option.email) && (
+                                <Typography variant="body2" color="text.secondary">
+                                  {option.phone || option.email}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        </li>
+                      );
+                    }}
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, index) => (
+                        <Chip
+                          {...getTagProps({ index })}
+                          key={option.id}
+                          label={[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                        />
+                      ))
+                    }
+                    filterOptions={(options, { inputValue }) => {
+                      const query = inputValue.toLowerCase();
+                      return options.filter(option => {
+                        const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').toLowerCase();
+                        const phone = (option.phone || '').toLowerCase();
+                        const email = (option.email || '').toLowerCase();
+                        return fullName.includes(query) || phone.includes(query) || email.includes(query);
+                      });
+                    }}
+                  />
+                </Grid>
+              )}
+              
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Тренер</InputLabel>
@@ -2818,7 +3220,140 @@ const Schedule: React.FC = () => {
                   {selectedTraining && format(new Date(selectedTraining.startTime), 'EEEE, d MMMM yyyy, HH:mm', { locale: ru })}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Delete />}
+                  onClick={async () => {
+                    if (!selectedTraining) return;
+                    
+                    // Используем уже загруженные тренировки из состояния вместо нового запроса
+                    // Проверяем, является ли тренировка частью регулярной серии
+                    let shouldDeleteSeries = false;
+                    let seriesTrainings: Training[] = [];
+                    
+                    if (selectedTraining.isRecurring) {
+                      try {
+                        // Используем уже загруженные тренировки из состояния
+                        seriesTrainings = trainings.filter((t: Training) => 
+                          t.title === selectedTraining.title &&
+                          (t.groupId === selectedTraining.groupId || (!t.groupId && !selectedTraining.groupId)) &&
+                          t.trainerId === selectedTraining.trainerId &&
+                          t.branchId === selectedTraining.branchId &&
+                          t.isRecurring &&
+                          !t.isCancelled &&
+                          t.id !== selectedTraining.id
+                        );
+                        
+                        if (seriesTrainings.length > 0) {
+                          const confirmMessage = `Эта тренировка является частью регулярной серии (${seriesTrainings.length + 1} тренировок).\n\nУдалить всю серию тренировок?`;
+                          shouldDeleteSeries = window.confirm(confirmMessage);
+                        } else {
+                          // Это единственная тренировка в серии, просто подтверждаем удаление
+                          if (!window.confirm('Вы уверены, что хотите удалить эту тренировку?')) {
+                            return;
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Error checking training series:', error);
+                        // В случае ошибки просто спрашиваем об удалении одной тренировки
+                        if (!window.confirm('Вы уверены, что хотите удалить эту тренировку?')) {
+                          return;
+                        }
+                      }
+                    } else {
+                      // Обычная тренировка - просто подтверждаем удаление
+                      if (!window.confirm('Вы уверены, что хотите удалить эту тренировку?')) {
+                        return;
+                      }
+                    }
+                    
+                    try {
+                      if (shouldDeleteSeries && seriesTrainings.length > 0) {
+                        // Удаляем всю серию - включаем текущую тренировку
+                        const allSeriesTrainings = [...seriesTrainings, selectedTraining];
+                        const trainingIds = allSeriesTrainings.map(t => t.id);
+                        
+                        try {
+                          await apiService.deleteTrainingsBatch(trainingIds);
+                          alert(`Успешно удалено ${allSeriesTrainings.length} тренировок из серии`);
+                        } catch (err: any) {
+                          console.error('Error deleting trainings batch:', err);
+                          
+                          // Если batch не удался из-за 429, пробуем удалять по одной с задержками
+                          if (err.response?.status === 429) {
+                            alert('Слишком много запросов. Удаление может занять некоторое время...');
+                            let deletedCount = 0;
+                            for (let i = 0; i < allSeriesTrainings.length; i++) {
+                              const t = allSeriesTrainings[i];
+                              try {
+                                await apiService.deleteTraining(t.id);
+                                deletedCount++;
+                                // Задержка между запросами для избежания 429
+                                if (i < allSeriesTrainings.length - 1) {
+                                  await new Promise(resolve => setTimeout(resolve, 500));
+                                }
+                              } catch (deleteErr: any) {
+                                console.error('Error deleting training:', deleteErr);
+                                // Если ошибка 429, ждем дольше и повторяем
+                                if (deleteErr.response?.status === 429) {
+                                  await new Promise(resolve => setTimeout(resolve, 2000));
+                                  try {
+                                    await apiService.deleteTraining(t.id);
+                                    deletedCount++;
+                                  } catch (retryErr: any) {
+                                    console.error('Error deleting training after retry:', retryErr);
+                                  }
+                                }
+                              }
+                            }
+                            alert(`Удалено ${deletedCount} из ${allSeriesTrainings.length} тренировок из серии`);
+                          } else {
+                            // Другая ошибка - пробуем удалять по одной
+                            for (const t of allSeriesTrainings) {
+                              try {
+                                await apiService.deleteTraining(t.id);
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                              } catch (deleteErr: any) {
+                                console.error('Error deleting training:', deleteErr);
+                              }
+                            }
+                            alert(`Удалено ${allSeriesTrainings.length} тренировок из серии`);
+                          }
+                        }
+                      } else {
+                        // Удаляем только одну тренировку
+                        try {
+                          await apiService.deleteTraining(selectedTraining.id);
+                          alert('Тренировка успешно удалена');
+                        } catch (error: any) {
+                          // Если ошибка 429, ждем и повторяем
+                          if (error.response?.status === 429) {
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            try {
+                              await apiService.deleteTraining(selectedTraining.id);
+                              alert('Тренировка успешно удалена');
+                            } catch (retryErr: any) {
+                              throw retryErr;
+                            }
+                          } else {
+                            throw error;
+                          }
+                        }
+                      }
+                      
+                      await fetchData();
+                      setAttendanceDialog(false);
+                      setSelectedTraining(null);
+                    } catch (error: any) {
+                      console.error('Error deleting training:', error);
+                      alert('Не удалось удалить тренировку: ' + (error.response?.data?.error || error.message));
+                    }
+                  }}
+                >
+                  Удалить тренировку
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<Edit />}
@@ -2830,6 +3365,15 @@ const Schedule: React.FC = () => {
                   }}
                 >
                   Редактировать тренировку
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Person />}
+                  onClick={() => {
+                    setAddClientDialog(true);
+                  }}
+                >
+                  Добавить клиента
                 </Button>
                 <Button
                   variant="outlined"
@@ -2852,9 +3396,18 @@ const Schedule: React.FC = () => {
           </DialogTitle>
           <DialogContent>
             {attendanceData.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                В группе нет участников
-              </Typography>
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {selectedTraining?.groupId ? 'В группе нет участников' : 'Нет клиентов в тренировке'}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<Person />}
+                  onClick={() => setAddClientDialog(true)}
+                >
+                  Добавить клиента
+                </Button>
+              </Box>
             ) : (
               <TableContainer component={Paper} sx={{ mt: 2 }}>
                 <Table>
@@ -3137,6 +3690,139 @@ const Schedule: React.FC = () => {
               setSelectedCompetition(null);
             }}>
               Закрыть
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add Existing Client Dialog */}
+        <Dialog open={addClientDialog} onClose={() => {
+          setAddClientDialog(false);
+          setSelectedClientsToAdd([]);
+        }} maxWidth="md" fullWidth>
+          <DialogTitle>Добавить клиентов в тренировку</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={clients.filter(client => client.isActive && !attendanceData.find(item => item.client.id === client.id))}
+                getOptionLabel={(option) => {
+                  const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim();
+                  return fullName || `${option.firstName} ${option.lastName}`;
+                }}
+                value={selectedClientsToAdd}
+                onChange={(event, newValue) => {
+                  setSelectedClientsToAdd(newValue);
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Выберите клиентов (можно несколько)"
+                    placeholder="Начните вводить ФИО, телефон или email..."
+                  />
+                )}
+                renderOption={(props, option) => {
+                  const isSelected = selectedClientsToAdd.some(c => c.id === option.id);
+                  return (
+                    <li {...props} key={option.id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <Checkbox
+                          checked={isSelected}
+                          sx={{ mr: 1 }}
+                        />
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body1">
+                            {[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                          </Typography>
+                          {(option.phone || option.email) && (
+                            <Typography variant="body2" color="text.secondary">
+                              {option.phone || option.email}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    </li>
+                  );
+                }}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={option.id}
+                      label={[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                      size="small"
+                    />
+                  ))
+                }
+                filterOptions={(options, { inputValue }) => {
+                  const query = inputValue.toLowerCase();
+                  return options.filter(option => {
+                    const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').toLowerCase();
+                    const phone = (option.phone || '').toLowerCase();
+                    const email = (option.email || '').toLowerCase();
+                    return fullName.includes(query) || phone.includes(query) || email.includes(query);
+                  });
+                }}
+              />
+            </Box>
+            {clients.filter(client => client.isActive && !attendanceData.find(item => item.client.id === client.id)).length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+                Все активные клиенты уже добавлены в тренировку
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setAddClientDialog(false);
+              setSelectedClientsToAdd([]);
+            }}>Отмена</Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                if (!selectedTraining || selectedClientsToAdd.length === 0) return;
+                
+                try {
+                  // Добавляем выбранных клиентов в список посещаемости
+                  const newAttendanceItems = selectedClientsToAdd
+                    .filter(client => !attendanceData.find(item => item.client.id === client.id))
+                    .map(client => ({
+                      client,
+                      attendance: {
+                        id: '',
+                        status: 'PRESENT' as 'PRESENT' | 'ABSENT' | 'EXCUSED',
+                        clientId: client.id,
+                        trainingId: selectedTraining.id,
+                        notes: '',
+                        shouldCharge: false,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                      } as Attendance
+                    }));
+                  
+                  setAttendanceData(prev => [...prev, ...newAttendanceItems]);
+                  
+                  // Сохраняем посещаемость на сервере
+                  const attendances = newAttendanceItems.map(item => ({
+                    clientId: item.client.id,
+                    status: item.attendance.status,
+                    notes: item.attendance.notes || '',
+                    shouldCharge: item.attendance.shouldCharge
+                  }));
+                  
+                  if (attendances.length > 0) {
+                    await apiService.bulkUpdateAttendance(selectedTraining.id, attendances);
+                  }
+                  
+                  setAddClientDialog(false);
+                  setSelectedClientsToAdd([]);
+                } catch (error: any) {
+                  console.error('Error adding clients to training:', error);
+                  alert('Не удалось добавить клиентов: ' + (error.response?.data?.error || error.message));
+                }
+              }}
+              disabled={selectedClientsToAdd.length === 0}
+            >
+              Добавить ({selectedClientsToAdd.length})
             </Button>
           </DialogActions>
         </Dialog>

@@ -100,8 +100,11 @@ const Login: React.FC = () => {
     isSubmittingRef.current = true;
     setIsLoading(true);
     setError('');
-    // НЕ очищаем fieldErrors здесь, чтобы сохранить значения полей при ошибке
-    // НЕ очищаем sessionStorage - ошибки должны сохраняться
+    // Очищаем предыдущие ошибки полей при новой попытке входа
+    // Это гарантирует, что ошибка будет показана только для текущей попытки
+    setFieldErrors({});
+    fieldErrorsRef.current = {};
+    sessionStorage.removeItem('loginFieldErrors');
 
     // Basic validation
     const errors: Record<string, string> = {};
@@ -150,7 +153,25 @@ const Login: React.FC = () => {
       const serverErrors: Record<string, string> = {};
       const lowerErrorMessage = errorMessage.toLowerCase();
       
-      if (lowerErrorMessage.includes('аккаунт не существует')) {
+      // Проверяем, есть ли детализированные ошибки валидации в data
+      const validationErrors = err.response?.data?.data;
+      if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+        // Обрабатываем ошибки валидации из массива data
+        validationErrors.forEach((validationError: any) => {
+          if (validationError.field && validationError.message) {
+            // Преобразуем сообщения валидации в понятные для пользователя
+            let userMessage = validationError.message;
+            if (validationError.field === 'email') {
+              if (userMessage.includes('valid email')) {
+                userMessage = 'Введите корректный адрес электронной почты';
+              }
+              serverErrors.email = userMessage;
+            } else if (validationError.field === 'password') {
+              serverErrors.password = userMessage;
+            }
+          }
+        });
+      } else if (lowerErrorMessage.includes('аккаунт не существует')) {
         serverErrors.email = 'Аккаунт не существует';
       } else if (lowerErrorMessage.includes('неверный пароль')) {
         serverErrors.password = 'Неверный пароль';
@@ -165,13 +186,11 @@ const Login: React.FC = () => {
         console.log('Current fieldErrors before update:', fieldErrors);
         console.log('Current fieldErrorsRef:', fieldErrorsRef.current);
         
-        // ВАЖНО: сначала обновляем ref, потом state
-        // Используем текущее значение из ref, если state пустой
-        const currentErrors = Object.keys(fieldErrors).length > 0 ? fieldErrors : fieldErrorsRef.current;
-        const newFieldErrors = { ...currentErrors, ...serverErrors };
+        // ВАЖНО: полностью заменяем ошибки, а не мержим их
+        // Это гарантирует, что старые ошибки не остаются при новой попытке входа
+        const newFieldErrors = { ...serverErrors };
         
-        console.log('Current errors to merge with:', currentErrors);
-        console.log('New field errors to set:', newFieldErrors);
+        console.log('New field errors to set (replacing all previous):', newFieldErrors);
         
         // Обновляем ref СРАЗУ перед обновлением state
         fieldErrorsRef.current = newFieldErrors;
@@ -278,6 +297,12 @@ const Login: React.FC = () => {
               disabled={isLoading}
               error={!!(fieldErrors.email || fieldErrorsRef.current.email)}
               helperText={fieldErrors.email || fieldErrorsRef.current.email || ''}
+              FormHelperTextProps={{
+                style: { 
+                  color: (fieldErrors.email || fieldErrorsRef.current.email) ? '#d32f2f' : undefined,
+                  display: (fieldErrors.email || fieldErrorsRef.current.email) ? 'block' : 'none'
+                }
+              }}
             />
             <TextField
               margin="normal"

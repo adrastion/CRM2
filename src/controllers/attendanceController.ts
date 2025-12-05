@@ -161,27 +161,34 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
     // Create a map of clientId -> attendance for quick lookup
     const attendanceMap = new Map(attendances.map(a => [a.clientId, a]));
 
-    // Get all clients from the group
-    if (!training.group) {
-      res.status(400).json({
-        success: false,
-        error: 'Training does not have an associated group'
+    let result: any[] = [];
+
+    // Если тренировка групповые - получаем клиентов из группы
+    if (training.group) {
+      const groupClients = training.group.memberships
+        .map(m => m.client)
+        .filter(client => client && client.isActive);
+
+      // Combine group clients with their attendance status
+      result = groupClients.map(client => {
+        const attendance = attendanceMap.get(client.id);
+        return {
+          client,
+          attendance: attendance || null
+        };
       });
-      return;
+    } else {
+      // Если тренировка индивидуальная - получаем клиентов из записей посещаемости
+      // Для индивидуальных тренировок клиенты выбираются при создании
+      result = attendances.map(attendance => ({
+        client: attendance.client,
+        attendance: attendance
+      }));
+
+      // Если записей посещаемости еще нет, но тренировка индивидуальная,
+      // можно вернуть пустой список или получить клиентов из других источников
+      // В данном случае возвращаем только тех, для кого уже созданы записи
     }
-
-    const groupClients = training.group.memberships
-      .map(m => m.client)
-      .filter(client => client && client.isActive);
-
-    // Combine group clients with their attendance status
-    const result = groupClients.map(client => {
-      const attendance = attendanceMap.get(client.id);
-      return {
-        client,
-        attendance: attendance || null
-      };
-    });
 
     res.json({
       success: true,
@@ -366,7 +373,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
       }
 
       // Если нет активного абонемента, списываем деньги с баланса клиента
-      if (shouldChargeClient && trainingWithDetails) {
+      if (shouldChargeClient && trainingWithDetails && trainingWithDetails.group) {
         const trainingPrice = trainingWithDetails.group.trainingPrice 
           ? Number(trainingWithDetails.group.trainingPrice) 
           : 0;
@@ -446,7 +453,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         }
       });
 
-      if (trainingWithDetails) {
+      if (trainingWithDetails && trainingWithDetails.group) {
         const trainingPrice = trainingWithDetails.group.trainingPrice 
           ? Number(trainingWithDetails.group.trainingPrice) 
           : 0;
@@ -652,13 +659,20 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     }
 
     const results = [];
+    const errors: any[] = [];
+
+    console.log(`Processing ${attendances.length} attendance records for training ${trainingId}`);
 
     for (const att of attendances) {
       const { clientId, status, notes, shouldCharge } = att;
 
       if (!clientId || !status) {
+        console.warn(`Skipping attendance record: missing clientId or status`, att);
+        errors.push({ clientId, error: 'Missing clientId or status' });
         continue;
       }
+
+      console.log(`Processing attendance for client ${clientId} with status ${status}`);
 
       try {
         // Check if attendance exists
@@ -694,28 +708,38 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
           results.push(updated);
         } else {
           // Create new
+          console.log(`Creating new attendance record for client ${clientId} in training ${trainingId}`);
           const created = await prisma.attendance.create({
             data: {
               clientId,
               trainingId,
               status,
-              notes,
+              notes: notes || null,
               shouldCharge: finalShouldCharge,
               tenantId
             },
             include: { client: true }
           });
+          console.log(`Successfully created attendance record ${created.id} for client ${created.client?.lastName} ${created.client?.firstName}`);
           results.push(created);
         }
       } catch (error: any) {
         console.error(`Error processing attendance for client ${clientId}:`, error);
+        console.error(`Error details:`, error.message, error.stack);
+        // Не добавляем в results, но продолжаем обработку других записей
       }
+    }
+
+    console.log(`Bulk update attendance completed. Created/updated ${results.length} attendances for training ${trainingId}`);
+    if (errors.length > 0) {
+      console.warn(`Errors occurred for ${errors.length} attendance records:`, errors);
     }
 
     res.json({
       success: true,
       data: results,
-      message: 'Attendances updated successfully'
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Attendances updated successfully. Created/updated: ${results.length}, Errors: ${errors.length}`
     });
   } catch (error) {
     console.error('Bulk update attendance error:', error);

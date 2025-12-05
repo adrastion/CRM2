@@ -243,7 +243,7 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
 
       trainerMonthlyEarnings = trainings.reduce((total, training) => {
         const presentCount = training.attendances.length;
-        const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+        const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
         const totalRevenue = presentCount * trainingPrice;
 
         let earnings = 0;

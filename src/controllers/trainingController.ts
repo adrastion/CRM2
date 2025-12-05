@@ -149,13 +149,14 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       });
       return;
     }
-    if (!validData.groupId) {
-      res.status(400).json({
-        success: false,
-        error: 'Group ID is required'
-      });
-      return;
-    }
+    // groupId is optional for individual trainings
+    // if (!validData.groupId) {
+    //   res.status(400).json({
+    //     success: false,
+    //     error: 'Group ID is required'
+    //   });
+    //   return;
+    // }
     if (!validData.trainerId) {
       res.status(400).json({
         success: false,
@@ -189,17 +190,28 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     const endTime = new Date(validData.endTime);
 
     // Проверка на существование дубликата тренировки
+    // Для индивидуальных тренировок (без groupId) проверяем только по времени и тренеру
+    const whereClause: any = {
+      tenantId,
+      title: validData.title,
+      trainerId: validData.trainerId,
+      branchId: validData.branchId,
+      startTime: startTime,
+      endTime: endTime,
+      isCancelled: false
+    };
+    
+    // Добавляем groupId в условие только если он указан
+    // Для индивидуальных тренировок (без groupId) не включаем groupId в условие,
+    // так как для них groupId всегда null, и мы проверяем по другим полям
+    if (validData.groupId) {
+      whereClause.groupId = validData.groupId;
+    }
+    // Для индивидуальных тренировок не добавляем groupId в условие,
+    // чтобы избежать проблем с проверкой на null в Prisma
+    
     const existingTraining = await prisma.training.findFirst({
-      where: {
-        tenantId,
-        title: validData.title,
-        groupId: validData.groupId,
-        trainerId: validData.trainerId,
-        branchId: validData.branchId,
-        startTime: startTime,
-        endTime: endTime,
-        isCancelled: false
-      },
+      where: whereClause,
       include: {
         branch: true,
         group: true,
@@ -223,12 +235,26 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       return;
     }
 
-    const trainingData = {
-      ...validData,
-      tenantId,
+    const trainingData: any = {
+      title: validData.title,
+      description: validData.description || null,
+      trainerId: validData.trainerId,
+      branchId: validData.branchId,
+      hallId: validData.hallId || null,
+      isRecurring: validData.isRecurring || false,
+      recurrence: (validData.isRecurring && validData.recurrence) ? validData.recurrence : null,
+      tenantId: String(tenantId), // Явно преобразуем в строку
       startTime,
       endTime
     };
+    
+    // Добавляем groupId только если он указан (для групповых тренировок)
+    if (validData.groupId) {
+      trainingData.groupId = String(validData.groupId);
+    }
+    // Для индивидуальных тренировок groupId не добавляем (будет null в БД)
+
+    console.log('Creating training with data:', JSON.stringify(trainingData, null, 2));
 
     const training = await prisma.training.create({
       data: trainingData,
@@ -313,8 +339,8 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
         // Extract only valid fields for Training model
         const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = trainingData;
         
-        // Validate required fields
-        if (!validData.title || !validData.groupId || !validData.trainerId || !validData.branchId || !validData.startTime || !validData.endTime) {
+        // Validate required fields (groupId is optional for individual trainings)
+        if (!validData.title || !validData.trainerId || !validData.branchId || !validData.startTime || !validData.endTime) {
           failedTrainings.push({
             training: trainingData,
             error: 'Missing required fields'
@@ -326,17 +352,28 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
         const endTime = new Date(validData.endTime);
 
         // Проверка на существование дубликата тренировки
+        // Для индивидуальных тренировок (без groupId) проверяем только по времени и тренеру
+        const whereClause: any = {
+          tenantId,
+          title: validData.title,
+          trainerId: validData.trainerId,
+          branchId: validData.branchId,
+          startTime: startTime,
+          endTime: endTime,
+          isCancelled: false
+        };
+        
+        // Добавляем groupId в условие только если он указан
+        // Для индивидуальных тренировок (без groupId) не включаем groupId в условие,
+        // так как для них groupId всегда null, и мы проверяем по другим полям
+        if (validData.groupId) {
+          whereClause.groupId = validData.groupId;
+        }
+        // Для индивидуальных тренировок не добавляем groupId в условие,
+        // чтобы избежать проблем с проверкой на null в Prisma
+        
         const existingTraining = await prisma.training.findFirst({
-          where: {
-            tenantId,
-            title: validData.title,
-            groupId: validData.groupId,
-            trainerId: validData.trainerId,
-            branchId: validData.branchId,
-            startTime: startTime,
-            endTime: endTime,
-            isCancelled: false
-          },
+          where: whereClause,
           include: {
             branch: true,
             group: true,
@@ -354,13 +391,27 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
           continue;
         }
 
+        const trainingDataBatch: any = {
+          title: validData.title,
+          description: validData.description || null,
+          trainerId: validData.trainerId,
+          branchId: validData.branchId,
+          hallId: validData.hallId || null,
+          isRecurring: validData.isRecurring || false,
+          recurrence: (validData.isRecurring && validData.recurrence) ? validData.recurrence : null,
+          tenantId: String(tenantId), // Явно преобразуем в строку
+          startTime,
+          endTime
+        };
+        
+        // Добавляем groupId только если он указан (для групповых тренировок)
+        if (validData.groupId) {
+          trainingDataBatch.groupId = String(validData.groupId);
+        }
+        // Для индивидуальных тренировок groupId не добавляем (будет null в БД)
+        
         const training = await prisma.training.create({
-          data: {
-            ...validData,
-            tenantId,
-            startTime,
-            endTime
-          },
+          data: trainingDataBatch,
           include: {
             branch: true,
             group: true,
@@ -636,12 +687,16 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
     });
 
     // 1. Проверяем тренировки без активной группы
+    // ВАЖНО: Не удаляем индивидуальные тренировки (где groupId === null)
+    // Удаляем только групповые тренировки, у которых группа не существует или неактивна
     const trainingsWithoutGroup: string[] = [];
     for (const training of allTrainings) {
-      // Проверяем, существует ли группа и активна ли она
-      if (!training.group || !training.group.isActive) {
+      // Если у тренировки указан groupId (это групповая тренировка),
+      // но группа не существует или неактивна - помечаем на удаление
+      if (training.groupId && (!training.group || !training.group.isActive)) {
         trainingsWithoutGroup.push(training.id);
       }
+      // Если groupId === null (индивидуальная тренировка) - не удаляем
     }
 
     // 2. Группируем по ключевым полям для определения дубликатов

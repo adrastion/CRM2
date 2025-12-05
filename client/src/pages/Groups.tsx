@@ -36,6 +36,7 @@ import {
   RadioGroup,
   Radio,
 } from '@mui/material';
+import { Autocomplete } from '@mui/material';
 import { Add, Edit, Delete, Visibility, People, Delete as DeleteIcon, CalendarToday } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -44,7 +45,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
-import { validateGroupForm } from '../utils/validation';
+import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
 
 const Groups: React.FC = () => {
   const navigate = useNavigate();
@@ -62,10 +63,37 @@ const Groups: React.FC = () => {
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [clientSearchQuery, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [halls, setHalls] = useState<Hall[]>([]);
+  const [createTrainerDialog, setCreateTrainerDialog] = useState(false);
+  const [createBranchDialog, setCreateBranchDialog] = useState(false);
+  const [trainerFormData, setTrainerFormData] = useState({
+    email: '',
+    password: '',
+    firstName: '',
+    lastName: '',
+    middleName: '',
+    phone: '',
+    qualification: '',
+    experience: '',
+    specialization: '',
+    salaryType: 'fixed',
+    salaryAmount: '',
+    salaryPercentage: '',
+    canViewAllGroups: false,
+  });
+  const [branchFormData, setBranchFormData] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    description: '',
+  });
+  const [trainerFormErrors, setTrainerFormErrors] = useState<Record<string, string>>({});
+  const [branchFormErrors, setBranchFormErrors] = useState<Record<string, string>>({});
   const [trainingFormData, setTrainingFormData] = useState({
     title: '',
     description: '',
@@ -264,6 +292,87 @@ const Groups: React.FC = () => {
   };
 
   const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
+  // Функции для создания тренера и филиала
+  const handleCreateTrainerFromGroup = async () => {
+    const errors = validateTrainerForm(trainerFormData);
+    setTrainerFormErrors(errors);
+    
+    if (Object.keys(errors).length > 0) {
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    try {
+      const createdTrainer = await apiService.createTrainer(trainerFormData);
+      // Обновляем список тренеров
+      const trainersRes = await apiService.getTrainers();
+      setTrainers(trainersRes.data);
+      // Автоматически выбираем созданного тренера
+      setFormData(prev => ({ ...prev, trainerId: createdTrainer.id }));
+      // Закрываем диалог и очищаем форму
+      setCreateTrainerDialog(false);
+      setTrainerFormData({
+        email: '',
+        password: '',
+        firstName: '',
+        lastName: '',
+        middleName: '',
+        phone: '',
+        qualification: '',
+        experience: '',
+        specialization: '',
+        salaryType: 'fixed',
+        salaryAmount: '',
+        salaryPercentage: '',
+        canViewAllGroups: false,
+      });
+      setTrainerFormErrors({});
+      setSnackbarMessage('Тренер успешно создан');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      setSnackbarMessage(err.response?.data?.error || 'Ошибка создания тренера');
+      setSnackbarOpen(true);
+      console.error('Error creating trainer:', err);
+    }
+  };
+
+  const handleCreateBranchFromGroup = async () => {
+    const errors = validateBranchForm(branchFormData);
+    setBranchFormErrors(errors);
+    
+    if (Object.keys(errors).length > 0) {
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    try {
+      const createdBranch = await apiService.createBranch(branchFormData);
+      // Обновляем список филиалов
+      const branchesRes = await apiService.getBranches();
+      setBranches(branchesRes.data);
+      // Автоматически выбираем созданный филиал
+      setFormData(prev => ({ ...prev, branchId: createdBranch.id }));
+      // Закрываем диалог и очищаем форму
+      setCreateBranchDialog(false);
+      setBranchFormData({
+        name: '',
+        address: '',
+        phone: '',
+        email: '',
+        description: '',
+      });
+      setBranchFormErrors({});
+      setSnackbarMessage('Филиал успешно создан');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      setSnackbarMessage(err.response?.data?.error || 'Ошибка создания филиала');
+      setSnackbarOpen(true);
+      console.error('Error creating branch:', err);
+    }
+  };
 
   const handleEditGroup = (group: Group) => {
     setEditingGroup(group);
@@ -714,9 +823,22 @@ const Groups: React.FC = () => {
 
   // Get available clients (not already in group)
   const getAvailableClients = () => {
-    if (!selectedGroup) return clients;
-    const memberIds = selectedGroup.memberships?.filter(m => m.isActive).map(m => m.clientId) || [];
-    return clients.filter(client => !memberIds.includes(client.id) && client.isActive);
+    let availableClients = clients;
+    if (selectedGroup) {
+      const memberIds = selectedGroup.memberships?.filter(m => m.isActive).map(m => m.clientId) || [];
+      availableClients = clients.filter(client => !memberIds.includes(client.id) && client.isActive);
+    }
+    // Применяем поиск, если он задан
+    if (clientSearchQuery) {
+      const query = clientSearchQuery.toLowerCase();
+      availableClients = availableClients.filter(client => {
+        const fullName = [client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ').toLowerCase();
+        const phone = (client.phone || '').toLowerCase();
+        const email = (client.email || '').toLowerCase();
+        return fullName.includes(query) || phone.includes(query) || email.includes(query);
+      });
+    }
+    return availableClients;
   };
 
   if (loading) {
@@ -991,6 +1113,14 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCreateBranchDialog(true)}
+                sx={{ mt: 1 }}
+              >
+                + Создать филиал
+              </Button>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth required error={!!formErrors.trainerId}>
@@ -1014,6 +1144,14 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCreateTrainerDialog(true)}
+                sx={{ mt: 1 }}
+              >
+                + Создать тренера
+              </Button>
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
@@ -1246,6 +1384,14 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCreateBranchDialog(true)}
+                sx={{ mt: 1 }}
+              >
+                + Создать филиал
+              </Button>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth required error={!!formErrors.trainerId}>
@@ -1269,6 +1415,14 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCreateTrainerDialog(true)}
+                sx={{ mt: 1 }}
+              >
+                + Создать тренера
+              </Button>
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
@@ -1474,35 +1628,68 @@ const Groups: React.FC = () => {
             <Typography variant="h6" sx={{ mb: 2 }}>Добавить клиентов</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Выберите клиентов (можно несколько)</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedClientIds}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setSelectedClientIds(typeof value === 'string' ? value.split(',') : value as string[]);
-                    }}
-                    label="Выберите клиентов (можно несколько)"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {(selected as string[]).map((clientId) => {
-                          const client = getAvailableClients().find(c => c.id === clientId);
-                          return client ? (
-                            <Chip key={clientId} label={[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`} size="small" />
-                          ) : null;
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {getAvailableClients().map((client) => (
-                      <MenuItem key={client.id} value={client.id}>
-                        <Checkbox checked={selectedClientIds.indexOf(client.id) > -1} />
-                        <ListItemText primary={[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`} secondary={client.email || client.phone || ''} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  multiple
+                  disableCloseOnSelect
+                  options={getAvailableClients()}
+                  getOptionLabel={(option) => {
+                    const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim();
+                    return fullName || `${option.firstName} ${option.lastName}`;
+                  }}
+                  value={clients.filter(c => selectedClientIds.includes(c.id))}
+                  onChange={(event, newValue) => {
+                    setSelectedClientIds(newValue.map(client => client.id));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Выберите клиентов (можно несколько)"
+                      placeholder="Начните вводить ФИО, телефон или email..."
+                    />
+                  )}
+                  renderOption={(props, option) => {
+                    const isSelected = selectedClientIds.includes(option.id);
+                    return (
+                      <li {...props} key={option.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                          <Checkbox
+                            checked={isSelected}
+                            sx={{ mr: 1 }}
+                          />
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body1">
+                              {[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                            </Typography>
+                            {(option.phone || option.email) && (
+                              <Typography variant="body2" color="text.secondary">
+                                {option.phone || option.email}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      </li>
+                    );
+                  }}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => (
+                      <Chip
+                        {...getTagProps({ index })}
+                        key={option.id}
+                        label={[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
+                        size="small"
+                      />
+                    ))
+                  }
+                  filterOptions={(options, { inputValue }) => {
+                    const query = inputValue.toLowerCase();
+                    return options.filter(option => {
+                      const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').toLowerCase();
+                      const phone = (option.phone || '').toLowerCase();
+                      const email = (option.email || '').toLowerCase();
+                      return fullName.includes(query) || phone.includes(query) || email.includes(query);
+                    });
+                  }}
+                />
               </Grid>
               <Grid item xs={12}>
                 <Button
@@ -2024,6 +2211,290 @@ const Groups: React.FC = () => {
             variant="contained"
           >
             Создать тренировку
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания тренера */}
+      <Dialog 
+        open={createTrainerDialog} 
+        onClose={() => {
+          setCreateTrainerDialog(false);
+          setTrainerFormErrors({});
+          setTrainerFormData({
+            email: '',
+            password: '',
+            firstName: '',
+            lastName: '',
+            middleName: '',
+            phone: '',
+            qualification: '',
+            experience: '',
+            specialization: '',
+            salaryType: 'fixed',
+            salaryAmount: '',
+            salaryPercentage: '',
+            canViewAllGroups: false,
+          });
+        }}
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>Создать нового тренера</DialogTitle>
+        <DialogContent>
+          {Object.keys(trainerFormErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(trainerFormErrors).length} {Object.keys(trainerFormErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Фамилия"
+                value={trainerFormData.lastName}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                required
+                error={!!trainerFormErrors.lastName}
+                helperText={trainerFormErrors.lastName}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Имя"
+                value={trainerFormData.firstName}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                required
+                error={!!trainerFormErrors.firstName}
+                helperText={trainerFormErrors.firstName}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Отчество"
+                value={trainerFormData.middleName}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, middleName: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={trainerFormData.email}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, email: e.target.value.toLowerCase() }))}
+                required
+                error={!!trainerFormErrors.email}
+                helperText={trainerFormErrors.email}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Пароль"
+                type="password"
+                value={trainerFormData.password}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, password: e.target.value }))}
+                required
+                error={!!trainerFormErrors.password}
+                helperText={trainerFormErrors.password}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Телефон"
+                value={trainerFormData.phone}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, phone: e.target.value }))}
+                error={!!trainerFormErrors.phone}
+                helperText={trainerFormErrors.phone}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Квалификация"
+                value={trainerFormData.qualification}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, qualification: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Опыт (лет)"
+                type="number"
+                value={trainerFormData.experience}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, experience: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Специализация"
+                value={trainerFormData.specialization}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, specialization: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Тип зарплаты</InputLabel>
+                <Select
+                  value={trainerFormData.salaryType}
+                  onChange={(e) => setTrainerFormData(prev => ({ ...prev, salaryType: e.target.value }))}
+                >
+                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
+                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
+                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
+                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
+                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label={
+                  trainerFormData.salaryType === 'percentage' ? 'Процент (%)' :
+                  trainerFormData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
+                  trainerFormData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
+                  trainerFormData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
+                  'Размер зарплаты'
+                }
+                type="number"
+                value={trainerFormData.salaryAmount}
+                onChange={(e) => setTrainerFormData(prev => ({ ...prev, salaryAmount: e.target.value }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCreateTrainerDialog(false);
+            setTrainerFormErrors({});
+            setTrainerFormData({
+              email: '',
+              password: '',
+              firstName: '',
+              lastName: '',
+              middleName: '',
+              phone: '',
+              qualification: '',
+              experience: '',
+              specialization: '',
+              salaryType: 'fixed',
+              salaryAmount: '',
+              salaryPercentage: '',
+              canViewAllGroups: false,
+            });
+          }}>
+            Отмена
+          </Button>
+          <Button onClick={handleCreateTrainerFromGroup} variant="contained">
+            Создать тренера
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания филиала */}
+      <Dialog 
+        open={createBranchDialog} 
+        onClose={() => {
+          setCreateBranchDialog(false);
+          setBranchFormErrors({});
+          setBranchFormData({
+            name: '',
+            address: '',
+            phone: '',
+            email: '',
+            description: '',
+          });
+        }}
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>Создать новый филиал</DialogTitle>
+        <DialogContent>
+          {Object.keys(branchFormErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(branchFormErrors).length} {Object.keys(branchFormErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Название филиала"
+                value={branchFormData.name}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
+                error={!!branchFormErrors.name}
+                helperText={branchFormErrors.name}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Адрес"
+                value={branchFormData.address}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, address: e.target.value }))}
+                required
+                multiline
+                rows={2}
+                error={!!branchFormErrors.address}
+                helperText={branchFormErrors.address}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Телефон"
+                value={branchFormData.phone}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, phone: e.target.value }))}
+                error={!!branchFormErrors.phone}
+                helperText={branchFormErrors.phone}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={branchFormData.email}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, email: e.target.value.toLowerCase() }))}
+                error={!!branchFormErrors.email}
+                helperText={branchFormErrors.email}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Описание"
+                value={branchFormData.description}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCreateBranchDialog(false);
+            setBranchFormErrors({});
+            setBranchFormData({
+              name: '',
+              address: '',
+              phone: '',
+              email: '',
+              description: '',
+            });
+          }}>
+            Отмена
+          </Button>
+          <Button onClick={handleCreateBranchFromGroup} variant="contained">
+            Создать филиал
           </Button>
         </DialogActions>
       </Dialog>

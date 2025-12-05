@@ -531,7 +531,7 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
     let totalEarnings = 0;
     const trainingEarnings = trainings.map(training => {
       const presentCount = training.attendances.length;
-      const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+      const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
       const totalRevenue = presentCount * trainingPrice;
 
       let earnings = 0;
@@ -551,8 +551,8 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
         trainingId: training.id,
         trainingTitle: training.title,
         trainingDate: training.startTime,
-        groupName: training.group.name,
-        branchName: training.group.branch?.name,
+        groupName: training.group?.name || 'Индивидуальная тренировка',
+        branchName: training.group?.branch?.name || (training as any).branch?.name || '',
         presentCount,
         trainingPrice,
         totalRevenue,
@@ -646,7 +646,7 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
         let totalEarnings = 0;
         trainings.forEach(training => {
           const presentCount = training.attendances.length;
-          const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+          const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
           const totalRevenue = presentCount * trainingPrice;
 
           if (trainer.salaryType === 'percentage' && trainer.salaryAmount) {

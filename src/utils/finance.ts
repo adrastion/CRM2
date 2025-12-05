@@ -40,7 +40,7 @@ export async function calculateTrainerEarnings(
   }
 
   const presentCount = training.attendances.length;
-  const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+  const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
   const totalRevenue = presentCount * trainingPrice;
 
   let earnings = 0;
@@ -138,7 +138,7 @@ export async function calculateTrainerEarningsForAttendance(
     return 0;
   }
 
-  const trainingPrice = training.group.trainingPrice ? Number(training.group.trainingPrice) : 0;
+  const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
   const totalPresentCount = training.attendances.length;
 
   let earnings = 0;

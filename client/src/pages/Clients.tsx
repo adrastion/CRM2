@@ -75,6 +75,7 @@ const Clients: React.FC = () => {
   const [groups, setGroups] = useState<any[]>([]);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterGroupId, setFilterGroupId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(''); // Поиск по клиентам
   const [passportDialog, setPassportDialog] = useState(false);
   const [passportData, setPassportData] = useState({
     passportSeries: '',
@@ -1269,8 +1270,16 @@ const Clients: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Фильтры */}
+      {/* Фильтры и поиск */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <TextField
+          sx={{ minWidth: 250 }}
+          label="Поиск клиентов"
+          placeholder="ФИО, телефон, email..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          variant="outlined"
+        />
         <FormControl sx={{ minWidth: 200 }}>
           <InputLabel>Филиал</InputLabel>
           <Select
@@ -1397,6 +1406,16 @@ const Clients: React.FC = () => {
               <TableBody>
                 {clients
                   .filter((client) => {
+                    // Поиск по имени, фамилии, отчеству, телефону, email
+                    if (searchQuery) {
+                      const query = searchQuery.toLowerCase();
+                      const fullName = [client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ').toLowerCase();
+                      const phone = (client.phone || '').toLowerCase();
+                      const email = (client.email || '').toLowerCase();
+                      if (!fullName.includes(query) && !phone.includes(query) && !email.includes(query)) {
+                        return false;
+                      }
+                    }
                     // Фильтр по филиалу (через группы)
                     if (filterBranchId) {
                       const hasBranchGroup = client.groupMemberships?.some(
