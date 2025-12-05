@@ -30,7 +30,7 @@ import {
   InputAdornment,
   Snackbar,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Search, FilterList } from '@mui/icons-material';
+import { Add, Edit, Delete, Visibility, Search, FilterList, Calculate, CalendarMonth } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -39,6 +39,7 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Payment, Client, Branch, Group } from '../types';
 import { validatePaymentForm } from '../utils/validation';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PaymentFormData {
   amount: string;
@@ -53,6 +54,7 @@ interface PaymentFormData {
 }
 
 const Payments: React.FC = () => {
+  const { user } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -69,6 +71,9 @@ const Payments: React.FC = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [recalculateDialog, setRecalculateDialog] = useState(false);
+  const [recalculatingPayment, setRecalculatingPayment] = useState<Payment | null>(null);
+  const [newAmount, setNewAmount] = useState<string>('');
   const [formData, setFormData] = useState<PaymentFormData>({
     amount: '',
     type: 'membership',
@@ -258,6 +263,36 @@ const Payments: React.FC = () => {
     }
   };
 
+  const handleRecalculatePayment = (payment: Payment) => {
+    setRecalculatingPayment(payment);
+    setNewAmount(payment.amount.toString());
+    setRecalculateDialog(true);
+  };
+
+  const handleConfirmRecalculate = async () => {
+    if (!recalculatingPayment) return;
+
+    const amount = parseFloat(newAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setSnackbarMessage('Введите корректную сумму');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    try {
+      await apiService.recalculateMonthlyPayment(recalculatingPayment.id, amount);
+      setSnackbarMessage('Платеж успешно пересчитан');
+      setSnackbarOpen(true);
+      setRecalculateDialog(false);
+      setRecalculatingPayment(null);
+      setNewAmount('');
+      await fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка перерасчета платежа');
+      console.error('Error recalculating payment:', err);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       amount: '',
@@ -311,6 +346,8 @@ const Payments: React.FC = () => {
         return 'Разовое';
       case 'penalty':
         return 'Штраф';
+      case 'monthly_payment':
+        return 'Ежемесячный платеж';
       default:
         return type;
     }
@@ -352,23 +389,50 @@ const Payments: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
             Платежи ({filteredPayments.length})
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+            <Button
+              variant="outlined"
+              startIcon={<CalendarMonth />}
+              sx={{ textTransform: 'none' }}
+              onClick={async () => {
+                if (window.confirm('Создать ежемесячные платежи для всех групп с ежемесячной оплатой? Платежи будут созданы только для групп, у которых сегодня день оплаты (paymentDueDay).')) {
+                  try {
+                    setLoading(true);
+                    const result = await apiService.createMonthlyPayments();
+                    setSnackbarMessage(`Создано платежей: ${result.data.created}${result.data.errors > 0 ? `, ошибок: ${result.data.errors}` : ''}`);
+                    setSnackbarOpen(true);
+                    await fetchData();
+                  } catch (err: any) {
+                    setError(err.response?.data?.error || 'Ошибка создания ежемесячных платежей');
+                    console.error('Error creating monthly payments:', err);
+                  } finally {
+                    setLoading(false);
+                  }
+                }
+              }}
+            >
+              Создать ежемесячные платежи
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            sx={{ textTransform: 'none' }}
             onClick={() => {
               setOpenDialog(true);
               setFormErrors({});
               setError(null);
               resetForm();
             }}
-        >
+          >
             Добавить платеж
-        </Button>
+          </Button>
+        </Box>
       </Box>
 
         {error && (
@@ -496,6 +560,16 @@ const Payments: React.FC = () => {
                           >
                       <Edit />
                     </IconButton>
+                          {payment.isMonthlyPayment && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                            <IconButton
+                              size="small"
+                              color="secondary"
+                              onClick={() => handleRecalculatePayment(payment)}
+                              title="Перерасчет"
+                            >
+                              <Calculate />
+                            </IconButton>
+                          )}
                           <IconButton
                             size="small"
                             color="error"
@@ -1095,6 +1169,66 @@ const Payments: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+      {/* Диалог перерасчета платежа */}
+      <Dialog
+        open={recalculateDialog}
+        onClose={() => {
+          setRecalculateDialog(false);
+          setRecalculatingPayment(null);
+          setNewAmount('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Перерасчет ежемесячного платежа</DialogTitle>
+        <DialogContent>
+          {recalculatingPayment && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Клиент: {recalculatingPayment.client ? 
+                  [recalculatingPayment.client.lastName, recalculatingPayment.client.firstName, recalculatingPayment.client.middleName].filter(Boolean).join(' ') 
+                  : '-'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Текущая сумма: {recalculatingPayment.amount.toLocaleString('ru-RU', {
+                  style: 'currency',
+                  currency: 'RUB',
+                })}
+              </Typography>
+              {recalculatingPayment.originalAmount && Number(recalculatingPayment.originalAmount) !== recalculatingPayment.amount && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Оригинальная сумма: {Number(recalculatingPayment.originalAmount).toLocaleString('ru-RU', {
+                    style: 'currency',
+                    currency: 'RUB',
+                  })}
+                </Typography>
+              )}
+              <TextField
+                fullWidth
+                label="Новая сумма (руб.)"
+                type="number"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+                sx={{ mt: 2 }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setRecalculateDialog(false);
+            setRecalculatingPayment(null);
+            setNewAmount('');
+          }}>
+            Отмена
+          </Button>
+          <Button onClick={handleConfirmRecalculate} variant="contained" color="primary">
+            Пересчитать
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar для отображения ошибок валидации */}
       <Snackbar

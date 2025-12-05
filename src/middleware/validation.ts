@@ -224,7 +224,16 @@ export const groupSchemas = {
         endTime: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required()
       })
     ).optional(),
-    isActive: Joi.boolean().optional()
+    isActive: Joi.boolean().optional(),
+    // Ежемесячная оплата
+    isMonthlyPayment: Joi.boolean().optional(),
+    monthlyPaymentAmount: Joi.number().precision(2).min(0).optional().allow(null),
+    paymentDueDay: Joi.number().integer().min(1).max(31).optional().allow(null),
+    // Настройки зарплаты тренера
+    trainerSalaryType: Joi.string().valid('monthly_percentage', 'per_visit_percentage', 'per_visit_amount').optional().allow(null),
+    trainerMonthlyPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),
+    trainerPerVisitPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),
+    trainerPerVisitAmount: Joi.number().precision(2).min(0).optional().allow(null)
   })
 };
 

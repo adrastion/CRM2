@@ -113,14 +113,20 @@ export async function calculateTrainerEarningsForAttendance(
     where: { id: trainerId, tenantId }
   });
 
-  if (!trainer || !trainer.salaryType) {
+  if (!trainer) {
     return 0;
   }
 
   const training = await prisma.training.findFirst({
     where: { id: trainingId, tenantId },
     include: {
-      group: true,
+      group: {
+        include: {
+          memberships: {
+            where: { isActive: true }
+          }
+        }
+      },
       attendances: {
         where: {
           OR: [
@@ -138,52 +144,94 @@ export async function calculateTrainerEarningsForAttendance(
     return 0;
   }
 
-  const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
+  // Для индивидуальных тренировок используем настройки из тренировки
+  if (!training.groupId) {
+    if (training.trainerEarningType === 'percentage' && training.trainerEarningValue && training.price) {
+      const percentage = Number(training.trainerEarningValue);
+      return (Number(training.price) * percentage) / 100;
+    } else if (training.trainerEarningType === 'amount' && training.trainerEarningValue) {
+      return Number(training.trainerEarningValue);
+    }
+    // Если нет настроек в тренировке, используем настройки тренера
+    if (trainer.salaryType === 'individual' && trainer.salaryPercentage && training.price) {
+      const trainerPercentage = Number(trainer.salaryPercentage);
+      return (Number(training.price) * trainerPercentage) / 100;
+    }
+    return 0;
+  }
+
+  // Для групповых тренировок используем настройки из группы
+  const group = training.group;
+  if (!group) {
+    return 0;
+  }
+
+  const trainingPrice = group.trainingPrice ? Number(group.trainingPrice) : 0;
   const totalPresentCount = training.attendances.length;
 
   let earnings = 0;
 
-  switch (trainer.salaryType) {
-    case 'percentage':
-      // Процент от оплаты одного клиента
-      if (trainer.salaryAmount) {
-        const percentage = Number(trainer.salaryAmount);
-        // Доля от оплаты этого клиента
-        earnings = (trainingPrice * percentage) / 100;
-      }
-      break;
+  // Приоритет: настройки группы > настройки тренера
+  if (group.trainerSalaryType) {
+    switch (group.trainerSalaryType) {
+      case 'monthly_percentage':
+        // Ежемесячный процент - не начисляется за посещение, только когда все оплатили
+        // Возвращаем 0, так как это начисляется отдельно
+        return 0;
 
-    case 'per_student':
-      // Оплата за каждого ученика
-      if (trainer.salaryAmount) {
-        earnings = Number(trainer.salaryAmount);
-      }
-      break;
+      case 'per_visit_percentage':
+        // Процент за посещение
+        if (group.trainerPerVisitPercentage) {
+          const percentage = Number(group.trainerPerVisitPercentage);
+          earnings = (trainingPrice * percentage) / 100;
+        }
+        break;
 
-    case 'fixed':
-      // Фиксированная плата - распределяется между всеми присутствующими
-      if (trainer.salaryAmount && totalPresentCount > 0) {
-        earnings = Number(trainer.salaryAmount) / totalPresentCount;
-      }
-      break;
+      case 'per_visit_amount':
+        // Фиксированная сумма за посещение
+        if (group.trainerPerVisitAmount) {
+          earnings = Number(group.trainerPerVisitAmount);
+        }
+        break;
 
-    case 'per_training':
-      // Оплата за тренировку - распределяется между всеми присутствующими
-      if (trainer.salaryAmount && totalPresentCount > 0) {
-        earnings = Number(trainer.salaryAmount) / totalPresentCount;
-      }
-      break;
+      default:
+        earnings = 0;
+    }
+  } else {
+    // Используем настройки тренера, если нет настроек группы
+    switch (trainer.salaryType) {
+      case 'percentage':
+        // Процент от оплаты одного клиента
+        if (trainer.salaryAmount) {
+          const percentage = Number(trainer.salaryAmount);
+          earnings = (trainingPrice * percentage) / 100;
+        }
+        break;
 
-    case 'individual':
-      // Индивидуальное занятие
-      if (totalPresentCount === 1 && trainer.salaryAmount && trainer.salaryPercentage) {
-        const trainerPercentage = Number(trainer.salaryPercentage);
-        earnings = (trainingPrice * trainerPercentage) / 100;
-      }
-      break;
+      case 'per_student':
+        // Оплата за каждого ученика
+        if (trainer.salaryAmount) {
+          earnings = Number(trainer.salaryAmount);
+        }
+        break;
 
-    default:
-      earnings = 0;
+      case 'fixed':
+        // Фиксированная плата - распределяется между всеми присутствующими
+        if (trainer.salaryAmount && totalPresentCount > 0) {
+          earnings = Number(trainer.salaryAmount) / totalPresentCount;
+        }
+        break;
+
+      case 'per_training':
+        // Оплата за тренировку - распределяется между всеми присутствующими
+        if (trainer.salaryAmount && totalPresentCount > 0) {
+          earnings = Number(trainer.salaryAmount) / totalPresentCount;
+        }
+        break;
+
+      default:
+        earnings = 0;
+    }
   }
 
   return earnings;

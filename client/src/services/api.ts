@@ -590,6 +590,16 @@ class ApiService {
     await this.api.delete(`/payments/${id}`);
   }
 
+  async recalculateMonthlyPayment(id: string, newAmount: number): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/payments/${id}/recalculate`, { newAmount });
+    return response.data.data;
+  }
+
+  async createMonthlyPayments(): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/payments/monthly/create');
+    return response.data;
+  }
+
   // Membership endpoints
   async getMemberships(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/memberships', { params, signal });

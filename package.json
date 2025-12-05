@@ -43,6 +43,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^4.2.1",
     "nodemailer": "^6.9.7",
     "xlsx": "^0.18.5"
   },
@@ -58,6 +59,7 @@
     "@types/morgan": "^1.9.10",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.10.4",
+    "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.14",
     "@types/xlsx": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^6.13.1",

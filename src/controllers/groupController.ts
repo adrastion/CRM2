@@ -175,6 +175,66 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
       }
     }
 
+    // Обработка полей ежемесячной оплаты
+    if (groupData.isMonthlyPayment === undefined || groupData.isMonthlyPayment === null) {
+      groupData.isMonthlyPayment = false;
+    }
+    if (groupData.monthlyPaymentAmount === '' || groupData.monthlyPaymentAmount === null || groupData.monthlyPaymentAmount === undefined) {
+      delete groupData.monthlyPaymentAmount;
+    } else if (typeof groupData.monthlyPaymentAmount === 'string') {
+      const amount = parseFloat(groupData.monthlyPaymentAmount);
+      if (isNaN(amount)) {
+        delete groupData.monthlyPaymentAmount;
+      } else {
+        groupData.monthlyPaymentAmount = amount;
+      }
+    }
+    if (groupData.paymentDueDay === '' || groupData.paymentDueDay === null || groupData.paymentDueDay === undefined) {
+      delete groupData.paymentDueDay;
+    } else if (typeof groupData.paymentDueDay === 'string') {
+      const day = parseInt(groupData.paymentDueDay);
+      if (isNaN(day) || day < 1 || day > 31) {
+        delete groupData.paymentDueDay;
+      } else {
+        groupData.paymentDueDay = day;
+      }
+    }
+
+    // Обработка полей зарплаты тренера
+    if (groupData.trainerSalaryType === '' || groupData.trainerSalaryType === null || groupData.trainerSalaryType === undefined) {
+      delete groupData.trainerSalaryType;
+    }
+    if (groupData.trainerMonthlyPercentage === '' || groupData.trainerMonthlyPercentage === null || groupData.trainerMonthlyPercentage === undefined) {
+      delete groupData.trainerMonthlyPercentage;
+    } else if (typeof groupData.trainerMonthlyPercentage === 'string') {
+      const percentage = parseFloat(groupData.trainerMonthlyPercentage);
+      if (isNaN(percentage)) {
+        delete groupData.trainerMonthlyPercentage;
+      } else {
+        groupData.trainerMonthlyPercentage = percentage;
+      }
+    }
+    if (groupData.trainerPerVisitPercentage === '' || groupData.trainerPerVisitPercentage === null || groupData.trainerPerVisitPercentage === undefined) {
+      delete groupData.trainerPerVisitPercentage;
+    } else if (typeof groupData.trainerPerVisitPercentage === 'string') {
+      const percentage = parseFloat(groupData.trainerPerVisitPercentage);
+      if (isNaN(percentage)) {
+        delete groupData.trainerPerVisitPercentage;
+      } else {
+        groupData.trainerPerVisitPercentage = percentage;
+      }
+    }
+    if (groupData.trainerPerVisitAmount === '' || groupData.trainerPerVisitAmount === null || groupData.trainerPerVisitAmount === undefined) {
+      delete groupData.trainerPerVisitAmount;
+    } else if (typeof groupData.trainerPerVisitAmount === 'string') {
+      const amount = parseFloat(groupData.trainerPerVisitAmount);
+      if (isNaN(amount)) {
+        delete groupData.trainerPerVisitAmount;
+      } else {
+        groupData.trainerPerVisitAmount = amount;
+      }
+    }
+
     const group = await prisma.group.create({
       data: groupData,
       include: {
@@ -250,6 +310,80 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
           delete updateData.trainingPrice;
         } else {
           updateData.trainingPrice = price;
+        }
+      }
+    }
+
+    // Обработка полей ежемесячной оплаты
+    if (updateData.isMonthlyPayment !== undefined) {
+      if (updateData.isMonthlyPayment === null) {
+        updateData.isMonthlyPayment = false;
+      }
+    }
+    if (updateData.monthlyPaymentAmount !== undefined) {
+      if (updateData.monthlyPaymentAmount === '' || updateData.monthlyPaymentAmount === null) {
+        delete updateData.monthlyPaymentAmount;
+      } else if (typeof updateData.monthlyPaymentAmount === 'string') {
+        const amount = parseFloat(updateData.monthlyPaymentAmount);
+        if (isNaN(amount)) {
+          delete updateData.monthlyPaymentAmount;
+        } else {
+          updateData.monthlyPaymentAmount = amount;
+        }
+      }
+    }
+    if (updateData.paymentDueDay !== undefined) {
+      if (updateData.paymentDueDay === '' || updateData.paymentDueDay === null) {
+        delete updateData.paymentDueDay;
+      } else if (typeof updateData.paymentDueDay === 'string') {
+        const day = parseInt(updateData.paymentDueDay);
+        if (isNaN(day) || day < 1 || day > 31) {
+          delete updateData.paymentDueDay;
+        } else {
+          updateData.paymentDueDay = day;
+        }
+      }
+    }
+
+    // Обработка полей зарплаты тренера
+    if (updateData.trainerSalaryType !== undefined) {
+      if (updateData.trainerSalaryType === '' || updateData.trainerSalaryType === null) {
+        delete updateData.trainerSalaryType;
+      }
+    }
+    if (updateData.trainerMonthlyPercentage !== undefined) {
+      if (updateData.trainerMonthlyPercentage === '' || updateData.trainerMonthlyPercentage === null) {
+        delete updateData.trainerMonthlyPercentage;
+      } else if (typeof updateData.trainerMonthlyPercentage === 'string') {
+        const percentage = parseFloat(updateData.trainerMonthlyPercentage);
+        if (isNaN(percentage)) {
+          delete updateData.trainerMonthlyPercentage;
+        } else {
+          updateData.trainerMonthlyPercentage = percentage;
+        }
+      }
+    }
+    if (updateData.trainerPerVisitPercentage !== undefined) {
+      if (updateData.trainerPerVisitPercentage === '' || updateData.trainerPerVisitPercentage === null) {
+        delete updateData.trainerPerVisitPercentage;
+      } else if (typeof updateData.trainerPerVisitPercentage === 'string') {
+        const percentage = parseFloat(updateData.trainerPerVisitPercentage);
+        if (isNaN(percentage)) {
+          delete updateData.trainerPerVisitPercentage;
+        } else {
+          updateData.trainerPerVisitPercentage = percentage;
+        }
+      }
+    }
+    if (updateData.trainerPerVisitAmount !== undefined) {
+      if (updateData.trainerPerVisitAmount === '' || updateData.trainerPerVisitAmount === null) {
+        delete updateData.trainerPerVisitAmount;
+      } else if (typeof updateData.trainerPerVisitAmount === 'string') {
+        const amount = parseFloat(updateData.trainerPerVisitAmount);
+        if (isNaN(amount)) {
+          delete updateData.trainerPerVisitAmount;
+        } else {
+          updateData.trainerPerVisitAmount = amount;
         }
       }
     }

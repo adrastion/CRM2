@@ -97,6 +97,10 @@ interface TrainingFormData {
   recurrenceMode: 'days' | 'dates'; // 'days' - по дням недели, 'dates' - по конкретным датам
   daySchedules: DaySchedule[]; // Расписание по дням недели
   dateSchedules: DateSchedule[]; // Расписание по конкретным датам
+  // Поля для индивидуальных тренировок
+  price: string; // Цена индивидуальной тренировки
+  trainerEarningType: 'percentage' | 'amount' | ''; // Тип заработка тренера: процент или сумма
+  trainerEarningValue: string; // Значение (процент или сумма)
 }
 
 const Schedule: React.FC = () => {
@@ -157,7 +161,10 @@ const Schedule: React.FC = () => {
     recurrenceEndDate: null,
     recurrenceMode: 'days',
     daySchedules: [],
-    dateSchedules: []
+    dateSchedules: [],
+    price: '',
+    trainerEarningType: '',
+    trainerEarningValue: ''
   });
 
   const fetchData = async () => {
@@ -750,7 +757,10 @@ const Schedule: React.FC = () => {
       recurrenceEndDate: null,
       recurrenceMode: 'days',
       daySchedules: [],
-      dateSchedules: []
+      dateSchedules: [],
+      price: '',
+      trainerEarningType: '',
+      trainerEarningValue: ''
     });
     setEditingTraining(null);
   };
@@ -832,7 +842,10 @@ const Schedule: React.FC = () => {
       recurrenceEndDate,
       recurrenceMode,
       daySchedules,
-      dateSchedules
+      dateSchedules,
+      price: training.price ? training.price.toString() : '',
+      trainerEarningType: training.trainerEarningType || '',
+      trainerEarningValue: training.trainerEarningValue ? training.trainerEarningValue.toString() : ''
     });
     
     // Загружаем залы для филиала тренировки
@@ -2360,6 +2373,47 @@ const Schedule: React.FC = () => {
                     }}
                   />
                 </Grid>
+              )}
+              
+              {/* Поля для индивидуальной тренировки: цена и заработок тренера */}
+              {formData.trainingType === 'individual' && (
+                <>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Цена тренировки (руб.)"
+                      type="number"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      inputProps={{ min: 0, step: 0.01 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Тип заработка тренера</InputLabel>
+                      <Select
+                        value={formData.trainerEarningType}
+                        onChange={(e) => setFormData({ ...formData, trainerEarningType: e.target.value as 'percentage' | 'amount' | '', trainerEarningValue: '' })}
+                      >
+                        <MenuItem value="">Не указано</MenuItem>
+                        <MenuItem value="percentage">Процент</MenuItem>
+                        <MenuItem value="amount">Фиксированная сумма</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {formData.trainerEarningType && (
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label={formData.trainerEarningType === 'percentage' ? 'Процент (%)' : 'Сумма (руб.)'}
+                        type="number"
+                        value={formData.trainerEarningValue}
+                        onChange={(e) => setFormData({ ...formData, trainerEarningValue: e.target.value })}
+                        inputProps={{ min: 0, step: formData.trainerEarningType === 'percentage' ? 0.1 : 0.01 }}
+                      />
+                    </Grid>
+                  )}
+                </>
               )}
               
               <Grid item xs={12} sm={6}>

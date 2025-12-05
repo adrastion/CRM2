@@ -5,7 +5,9 @@ import {
   getPaymentById,
   createPayment,
   updatePayment,
-  deletePayment
+  deletePayment,
+  createMonthlyPayments,
+  recalculateMonthlyPayment
 } from '../controllers/paymentController';
 
 const router = Router();
@@ -19,5 +21,8 @@ router.get('/:id', getPaymentById);
 router.post('/', requireOwnerAdminOrTrainer, createPayment);
 router.put('/:id', requireOwnerAdminOrTrainer, updatePayment);
 router.delete('/:id', requireOwnerAdminOrTrainer, deletePayment);
+// Monthly payments
+router.post('/monthly/create', requireOwnerAdminOrTrainer, createMonthlyPayments);
+router.post('/:id/recalculate', requireOwnerAdminOrTrainer, recalculateMonthlyPayment);
 
 export default router;

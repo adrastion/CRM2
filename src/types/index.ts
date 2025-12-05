@@ -109,6 +109,15 @@ export interface CreateGroupData {
   schedule?: GroupScheduleItem[]; // График тренировок по дням недели
   branchId: string;
   trainerId: string;
+  // Ежемесячная оплата
+  isMonthlyPayment?: boolean;
+  monthlyPaymentAmount?: number;
+  paymentDueDay?: number; // День месяца для оплаты (1-31)
+  // Настройки зарплаты тренера
+  trainerSalaryType?: 'monthly_percentage' | 'per_visit_percentage' | 'per_visit_amount';
+  trainerMonthlyPercentage?: number; // Процент от ежемесячной суммы оплаченной клиентами
+  trainerPerVisitPercentage?: number; // Процент за посещение
+  trainerPerVisitAmount?: number; // Фиксированная сумма за посещение
 }
 
 // Membership interfaces
@@ -130,6 +139,9 @@ export interface CreatePaymentData {
   dueDate?: string;
   clientId: string;
   membershipId?: string;
+  groupId?: string; // Связь с группой для ежемесячных платежей
+  isMonthlyPayment?: boolean; // Является ли это ежемесячным платежом
+  originalAmount?: number; // Оригинальная сумма до перерасчета
 }
 
 // Training interfaces
@@ -141,8 +153,12 @@ export interface CreateTrainingData {
   isRecurring?: boolean;
   recurrence?: string;
   branchId: string;
-  groupId: string;
+  groupId?: string; // Опционально для индивидуальных тренировок
   trainerId: string;
+  // Цена и тип заработка тренера для индивидуальных тренировок
+  price?: number;
+  trainerEarningType?: 'percentage' | 'amount';
+  trainerEarningValue?: number; // Процент или сумма
 }
 
 // Attendance interfaces

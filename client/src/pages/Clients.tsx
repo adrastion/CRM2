@@ -1380,6 +1380,7 @@ const Clients: React.FC = () => {
                   <TableCell>Группы</TableCell>
                   <TableCell>Тарифы</TableCell>
                   <TableCell>Баланс</TableCell>
+                  <TableCell>Задолженность</TableCell>
                   {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                     <TableCell>Членский взнос</TableCell>
                   )}
@@ -1626,6 +1627,18 @@ const Clients: React.FC = () => {
                       >
                         {((client.balance !== undefined ? Number(client.balance) : 0).toFixed(2))} ₽
                       </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {client.debt && client.debt > 0 ? (
+                        <Chip
+                          label={`${client.debt.toFixed(2)} ₽${client.overduePaymentsCount ? ` (${client.overduePaymentsCount})` : ''}`}
+                          color="error"
+                          size="small"
+                          sx={{ fontWeight: 'bold' }}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">Нет</Typography>
+                      )}
                     </TableCell>
                     {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                       <TableCell>

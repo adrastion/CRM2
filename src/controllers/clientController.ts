@@ -126,9 +126,40 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     prisma.client.count({ where })
   ]);
 
+  // Calculate debt for each client (overdue payments)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const clientsWithDebt = await Promise.all(
+    clients.map(async (client) => {
+      // Find overdue payments (dueDate < today and status !== 'paid')
+      const overduePayments = await prisma.payment.findMany({
+        where: {
+          clientId: client.id,
+          tenantId,
+          status: { not: 'paid' },
+          dueDate: { lt: today }
+        },
+        include: {
+          group: true
+        }
+      });
+
+      const totalDebt = overduePayments.reduce((sum, payment) => {
+        return sum + Number(payment.amount);
+      }, 0);
+
+      return {
+        ...client,
+        debt: totalDebt,
+        overduePaymentsCount: overduePayments.length
+      };
+    })
+  );
+
   res.json({
     success: true,
-    data: clients,
+    data: clientsWithDebt,
     pagination: {
       page: parseInt(page.toString()),
       limit: parseInt(limit.toString()),

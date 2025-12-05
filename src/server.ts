@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
+import cron from 'node-cron';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
@@ -33,6 +34,7 @@ import subscriptionRoutes from './routes/subscription';
 import adminDashboardRoutes from './routes/adminDashboard';
 import superAdminAuthRoutes from './routes/superAdminAuth';
 import competitionRoutes from './routes/competition';
+import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 
 // Load environment variables
 dotenv.config();
@@ -133,6 +135,24 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+
+  // Настройка автоматического создания ежемесячных платежей
+  // Запускается каждый день в 00:00 (полночь)
+  // Можно изменить время через переменную окружения CRON_MONTHLY_PAYMENTS_TIME (формат: "0 0 * * *")
+  const cronSchedule = process.env.CRON_MONTHLY_PAYMENTS_TIME || '0 0 * * *';
+  
+  cron.schedule(cronSchedule, async () => {
+    console.log('[Cron] Scheduled task: Creating monthly payments...');
+    try {
+      await createMonthlyPaymentsForAllTenants();
+    } catch (error) {
+      console.error('[Cron] Error in scheduled monthly payments creation:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
+
+  console.log(`⏰ Monthly payments cron job scheduled: ${cronSchedule} (timezone: ${process.env.TZ || 'Europe/Moscow'})`);
 });
 
 export default app;

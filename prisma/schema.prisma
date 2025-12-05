@@ -287,11 +287,21 @@ model Group {
   color         String?
   trainingPrice Decimal?
   schedule      String?
+  // Ежемесячная оплата
+  isMonthlyPayment Boolean        @default(false)
+  monthlyPaymentAmount Decimal?
+  paymentDueDay Int?              // День месяца для оплаты (1-31)
+  // Настройки зарплаты тренера
+  trainerSalaryType String?       // 'monthly_percentage', 'per_visit_percentage', 'per_visit_amount'
+  trainerMonthlyPercentage Decimal? // Процент от ежемесячной суммы оплаченной клиентами
+  trainerPerVisitPercentage Decimal? // Процент за посещение
+  trainerPerVisitAmount Decimal?  // Фиксированная сумма за посещение
   memberships   GroupMembership[]
   branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   trainer       Trainer           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   trainings     Training[]
+  payments      Payment[]
 
   @@map("groups")
 }
@@ -360,12 +370,16 @@ model Payment {
   clientId       String
   membershipId   String?
   branchId       String?
+  groupId        String?         // Связь с группой для ежемесячных платежей
   tenantId       String
+  isMonthlyPayment Boolean        @default(false) // Является ли это ежемесячным платежом
+  originalAmount Decimal?         // Оригинальная сумма до перерасчета
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   branch         Branch?         @relation(fields: [branchId], references: [id])
   client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   membership     Membership?     @relation(fields: [membershipId], references: [id])
+  group          Group?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   promoCodeUsage PromoCodeUsage?
   transactions   Transaction[]
@@ -389,6 +403,10 @@ model Training {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   hallId       String?
+  // Цена и тип заработка тренера для индивидуальных тренировок
+  price        Decimal?
+  trainerEarningType String? // 'percentage', 'amount'
+  trainerEarningValue Decimal? // Процент или сумма
   attendances  Attendance[]
   branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   group        Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
