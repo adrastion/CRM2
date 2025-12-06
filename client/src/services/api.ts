@@ -294,6 +294,42 @@ class ApiService {
     return response.data.data;
   }
 
+  async getTrainerNotificationSettings(trainerId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/trainers/${trainerId}/notifications`);
+    return response.data.data;
+  }
+
+  async updateTrainerNotificationSettings(trainerId: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/trainers/${trainerId}/notifications`, data);
+    return response.data.data;
+  }
+
+  // Push notification endpoints
+  async getVapidKey(): Promise<string> {
+    const response = await this.api.get<ApiResponse>('/push-notifications/vapid-key');
+    return response.data.data.publicKey;
+  }
+
+  async subscribeToPush(subscription: any, userAgent?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/push-notifications/subscribe', {
+      subscription,
+      userAgent
+    });
+    return response.data;
+  }
+
+  async unsubscribeFromPush(endpoint: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/push-notifications/unsubscribe', {
+      endpoint
+    });
+    return response.data;
+  }
+
+  async getUserPushSubscriptions(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/push-notifications/subscriptions');
+    return response.data.data;
+  }
+
   // Standard endpoints (Нормативы)
   async getStandards(params?: any): Promise<{ data: any[] }> {
     const response = await this.api.get<ApiResponse>('/standards', { params });

@@ -10,7 +10,9 @@ import {
   addBranchToTrainer,
   removeBranchFromTrainer,
   getTrainerEarnings,
-  getAllTrainersEarnings
+  getAllTrainersEarnings,
+  getTrainerNotificationSettings,
+  updateTrainerNotificationSettings
 } from '../controllers/trainerController';
 
 const router = Router();
@@ -32,5 +34,9 @@ router.delete('/:id/branches/:branchId', requireOwnerAdminOrTrainer, removeBranc
 // Trainer earnings routes
 router.get('/:id/earnings', getTrainerEarnings); // Trainer can see own earnings, admin/owner can see any
 router.get('/earnings/all', getAllTrainersEarnings); // Only admin/owner
+
+// Trainer notification settings routes
+router.get('/:id/notifications', getTrainerNotificationSettings);
+router.put('/:id/notifications', updateTrainerNotificationSettings);
 
 export default router;

@@ -34,7 +34,9 @@ import subscriptionRoutes from './routes/subscription';
 import adminDashboardRoutes from './routes/adminDashboard';
 import superAdminAuthRoutes from './routes/superAdminAuth';
 import competitionRoutes from './routes/competition';
+import pushNotificationRoutes from './routes/pushNotifications';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
+import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
 
 // Load environment variables
 dotenv.config();
@@ -127,6 +129,7 @@ app.use('/api/standards', standardRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/super-admin/auth', superAdminAuthRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
+app.use('/api/push-notifications', pushNotificationRoutes);
 
 // Error handling middleware
 app.use(notFound);
@@ -154,7 +157,32 @@ app.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow'
   });
 
-  console.log(`⏰ Monthly payments cron job scheduled: ${cronSchedule} (timezone: ${process.env.TZ || 'Europe/Moscow'})`);
+  console.log(`⏰ Monthly payments cron job scheduled: ${cronSchedule}`);
+
+  // Настройка уведомлений о тренировках
+  // Проверка каждую минуту для напоминаний
+  cron.schedule('* * * * *', async () => {
+    try {
+      await sendTrainingReminders();
+    } catch (error) {
+      console.error('[Cron] Error in training reminders:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
+
+  // Ежедневные уведомления - проверка каждую минуту для точного времени
+  cron.schedule('* * * * *', async () => {
+    try {
+      await sendDailyTrainingNotifications();
+    } catch (error) {
+      console.error('[Cron] Error in daily training notifications:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
+
+  console.log(`⏰ Training notifications cron jobs scheduled (timezone: ${process.env.TZ || 'Europe/Moscow'})`);
 });
 
 export default app;

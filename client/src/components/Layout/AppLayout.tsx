@@ -31,8 +31,6 @@ import {
   Logout,
   AccountCircle,
   HelpOutline,
-  Description,
-  ContactMail,
   LocalOffer,
   Settings,
   Assignment,
@@ -64,7 +62,7 @@ const navigationItems = [
   { label: 'Платежи', path: '/payments', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Тарифы', path: '/memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOffer />, roles: ['OWNER', 'ADMIN'] },
-  { label: 'Настройки', path: '/settings', icon: <Settings />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Настройки', path: '/settings', icon: <Settings />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'FAQ', path: '/faq', icon: <HelpOutline />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'База знаний', path: '/knowledge-base', icon: <MenuBook />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
 ];
@@ -81,6 +79,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
+
+  // Закрываем Drawer при изменении маршрута на мобильных устройствах
+  useEffect(() => {
+    if (isMobile && mobileOpen) {
+      setMobileOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, isMobile]);
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);

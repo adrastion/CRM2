@@ -636,6 +636,166 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
 /**
  * Get all trainers earnings (for admin/owner)
  */
+// Get notification settings for a trainer
+export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    // Find trainer
+    const trainer = await prisma.trainer.findFirst({
+      where: {
+        id,
+        tenantId: req.tenant?.id
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trainer not found'
+      });
+    }
+
+    // Check permissions: trainer can only see their own settings, admin/owner can see any
+    if (req.user?.role === 'TRAINER' && trainer.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+    }
+
+    // Get or create notification settings
+    let settings = await prisma.trainerNotificationSettings.findUnique({
+      where: { trainerId: id }
+    });
+
+    if (!settings) {
+      settings = await prisma.trainerNotificationSettings.create({
+        data: {
+          trainerId: id,
+          allTrainingsEnabled: false,
+          reminderEnabled: false
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: settings
+    });
+  } catch (error) {
+    console.error('Get notification settings error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to get notification settings'
+    });
+  }
+};
+
+// Update notification settings for a trainer
+export const updateTrainerNotificationSettings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { allTrainingsTime, allTrainingsEnabled, notificationPeriod, reminderBeforeMinutes, reminderEnabled } = req.body;
+    const userId = req.user?.id;
+
+    // Find trainer
+    const trainer = await prisma.trainer.findFirst({
+      where: {
+        id,
+        tenantId: req.tenant?.id
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (!trainer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trainer not found'
+      });
+    }
+
+    // Check permissions: trainer can only update their own settings, admin/owner can update any
+    if (req.user?.role === 'TRAINER' && trainer.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+    }
+
+    // Validate allTrainingsTime (0-1439 minutes)
+    if (allTrainingsTime !== undefined && allTrainingsTime !== null) {
+      const time = parseInt(allTrainingsTime);
+      if (isNaN(time) || time < 0 || time > 1439) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid allTrainingsTime. Must be between 0 and 1439 minutes'
+        });
+      }
+    }
+
+    // Validate notificationPeriod
+    if (notificationPeriod !== undefined && notificationPeriod !== null) {
+      const validPeriods = ['tomorrow', 'week', 'month'];
+      if (!validPeriods.includes(notificationPeriod)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid notificationPeriod. Must be one of: tomorrow, week, month'
+        });
+      }
+    }
+
+    // Validate reminderBeforeMinutes (positive number)
+    if (reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null) {
+      const minutes = parseInt(reminderBeforeMinutes);
+      if (isNaN(minutes) || minutes < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid reminderBeforeMinutes. Must be a positive number'
+        });
+      }
+    }
+
+    // Update or create settings
+    const settings = await prisma.trainerNotificationSettings.upsert({
+      where: { trainerId: id },
+      update: {
+        allTrainingsTime: allTrainingsTime !== undefined && allTrainingsTime !== null ? parseInt(allTrainingsTime) : undefined,
+        allTrainingsEnabled: allTrainingsEnabled !== undefined ? Boolean(allTrainingsEnabled) : undefined,
+        notificationPeriod: notificationPeriod !== undefined ? notificationPeriod : undefined,
+        reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : undefined,
+        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : undefined
+      },
+      create: {
+        trainerId: id,
+        allTrainingsTime: allTrainingsTime !== undefined && allTrainingsTime !== null ? parseInt(allTrainingsTime) : undefined,
+        allTrainingsEnabled: allTrainingsEnabled !== undefined ? Boolean(allTrainingsEnabled) : false,
+        notificationPeriod: notificationPeriod || 'tomorrow',
+        reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : undefined,
+        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : false
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: settings,
+      message: 'Notification settings updated successfully'
+    });
+  } catch (error) {
+    console.error('Update notification settings error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to update notification settings'
+    });
+  }
+};
+
 export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Response) => {
   try {
     // Only admin and owner can access this
