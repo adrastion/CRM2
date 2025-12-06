@@ -36,6 +36,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import { 
@@ -64,6 +65,7 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'da
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DaySchedule {
   dayOfWeek: number;
@@ -101,10 +103,15 @@ interface TrainingFormData {
   price: string; // Цена индивидуальной тренировки
   trainerEarningType: 'percentage' | 'amount' | ''; // Тип заработка тренера: процент или сумма
   trainerEarningValue: string; // Значение (процент или сумма)
+  // Замена тренера
+  substituteTrainerId: string; // ID тренера-замены
+  originalTrainerId: string; // ID оригинального тренера (если есть замена)
+  competitionConflict: boolean; // Есть ли конфликт с соревнованием
 }
 
 const Schedule: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -164,7 +171,10 @@ const Schedule: React.FC = () => {
     dateSchedules: [],
     price: '',
     trainerEarningType: '',
-    trainerEarningValue: ''
+    trainerEarningValue: '',
+    substituteTrainerId: '',
+    originalTrainerId: '',
+    competitionConflict: false
   });
 
   const fetchData = async () => {
@@ -350,15 +360,18 @@ const Schedule: React.FC = () => {
       }
 
       // Базовые данные для тренировки
+      // Всегда отправляем оригинального тренера в trainerId, контроллер сам определит, кто будет проводить
       const trainingData: any = {
         title: formData.title,
         description: formData.description,
-        trainerId: formData.trainerId,
+        trainerId: formData.trainerId, // Оригинальный тренер
         branchId: formData.branchId,
         hallId: formData.hallId || undefined,
         isRecurring: formData.isRecurring,
         recurrence: formData.recurrence,
-        daysOfWeek: formData.daysOfWeek
+        daysOfWeek: formData.daysOfWeek,
+        substituteTrainerId: formData.substituteTrainerId || undefined,
+        originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
       };
       
       // Для групповой тренировки добавляем groupId, для индивидуальной - явно null
@@ -760,7 +773,10 @@ const Schedule: React.FC = () => {
       dateSchedules: [],
       price: '',
       trainerEarningType: '',
-      trainerEarningValue: ''
+      trainerEarningValue: '',
+      substituteTrainerId: '',
+      originalTrainerId: '',
+      competitionConflict: false
     });
     setEditingTraining(null);
   };
@@ -832,7 +848,7 @@ const Schedule: React.FC = () => {
       trainingType: training.groupId ? 'group' : 'individual', // Определяем тип на основе наличия groupId
       groupId: training.groupId || '',
       selectedClientIds: [], // При редактировании клиенты загружаются отдельно через attendance
-      trainerId: training.trainerId || '',
+      trainerId: training.originalTrainerId || training.trainerId || '', // Используем оригинального тренера, если есть замена
       branchId: training.branchId || '',
       hallId: training.hallId || '',
       isRecurring: training.isRecurring || false,
@@ -845,7 +861,10 @@ const Schedule: React.FC = () => {
       dateSchedules,
       price: training.price ? training.price.toString() : '',
       trainerEarningType: training.trainerEarningType || '',
-      trainerEarningValue: training.trainerEarningValue ? training.trainerEarningValue.toString() : ''
+      trainerEarningValue: training.trainerEarningValue ? training.trainerEarningValue.toString() : '',
+      substituteTrainerId: training.substituteTrainerId || '',
+      originalTrainerId: training.originalTrainerId || '',
+      competitionConflict: false
     });
     
     // Загружаем залы для филиала тренировки
@@ -954,12 +973,14 @@ const Schedule: React.FC = () => {
           title: formData.title,
           description: formData.description,
           groupId: formData.groupId,
-          trainerId: formData.trainerId,
+          trainerId: formData.trainerId, // Всегда отправляем оригинального тренера (контроллер сам определит, кто будет проводить)
           branchId: formData.branchId,
           hallId: formData.hallId || undefined,
           isRecurring: true,
           recurrence: formData.recurrence,
-          daysOfWeek: formData.daysOfWeek
+          daysOfWeek: formData.daysOfWeek,
+          substituteTrainerId: formData.substituteTrainerId || undefined,
+          originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
         };
 
         const trainings = [];
@@ -1088,12 +1109,14 @@ const Schedule: React.FC = () => {
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         groupId: formData.groupId,
-        trainerId: formData.trainerId,
+        trainerId: formData.trainerId, // Всегда отправляем оригинального тренера (контроллер сам определит, кто будет проводить)
         branchId: formData.branchId,
         hallId: formData.hallId || undefined,
-          isRecurring: false,
-          recurrence: null
-        };
+        isRecurring: false,
+        recurrence: null,
+        substituteTrainerId: formData.substituteTrainerId || undefined,
+        originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
+      };
 
         // Если редактируем регулярную тренировку, которая становится нерегулярной
         if (editingTraining.isRecurring) {
@@ -1953,6 +1976,7 @@ const Schedule: React.FC = () => {
                         return timeTrainings.map((training) => {
                           const group = groups.find(g => g.id === training.groupId);
                           const trainer = trainers.find(t => t.id === training.trainerId);
+                          const substituteTrainer = training.substituteTrainerId ? trainers.find(t => t.id === training.substituteTrainerId) : null;
                           const hall = halls.find(h => h.id === training.hallId);
                           const branch = branches.find(b => b.id === training.branchId);
                           const groupColor = group?.color || '#1976d2';
@@ -1963,6 +1987,7 @@ const Schedule: React.FC = () => {
                           const trainerName = trainer?.user 
                             ? `${trainer.user.lastName} ${trainer.user.firstName.charAt(0)}.`
                             : 'Тренер';
+                          const isSubstitute = !!training.substituteTrainerId;
                           const availableSpots = group?.maxMembers ? group.maxMembers : (training.groupId ? '?' : 'Индивидуальная');
                           
                           return (
@@ -2022,8 +2047,23 @@ const Schedule: React.FC = () => {
                               <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.25 }}>
                                 <People sx={{ fontSize: 10 }} />
                                 <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                                  {trainerName}
+                                  {isSubstitute && substituteTrainer?.user 
+                                    ? `Замена: ${substituteTrainer.user.lastName} ${substituteTrainer.user.firstName.charAt(0)}.`
+                                    : trainerName}
                                 </Typography>
+                                {isSubstitute && (
+                                  <Chip 
+                                    label="Замена" 
+                                    size="small" 
+                                    sx={{ 
+                                      height: 14, 
+                                      fontSize: '0.5rem', 
+                                      ml: 0.5,
+                                      bgcolor: 'warning.main',
+                                      color: 'white'
+                                    }} 
+                                  />
+                                )}
                               </Box>
                             </Paper>
                           );
@@ -2421,7 +2461,34 @@ const Schedule: React.FC = () => {
                   <InputLabel>Тренер</InputLabel>
                   <Select
                     value={formData.trainerId}
-                    onChange={(e) => setFormData({ ...formData, trainerId: e.target.value })}
+                    onChange={async (e) => {
+                      const trainerId = e.target.value;
+                      setFormData({ ...formData, trainerId, substituteTrainerId: '', competitionConflict: false });
+                      
+                      // Проверяем конфликты с соревнованиями, если указаны дата и время
+                      if (trainerId && formData.date && formData.startTime && formData.endTime) {
+                        const startDate = new Date(formData.date);
+                        startDate.setHours(formData.startTime.getHours(), formData.startTime.getMinutes());
+                        const endDate = new Date(formData.date);
+                        endDate.setHours(formData.endTime.getHours(), formData.endTime.getMinutes());
+                        
+                        try {
+                          // Проверяем конфликты через локальную проверку
+                          const trainerCompetitions = competitions.filter(comp => {
+                            const compStart = new Date(comp.startDate);
+                            const compEnd = new Date(comp.endDate);
+                            return comp.trainers?.some(ct => ct.trainerId === trainerId) &&
+                                   compStart <= endDate && compEnd >= startDate;
+                          });
+                          
+                          if (trainerCompetitions.length > 0) {
+                            setFormData(prev => ({ ...prev, competitionConflict: true }));
+                          }
+                        } catch (err) {
+                          console.error('Error checking competition conflicts:', err);
+                        }
+                      }
+                    }}
                   >
                     {trainers.map((trainer) => (
                       <MenuItem key={trainer.id} value={trainer.id}>
@@ -2431,6 +2498,43 @@ const Schedule: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              {/* Поле для выбора замены тренера - показывается только для OWNER, ADMIN или тренера с canViewAllGroups */}
+              {(user?.role === 'OWNER' || user?.role === 'ADMIN' || (user?.role === 'TRAINER' && trainers.find(t => t.userId === user?.id)?.canViewAllGroups)) && formData.trainerId && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Замена тренера (необязательно)</InputLabel>
+                    <Select
+                      value={formData.substituteTrainerId}
+                      onChange={(e) => {
+                        const substituteTrainerId = e.target.value;
+                        setFormData({ 
+                          ...formData, 
+                          substituteTrainerId,
+                          originalTrainerId: substituteTrainerId ? formData.trainerId : '',
+                          competitionConflict: false
+                        });
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Не выбрана</em>
+                      </MenuItem>
+                      {trainers.filter(t => t.id !== formData.trainerId).map((trainer) => (
+                        <MenuItem key={trainer.id} value={trainer.id}>
+                          {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+              {/* Предупреждение о конфликте с соревнованием */}
+              {formData.competitionConflict && !formData.substituteTrainerId && (
+                <Grid item xs={12}>
+                  <Alert severity="warning">
+                    У выбранного тренера есть соревнование в указанные даты. Пожалуйста, выберите замену тренера.
+                  </Alert>
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Филиал</InputLabel>
@@ -2902,7 +3006,34 @@ const Schedule: React.FC = () => {
                   <InputLabel>Тренер</InputLabel>
                   <Select
                     value={formData.trainerId}
-                    onChange={(e) => setFormData({ ...formData, trainerId: e.target.value })}
+                    onChange={async (e) => {
+                      const trainerId = e.target.value;
+                      setFormData({ ...formData, trainerId, substituteTrainerId: '', competitionConflict: false });
+                      
+                      // Проверяем конфликты с соревнованиями, если указаны дата и время
+                      if (trainerId && formData.date && formData.startTime && formData.endTime) {
+                        const startDate = new Date(formData.date);
+                        startDate.setHours(formData.startTime.getHours(), formData.startTime.getMinutes());
+                        const endDate = new Date(formData.date);
+                        endDate.setHours(formData.endTime.getHours(), formData.endTime.getMinutes());
+                        
+                        try {
+                          // Проверяем конфликты через локальную проверку
+                          const trainerCompetitions = competitions.filter(comp => {
+                            const compStart = new Date(comp.startDate);
+                            const compEnd = new Date(comp.endDate);
+                            return comp.trainers?.some(ct => ct.trainerId === trainerId) &&
+                                   compStart <= endDate && compEnd >= startDate;
+                          });
+                          
+                          if (trainerCompetitions.length > 0) {
+                            setFormData(prev => ({ ...prev, competitionConflict: true }));
+                          }
+                        } catch (err) {
+                          console.error('Error checking competition conflicts:', err);
+                        }
+                      }
+                    }}
                   >
                     {trainers.map((trainer) => (
                       <MenuItem key={trainer.id} value={trainer.id}>
@@ -2912,6 +3043,43 @@ const Schedule: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              {/* Поле для выбора замены тренера - показывается только для OWNER, ADMIN или тренера с canViewAllGroups */}
+              {(user?.role === 'OWNER' || user?.role === 'ADMIN' || (user?.role === 'TRAINER' && trainers.find(t => t.userId === user?.id)?.canViewAllGroups)) && formData.trainerId && (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Замена тренера (необязательно)</InputLabel>
+                    <Select
+                      value={formData.substituteTrainerId}
+                      onChange={(e) => {
+                        const substituteTrainerId = e.target.value;
+                        setFormData({ 
+                          ...formData, 
+                          substituteTrainerId,
+                          originalTrainerId: substituteTrainerId ? formData.trainerId : '',
+                          competitionConflict: false
+                        });
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Не выбрана</em>
+                      </MenuItem>
+                      {trainers.filter(t => t.id !== formData.trainerId).map((trainer) => (
+                        <MenuItem key={trainer.id} value={trainer.id}>
+                          {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+              {/* Предупреждение о конфликте с соревнованием */}
+              {formData.competitionConflict && !formData.substituteTrainerId && (
+                <Grid item xs={12}>
+                  <Alert severity="warning">
+                    У выбранного тренера есть соревнование в указанные даты. Пожалуйста, выберите замену тренера.
+                  </Alert>
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Филиал</InputLabel>

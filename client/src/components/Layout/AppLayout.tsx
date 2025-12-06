@@ -180,6 +180,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 item.path === '/trainers' ? 'trainers-nav' :
                 item.path === '/trainers/earnings' ? 'trainer-salaries-nav' :
                 item.path === '/branches' ? 'branches-nav' :
+                item.path === '/payments' ? 'payments-nav' :
                 item.path === '/memberships' ? 'memberships-nav' :
                 item.path === '/client-memberships' ? 'client-memberships-nav' :
                 item.path === '/settings' ? 'settings-nav' :

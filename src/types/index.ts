@@ -159,6 +159,9 @@ export interface CreateTrainingData {
   price?: number;
   trainerEarningType?: 'percentage' | 'amount';
   trainerEarningValue?: number; // Процент или сумма
+  // Замена тренера
+  substituteTrainerId?: string; // ID тренера-замены
+  originalTrainerId?: string; // ID оригинального тренера (если есть замена)
 }
 
 // Attendance interfaces

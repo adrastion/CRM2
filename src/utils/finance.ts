@@ -109,14 +109,6 @@ export async function calculateTrainerEarningsForAttendance(
   attendanceId: string,
   tenantId: string
 ): Promise<number> {
-  const trainer = await prisma.trainer.findFirst({
-    where: { id: trainerId, tenantId }
-  });
-
-  if (!trainer) {
-    return 0;
-  }
-
   const training = await prisma.training.findFirst({
     where: { id: trainingId, tenantId },
     include: {
@@ -141,6 +133,22 @@ export async function calculateTrainerEarningsForAttendance(
   });
 
   if (!training) {
+    return 0;
+  }
+
+  // Если есть замена тренера, используем тренера-замену для расчета заработка
+  const actualTrainerId = training.substituteTrainerId || training.trainerId;
+  
+  // Проверяем, что trainerId соответствует тренеру, который должен получить заработок
+  if (trainerId !== actualTrainerId) {
+    return 0; // Если запрашивается заработок не для того тренера, возвращаем 0
+  }
+
+  const trainer = await prisma.trainer.findFirst({
+    where: { id: actualTrainerId, tenantId }
+  });
+
+  if (!trainer) {
     return 0;
   }
 

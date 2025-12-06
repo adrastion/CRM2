@@ -265,7 +265,8 @@ model Trainer {
   branches            TrainerBranch[]
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trainings           Training[]
+  trainings           Training[]           @relation("TrainingTrainer")
+  substituteTrainings Training[]           @relation("TrainingSubstitute")
   transactions        Transaction[]
 
   @@map("trainers")
@@ -407,12 +408,16 @@ model Training {
   price        Decimal?
   trainerEarningType String? // 'percentage', 'amount'
   trainerEarningValue Decimal? // Процент или сумма
+  // Замена тренера
+  substituteTrainerId String? // ID тренера-замены
+  originalTrainerId   String? // ID оригинального тренера (если есть замена)
   attendances  Attendance[]
   branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   group        Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   hall         Hall?         @relation(fields: [hallId], references: [id])
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  trainer      Trainer       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  trainer      Trainer       @relation("TrainingTrainer", fields: [trainerId], references: [id], onDelete: Cascade)
+  substituteTrainer Trainer? @relation("TrainingSubstitute", fields: [substituteTrainerId], references: [id])
   transactions Transaction[]
 
   @@map("trainings")

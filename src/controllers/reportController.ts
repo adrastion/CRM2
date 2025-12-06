@@ -234,6 +234,16 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
         },
         include: {
           group: true,
+          trainer: {
+            include: {
+              user: true
+            }
+          },
+          substituteTrainer: {
+            include: {
+              user: true
+            }
+          },
           attendances: {
             where: { status: 'PRESENT' },
             include: { client: true }
@@ -410,6 +420,11 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
                 include: {
                   user: true
                 }
+              },
+              substituteTrainer: {
+                include: {
+                  user: true
+                }
               }
             }
           })
@@ -420,6 +435,11 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
             include: {
               group: true,
               trainer: {
+                include: {
+                  user: true
+                }
+              },
+              substituteTrainer: {
                 include: {
                   user: true
                 }
@@ -590,6 +610,11 @@ export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Respo
           }
         },
         trainer: {
+          include: {
+            user: true
+          }
+        },
+        substituteTrainer: {
           include: {
             user: true
           }

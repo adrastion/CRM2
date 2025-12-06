@@ -388,7 +388,7 @@ const Payments: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
-    <Box>
+    <Box data-onboarding="payments-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
             Платежи ({filteredPayments.length})
@@ -399,6 +399,7 @@ const Payments: React.FC = () => {
               variant="outlined"
               startIcon={<CalendarMonth />}
               sx={{ textTransform: 'none' }}
+              data-onboarding="create-monthly-payments-button"
               onClick={async () => {
                 if (window.confirm('Создать ежемесячные платежи для всех групп с ежемесячной оплатой? Платежи будут созданы только для групп, у которых сегодня день оплаты (paymentDueDay).')) {
                   try {
@@ -566,6 +567,7 @@ const Payments: React.FC = () => {
                               color="secondary"
                               onClick={() => handleRecalculatePayment(payment)}
                               title="Перерасчет"
+                              data-onboarding="recalculate-payment-button"
                             >
                               <Calculate />
                             </IconButton>

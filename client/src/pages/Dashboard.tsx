@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
                     <ListItemText
                       primary={activity.title}
                       secondary={
-                        <Box>
+                        <>
                           <Typography variant="body2" component="span">
                             {activity.description}
                           </Typography>
@@ -342,7 +342,7 @@ const Dashboard: React.FC = () => {
                           <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
                             {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
                           </Typography>
-                        </Box>
+                        </>
                       }
                     />
                   </ListItem>
@@ -378,7 +378,7 @@ const Dashboard: React.FC = () => {
                     <ListItemText
                       primary={training.title || training.group?.name || 'Тренировка'}
                       secondary={
-                        <Box>
+                        <>
                           <Typography variant="body2" component="span">
                             {formatDate(training.startTime)} - {format(new Date(training.endTime), 'HH:mm', { locale: ru })}
                           </Typography>
@@ -387,7 +387,7 @@ const Dashboard: React.FC = () => {
                               Тренер: {training.trainer.user.lastName} {training.trainer.user.firstName} {training.trainer.user.middleName || ''}
                             </Typography>
                           )}
-                        </Box>
+                        </>
                       }
                     />
                     <Chip 

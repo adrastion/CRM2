@@ -276,7 +276,7 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Проверяет и начисляет ежемесячную зарплату тренеру, если все клиенты группы оплатили
  */
-async function checkAndCalculateTrainerMonthlySalary(groupId: string, tenantId: string): Promise<void> {
+export async function checkAndCalculateTrainerMonthlySalary(groupId: string, tenantId: string): Promise<void> {
   try {
     const group = await prisma.group.findFirst({
       where: { id: groupId, tenantId },
@@ -394,9 +394,200 @@ async function checkAndCalculateTrainerMonthlySalary(groupId: string, tenantId: 
 
       console.log(`Начислена ежемесячная зарплата тренеру ${trainerId}: ${trainerSalary} руб. за группу ${group.name}`);
     }
+
+    // Рассчитываем зарплату за замены
+    await calculateSubstituteTrainerSalaries(groupId, tenantId, monthStart, monthEnd);
   } catch (error) {
     console.error('Error calculating trainer monthly salary:', error);
     // Не пробрасываем ошибку, чтобы не нарушить основной процесс обновления платежа
+  }
+}
+
+/**
+ * Рассчитывает зарплату тренеров-замен по формуле:
+ * (Сумма платежей клиентов за текущий месяц / 100 * процент тренера за группу которую он заменяет) / 
+ * кол-во тренировок группы в которой выставлен заменой в текущем месяце * 
+ * фактически проведеные тренировки заменой на этой группе
+ */
+async function calculateSubstituteTrainerSalaries(
+  groupId: string,
+  tenantId: string,
+  monthStart: Date,
+  monthEnd: Date
+): Promise<void> {
+  try {
+    const group = await prisma.group.findFirst({
+      where: { id: groupId, tenantId },
+      include: {
+        memberships: {
+          where: { isActive: true, leftAt: null },
+          include: {
+            client: true
+          }
+        }
+      }
+    });
+
+    if (!group || !group.isMonthlyPayment || !group.trainerMonthlyPercentage) {
+      return;
+    }
+
+    const monthlyPercentage = Number(group.trainerMonthlyPercentage);
+    const monthlyAmount = Number(group.monthlyPaymentAmount || 0);
+
+    if (monthlyAmount <= 0) {
+      return;
+    }
+
+    // Получаем все тренировки группы в текущем месяце с заменой
+    const substituteTrainings = await prisma.training.findMany({
+      where: {
+        groupId,
+        tenantId,
+        substituteTrainerId: { not: null },
+        startTime: {
+          gte: monthStart,
+          lte: monthEnd
+        },
+        isCancelled: false
+      },
+      include: {
+        substituteTrainer: true,
+        attendances: {
+          where: {
+            status: 'PRESENT',
+            shouldCharge: true
+          }
+        }
+      }
+    });
+
+    if (substituteTrainings.length === 0) {
+      return; // Нет тренировок с заменой
+    }
+
+    // Группируем тренировки по тренеру-замене
+    const trainingsBySubstitute = new Map<string, typeof substituteTrainings>();
+    for (const training of substituteTrainings) {
+      if (training.substituteTrainerId) {
+        if (!trainingsBySubstitute.has(training.substituteTrainerId)) {
+          trainingsBySubstitute.set(training.substituteTrainerId, []);
+        }
+        trainingsBySubstitute.get(training.substituteTrainerId)!.push(training);
+      }
+    }
+
+    // Рассчитываем зарплату для каждого тренера-замены
+    for (const [substituteTrainerId, trainings] of trainingsBySubstitute.entries()) {
+      // Проверяем, все ли клиенты оплатили
+      const activeClients = group.memberships.map(m => m.client);
+      const allPaymentsPaid = await Promise.all(
+        activeClients.map(async (client) => {
+          const payment = await prisma.payment.findFirst({
+            where: {
+              tenantId,
+              clientId: client.id,
+              groupId: group.id,
+              isMonthlyPayment: true,
+              status: 'paid',
+              paidAt: {
+                gte: monthStart,
+                lte: monthEnd
+              }
+            }
+          });
+          return !!payment;
+        })
+      );
+
+      const allPaid = allPaymentsPaid.every(paid => paid === true);
+      if (!allPaid) {
+        continue; // Не все клиенты оплатили, пропускаем этого тренера-замену
+      }
+
+      // Сумма платежей клиентов за текущий месяц
+      const totalPaidAmount = activeClients.length * monthlyAmount;
+
+      // Количество всех тренировок группы в текущем месяце (включая замены)
+      const allGroupTrainings = await prisma.training.count({
+        where: {
+          groupId,
+          tenantId,
+          startTime: {
+            gte: monthStart,
+            lte: monthEnd
+          },
+          isCancelled: false
+        }
+      });
+
+      if (allGroupTrainings === 0) {
+        continue;
+      }
+
+      // Фактически проведенные тренировки заменой (с присутствующими клиентами)
+      const conductedTrainings = trainings.filter(t => 
+        t.attendances.length > 0
+      ).length;
+
+      if (conductedTrainings === 0) {
+        continue;
+      }
+
+      // Формула: (Сумма платежей / 100 * процент) / кол-во тренировок * фактически проведенные
+      const baseSalary = (totalPaidAmount / 100 * monthlyPercentage) / allGroupTrainings;
+      const substituteSalary = baseSalary * conductedTrainings;
+
+      if (substituteSalary > 0) {
+        // Проверяем, не начислена ли уже зарплата за замену за этот месяц
+        const existingSalary = await prisma.transaction.findFirst({
+          where: {
+            tenantId,
+            trainerId: substituteTrainerId,
+            type: 'trainer_substitute_salary',
+            description: { contains: `Группа: ${group.name}` },
+            createdAt: {
+              gte: monthStart,
+              lte: monthEnd
+            }
+          }
+        });
+
+        if (existingSalary) {
+          continue; // Зарплата уже начислена
+        }
+
+        // Начисляем зарплату тренеру-замене
+        const substituteTrainer = await prisma.trainer.findFirst({
+          where: { id: substituteTrainerId, tenantId }
+        });
+
+        if (substituteTrainer) {
+          const currentBalance = Number(substituteTrainer.balance || 0);
+          const newBalance = currentBalance + substituteSalary;
+
+          await prisma.trainer.update({
+            where: { id: substituteTrainerId },
+            data: { balance: newBalance }
+          });
+
+          // Создаем транзакцию
+          await prisma.transaction.create({
+            data: {
+              type: 'trainer_substitute_salary',
+              amount: substituteSalary,
+              description: `Зарплата за замену в группе "${group.name}" (${conductedTrainings} тренировок)`,
+              trainerId: substituteTrainerId,
+              tenantId
+            }
+          });
+
+          console.log(`Начислена зарплата за замену тренеру ${substituteTrainerId}: ${substituteSalary} руб. за группу ${group.name}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error calculating substitute trainer salaries:', error);
   }
 }
 

@@ -314,7 +314,12 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         where: { id: trainingId, tenantId },
         include: {
           group: true,
-          trainer: true
+          trainer: true,
+          substituteTrainer: {
+            include: {
+              user: true
+            }
+          }
         }
       });
 
@@ -398,9 +403,12 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
                 `Оплата тренировки: ${trainingWithDetails.title}`
               );
 
+              // Определяем, кто должен получить заработок (замена или оригинальный тренер)
+              const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
+              
               // Рассчитываем и начисляем заработок тренеру
               const trainerEarnings = await calculateTrainerEarningsForAttendance(
-                trainingWithDetails.trainerId,
+                actualTrainerId,
                 trainingId,
                 attendance.id,
                 tenantId
@@ -408,13 +416,19 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 
               if (trainerEarnings > 0) {
                 await addToTrainerBalance(
-                  trainingWithDetails.trainerId,
+                  actualTrainerId,
                   trainerEarnings,
                   trainingId,
                   attendance.id,
                   tenantId,
-                  `Заработок за тренировку: ${trainingWithDetails.title}`
+                  `Заработок за тренировку: ${trainingWithDetails.title}${trainingWithDetails.substituteTrainerId ? ' (замена)' : ''}`
                 );
+              }
+              
+              // Если есть замена и группа с ежемесячной оплатой, проверяем расчет зарплаты за замену
+              if (trainingWithDetails.substituteTrainerId && trainingWithDetails.groupId) {
+                const { checkAndCalculateTrainerMonthlySalary } = await import('../controllers/paymentController');
+                await checkAndCalculateTrainerMonthlySalary(trainingWithDetails.groupId, tenantId);
               }
             } else {
               // Недостаточно средств - можно создать запись о задолженности
@@ -449,7 +463,12 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         where: { id: trainingId, tenantId },
         include: {
           group: true,
-          trainer: true
+          trainer: true,
+          substituteTrainer: {
+            include: {
+              user: true
+            }
+          }
         }
       });
 
@@ -477,9 +496,12 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
                 `Списание за пропуск тренировки: ${trainingWithDetails.title}`
               );
 
+              // Определяем, кто должен получить заработок (замена или оригинальный тренер)
+              const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
+              
               // Рассчитываем и начисляем заработок тренеру
               const trainerEarnings = await calculateTrainerEarningsForAttendance(
-                trainingWithDetails.trainerId,
+                actualTrainerId,
                 trainingId,
                 attendance.id,
                 tenantId
@@ -487,13 +509,19 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 
               if (trainerEarnings > 0) {
                 await addToTrainerBalance(
-                  trainingWithDetails.trainerId,
+                  actualTrainerId,
                   trainerEarnings,
                   trainingId,
                   attendance.id,
                   tenantId,
-                  `Заработок за тренировку (пропуск): ${trainingWithDetails.title}`
+                  `Заработок за тренировку (пропуск): ${trainingWithDetails.title}${trainingWithDetails.substituteTrainerId ? ' (замена)' : ''}`
                 );
+              }
+              
+              // Если есть замена и группа с ежемесячной оплатой, проверяем расчет зарплаты за замену
+              if (trainingWithDetails.substituteTrainerId && trainingWithDetails.groupId) {
+                const { checkAndCalculateTrainerMonthlySalary } = await import('../controllers/paymentController');
+                await checkAndCalculateTrainerMonthlySalary(trainingWithDetails.groupId, tenantId);
               }
             } else {
               console.warn(`Insufficient balance for client ${clientId} for missed training. Balance: ${clientBalance}, Required: ${trainingPrice}`);
