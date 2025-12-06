@@ -678,7 +678,8 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
         data: {
           trainerId: id,
           allTrainingsEnabled: false,
-          reminderEnabled: false
+          reminderEnabled: false,
+          timezone: 'UTC'
         }
       });
     }
@@ -700,7 +701,7 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
 export const updateTrainerNotificationSettings = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { allTrainingsTime, allTrainingsEnabled, notificationPeriod, reminderBeforeMinutes, reminderEnabled } = req.body;
+    const { allTrainingsTime, allTrainingsEnabled, notificationPeriod, reminderBeforeMinutes, reminderEnabled, timezone } = req.body;
     const userId = req.user?.id;
 
     // Find trainer
@@ -762,6 +763,19 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
       }
     }
 
+    // Validate timezone (IANA timezone identifier)
+    if (timezone !== undefined && timezone !== null && timezone !== '') {
+      try {
+        // Проверяем валидность часового пояса, пытаясь создать дату с этим часовым поясом
+        Intl.DateTimeFormat(undefined, { timeZone: timezone });
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid timezone. Must be a valid IANA timezone identifier (e.g., Europe/Moscow, UTC, America/New_York)'
+        });
+      }
+    }
+
     // Update or create settings
     const settings = await prisma.trainerNotificationSettings.upsert({
       where: { trainerId: id },
@@ -770,7 +784,8 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
         allTrainingsEnabled: allTrainingsEnabled !== undefined ? Boolean(allTrainingsEnabled) : undefined,
         notificationPeriod: notificationPeriod !== undefined ? notificationPeriod : undefined,
         reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : undefined,
-        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : undefined
+        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : undefined,
+        timezone: timezone !== undefined ? (timezone || 'UTC') : undefined
       },
       create: {
         trainerId: id,
@@ -778,7 +793,8 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
         allTrainingsEnabled: allTrainingsEnabled !== undefined ? Boolean(allTrainingsEnabled) : false,
         notificationPeriod: notificationPeriod || 'tomorrow',
         reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : undefined,
-        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : false
+        reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : false,
+        timezone: timezone || 'UTC'
       }
     });
 

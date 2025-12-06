@@ -6,6 +6,29 @@ import { sendPushNotification } from './pushNotificationService';
 const prisma = new PrismaClient();
 
 /**
+ * Получить текущее время в указанном часовом поясе
+ */
+function getTimeInTimezone(timezone: string): { hours: number; minutes: number; totalMinutes: number } {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const hours = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minutes = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+  
+  return {
+    hours,
+    minutes,
+    totalMinutes: hours * 60 + minutes
+  };
+}
+
+/**
  * Отправка ежедневных уведомлений о всех тренировках
  * Вызывается в указанное время для каждого тренера
  */
@@ -14,7 +37,6 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
     console.log('[Notifications] Starting daily training notifications...');
 
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     // Получаем всех тренеров с включенными ежедневными уведомлениями
     const trainersWithNotifications = await prisma.trainer.findMany({
@@ -22,7 +44,7 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
         isActive: true,
         notificationSettings: {
           allTrainingsEnabled: true,
-          allTrainingsTime: currentMinutes // Точное совпадение времени
+          allTrainingsTime: { not: null }
         }
       },
       include: {
@@ -33,6 +55,28 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
     });
 
     if (trainersWithNotifications.length === 0) {
+      console.log('[Notifications] No trainers with daily notifications enabled');
+      return;
+    }
+
+    // Фильтруем тренеров по времени в их часовом поясе
+    const trainersToNotify = trainersWithNotifications.filter(trainer => {
+      const timezone = trainer.notificationSettings?.timezone || 'UTC';
+      const notificationTime = trainer.notificationSettings?.allTrainingsTime;
+      
+      if (!notificationTime) return false;
+      
+      try {
+        const currentTime = getTimeInTimezone(timezone);
+        // Проверяем, совпадает ли текущее время в часовом поясе тренера с временем уведомления
+        return currentTime.totalMinutes === notificationTime;
+      } catch (error) {
+        console.error(`[Notifications] Error getting time for timezone ${timezone}:`, error);
+        return false;
+      }
+    });
+
+    if (trainersToNotify.length === 0) {
       console.log('[Notifications] No trainers with daily notifications enabled at this time');
       return;
     }
@@ -40,7 +84,7 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
     // Получаем тренировки в зависимости от выбранного периода для каждого тренера
     const today = startOfDay(now);
 
-    for (const trainer of trainersWithNotifications) {
+    for (const trainer of trainersToNotify) {
       try {
         // Определяем период для получения тренировок
         const period = trainer.notificationSettings?.notificationPeriod || 'tomorrow';
@@ -132,7 +176,7 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
       }
     }
 
-    console.log(`[Notifications] Daily notifications sent to ${trainersWithNotifications.length} trainers`);
+    console.log(`[Notifications] Daily notifications sent to ${trainersToNotify.length} trainers`);
   } catch (error) {
     console.error('[Notifications] Error in sendDailyTrainingNotifications:', error);
   }

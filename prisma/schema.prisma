@@ -297,6 +297,8 @@ model TrainerNotificationSettings {
   // Напоминание перед тренировкой (в минутах до начала)
   reminderBeforeMinutes Int?     // За сколько минут до тренировки напоминать (например, 30, 60, 120)
   reminderEnabled       Boolean  @default(false)
+  // Часовой пояс тренера (например, 'Europe/Moscow', 'UTC', 'America/New_York')
+  timezone              String?  @default("UTC") // IANA timezone identifier
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   trainer               Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)

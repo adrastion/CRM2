@@ -153,13 +153,13 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
 
   // Prepare standard data
   const standardData: any = {
-    name,
-    description,
-    unit,
-    targetValue: targetValue ? parseFloat(targetValue) : null,
-    category,
-    isActive: isActive !== undefined ? isActive : true,
-    tenantId
+      name,
+      description,
+      unit,
+      targetValue: targetValue ? parseFloat(targetValue) : null,
+      category,
+      isActive: isActive !== undefined ? isActive : true,
+      tenantId
   };
 
   // If groupIds provided, create StandardGroup relations

@@ -115,6 +115,7 @@ const Settings: React.FC = () => {
     notificationPeriod: 'tomorrow' as 'tomorrow' | 'week' | 'month',
     reminderEnabled: false,
     reminderBeforeMinutes: 30,
+    timezone: 'UTC',
   });
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
@@ -237,6 +238,7 @@ const Settings: React.FC = () => {
         notificationPeriod: (notificationSettingsData.notificationPeriod || 'tomorrow') as 'tomorrow' | 'week' | 'month',
         reminderEnabled: notificationSettingsData.reminderEnabled || false,
         reminderBeforeMinutes: notificationSettingsData.reminderBeforeMinutes || 30,
+        timezone: notificationSettingsData.timezone || 'UTC',
       });
 
       // Проверяем статус подписки на push и разрешение
@@ -277,6 +279,7 @@ const Settings: React.FC = () => {
         notificationPeriod: notificationSettings.notificationPeriod,
         reminderEnabled: notificationSettings.reminderEnabled,
         reminderBeforeMinutes: notificationSettings.reminderBeforeMinutes,
+        timezone: notificationSettings.timezone,
       });
 
       setSuccess(true);
@@ -848,6 +851,40 @@ const Settings: React.FC = () => {
                               <MenuItem value="tomorrow">На завтра</MenuItem>
                               <MenuItem value="week">На неделю</MenuItem>
                               <MenuItem value="month">На месяц</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth>
+                            <InputLabel>Часовой пояс</InputLabel>
+                            <Select
+                              value={notificationSettings.timezone}
+                              label="Часовой пояс"
+                              onChange={(e) => setNotificationSettings(prev => ({ ...prev, timezone: e.target.value }))}
+                            >
+                              <MenuItem value="UTC">UTC (Всемирное координированное время)</MenuItem>
+                              <MenuItem value="Europe/Moscow">Europe/Moscow (Москва, UTC+3)</MenuItem>
+                              <MenuItem value="Europe/Kiev">Europe/Kiev (Киев, UTC+2)</MenuItem>
+                              <MenuItem value="Europe/Minsk">Europe/Minsk (Минск, UTC+3)</MenuItem>
+                              <MenuItem value="Europe/Kaliningrad">Europe/Kaliningrad (Калининград, UTC+2)</MenuItem>
+                              <MenuItem value="Europe/Samara">Europe/Samara (Самара, UTC+4)</MenuItem>
+                              <MenuItem value="Asia/Yekaterinburg">Asia/Yekaterinburg (Екатеринбург, UTC+5)</MenuItem>
+                              <MenuItem value="Asia/Omsk">Asia/Omsk (Омск, UTC+6)</MenuItem>
+                              <MenuItem value="Asia/Krasnoyarsk">Asia/Krasnoyarsk (Красноярск, UTC+7)</MenuItem>
+                              <MenuItem value="Asia/Irkutsk">Asia/Irkutsk (Иркутск, UTC+8)</MenuItem>
+                              <MenuItem value="Asia/Yakutsk">Asia/Yakutsk (Якутск, UTC+9)</MenuItem>
+                              <MenuItem value="Asia/Vladivostok">Asia/Vladivostok (Владивосток, UTC+10)</MenuItem>
+                              <MenuItem value="Asia/Magadan">Asia/Magadan (Магадан, UTC+11)</MenuItem>
+                              <MenuItem value="Asia/Kamchatka">Asia/Kamchatka (Камчатка, UTC+12)</MenuItem>
+                              <MenuItem value="America/New_York">America/New_York (Нью-Йорк, UTC-5)</MenuItem>
+                              <MenuItem value="America/Chicago">America/Chicago (Чикаго, UTC-6)</MenuItem>
+                              <MenuItem value="America/Denver">America/Denver (Денвер, UTC-7)</MenuItem>
+                              <MenuItem value="America/Los_Angeles">America/Los_Angeles (Лос-Анджелес, UTC-8)</MenuItem>
+                              <MenuItem value="Europe/London">Europe/London (Лондон, UTC+0)</MenuItem>
+                              <MenuItem value="Europe/Paris">Europe/Paris (Париж, UTC+1)</MenuItem>
+                              <MenuItem value="Europe/Berlin">Europe/Berlin (Берлин, UTC+1)</MenuItem>
+                              <MenuItem value="Asia/Tokyo">Asia/Tokyo (Токио, UTC+9)</MenuItem>
+                              <MenuItem value="Asia/Shanghai">Asia/Shanghai (Шанхай, UTC+8)</MenuItem>
+                              <MenuItem value="Asia/Dubai">Asia/Dubai (Дубай, UTC+4)</MenuItem>
+                              <MenuItem value="Australia/Sydney">Australia/Sydney (Сидней, UTC+10)</MenuItem>
                             </Select>
                           </FormControl>
                         </Box>

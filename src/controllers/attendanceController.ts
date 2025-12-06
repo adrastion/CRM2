@@ -165,18 +165,18 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
 
     // Если тренировка групповые - получаем клиентов из группы
     if (training.group) {
-      const groupClients = training.group.memberships
-        .map(m => m.client)
-        .filter(client => client && client.isActive);
+    const groupClients = training.group.memberships
+      .map(m => m.client)
+      .filter(client => client && client.isActive);
 
-      // Combine group clients with their attendance status
+    // Combine group clients with their attendance status
       result = groupClients.map(client => {
-        const attendance = attendanceMap.get(client.id);
-        return {
-          client,
-          attendance: attendance || null
-        };
-      });
+      const attendance = attendanceMap.get(client.id);
+      return {
+        client,
+        attendance: attendance || null
+      };
+    });
     } else {
       // Если тренировка индивидуальная - получаем клиентов из записей посещаемости
       // Для индивидуальных тренировок клиенты выбираются при создании
@@ -405,7 +405,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 
               // Определяем, кто должен получить заработок (замена или оригинальный тренер)
               const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
-              
+
               // Рассчитываем и начисляем заработок тренеру
               const trainerEarnings = await calculateTrainerEarningsForAttendance(
                 actualTrainerId,
@@ -498,7 +498,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 
               // Определяем, кто должен получить заработок (замена или оригинальный тренер)
               const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
-              
+
               // Рассчитываем и начисляем заработок тренеру
               const trainerEarnings = await calculateTrainerEarningsForAttendance(
                 actualTrainerId,

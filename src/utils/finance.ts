@@ -207,38 +207,38 @@ export async function calculateTrainerEarningsForAttendance(
     }
   } else {
     // Используем настройки тренера, если нет настроек группы
-    switch (trainer.salaryType) {
-      case 'percentage':
-        // Процент от оплаты одного клиента
-        if (trainer.salaryAmount) {
-          const percentage = Number(trainer.salaryAmount);
-          earnings = (trainingPrice * percentage) / 100;
-        }
-        break;
+  switch (trainer.salaryType) {
+    case 'percentage':
+      // Процент от оплаты одного клиента
+      if (trainer.salaryAmount) {
+        const percentage = Number(trainer.salaryAmount);
+        earnings = (trainingPrice * percentage) / 100;
+      }
+      break;
 
-      case 'per_student':
-        // Оплата за каждого ученика
-        if (trainer.salaryAmount) {
-          earnings = Number(trainer.salaryAmount);
-        }
-        break;
+    case 'per_student':
+      // Оплата за каждого ученика
+      if (trainer.salaryAmount) {
+        earnings = Number(trainer.salaryAmount);
+      }
+      break;
 
-      case 'fixed':
-        // Фиксированная плата - распределяется между всеми присутствующими
-        if (trainer.salaryAmount && totalPresentCount > 0) {
-          earnings = Number(trainer.salaryAmount) / totalPresentCount;
-        }
-        break;
+    case 'fixed':
+      // Фиксированная плата - распределяется между всеми присутствующими
+      if (trainer.salaryAmount && totalPresentCount > 0) {
+        earnings = Number(trainer.salaryAmount) / totalPresentCount;
+      }
+      break;
 
-      case 'per_training':
-        // Оплата за тренировку - распределяется между всеми присутствующими
-        if (trainer.salaryAmount && totalPresentCount > 0) {
-          earnings = Number(trainer.salaryAmount) / totalPresentCount;
-        }
-        break;
+    case 'per_training':
+      // Оплата за тренировку - распределяется между всеми присутствующими
+      if (trainer.salaryAmount && totalPresentCount > 0) {
+        earnings = Number(trainer.salaryAmount) / totalPresentCount;
+      }
+      break;
 
-      default:
-        earnings = 0;
+    default:
+      earnings = 0;
     }
   }
 

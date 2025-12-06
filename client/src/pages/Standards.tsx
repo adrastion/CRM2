@@ -61,8 +61,8 @@ const Standards: React.FC = () => {
       if (err.response?.status === 429) {
         setError('Слишком много запросов. Пожалуйста, подождите немного и попробуйте снова.');
       } else {
-        setError('Не удалось загрузить нормативы');
-        console.error('Standards error:', err);
+      setError('Не удалось загрузить нормативы');
+      console.error('Standards error:', err);
       }
     } finally {
       setLoading(false);
