@@ -264,66 +264,9 @@ const Trainers: React.FC = () => {
     const userId = (editingTrainer as any).user?.id || (editingTrainer as any).id;
     const currentRole = (editingTrainer as any).user?.role || (editingTrainer as any).role || 'TRAINER';
     const isEditingAdmin = currentRole === 'ADMIN' || (editingTrainer as any).employeeType === 'admin' || !(editingTrainer as any).qualification;
-    const isRoleChanging = isOwner && formData.role !== currentRole;
     
-    // Если владелец меняет роль, используем updateUser
-    if (isOwner && isRoleChanging) {
-      const adminErrors: Record<string, string> = {};
-      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
-      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
-      if (!formData.email) adminErrors.email = 'Email обязателен';
-      
-      setFormErrors(adminErrors);
-      if (Object.keys(adminErrors).length > 0) {
-        setError('Пожалуйста, исправьте ошибки в форме');
-        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-        setSnackbarOpen(true);
-        return;
-      }
-      
-      try {
-        const updateData: any = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          middleName: formData.middleName,
-          phone: formData.phone,
-          email: formData.email,
-          role: formData.role,
-        };
-        if (formData.password) {
-          updateData.password = formData.password;
-        }
-        await apiService.updateUser(userId, updateData);
-        await fetchTrainers();
-        setEditDialog(false);
-        setFormErrors({});
-        setError('');
-        setEditingTrainer(null);
-        setFormData({
-          email: '',
-          password: '',
-          firstName: '',
-          lastName: '',
-          middleName: '',
-          phone: '',
-          role: 'TRAINER',
-          qualification: '',
-          experience: '',
-          specialization: '',
-          salaryType: 'fixed',
-          salaryAmount: '',
-          salaryPercentage: '',
-          canViewAllGroups: false,
-        });
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Ошибка обновления сотрудника');
-        console.error('Error updating employee:', err);
-      }
-      return;
-    }
-    
-    // Если редактируем администратора (без смены роли)
-    if (isEditingAdmin && !isRoleChanging) {
+    // Если редактируем администратора
+    if (isEditingAdmin) {
       const adminErrors: Record<string, string> = {};
       if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
       if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
@@ -1164,21 +1107,6 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            {isOwner && (
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Роль</InputLabel>
-                  <Select
-                    value={formData.role}
-                    onChange={(e) => handleInputChange('role', e.target.value)}
-                    label="Роль"
-                  >
-                    <MenuItem value="TRAINER">Тренер</MenuItem>
-                    <MenuItem value="ADMIN">Администратор</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
             <Grid item xs={4}>
               <TextField
                 fullWidth

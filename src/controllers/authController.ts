@@ -35,7 +35,8 @@ const createUserSchema = Joi.object({
   password: Joi.string().min(6).required(),
   firstName: Joi.string().min(2).max(50).required(),
   lastName: Joi.string().min(2).max(50).required(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
+  middleName: Joi.string().max(50).allow('', null).optional(),
+  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).allow('', null).optional(),
   role: Joi.string().valid('ADMIN', 'TRAINER').required()
 });
 
