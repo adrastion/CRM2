@@ -11,40 +11,53 @@ import {
 import {
   Close as CloseIcon,
   Telegram as TelegramIcon,
+  Support as SupportIcon,
 } from '@mui/icons-material';
 import { useTelegramBanner } from '../contexts/TelegramBannerContext';
 
 const TELEGRAM_CHANNEL_URL = 'https://t.me/profsportcrm';
-const STORAGE_KEY = 'telegramBannerShown';
+const TELEGRAM_SUPPORT_URL = 'https://t.me/profsportcrm_ts';
+const STORAGE_KEY_NEWS = 'telegramBannerNewsShown';
+const STORAGE_KEY_SUPPORT = 'telegramBannerSupportShown';
 const STORAGE_EXPIRY_DAYS = 1; // Показывать не чаще раза в день
+
+type BannerType = 'news' | 'support' | null;
 
 const TelegramBanner: React.FC = () => {
   const [show, setShow] = useState(false);
+  const [bannerType, setBannerType] = useState<BannerType>(null);
   const { setBannerVisible } = useTelegramBanner();
   const theme = useTheme();
 
   useEffect(() => {
     // Проверяем, нужно ли показывать баннер
-    const shouldShow = checkShouldShowBanner();
-    if (shouldShow) {
+    const result = checkShouldShowBanner();
+    if (result.shouldShow && result.type) {
+      setBannerType(result.type);
       setShow(true);
       setBannerVisible(true);
-      // Сохраняем время показа
-      localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+      // Сохраняем время показа для соответствующего типа плашки
+      const storageKey = result.type === 'news' ? STORAGE_KEY_NEWS : STORAGE_KEY_SUPPORT;
+      localStorage.setItem(storageKey, new Date().toISOString());
     }
   }, [setBannerVisible]);
 
-  const checkShouldShowBanner = (): boolean => {
+  const checkShouldShowBanner = (): { shouldShow: boolean; type: BannerType } => {
     // Проверяем вероятность 25%
     const random = Math.random();
     if (random > 0.25) {
-      return false;
+      return { shouldShow: false, type: null };
     }
 
-    // Проверяем, не показывали ли мы баннер недавно
-    const lastShown = localStorage.getItem(STORAGE_KEY);
+    // Определяем, какую плашку показывать (50% вероятность для каждой)
+    const bannerRandom = Math.random();
+    const selectedType: BannerType = bannerRandom < 0.5 ? 'news' : 'support';
+    const storageKey = selectedType === 'news' ? STORAGE_KEY_NEWS : STORAGE_KEY_SUPPORT;
+
+    // Проверяем, не показывали ли мы эту плашку недавно
+    const lastShown = localStorage.getItem(storageKey);
     if (!lastShown) {
-      return true;
+      return { shouldShow: true, type: selectedType };
     }
 
     const lastShownDate = new Date(lastShown);
@@ -52,7 +65,27 @@ const TelegramBanner: React.FC = () => {
     const daysDiff = (now.getTime() - lastShownDate.getTime()) / (1000 * 60 * 60 * 24);
 
     // Показываем, если прошло больше STORAGE_EXPIRY_DAYS дней
-    return daysDiff >= STORAGE_EXPIRY_DAYS;
+    if (daysDiff >= STORAGE_EXPIRY_DAYS) {
+      return { shouldShow: true, type: selectedType };
+    }
+
+    // Если эта плашка показывалась недавно, пробуем другую
+    const otherType: BannerType = selectedType === 'news' ? 'support' : 'news';
+    const otherStorageKey = otherType === 'news' ? STORAGE_KEY_NEWS : STORAGE_KEY_SUPPORT;
+    const otherLastShown = localStorage.getItem(otherStorageKey);
+    
+    if (!otherLastShown) {
+      return { shouldShow: true, type: otherType };
+    }
+
+    const otherLastShownDate = new Date(otherLastShown);
+    const otherDaysDiff = (now.getTime() - otherLastShownDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (otherDaysDiff >= STORAGE_EXPIRY_DAYS) {
+      return { shouldShow: true, type: otherType };
+    }
+
+    return { shouldShow: false, type: null };
   };
 
   const handleClose = () => {
@@ -60,15 +93,26 @@ const TelegramBanner: React.FC = () => {
     setBannerVisible(false);
   };
 
-  const handleSubscribe = () => {
-    window.open(TELEGRAM_CHANNEL_URL, '_blank', 'noopener,noreferrer');
+  const handleAction = () => {
+    const url = bannerType === 'news' ? TELEGRAM_CHANNEL_URL : TELEGRAM_SUPPORT_URL;
+    window.open(url, '_blank', 'noopener,noreferrer');
     setShow(false);
     setBannerVisible(false);
   };
 
-  if (!show) {
+  if (!show || !bannerType) {
     return null;
   }
+
+  const isNewsBanner = bannerType === 'news';
+  const title = isNewsBanner 
+    ? 'Подпишитесь на наш новостной Telegram-канал'
+    : 'Есть вопросы? Нужна техническая поддержка?';
+  const description = isNewsBanner
+    ? 'Будьте в курсе всех обновлений и новостей системы'
+    : 'Есть идеи как сделать удобнее? Напишите в нашу техническую поддержку';
+  const buttonText = isNewsBanner ? 'Подписаться' : 'Написать в поддержку';
+  const Icon = isNewsBanner ? TelegramIcon : SupportIcon;
 
   return (
     <Slide direction="down" in={show} mountOnEnter unmountOnExit>
@@ -119,7 +163,7 @@ const TelegramBanner: React.FC = () => {
                 flexShrink: 0,
               }}
             >
-              <TelegramIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: 'white' }} />
+              <Icon sx={{ fontSize: { xs: 24, sm: 28 }, color: 'white' }} />
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography
@@ -131,7 +175,7 @@ const TelegramBanner: React.FC = () => {
                   lineHeight: 1.2,
                 }}
               >
-                Подпишитесь на наш новостной Telegram-канал
+                {title}
               </Typography>
               <Typography
                 variant="body2"
@@ -141,7 +185,7 @@ const TelegramBanner: React.FC = () => {
                   lineHeight: 1.3,
                 }}
               >
-                Будьте в курсе всех обновлений и новостей системы
+                {description}
               </Typography>
             </Box>
           </Box>
@@ -155,7 +199,7 @@ const TelegramBanner: React.FC = () => {
           >
             <Button
               variant="contained"
-              onClick={handleSubscribe}
+              onClick={handleAction}
               sx={{
                 backgroundColor: 'white',
                 color: theme.palette.primary.main,
@@ -169,9 +213,9 @@ const TelegramBanner: React.FC = () => {
                 },
                 boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
               }}
-              startIcon={<TelegramIcon />}
+              startIcon={<Icon />}
             >
-              Подписаться
+              {buttonText}
             </Button>
             <IconButton
               onClick={handleClose}
