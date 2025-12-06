@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthContext';
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
+import { TelegramBannerProvider } from './contexts/TelegramBannerContext';
 import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
@@ -610,7 +611,9 @@ const App: React.FC = () => {
         <MarketerAuthProvider>
           <PromoCodeAdminAuthProvider>
           <SuperAdminAuthProvider>
-            <AppContent />
+            <TelegramBannerProvider>
+              <AppContent />
+            </TelegramBannerProvider>
           </SuperAdminAuthProvider>
           </PromoCodeAdminAuthProvider>
         </MarketerAuthProvider>

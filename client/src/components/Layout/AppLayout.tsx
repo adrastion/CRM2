@@ -40,7 +40,9 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTelegramBanner } from '../../contexts/TelegramBannerContext';
 import TelegramIcon from '../TelegramIcon';
+import TelegramBanner from '../TelegramBanner';
 
 const drawerWidth = 240;
 
@@ -71,6 +73,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const { user, tenant, logout } = useAuth();
+  const { isBannerVisible } = useTelegramBanner();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -208,11 +211,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
+      <TelegramBanner />
       <AppBar
         position="fixed"
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
+          top: isBannerVisible ? '80px' : 0,
+          transition: 'top 0.3s ease-in-out',
         }}
       >
         <Toolbar>
@@ -335,7 +341,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           minHeight: '100vh',
         }}
       >
-        <Toolbar />
+        <Toolbar sx={{ mt: isBannerVisible ? { xs: '72px', sm: '80px' } : 0, transition: 'margin-top 0.3s ease-in-out' }} />
         <Box sx={{ flexGrow: 1 }}>
         {children}
         </Box>
