@@ -160,18 +160,29 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
     }));
 
   // Последние платежи (первые 10)
-  const recentPayments = successfulPayments.slice(0, 10).map(payment => ({
-    id: payment.id,
-    tenantName: payment.subscription.tenant.name,
-    amount: Number(payment.amount), // Фактическая сумма с учетом скидки
-    originalAmount: payment.promoCodeUsage 
-      ? Number(payment.amount) + Number(payment.promoCodeUsage.discountAmount)
-      : Number(payment.amount),
-    discountAmount: payment.promoCodeUsage ? Number(payment.promoCodeUsage.discountAmount) : 0,
-    planType: payment.subscription.planType,
-    paidAt: payment.paidAt?.toISOString() || payment.createdAt.toISOString(),
-    hasDiscount: !!payment.promoCodeUsage,
-  }));
+  const recentPayments = successfulPayments.slice(0, 10).map(payment => {
+    const planType = payment.subscription.planType as keyof typeof PLAN_PRICES;
+    const originalPrice = PLAN_PRICES[planType] || Number(payment.amount);
+    const discountAmount = payment.promoCodeUsage ? Number(payment.promoCodeUsage.discountAmount) : 0;
+    
+    // Если есть промокод, фактически оплаченная сумма = оригинальная цена - скидка
+    // Если промокод на 100%, то фактически оплаченная сумма = 0
+    // Но в БД может быть сохранена оригинальная цена в payment.amount (для промокодов на 100%)
+    const actualAmount = payment.promoCodeUsage 
+      ? Math.max(0, originalPrice - discountAmount)
+      : Number(payment.amount);
+    
+    return {
+      id: payment.id,
+      tenantName: payment.subscription.tenant.name,
+      amount: actualAmount, // Фактически оплаченная сумма
+      originalAmount: originalPrice, // Оригинальная цена тарифа
+      discountAmount: discountAmount,
+      planType: payment.subscription.planType,
+      paidAt: payment.paidAt?.toISOString() || payment.createdAt.toISOString(),
+      hasDiscount: !!payment.promoCodeUsage,
+    };
+  });
 
   res.json({
     success: true,
@@ -378,19 +389,80 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 /**
+ * Получение категорий расходов
+ */
+export const getExpenseCategories = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const categories = await (prisma as any).expenseCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: {
+      name: 'asc',
+    },
+  });
+
+  res.json({
+    success: true,
+    data: categories,
+  });
+});
+
+/**
+ * Создание категории расходов
+ */
+export const createExpenseCategory = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { name, description, color } = req.body;
+
+  if (!name) {
+    res.status(400).json({
+      success: false,
+      error: 'Name is required',
+    });
+    return;
+  }
+
+  const category = await (prisma as any).expenseCategory.create({
+    data: {
+      name: name.trim(),
+      description: description?.trim() || null,
+      color: color || null,
+    },
+  });
+
+  res.json({
+    success: true,
+    data: category,
+  });
+});
+
+/**
  * Получение истории транзакций
  */
 export const getTransactionHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { type, limit = 100, offset = 0 } = req.query;
+  const { type, limit = 100, offset = 0, startDate, endDate, categoryId } = req.query;
 
   const where: any = {};
   if (type && type !== 'all') {
     where.type = type;
   }
+  if (categoryId) {
+    where.categoryId = categoryId;
+  }
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) {
+      where.createdAt.gte = new Date(startDate as string);
+    }
+    if (endDate) {
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
 
   // Получаем транзакции из AdminTransaction
   const [adminTransactions, adminTotal] = await Promise.all([
-    prisma.adminTransaction.findMany({
+    (prisma as any).adminTransaction.findMany({
       where,
       include: {
         marketer: {
@@ -408,6 +480,13 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
             email: true,
           },
         },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -415,7 +494,7 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
       take: Number(limit),
       skip: Number(offset),
     }),
-    prisma.adminTransaction.count({ where }),
+    (prisma as any).adminTransaction.count({ where }),
   ]);
 
   // Получаем платежи за подписки
@@ -454,7 +533,7 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
 
   // Объединяем транзакции и платежи за подписки
   const allTransactions = [
-    ...adminTransactions.map(t => ({
+    ...adminTransactions.map((t: any) => ({
       id: t.id,
       type: t.type,
       amount: Number(t.amount),
@@ -464,24 +543,31 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
       createdAt: t.createdAt,
       source: 'admin' as const,
     })),
-    ...subscriptionPayments.map(p => ({
-      id: p.id,
-      type: 'income' as const,
-      amount: Number(p.amount), // Фактическая сумма с учетом скидки
-      originalAmount: p.promoCodeUsage 
-        ? Number(p.amount) + Number(p.promoCodeUsage.discountAmount)
-        : Number(p.amount),
-      discountAmount: p.promoCodeUsage ? Number(p.promoCodeUsage.discountAmount) : 0,
-      description: `Платеж за подписку ${p.subscription.planType} от ${p.subscription.tenant.name}`,
-      promoCode: p.promoCodeUsage?.promoCode?.code || null,
-      tenant: {
-        id: p.subscription.tenant.id,
-        name: p.subscription.tenant.name,
-        email: p.subscription.tenant.email,
-      },
-      createdAt: p.paidAt || p.createdAt,
-      source: 'subscription' as const,
-    })),
+    ...subscriptionPayments.map((p: any) => {
+      const planType = p.subscription.planType as keyof typeof PLAN_PRICES;
+      const originalPrice = PLAN_PRICES[planType] || Number(p.amount);
+      const discountAmount = p.promoCodeUsage ? Number(p.promoCodeUsage.discountAmount) : 0;
+      const actualAmount = p.promoCodeUsage 
+        ? Math.max(0, originalPrice - discountAmount)
+        : Number(p.amount);
+      
+      return {
+        id: p.id,
+        type: 'income' as const,
+        amount: actualAmount, // Фактически оплаченная сумма
+        originalAmount: originalPrice, // Оригинальная цена тарифа
+        discountAmount: discountAmount,
+        description: `Платеж за подписку ${p.subscription.planType} от ${p.subscription.tenant.name}`,
+        promoCode: p.promoCodeUsage?.promoCode?.code || null,
+        tenant: {
+          id: p.subscription.tenant.id,
+          name: p.subscription.tenant.name,
+          email: p.subscription.tenant.email,
+        },
+        createdAt: p.paidAt || p.createdAt,
+        source: 'subscription' as const,
+      };
+    }),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   res.json({
@@ -499,7 +585,7 @@ export const getTransactionHistory = asyncHandler(async (req: AuthenticatedReque
  * Создание расхода
  */
 export const createExpense = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { amount, description } = req.body;
+  const { amount, description, categoryId } = req.body;
   const superAdmin = (req as any).superAdmin;
 
   if (!amount || !description) {
@@ -510,11 +596,12 @@ export const createExpense = asyncHandler(async (req: AuthenticatedRequest, res:
     return;
   }
 
-  const transaction = await prisma.adminTransaction.create({
+  const transaction = await (prisma as any).adminTransaction.create({
     data: {
       type: 'expense',
       amount: parseFloat(amount),
       description: description.trim(),
+      categoryId: categoryId || null,
       superAdminId: superAdmin?.id,
     },
     include: {
@@ -524,6 +611,13 @@ export const createExpense = asyncHandler(async (req: AuthenticatedRequest, res:
           firstName: true,
           lastName: true,
           email: true,
+        },
+      },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
         },
       },
     },
@@ -581,7 +675,7 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   }
 
   // Создаем транзакцию
-  const transaction = await prisma.adminTransaction.create({
+  const transaction = await (prisma as any).adminTransaction.create({
     data: {
       type: 'marketer_payment',
       amount: paymentAmount,
@@ -660,5 +754,234 @@ export const updateTenantPlan = asyncHandler(async (req: AuthenticatedRequest, r
   res.json({
     success: true,
     data: updatedSubscription,
+  });
+});
+
+/**
+ * Расширенная аналитика по периодам
+ */
+export const getAnalyticsByPeriod = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { period = 'month', startDate, endDate } = req.query;
+
+  let start: Date;
+  let end: Date = new Date();
+
+  if (startDate && endDate) {
+    start = new Date(startDate as string);
+    end = new Date(endDate as string);
+    end.setHours(23, 59, 59, 999);
+  } else {
+    // По умолчанию берем последний месяц
+    start = new Date();
+    start.setMonth(start.getMonth() - 1);
+  }
+
+  // Доходы по дням
+  const subscriptionPayments = await prisma.subscriptionPayment.findMany({
+    where: {
+      status: 'succeeded',
+      paidAt: {
+        gte: start,
+        lte: end,
+      },
+    },
+    select: {
+      amount: true,
+      paidAt: true,
+      subscription: {
+        select: {
+          planType: true,
+        },
+      },
+    },
+  });
+
+  // Расходы по дням
+  const expenses = await (prisma as any).adminTransaction.findMany({
+    where: {
+      type: 'expense',
+      createdAt: {
+        gte: start,
+        lte: end,
+      },
+    },
+    include: {
+      category: true,
+    },
+  });
+
+  // Выплаты маркетологам по дням
+  const marketerPayments = await (prisma as any).adminTransaction.findMany({
+    where: {
+      type: 'marketer_payment',
+      createdAt: {
+        gte: start,
+        lte: end,
+      },
+    },
+  });
+
+  // Группируем по дням
+  const dailyData: Record<string, { date: string; income: number; expenses: number; marketerPayments: number; profit: number }> = {};
+  
+  subscriptionPayments.forEach((payment: any) => {
+    const date = new Date(payment.paidAt!).toISOString().split('T')[0];
+    if (!dailyData[date]) {
+      dailyData[date] = { date, income: 0, expenses: 0, marketerPayments: 0, profit: 0 };
+    }
+    dailyData[date].income += Number(payment.amount);
+  });
+
+  expenses.forEach((expense: any) => {
+    const date = new Date(expense.createdAt).toISOString().split('T')[0];
+    if (!dailyData[date]) {
+      dailyData[date] = { date, income: 0, expenses: 0, marketerPayments: 0, profit: 0 };
+    }
+    dailyData[date].expenses += Number(expense.amount);
+  });
+
+  marketerPayments.forEach((payment: any) => {
+    const date = new Date(payment.createdAt).toISOString().split('T')[0];
+    if (!dailyData[date]) {
+      dailyData[date] = { date, income: 0, expenses: 0, marketerPayments: 0, profit: 0 };
+    }
+    dailyData[date].marketerPayments += Number(payment.amount);
+  });
+
+  // Рассчитываем прибыль
+  Object.keys(dailyData).forEach(date => {
+    dailyData[date].profit = dailyData[date].income - dailyData[date].expenses - dailyData[date].marketerPayments;
+  });
+
+  // Расходы по категориям
+  const expensesByCategory: Record<string, number> = {};
+  expenses.forEach((expense: any) => {
+    const categoryName = expense.category?.name || 'Без категории';
+    expensesByCategory[categoryName] = (expensesByCategory[categoryName] || 0) + Number(expense.amount);
+  });
+
+  // Доходы по тарифам
+  const incomeByPlan: Record<string, number> = {};
+  subscriptionPayments.forEach(payment => {
+    const planType = payment.subscription.planType;
+    incomeByPlan[planType] = (incomeByPlan[planType] || 0) + Number(payment.amount);
+  });
+
+  const chartData = Object.values(dailyData).sort((a, b) => a.date.localeCompare(b.date));
+
+  res.json({
+    success: true,
+    data: {
+      period: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      chartData,
+      expensesByCategory,
+      incomeByPlan,
+      summary: {
+        totalIncome: chartData.reduce((sum, d) => sum + d.income, 0),
+        totalExpenses: chartData.reduce((sum, d) => sum + d.expenses, 0),
+        totalMarketerPayments: chartData.reduce((sum, d) => sum + d.marketerPayments, 0),
+        totalProfit: chartData.reduce((sum, d) => sum + d.profit, 0),
+      },
+    },
+  });
+});
+
+/**
+ * Прогноз доходов
+ */
+export const getRevenueForecast = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  // Получаем активные подписки
+  const activeSubscriptions = await prisma.subscription.findMany({
+    where: {
+      status: 'active',
+      endDate: {
+        gte: new Date(),
+      },
+    },
+    include: {
+      tenant: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  // Рассчитываем прогноз на основе текущих подписок
+  const forecast: Record<string, number> = {};
+  const today = new Date();
+  const monthsAhead = 6; // Прогноз на 6 месяцев вперед
+
+  for (let i = 0; i < monthsAhead; i++) {
+    const monthDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+    forecast[monthKey] = 0;
+
+    activeSubscriptions.forEach(sub => {
+      const endDate = sub.endDate ? new Date(sub.endDate) : null;
+      // Если подписка активна в этом месяце
+      if (!endDate || endDate >= monthDate) {
+        const planPrice = PLAN_PRICES[sub.planType as keyof typeof PLAN_PRICES] || 0;
+        forecast[monthKey] += planPrice;
+      }
+    });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      forecast: Object.entries(forecast).map(([month, amount]) => ({
+        month,
+        amount,
+      })),
+    },
+  });
+});
+
+/**
+ * Массовое обновление аккаунтов
+ */
+export const bulkUpdateTenants = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantIds, action, data } = req.body;
+
+  if (!tenantIds || !Array.isArray(tenantIds) || tenantIds.length === 0) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant IDs are required',
+    });
+    return;
+  }
+
+  if (action === 'deactivate') {
+    await prisma.tenant.updateMany({
+      where: {
+        id: { in: tenantIds },
+      },
+      data: {
+        isActive: false,
+      },
+    });
+  } else if (action === 'activate') {
+    await prisma.tenant.updateMany({
+      where: {
+        id: { in: tenantIds },
+      },
+      data: {
+        isActive: true,
+      },
+    });
+  } else if (action === 'update_plan' && data?.planType) {
+    const { SubscriptionService } = await import('../services/subscriptionService');
+    for (const tenantId of tenantIds) {
+      await SubscriptionService.updatePlan(tenantId, data.planType);
+    }
+  }
+
+  res.json({
+    success: true,
+    message: `Successfully ${action} ${tenantIds.length} tenant(s)`,
   });
 });

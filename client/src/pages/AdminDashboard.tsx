@@ -33,17 +33,34 @@ import {
 } from '@mui/material';
 import {
   TrendingUp,
-  People,
   AccountBalance,
   Warning,
   Settings,
-  Visibility,
-  CalendarToday,
   History,
   Add,
   Payment,
   AccountBox,
+  ShowChart,
 } from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  BarChart as RechartsBarChart,
+  Bar,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -109,7 +126,7 @@ interface DashboardData {
 }
 
 const AdminDashboard: React.FC = () => {
-  const { user } = useAuth();
+  // const { user } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -123,19 +140,46 @@ const AdminDashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  
+  // Категории расходов
+  const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
+  
+  // Расширенная аналитика
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [forecastData, setForecastData] = useState<any>(null);
+  
+  // Виджеты дашборда
+  const [widgetSettings] = useState<Record<string, boolean>>({
+    revenue: true,
+    expenses: true,
+    profit: true,
+    forecast: true,
+    categories: true,
+    plans: true,
+  });
   
   // Все аккаунты
   const [allTenants, setAllTenants] = useState<any[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
+  const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
   
   // Диалоги
   const [expenseDialog, setExpenseDialog] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState(false);
   const [planDialog, setPlanDialog] = useState(false);
+  const [categoryDialog, setCategoryDialog] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [selectedPlanType, setSelectedPlanType] = useState<string>('');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
   const [expenseDescription, setExpenseDescription] = useState<string>('');
+  const [expenseCategoryId, setExpenseCategoryId] = useState<string>('');
+  const [categoryName, setCategoryName] = useState<string>('');
+  const [categoryDescription, setCategoryDescription] = useState<string>('');
+  const [categoryColor, setCategoryColor] = useState<string>('#2196F3');
   const [paymentMarketerId, setPaymentMarketerId] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentDescription, setPaymentDescription] = useState<string>('');
@@ -143,13 +187,25 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     loadDashboard();
+    loadExpenseCategories();
+    loadForecast();
   }, []);
+
+  useEffect(() => {
+    // Загружаем аналитику для главной вкладки, если даты установлены
+    if (startDate && endDate && tabValue === 0) {
+      loadAnalytics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate, tabValue]);
 
   useEffect(() => {
     if (tabValue === 1) {
       loadTransactions();
     } else if (tabValue === 2) {
       loadAllTenants();
+    } else if (tabValue === 3) {
+      loadAnalytics();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabValue]);
@@ -159,19 +215,64 @@ const AdminDashboard: React.FC = () => {
       loadTransactions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactionTypeFilter]);
+  }, [transactionTypeFilter, startDate, endDate, selectedCategoryId]);
+
+  useEffect(() => {
+    if (tabValue === 3) {
+      loadAnalytics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const loadTransactions = async () => {
     try {
       setTransactionsLoading(true);
-      const result = await apiService.getTransactionHistory({
+      const params: any = {
         type: transactionTypeFilter !== 'all' ? transactionTypeFilter : undefined,
-      });
+        startDate: startDate ? startDate.toISOString().split('T')[0] : undefined,
+        endDate: endDate ? endDate.toISOString().split('T')[0] : undefined,
+        categoryId: selectedCategoryId !== 'all' ? selectedCategoryId : undefined,
+      };
+      const result = await apiService.getTransactionHistory(params);
       setTransactions(result.transactions || []);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки истории транзакций');
     } finally {
       setTransactionsLoading(false);
+    }
+  };
+
+  const loadExpenseCategories = async () => {
+    try {
+      const categories = await apiService.getExpenseCategories();
+      setExpenseCategories(categories || []);
+    } catch (err: any) {
+      console.error('Ошибка загрузки категорий:', err);
+    }
+  };
+
+  const loadAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      const params: any = {
+        startDate: startDate ? startDate.toISOString().split('T')[0] : undefined,
+        endDate: endDate ? endDate.toISOString().split('T')[0] : undefined,
+      };
+      const analytics = await apiService.getAnalyticsByPeriod(params);
+      setAnalyticsData(analytics);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки аналитики');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const loadForecast = async () => {
+    try {
+      const forecast = await apiService.getRevenueForecast();
+      setForecastData(forecast);
+    } catch (err: any) {
+      console.error('Ошибка загрузки прогноза:', err);
     }
   };
 
@@ -262,15 +363,68 @@ const AdminDashboard: React.FC = () => {
       await apiService.createExpense({
         amount: parseFloat(expenseAmount),
         description: expenseDescription,
+        categoryId: expenseCategoryId || undefined,
       });
       setExpenseDialog(false);
       setExpenseAmount('');
       setExpenseDescription('');
+      setExpenseCategoryId('');
       await loadTransactions();
       await loadDashboard();
+      await loadAnalytics();
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания расхода');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!categoryName) {
+      setError('Название категории обязательно');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiService.createExpenseCategory({
+        name: categoryName,
+        description: categoryDescription,
+        color: categoryColor,
+      });
+      setCategoryDialog(false);
+      setCategoryName('');
+      setCategoryDescription('');
+      setCategoryColor('#2196F3');
+      await loadExpenseCategories();
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка создания категории');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBulkAction = async (action: string, data?: any) => {
+    if (selectedTenants.length === 0) {
+      setError('Выберите хотя бы один аккаунт');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiService.bulkUpdateTenants({
+        tenantIds: selectedTenants,
+        action,
+        data,
+      });
+      setSelectedTenants([]);
+      await loadAllTenants();
+      await loadDashboard();
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка выполнения действия');
     } finally {
       setSubmitting(false);
     }
@@ -348,8 +502,9 @@ const AdminDashboard: React.FC = () => {
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
           <Tab icon={<TrendingUp />} label="Общая статистика" />
-          <Tab icon={<History />} label="История поступления средств" />
+          <Tab icon={<History />} label="История транзакций" />
           <Tab icon={<AccountBox />} label="Все аккаунты" />
+          <Tab icon={<ShowChart />} label="Аналитика" />
         </Tabs>
       </Paper>
 
@@ -375,6 +530,34 @@ const AdminDashboard: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+        
+        {/* График доходов и расходов (виджет) */}
+        {widgetSettings.revenue && analyticsData && analyticsData.chartData && analyticsData.chartData.length > 0 && (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Динамика доходов и расходов
+                </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={analyticsData.chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <RechartsTooltip 
+                            formatter={(value: any) => formatCurrency(Number(value))}
+                            contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                          />
+                          <Legend />
+                          <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
+                          <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
+                          <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
 
         <Grid item xs={12} md={4}>
           <Card>
@@ -688,29 +871,14 @@ const AdminDashboard: React.FC = () => {
         </>
       )}
 
-      {/* Вкладка: История поступления средств */}
+      {/* Вкладка: История транзакций */}
       {tabValue === 1 && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
-              История поступления средств
+              История транзакций
             </Typography>
             <Box display="flex" gap={2}>
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Тип транзакции</InputLabel>
-                <Select
-                  value={transactionTypeFilter}
-                  label="Тип транзакции"
-                  onChange={(e) => {
-                    setTransactionTypeFilter(e.target.value);
-                  }}
-                >
-                  <MenuItem value="all">Все</MenuItem>
-                  <MenuItem value="income">Поступления</MenuItem>
-                  <MenuItem value="expense">Расходы</MenuItem>
-                  <MenuItem value="marketer_payment">Выплаты маркетологам</MenuItem>
-                </Select>
-              </FormControl>
               <Button
                 variant="outlined"
                 startIcon={<Add />}
@@ -729,6 +897,72 @@ const AdminDashboard: React.FC = () => {
             </Box>
           </Box>
 
+          {/* Фильтры */}
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Тип транзакции</InputLabel>
+                <Select
+                  value={transactionTypeFilter}
+                  label="Тип транзакции"
+                  onChange={(e) => {
+                    setTransactionTypeFilter(e.target.value);
+                  }}
+                >
+                  <MenuItem value="all">Все</MenuItem>
+                  <MenuItem value="income">Поступления</MenuItem>
+                  <MenuItem value="expense">Расходы</MenuItem>
+                  <MenuItem value="marketer_payment">Выплаты маркетологам</MenuItem>
+                </Select>
+              </FormControl>
+              
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Категория</InputLabel>
+                <Select
+                  value={selectedCategoryId}
+                  label="Категория"
+                  onChange={(e) => {
+                    setSelectedCategoryId(e.target.value);
+                  }}
+                >
+                  <MenuItem value="all">Все категории</MenuItem>
+                  {expenseCategories.map((cat) => (
+                    <MenuItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+                <DatePicker
+                  label="С"
+                  value={startDate}
+                  onChange={(newValue) => setStartDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                />
+                <DatePicker
+                  label="По"
+                  value={endDate}
+                  onChange={(newValue) => setEndDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                />
+              </LocalizationProvider>
+
+              {(startDate || endDate) && (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setStartDate(null);
+                    setEndDate(null);
+                  }}
+                >
+                  Сбросить даты
+                </Button>
+              )}
+            </Box>
+          </Paper>
+
           {transactionsLoading ? (
             <Box display="flex" justifyContent="center" p={4}>
               <CircularProgress />
@@ -742,6 +976,7 @@ const AdminDashboard: React.FC = () => {
                       <TableCell>Дата</TableCell>
                       <TableCell>Тип</TableCell>
                       <TableCell>Описание</TableCell>
+                      <TableCell>Категория</TableCell>
                       <TableCell>Маркетолог</TableCell>
                       <TableCell align="right">Сумма</TableCell>
                     </TableRow>
@@ -792,6 +1027,20 @@ const AdminDashboard: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell>
+                            {transaction.category ? (
+                              <Chip
+                                label={transaction.category.name}
+                                size="small"
+                                sx={{
+                                  backgroundColor: transaction.category.color || '#2196F3',
+                                  color: 'white',
+                                }}
+                              />
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {transaction.marketer ? (
                               `${transaction.marketer.name} (${transaction.marketer.email})`
                             ) : (
@@ -835,9 +1084,32 @@ const AdminDashboard: React.FC = () => {
       {/* Вкладка: Все аккаунты */}
       {tabValue === 2 && (
         <Box>
-          <Typography variant="h5" fontWeight="bold" mb={3}>
-            Все аккаунты
-          </Typography>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h5" fontWeight="bold">
+              Все аккаунты
+            </Typography>
+            {selectedTenants.length > 0 && (
+              <Box display="flex" gap={1}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleBulkAction('activate')}
+                  disabled={submitting}
+                >
+                  Активировать ({selectedTenants.length})
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="error"
+                  onClick={() => handleBulkAction('deactivate')}
+                  disabled={submitting}
+                >
+                  Деактивировать ({selectedTenants.length})
+                </Button>
+              </Box>
+            )}
+          </Box>
 
           {tenantsLoading ? (
             <Box display="flex" justifyContent="center" p={4}>
@@ -849,6 +1121,19 @@ const AdminDashboard: React.FC = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedTenants.length === allTenants.length && allTenants.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTenants(allTenants.map(t => t.id));
+                            } else {
+                              setSelectedTenants([]);
+                            }
+                          }}
+                        />
+                      </TableCell>
                       <TableCell>Название</TableCell>
                       <TableCell>Email</TableCell>
                       <TableCell>Поддомен</TableCell>
@@ -864,7 +1149,7 @@ const AdminDashboard: React.FC = () => {
                   <TableBody>
                     {allTenants.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} align="center">
+                        <TableCell colSpan={11} align="center">
                           <Typography color="text.secondary" sx={{ py: 4 }}>
                             Нет аккаунтов
                           </Typography>
@@ -873,6 +1158,19 @@ const AdminDashboard: React.FC = () => {
                     ) : (
                       allTenants.map((tenant) => (
                         <TableRow key={tenant.id}>
+                          <TableCell padding="checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedTenants.includes(tenant.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedTenants([...selectedTenants, tenant.id]);
+                                } else {
+                                  setSelectedTenants(selectedTenants.filter(id => id !== tenant.id));
+                                }
+                              }}
+                            />
+                          </TableCell>
                           <TableCell>{tenant.name}</TableCell>
                           <TableCell>{tenant.email}</TableCell>
                           <TableCell>{tenant.subdomain}</TableCell>
@@ -919,6 +1217,233 @@ const AdminDashboard: React.FC = () => {
         </Box>
       )}
 
+      {/* Вкладка: Аналитика */}
+      {tabValue === 3 && (
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h5" fontWeight="bold">
+              Расширенная аналитика
+            </Typography>
+            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+              <Box display="flex" gap={2}>
+                <DatePicker
+                  label="С"
+                  value={startDate}
+                  onChange={(newValue) => setStartDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                />
+                <DatePicker
+                  label="По"
+                  value={endDate}
+                  onChange={(newValue) => setEndDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                />
+                {(startDate || endDate) && (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setStartDate(null);
+                      setEndDate(null);
+                    }}
+                  >
+                    Сбросить
+                  </Button>
+                )}
+              </Box>
+            </LocalizationProvider>
+          </Box>
+
+          {analyticsLoading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : analyticsData ? (
+            <>
+              {/* Сводка */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} md={3}>
+                  <Card>
+                    <CardContent>
+                      <Typography color="text.secondary" gutterBottom>
+                        Общий доход
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold" color="success.main">
+                        {formatCurrency(analyticsData.summary.totalIncome)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Card>
+                    <CardContent>
+                      <Typography color="text.secondary" gutterBottom>
+                        Общие расходы
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold" color="error.main">
+                        {formatCurrency(analyticsData.summary.totalExpenses)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Card>
+                    <CardContent>
+                      <Typography color="text.secondary" gutterBottom>
+                        Выплаты маркетологам
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold" color="warning.main">
+                        {formatCurrency(analyticsData.summary.totalMarketerPayments)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Card>
+                    <CardContent>
+                      <Typography color="text.secondary" gutterBottom>
+                        Прибыль
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        fontWeight="bold"
+                        color={analyticsData.summary.totalProfit >= 0 ? 'success.main' : 'error.main'}
+                      >
+                        {formatCurrency(analyticsData.summary.totalProfit)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* График динамики */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Динамика доходов и расходов
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <LineChart data={analyticsData.chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <RechartsTooltip 
+                            formatter={(value: any) => formatCurrency(Number(value))}
+                            contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                          />
+                          <Legend />
+                          <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
+                          <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
+                          <Line type="monotone" dataKey="marketerPayments" stroke="#FF9800" name="Выплаты маркетологам" strokeWidth={2} />
+                          <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Расходы по категориям */}
+              {widgetSettings.categories && Object.keys(analyticsData.expensesByCategory).length > 0 && (
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          Расходы по категориям
+                        </Typography>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <RechartsPieChart>
+                            <Pie
+                              data={Object.entries(analyticsData.expensesByCategory).map(([name, value]) => ({
+                                name,
+                                value: Number(value),
+                              }))}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={(entry: any) => {
+                                const name = entry.name || '';
+                                const percent = entry.percent || 0;
+                                return `${name} ${(percent * 100).toFixed(0)}%`;
+                              }}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {Object.entries(analyticsData.expensesByCategory).map(([name], index) => {
+                                const category = expenseCategories.find(c => c.name === name);
+                                return (
+                                  <Cell key={`cell-${index}`} fill={category?.color || `#${Math.floor(Math.random() * 16777215).toString(16)}`} />
+                                );
+                              })}
+                            </Pie>
+                            <RechartsTooltip 
+                              formatter={(value: any) => formatCurrency(Number(value))}
+                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                            />
+                          </RechartsPieChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          Доходы по тарифам
+                        </Typography>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <RechartsBarChart data={Object.entries(analyticsData.incomeByPlan).map(([plan, amount]) => ({
+                            plan,
+                            amount: Number(amount),
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="plan" />
+                            <YAxis />
+                            <RechartsTooltip 
+                              formatter={(value: any) => formatCurrency(Number(value))}
+                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                            />
+                            <Bar dataKey="amount" fill="#4CAF50" />
+                          </RechartsBarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Прогноз доходов */}
+              {widgetSettings.forecast && forecastData && (
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Прогноз доходов на 6 месяцев
+                    </Typography>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <RechartsBarChart data={forecastData.forecast}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <RechartsTooltip 
+                          formatter={(value: any) => formatCurrency(Number(value))}
+                          contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                        />
+                        <Bar dataKey="amount" fill="#2196F3" />
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <Alert severity="info">Выберите период для отображения аналитики</Alert>
+          )}
+        </Box>
+      )}
+
       {/* Диалог создания расхода */}
       <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Создать расход</DialogTitle>
@@ -933,6 +1458,26 @@ const AdminDashboard: React.FC = () => {
               sx={{ mb: 2 }}
               required
             />
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Категория</InputLabel>
+              <Select
+                value={expenseCategoryId}
+                label="Категория"
+                onChange={(e) => setExpenseCategoryId(e.target.value)}
+              >
+                <MenuItem value="">Без категории</MenuItem>
+                {expenseCategories.map((cat) => (
+                  <MenuItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Box display="flex" justifyContent="flex-end" mb={1}>
+              <Button size="small" onClick={() => setCategoryDialog(true)}>
+                + Создать категорию
+              </Button>
+            </Box>
             <TextField
               fullWidth
               label="Описание"
@@ -945,12 +1490,70 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setExpenseDialog(false)}>Отмена</Button>
+          <Button onClick={() => {
+            setExpenseDialog(false);
+            setExpenseAmount('');
+            setExpenseDescription('');
+            setExpenseCategoryId('');
+          }}>Отмена</Button>
           <Button
             onClick={handleCreateExpense}
             variant="contained"
             disabled={submitting || !expenseAmount || !expenseDescription}
           >
+            {submitting ? <CircularProgress size={24} /> : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания категории */}
+      <Dialog open={categoryDialog} onClose={() => setCategoryDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Создать категорию расходов</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Название"
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Описание"
+              multiline
+              rows={2}
+              value={categoryDescription}
+              onChange={(e) => setCategoryDescription(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <Box display="flex" alignItems="center" gap={2}>
+              <Typography>Цвет:</Typography>
+              <input
+                type="color"
+                value={categoryColor}
+                onChange={(e) => setCategoryColor(e.target.value)}
+                style={{ width: 50, height: 40, border: 'none', borderRadius: 4 }}
+              />
+              <TextField
+                label="Hex код"
+                size="small"
+                value={categoryColor}
+                onChange={(e) => setCategoryColor(e.target.value)}
+                sx={{ width: 120 }}
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCategoryDialog(false);
+            setCategoryName('');
+            setCategoryDescription('');
+            setCategoryColor('#2196F3');
+          }}>Отмена</Button>
+          <Button onClick={handleCreateCategory} variant="contained" disabled={submitting || !categoryName}>
             {submitting ? <CircularProgress size={24} /> : 'Создать'}
           </Button>
         </DialogActions>

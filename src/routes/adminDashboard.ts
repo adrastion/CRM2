@@ -8,6 +8,11 @@ import {
   createExpense,
   payMarketer,
   updateTenantPlan,
+  getExpenseCategories,
+  createExpenseCategory,
+  getAnalyticsByPeriod,
+  getRevenueForecast,
+  bulkUpdateTenants,
 } from '../controllers/adminDashboardController';
 import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
 
@@ -39,6 +44,17 @@ router.post('/marketers/pay', payMarketer);
 
 // Обновить тариф tenant'а
 router.put('/tenants/:tenantId/plan', updateTenantPlan);
+
+// Массовое обновление аккаунтов
+router.post('/tenants/bulk', bulkUpdateTenants);
+
+// Категории расходов
+router.get('/expense-categories', getExpenseCategories);
+router.post('/expense-categories', createExpenseCategory);
+
+// Расширенная аналитика
+router.get('/analytics/period', getAnalyticsByPeriod);
+router.get('/analytics/forecast', getRevenueForecast);
 
 export default router;
 

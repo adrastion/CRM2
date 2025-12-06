@@ -1031,14 +1031,39 @@ class ApiService {
     return response.data.data;
   }
 
-  async getTransactionHistory(params?: { type?: string; limit?: number; offset?: number }): Promise<any> {
+  async getTransactionHistory(params?: { type?: string; limit?: number; offset?: number; startDate?: string; endDate?: string; categoryId?: string }): Promise<any> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/transactions', { params });
     return response.data.data;
   }
 
-  async createExpense(data: { amount: number; description: string }): Promise<any> {
+  async createExpense(data: { amount: number; description: string; categoryId?: string }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/expenses', data);
     return response.data.data;
+  }
+
+  async getExpenseCategories(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/expense-categories');
+    return response.data.data;
+  }
+
+  async createExpenseCategory(data: { name: string; description?: string; color?: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/expense-categories', data);
+    return response.data.data;
+  }
+
+  async getAnalyticsByPeriod(params?: { period?: string; startDate?: string; endDate?: string }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/analytics/period', { params });
+    return response.data.data;
+  }
+
+  async getRevenueForecast(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/analytics/forecast');
+    return response.data.data;
+  }
+
+  async bulkUpdateTenants(data: { tenantIds: string[]; action: string; data?: any }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/tenants/bulk', data);
+    return response.data;
   }
 
   async payMarketer(data: { marketerId: string; amount: number; description?: string }): Promise<any> {
