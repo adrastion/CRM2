@@ -295,9 +295,9 @@ const Schedule: React.FC = () => {
       }
       // Для групповой тренировки группа обязательна, для индивидуальной - клиенты
       if (formData.trainingType === 'group') {
-        if (!formData.groupId) {
-          alert('Пожалуйста, выберите группу');
-          return;
+      if (!formData.groupId) {
+        alert('Пожалуйста, выберите группу');
+        return;
         }
       } else {
         // Индивидуальная тренировка
@@ -731,7 +731,7 @@ const Schedule: React.FC = () => {
           await fetchData();
         }
       }
-      
+
       await fetchData();
       setOpenDialog(false);
       resetForm();
@@ -953,9 +953,9 @@ const Schedule: React.FC = () => {
             } catch (err: any) {
               console.error('Error deleting trainings batch:', err);
               // Если batch не удался, пробуем удалять по одной
-              for (const t of seriesTrainings) {
+          for (const t of seriesTrainings) {
                 try {
-                  await apiService.deleteTraining(t.id);
+            await apiService.deleteTraining(t.id);
                 } catch (deleteErr: any) {
                   console.error('Error deleting training:', deleteErr);
                   // Продолжаем удаление остальных
@@ -1042,7 +1042,7 @@ const Schedule: React.FC = () => {
         for (let i = 0; i < trainings.length; i++) {
           const training = trainings[i];
           try {
-            await apiService.createTraining(training);
+          await apiService.createTraining(training);
             createdTrainings.push(training);
             // Увеличиваем задержку между запросами (300ms), чтобы избежать 429 ошибки
             if (i < trainings.length - 1) {
@@ -1112,11 +1112,11 @@ const Schedule: React.FC = () => {
         trainerId: formData.trainerId, // Всегда отправляем оригинального тренера (контроллер сам определит, кто будет проводить)
         branchId: formData.branchId,
         hallId: formData.hallId || undefined,
-        isRecurring: false,
+          isRecurring: false,
         recurrence: null,
         substituteTrainerId: formData.substituteTrainerId || undefined,
         originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
-      };
+        };
 
         // Если редактируем регулярную тренировку, которая становится нерегулярной
         if (editingTraining.isRecurring) {
@@ -1144,7 +1144,7 @@ const Schedule: React.FC = () => {
 
       // Обновляем данные только если все прошло успешно
       try {
-        await fetchData();
+      await fetchData();
       } catch (fetchErr: any) {
         console.error('Error fetching data after training update:', fetchErr);
         // Не блокируем процесс, но логируем ошибку
@@ -2327,21 +2327,21 @@ const Schedule: React.FC = () => {
               
               {/* Поле выбора группы - показывается только для групповой тренировки */}
               {formData.trainingType === 'group' && (
-                <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required>
-                    <InputLabel>Группа</InputLabel>
-                    <Select
-                      value={formData.groupId}
-                      onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
-                    >
-                      {groups.map((group) => (
-                        <MenuItem key={group.id} value={group.id}>
-                          {group.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+                  <InputLabel>Группа</InputLabel>
+                  <Select
+                    value={formData.groupId}
+                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                  >
+                    {groups.map((group) => (
+                      <MenuItem key={group.id} value={group.id}>
+                        {group.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
               )}
               
               {/* Выбор клиентов для индивидуальной тренировки */}
@@ -3413,8 +3413,8 @@ const Schedule: React.FC = () => {
             <Button 
               onClick={() => {
                 if (!isUpdating) {
-                  setEditDialog(false);
-                  resetForm();
+              setEditDialog(false);
+              resetForm();
                 }
               }}
               disabled={isUpdating}
@@ -3621,7 +3621,7 @@ const Schedule: React.FC = () => {
               <Box sx={{ textAlign: 'center', py: 4 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {selectedTraining?.groupId ? 'В группе нет участников' : 'Нет клиентов в тренировке'}
-                </Typography>
+              </Typography>
                 <Button
                   variant="outlined"
                   startIcon={<Person />}
