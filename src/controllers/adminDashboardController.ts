@@ -100,6 +100,36 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
     return sum + Number(marketer.balance);
   }, 0);
 
+  // Получаем все расходы (транзакции типа 'expense')
+  const expenses = await (prisma as any).adminTransaction.findMany({
+    where: {
+      type: 'expense',
+    },
+    select: {
+      amount: true,
+    },
+  });
+
+  // Общая сумма всех расходов
+  const totalExpenses = expenses.reduce((sum: number, expense: any) => {
+    return sum + Number(expense.amount);
+  }, 0);
+
+  // Получаем все выплаты маркетологам (транзакции типа 'marketer_payment')
+  const marketerPayments = await (prisma as any).adminTransaction.findMany({
+    where: {
+      type: 'marketer_payment',
+    },
+    select: {
+      amount: true,
+    },
+  });
+
+  // Общая сумма всех выплат маркетологам
+  const totalMarketerPayments = marketerPayments.reduce((sum: number, payment: any) => {
+    return sum + Number(payment.amount);
+  }, 0);
+
   // Получаем настройки суперадмина
   let adminSettings = await (prisma as any).superAdminSettings.findFirst();
   if (!adminSettings) {
@@ -116,8 +146,8 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
     reserveAmount = (totalRevenue * Number(adminSettings.reservePercentage)) / 100;
   }
 
-  // Доступный бюджет (общая выручка - резерв - невыплаченное маркетологам)
-  const availableBudget = totalRevenue - reserveAmount - totalUnpaidMarketers;
+  // Доступный бюджет (общая выручка - резерв - невыплаченное маркетологам - все расходы - все выплаты маркетологам)
+  const availableBudget = totalRevenue - reserveAmount - totalUnpaidMarketers - totalExpenses - totalMarketerPayments;
 
   // Проверяем, достаточно ли средств
   const hasInsufficientFunds = availableBudget < 0;
@@ -218,6 +248,8 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
         totalRevenue,
         reserveAmount,
         totalUnpaidMarketers,
+        totalExpenses,
+        totalMarketerPayments,
         availableBudget,
         hasInsufficientFunds,
         settings: {

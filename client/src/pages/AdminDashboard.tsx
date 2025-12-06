@@ -109,6 +109,8 @@ interface DashboardData {
     totalRevenue: number;
     reserveAmount: number;
     totalUnpaidMarketers: number;
+    totalExpenses: number;
+    totalMarketerPayments: number;
     availableBudget: number;
     hasInsufficientFunds: boolean;
     settings: {
@@ -530,34 +532,6 @@ const AdminDashboard: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        
-        {/* График доходов и расходов (виджет) */}
-        {widgetSettings.revenue && analyticsData && analyticsData.chartData && analyticsData.chartData.length > 0 && (
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Динамика доходов и расходов
-                </Typography>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={analyticsData.chartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <RechartsTooltip 
-                            formatter={(value: any) => formatCurrency(Number(value))}
-                            contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                          />
-                          <Legend />
-                          <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
-                          <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
-                          <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
 
         <Grid item xs={12} md={4}>
           <Card>
@@ -619,6 +593,36 @@ const AdminDashboard: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* График доходов и расходов (виджет) */}
+      {widgetSettings.revenue && analyticsData && analyticsData.chartData && analyticsData.chartData.length > 0 && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Динамика доходов и расходов
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={analyticsData.chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <RechartsTooltip 
+                      formatter={(value: any) => formatCurrency(Number(value))}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
+                    <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
+                    <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
       {/* Статистика по аккаунтам */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
