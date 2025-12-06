@@ -601,6 +601,27 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
 
     // If updating a recurring training series
     if (updateSeries && training.isRecurring && validData.isRecurring !== false) {
+      // Проверка прав доступа для выставления замены при обновлении серии
+      if (validData.substituteTrainerId !== undefined) {
+        const user = req.user;
+        const trainer = await prisma.trainer.findFirst({
+          where: { userId: user?.id, tenantId: req.tenant?.id }
+        });
+        
+        const canSetSubstitute = 
+          user?.role === 'OWNER' || 
+          user?.role === 'ADMIN' || 
+          (user?.role === 'TRAINER' && trainer?.canViewAllGroups);
+        
+        if (!canSetSubstitute) {
+          res.status(403).json({
+            success: false,
+            error: 'Недостаточно прав для выставления замены тренера. Только владелец, администратор или тренер с доступом ко всем группам могут выставлять замену.'
+          });
+          return;
+        }
+      }
+
       // Find all trainings in the same series (same title, group, trainer, branch, and created around the same time)
       const seriesStartTime = new Date(training.createdAt);
       seriesStartTime.setHours(seriesStartTime.getHours() - 1);
@@ -624,6 +645,41 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
       });
 
       // Update all trainings in the series
+      // Обрабатываем замену тренера для серии
+      let substituteTrainerId: string | null = null;
+      let originalTrainerId: string | null = null;
+      let actualTrainerId = validData.trainerId || training.trainerId;
+
+      if (validData.substituteTrainerId !== undefined) {
+        const substituteId = validData.substituteTrainerId && typeof validData.substituteTrainerId === 'string' && validData.substituteTrainerId.trim() !== '' 
+          ? validData.substituteTrainerId.trim() 
+          : null;
+
+        if (substituteId) {
+          const originalTrainerIdFromTraining = training.originalTrainerId || training.trainerId;
+          const mainTrainerId = validData.trainerId || originalTrainerIdFromTraining;
+          
+          if (substituteId !== mainTrainerId) {
+            // Проверяем, что тренер-замена существует
+            const substituteTrainer = await prisma.trainer.findFirst({
+              where: { id: substituteId, tenantId: req.tenant?.id }
+            });
+
+            if (!substituteTrainer) {
+              res.status(400).json({
+                success: false,
+                error: 'Тренер-замена не найден'
+              });
+              return;
+            }
+
+            substituteTrainerId = substituteId;
+            originalTrainerId = mainTrainerId;
+            actualTrainerId = substituteId;
+          }
+        }
+      }
+
       const updatePromises = seriesTrainings.map(t => 
         prisma.training.update({
           where: { id: t.id },
@@ -631,10 +687,12 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
             title: validData.title || t.title,
             description: validData.description !== undefined ? validData.description : t.description,
             groupId: validData.groupId || t.groupId,
-            trainerId: validData.trainerId || t.trainerId,
+            trainerId: actualTrainerId || t.trainerId,
             branchId: validData.branchId || t.branchId,
             hallId: validData.hallId !== undefined ? validData.hallId : t.hallId,
-            recurrence: validData.recurrence || t.recurrence
+            recurrence: validData.recurrence || t.recurrence,
+            substituteTrainerId: substituteTrainerId || null,
+            originalTrainerId: originalTrainerId || null
           }
         })
       );
