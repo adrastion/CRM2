@@ -8,17 +8,17 @@ const prisma = new PrismaClient();
 
 export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { page = 1, limit = 10, search } = req.query;
+    const { page = 1, limit = 1000, search, includeAdmins } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = {
+    // Получаем тренеров
+    const trainerWhere: any = {
       tenantId: req.tenant?.id,
       isActive: true
     };
 
     if (search) {
-      // PostgreSQL supports case-insensitive search
-      where.user = {
+      trainerWhere.user = {
         OR: [
           { firstName: { contains: search as string, mode: 'insensitive' } },
           { lastName: { contains: search as string, mode: 'insensitive' } },
@@ -28,9 +28,9 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       };
     }
 
-    const [trainers, total] = await Promise.all([
+    const [trainers, trainersTotal] = await Promise.all([
       prisma.trainer.findMany({
-        where,
+        where: trainerWhere,
         include: {
           user: true,
           branches: {
@@ -47,25 +47,71 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
           }
         }
       }),
-      prisma.trainer.count({ where })
+      prisma.trainer.count({ where: trainerWhere })
     ]);
+
+    // Если нужно включить администраторов
+    let admins: any[] = [];
+    let adminsTotal = 0;
+    
+    // Безопасная проверка параметра includeAdmins
+    let shouldIncludeAdmins = false;
+    if (typeof includeAdmins === 'string') {
+      shouldIncludeAdmins = includeAdmins === 'true' || includeAdmins === '1';
+    } else if (typeof includeAdmins === 'boolean') {
+      shouldIncludeAdmins = includeAdmins === true;
+    }
+    
+    if (shouldIncludeAdmins) {
+      const adminWhere: any = {
+        tenantId: req.tenant?.id,
+        role: 'ADMIN'
+      };
+
+      if (search) {
+        adminWhere.OR = [
+          { firstName: { contains: search as string, mode: 'insensitive' } },
+          { lastName: { contains: search as string, mode: 'insensitive' } },
+          { middleName: { contains: search as string, mode: 'insensitive' } },
+          { email: { contains: search as string, mode: 'insensitive' } }
+        ];
+      }
+
+      [admins, adminsTotal] = await Promise.all([
+        prisma.user.findMany({
+          where: adminWhere,
+          skip,
+          take: Number(limit),
+          orderBy: {
+            firstName: 'asc'
+          }
+        }),
+        prisma.user.count({ where: adminWhere })
+      ]);
+    }
+
+    // Объединяем тренеров и администраторов
+    const allEmployees = [
+      ...trainers.map(t => ({ ...t, employeeType: 'trainer' })),
+      ...admins.map(a => ({ ...a, employeeType: 'admin', user: a }))
+    ];
 
     res.json({
       success: true,
-      data: trainers,
+      data: allEmployees,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit))
+        total: trainersTotal + adminsTotal,
+        totalPages: Math.ceil((trainersTotal + adminsTotal) / Number(limit))
       },
-      message: 'Trainers retrieved successfully'
+      message: 'Employees retrieved successfully'
     });
   } catch (error) {
-    console.error('Get trainers error:', error);
+    console.error('Get employees error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve trainers'
+      error: 'Failed to retrieve employees'
     });
   }
 };

@@ -29,7 +29,7 @@ import {
   MenuItem,
   Snackbar,
 } from '@mui/material';
-import { Add, Edit, Delete, Business, AttachMoney } from '@mui/icons-material';
+import { Add, Edit, Delete, Business, AttachMoney, Person, AdminPanelSettings } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -37,12 +37,17 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 const Trainers: React.FC = () => {
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const isAdmin = user?.role === 'ADMIN';
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [roleSelectionDialog, setRoleSelectionDialog] = useState(false); // Диалог выбора роли
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [branchesDialog, setBranchesDialog] = useState(false);
@@ -64,6 +69,7 @@ const Trainers: React.FC = () => {
     lastName: '',
     middleName: '',
     phone: '',
+    role: 'TRAINER', // 'TRAINER' или 'ADMIN'
     qualification: '',
     experience: '',
     specialization: '',
@@ -83,7 +89,7 @@ const Trainers: React.FC = () => {
         setLoading(true);
         setError(null);
         const [trainersRes, branchesRes] = await Promise.all([
-          apiService.getTrainers(undefined, abortController.signal),
+          apiService.getTrainers({ includeAdmins: 'true', limit: 1000 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
         ]);
         if (!isMounted || abortController.signal.aborted) return;
@@ -114,17 +120,17 @@ const Trainers: React.FC = () => {
 
   const fetchTrainers = async () => {
     try {
-      const response = await apiService.getTrainers();
+      const response = await apiService.getTrainers({ includeAdmins: 'true', limit: 1000 });
       setTrainers(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка загрузки тренеров');
-      console.error('Error fetching trainers:', err);
+      setError(err.response?.data?.error || 'Ошибка загрузки сотрудников');
+      console.error('Error fetching employees:', err);
     }
   };
 
   const handleDeleteTrainer = async (trainerId: string) => {
     console.log('Attempting to delete trainer:', trainerId);
-    if (window.confirm('Вы уверены, что хотите удалить этого тренера?')) {
+    if (window.confirm('Вы уверены, что хотите удалить этого сотрудника?')) {
       try {
         console.log('Deleting trainer...');
         await apiService.deleteTrainer(trainerId);
@@ -133,7 +139,7 @@ const Trainers: React.FC = () => {
         console.log('Trainer list updated');
       } catch (err: any) {
         console.error('Error deleting trainer:', err);
-        setError(err.response?.data?.error || 'Ошибка удаления тренера');
+        setError(err.response?.data?.error || 'Ошибка удаления сотрудника');
       }
     } else {
       console.log('Delete cancelled by user');
@@ -152,8 +158,18 @@ const Trainers: React.FC = () => {
     }
 
     try {
-      await apiService.createTrainer(formData);
-      // Обновляем список тренеров, получая свежие данные с сервера
+      // Если создаем администратора, используем API создания пользователя
+      if (formData.role === 'ADMIN') {
+        const { role, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups, ...userData } = formData;
+        await apiService.createUser({
+          ...userData,
+          role: 'ADMIN'
+        });
+      } else {
+        // Если создаем тренера, используем API создания тренера
+        await apiService.createTrainer(formData);
+      }
+      // Обновляем список сотрудников, получая свежие данные с сервера
       await fetchTrainers();
       setOpenDialog(false);
       setFormErrors({});
@@ -165,6 +181,7 @@ const Trainers: React.FC = () => {
         lastName: '',
         middleName: '',
         phone: '',
+        role: 'TRAINER',
         qualification: '',
         experience: '',
         specialization: '',
@@ -174,8 +191,8 @@ const Trainers: React.FC = () => {
         canViewAllGroups: false,
       });
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка создания тренера');
-      console.error('Error creating trainer:', err);
+      setError(err.response?.data?.error || 'Ошибка создания сотрудника');
+      console.error('Error creating employee:', err);
     }
   };
 
@@ -205,6 +222,7 @@ const Trainers: React.FC = () => {
       lastName: trainer.user?.lastName || '',
       middleName: trainer.user?.middleName || '',
       phone: trainer.user?.phone || '',
+      role: trainer.user?.role || 'TRAINER', // Сохраняем текущую роль
       qualification: trainer.qualification || '',
       experience: trainer.experience?.toString() || '',
       specialization: trainer.specialization || '',
@@ -216,10 +234,150 @@ const Trainers: React.FC = () => {
     setEditDialog(true);
   };
 
+  const handleEditAdmin = (admin: any) => {
+    setEditingTrainer(admin);
+    setFormErrors({});
+    setError('');
+    const user = admin.user || admin;
+    setFormData({
+      email: user.email || '',
+      password: '',
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      middleName: user.middleName || '',
+      phone: user.phone || '',
+      role: user.role || 'ADMIN', // Сохраняем текущую роль
+      qualification: '',
+      experience: '',
+      specialization: '',
+      salaryType: 'fixed',
+      salaryAmount: '',
+      salaryPercentage: '',
+      canViewAllGroups: false,
+    });
+    setEditDialog(true);
+  };
+
   const handleUpdateTrainer = async () => {
     if (!editingTrainer) return;
     
-    // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
+    const userId = (editingTrainer as any).user?.id || (editingTrainer as any).id;
+    const currentRole = (editingTrainer as any).user?.role || (editingTrainer as any).role || 'TRAINER';
+    const isEditingAdmin = currentRole === 'ADMIN' || (editingTrainer as any).employeeType === 'admin' || !(editingTrainer as any).qualification;
+    const isRoleChanging = isOwner && formData.role !== currentRole;
+    
+    // Если владелец меняет роль, используем updateUser
+    if (isOwner && isRoleChanging) {
+      const adminErrors: Record<string, string> = {};
+      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
+      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
+      if (!formData.email) adminErrors.email = 'Email обязателен';
+      
+      setFormErrors(adminErrors);
+      if (Object.keys(adminErrors).length > 0) {
+        setError('Пожалуйста, исправьте ошибки в форме');
+        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+        setSnackbarOpen(true);
+        return;
+      }
+      
+      try {
+        const updateData: any = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          middleName: formData.middleName,
+          phone: formData.phone,
+          email: formData.email,
+          role: formData.role,
+        };
+        if (formData.password) {
+          updateData.password = formData.password;
+        }
+        await apiService.updateUser(userId, updateData);
+        await fetchTrainers();
+        setEditDialog(false);
+        setFormErrors({});
+        setError('');
+        setEditingTrainer(null);
+        setFormData({
+          email: '',
+          password: '',
+          firstName: '',
+          lastName: '',
+          middleName: '',
+          phone: '',
+          role: 'TRAINER',
+          qualification: '',
+          experience: '',
+          specialization: '',
+          salaryType: 'fixed',
+          salaryAmount: '',
+          salaryPercentage: '',
+          canViewAllGroups: false,
+        });
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Ошибка обновления сотрудника');
+        console.error('Error updating employee:', err);
+      }
+      return;
+    }
+    
+    // Если редактируем администратора (без смены роли)
+    if (isEditingAdmin && !isRoleChanging) {
+      const adminErrors: Record<string, string> = {};
+      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
+      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
+      if (!formData.email) adminErrors.email = 'Email обязателен';
+      
+      setFormErrors(adminErrors);
+      if (Object.keys(adminErrors).length > 0) {
+        setError('Пожалуйста, исправьте ошибки в форме');
+        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+        setSnackbarOpen(true);
+        return;
+      }
+      
+      try {
+        const updateData: any = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          middleName: formData.middleName,
+          phone: formData.phone,
+          email: formData.email,
+        };
+        if (formData.password) {
+          updateData.password = formData.password;
+        }
+        await apiService.updateUser(userId, updateData);
+        await fetchTrainers();
+        setEditDialog(false);
+        setFormErrors({});
+        setError('');
+        setEditingTrainer(null);
+        setFormData({
+          email: '',
+          password: '',
+          firstName: '',
+          lastName: '',
+          middleName: '',
+          phone: '',
+          role: 'TRAINER',
+          qualification: '',
+          experience: '',
+          specialization: '',
+          salaryType: 'fixed',
+          salaryAmount: '',
+          salaryPercentage: '',
+          canViewAllGroups: false,
+        });
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Ошибка обновления администратора');
+        console.error('Error updating admin:', err);
+      }
+      return;
+    }
+    
+    // Валидация для тренера уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateTrainerForm(formData);
     
     if (Object.keys(errors).length > 0) {
@@ -243,6 +401,7 @@ const Trainers: React.FC = () => {
         lastName: '',
         middleName: '',
         phone: '',
+        role: 'TRAINER',
         qualification: '',
         experience: '',
         specialization: '',
@@ -365,35 +524,42 @@ const Trainers: React.FC = () => {
     <Box data-onboarding="trainers-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-          Тренеры ({trainers.length})
+          Сотрудники ({trainers.length})
         </Typography>
         <Button
           variant="contained"
           startIcon={<Add />}
           sx={{ textTransform: 'none' }}
           onClick={() => {
-            setOpenDialog(true);
-            setFormErrors({});
-            setError('');
-            setFormData({
-              email: '',
-              password: '',
-              firstName: '',
-              lastName: '',
-              middleName: '',
-              phone: '',
-              qualification: '',
-              experience: '',
-              specialization: '',
-              salaryType: 'fixed',
-              salaryAmount: '',
-              salaryPercentage: '',
-              canViewAllGroups: false,
-            });
+            if (isOwner) {
+              // Для владельца показываем диалог выбора роли
+              setRoleSelectionDialog(true);
+            } else {
+              // Для администратора сразу открываем форму создания тренера
+              setOpenDialog(true);
+              setFormErrors({});
+              setError('');
+              setFormData({
+                email: '',
+                password: '',
+                firstName: '',
+                lastName: '',
+                middleName: '',
+                phone: '',
+                role: 'TRAINER',
+                qualification: '',
+                experience: '',
+                specialization: '',
+                salaryType: 'fixed',
+                salaryAmount: '',
+                salaryPercentage: '',
+                canViewAllGroups: false,
+              });
+            }
           }}
           data-onboarding="add-trainer-button"
         >
-          Добавить тренера
+          Добавить сотрудника
         </Button>
       </Box>
 
@@ -405,6 +571,7 @@ const Trainers: React.FC = () => {
                 <TableRow>
                   <TableCell>Имя</TableCell>
                   <TableCell>Email</TableCell>
+                  <TableCell>Роль</TableCell>
                   <TableCell>Квалификация</TableCell>
                   <TableCell>Опыт</TableCell>
                   <TableCell>Тип зарплаты</TableCell>
@@ -415,75 +582,97 @@ const Trainers: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {trainers.filter(trainer => trainer).map((trainer) => {
+                {trainers.filter(employee => employee).map((employee: any) => {
+                  const isAdmin = employee.employeeType === 'admin' || !employee.qualification;
+                  const user = employee.user || employee;
+                  const displayName = `${user.lastName || ''} ${user.firstName || ''} ${user.middleName || ''}`.trim();
+                  
                   return (
-                    <TableRow key={trainer.id}>
+                    <TableRow key={employee.id || user.id}>
                       <TableCell>
                         <Typography
                           sx={{
-                            cursor: 'pointer',
-                            color: 'primary.main',
+                            cursor: isAdmin ? 'default' : 'pointer',
+                            color: isAdmin ? 'text.primary' : 'primary.main',
                             '&:hover': {
-                              textDecoration: 'underline'
+                              textDecoration: isAdmin ? 'none' : 'underline'
                             }
                           }}
                           onClick={() => {
-                            setEditingTrainer(trainer);
-                            setFormData({
-                              email: trainer.user?.email || '',
-                              password: '',
-                              firstName: trainer.user?.firstName || '',
-                              lastName: trainer.user?.lastName || '',
-                              middleName: trainer.user?.middleName || '',
-                              phone: trainer.user?.phone || '',
-                              qualification: trainer.qualification || '',
-                              experience: trainer.experience?.toString() || '',
-                              specialization: trainer.specialization || '',
-                              salaryType: trainer.salaryType || 'fixed',
-                              salaryAmount: trainer.salaryAmount?.toString() || '',
-                              salaryPercentage: (trainer as any).salaryPercentage?.toString() || '',
-                              canViewAllGroups: trainer.canViewAllGroups || false,
-                            });
-                            setEditDialog(true);
+                            if (!isAdmin) {
+                              setEditingTrainer(employee);
+                              setFormData({
+                                email: user.email || '',
+                                password: '',
+                                firstName: user.firstName || '',
+                                lastName: user.lastName || '',
+                                middleName: user.middleName || '',
+                                phone: user.phone || '',
+                                role: 'TRAINER',
+                                qualification: employee.qualification || '',
+                                experience: employee.experience?.toString() || '',
+                                specialization: employee.specialization || '',
+                                salaryType: employee.salaryType || 'fixed',
+                                salaryAmount: employee.salaryAmount?.toString() || '',
+                                salaryPercentage: (employee as any).salaryPercentage?.toString() || '',
+                                canViewAllGroups: employee.canViewAllGroups || false,
+                              });
+                              setEditDialog(true);
+                            }
                           }}
                         >
-                          {trainer.user?.lastName} {trainer.user?.firstName} {trainer.user?.middleName || ''}
+                          {displayName}
                         </Typography>
                       </TableCell>
-                      <TableCell>{trainer.user?.email}</TableCell>
-                      <TableCell>{trainer.qualification || '-'}</TableCell>
-                      <TableCell>{trainer.experience ? `${trainer.experience} лет` : '-'}</TableCell>
+                      <TableCell>{user.email}</TableCell>
                       <TableCell>
                         <Chip 
-                          label={
-                            trainer.salaryType === 'fixed' ? 'Фиксированная' :
-                            trainer.salaryType === 'percentage' ? 'Процентная' :
-                            trainer.salaryType === 'per_student' ? 'За ученика' :
-                            trainer.salaryType === 'per_training' ? 'За тренировку' :
-                            trainer.salaryType === 'individual' ? 'Индивидуальная' :
-                            'Неизвестно'
-                          } 
-                          color={trainer.salaryType === 'fixed' ? 'primary' : 'secondary'} 
+                          label={isAdmin ? 'Администратор' : 'Тренер'} 
+                          color={isAdmin ? 'primary' : 'secondary'} 
                           size="small" 
                         />
                       </TableCell>
+                      <TableCell>{employee.qualification || '-'}</TableCell>
+                      <TableCell>{employee.experience ? `${employee.experience} лет` : '-'}</TableCell>
                       <TableCell>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontWeight: 'bold',
-                            color: trainer.balance !== undefined && Number(trainer.balance) > 0 
-                              ? 'success.main' 
-                              : 'text.secondary'
-                          }}
-                        >
-                          {((trainer.balance !== undefined ? Number(trainer.balance) : 0).toFixed(2))} ₽
-                        </Typography>
+                        {employee.salaryType ? (
+                          <Chip 
+                            label={
+                              employee.salaryType === 'fixed' ? 'Фиксированная' :
+                              employee.salaryType === 'percentage' ? 'Процентная' :
+                              employee.salaryType === 'per_student' ? 'За ученика' :
+                              employee.salaryType === 'per_training' ? 'За тренировку' :
+                              employee.salaryType === 'individual' ? 'Индивидуальная' :
+                              'Неизвестно'
+                            } 
+                            color={employee.salaryType === 'fixed' ? 'primary' : 'secondary'} 
+                            size="small" 
+                          />
+                        ) : (
+                          '-'
+                        )}
                       </TableCell>
                       <TableCell>
-                        {trainer.branches && trainer.branches.length > 0 ? (
+                        {employee.balance !== undefined ? (
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              fontWeight: 'bold',
+                              color: Number(employee.balance) > 0 
+                                ? 'success.main' 
+                                : 'text.secondary'
+                            }}
+                          >
+                            {Number(employee.balance).toFixed(2)} ₽
+                          </Typography>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {employee.branches && employee.branches.length > 0 ? (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {trainer.branches.map((tb) => (
+                            {employee.branches.map((tb: any) => (
                               <Chip
                                 key={tb.id}
                                 label={tb.branch?.name || 'Неизвестный филиал'}
@@ -498,35 +687,49 @@ const Trainers: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip 
-                          label={trainer.isActive ? 'Активен' : 'Неактивен'} 
-                          color={trainer.isActive ? 'success' : 'default'} 
+                          label={employee.isActive !== false ? 'Активен' : 'Неактивен'} 
+                          color={employee.isActive !== false ? 'success' : 'default'} 
                           size="small" 
                         />
                       </TableCell>
                       <TableCell>
-                        <IconButton 
-                          size="small" 
-                          color="primary"
-                          title="Управление филиалами"
-                          onClick={() => handleOpenBranchesDialog(trainer)}
-                        >
-                          <Business />
-                        </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="primary"
-                          title="Просмотр зарплаты"
-                          onClick={() => handleOpenEarningsDialog(trainer)}
-                        >
-                          <AttachMoney />
-                        </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="primary"
-                          onClick={() => handleEditTrainer(trainer)}
-                        >
-                          <Edit />
-                        </IconButton>
+                        {!isAdmin && (
+                          <>
+                            <IconButton 
+                              size="small" 
+                              color="primary"
+                              title="Управление филиалами"
+                              onClick={() => handleOpenBranchesDialog(employee)}
+                            >
+                              <Business />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
+                              color="primary"
+                              title="Просмотр зарплаты"
+                              onClick={() => handleOpenEarningsDialog(employee)}
+                            >
+                              <AttachMoney />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
+                              color="primary"
+                              onClick={() => handleEditTrainer(employee)}
+                            >
+                              <Edit />
+                            </IconButton>
+                          </>
+                        )}
+                        {isAdmin && isOwner && (
+                          <IconButton 
+                            size="small" 
+                            color="primary"
+                            title="Редактировать администратора"
+                            onClick={() => handleEditAdmin(employee)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        )}
                         <IconButton 
                           size="small" 
                           color="error"
@@ -534,8 +737,14 @@ const Trainers: React.FC = () => {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('Delete button clicked for trainer:', trainer.id);
-                            handleDeleteTrainer(trainer.id);
+                            if (isAdmin) {
+                              if (window.confirm('Вы уверены, что хотите удалить этого администратора?')) {
+                                // TODO: Реализовать удаление администратора
+                                console.log('Delete admin:', employee.id || user.id);
+                              }
+                            } else {
+                              handleDeleteTrainer(employee.id);
+                            }
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -553,6 +762,96 @@ const Trainers: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+
+      {/* Диалог выбора роли (только для владельца) */}
+      {isOwner && (
+        <Dialog open={roleSelectionDialog} onClose={() => setRoleSelectionDialog(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            Кого вы хотите добавить?
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                size="large"
+                onClick={() => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    role: 'TRAINER',
+                    email: '',
+                    password: '',
+                    firstName: '',
+                    lastName: '',
+                    middleName: '',
+                    phone: '',
+                    qualification: '',
+                    experience: '',
+                    specialization: '',
+                    salaryType: 'fixed',
+                    salaryAmount: '',
+                    salaryPercentage: '',
+                    canViewAllGroups: false,
+                  }));
+                  setRoleSelectionDialog(false);
+                  setOpenDialog(true);
+                  setFormErrors({});
+                  setError('');
+                }}
+                sx={{ py: 2 }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <Person sx={{ fontSize: 40 }} />
+                  <Typography variant="h6">Тренер</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Создать аккаунт тренера
+                  </Typography>
+                </Box>
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                size="large"
+                onClick={() => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    role: 'ADMIN',
+                    email: '',
+                    password: '',
+                    firstName: '',
+                    lastName: '',
+                    middleName: '',
+                    phone: '',
+                    qualification: '',
+                    experience: '',
+                    specialization: '',
+                    salaryType: 'fixed',
+                    salaryAmount: '',
+                    salaryPercentage: '',
+                    canViewAllGroups: false,
+                  }));
+                  setRoleSelectionDialog(false);
+                  setOpenDialog(true);
+                  setFormErrors({});
+                  setError('');
+                }}
+                sx={{ py: 2 }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <AdminPanelSettings sx={{ fontSize: 40 }} />
+                  <Typography variant="h6">Администратор</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Создать аккаунт администратора
+                  </Typography>
+                </Box>
+              </Button>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRoleSelectionDialog(false)}>Отмена</Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {/* Диалог добавления тренера */}
       <Dialog 
@@ -577,7 +876,7 @@ const Trainers: React.FC = () => {
         fullWidth
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
-        <DialogTitle>Добавить нового тренера</DialogTitle>
+        <DialogTitle>Добавить нового сотрудника</DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -590,6 +889,19 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* Тип сотрудника отображается как информационный блок (уже выбран в предыдущем диалоге) */}
+            {isOwner && (
+              <Grid item xs={12}>
+                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Тип сотрудника
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                    {formData.role === 'ADMIN' ? 'Администратор' : 'Тренер'}
+                  </Typography>
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
@@ -656,101 +968,105 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.phone}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Квалификация"
-                value={formData.qualification}
-                onChange={(e) => handleInputChange('qualification', e.target.value)}
-                placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
-                helperText="Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Опыт (лет)"
-                type="number"
-                value={formData.experience}
-                onChange={(e) => handleInputChange('experience', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Специализация"
-                value={formData.specialization}
-                onChange={(e) => handleInputChange('specialization', e.target.value)}
-                placeholder="например: Карате, Тхэквондо"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Тип зарплаты</InputLabel>
-                <Select
-                  value={formData.salaryType}
-                  onChange={(e) => handleInputChange('salaryType', e.target.value)}
-                >
-                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
-                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
-                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
-                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
-                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label={
-                  formData.salaryType === 'percentage' ? 'Процент (%)' :
-                  formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
-                  formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
-                  formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
-                  formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
-                  'Размер зарплаты'
-                }
-                type="number"
-                value={formData.salaryAmount}
-                onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
-                placeholder={
-                  formData.salaryType === 'percentage' ? 'Например: 30' :
-                  formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
-                  'Введите сумму'
-                }
-              />
-            </Grid>
-            {formData.salaryType === 'individual' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Процент тренеру (%)"
-                  type="number"
-                  value={formData.salaryPercentage}
-                  onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
-                  placeholder="Например: 50"
-                  helperText="Остальная часть идет в зал"
-                />
-              </Grid>
-            )}
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.canViewAllGroups}
-                    onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
-                    style={{ width: 20, height: 20 }}
+            {formData.role === 'TRAINER' && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Квалификация"
+                    value={formData.qualification}
+                    onChange={(e) => handleInputChange('qualification', e.target.value)}
+                    placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
+                    helperText="Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"
                   />
-                  <Typography variant="body2">
-                    Тренер может видеть расписание всех групп (не только своих)
-                  </Typography>
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
-                  Если отключено, тренер будет видеть только тренировки своих групп
-                </Typography>
-              </FormControl>
-            </Grid>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Опыт (лет)"
+                    type="number"
+                    value={formData.experience}
+                    onChange={(e) => handleInputChange('experience', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Специализация"
+                    value={formData.specialization}
+                    onChange={(e) => handleInputChange('specialization', e.target.value)}
+                    placeholder="например: Карате, Тхэквондо"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Тип зарплаты</InputLabel>
+                    <Select
+                      value={formData.salaryType}
+                      onChange={(e) => handleInputChange('salaryType', e.target.value)}
+                    >
+                      <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
+                      <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
+                      <MenuItem value="fixed">Фиксированная плата</MenuItem>
+                      <MenuItem value="per_training">Оплата за тренировку</MenuItem>
+                      <MenuItem value="individual">Индивидуальное занятие</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={
+                      formData.salaryType === 'percentage' ? 'Процент (%)' :
+                      formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
+                      formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
+                      formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
+                      formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
+                      'Размер зарплаты'
+                    }
+                    type="number"
+                    value={formData.salaryAmount}
+                    onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
+                    placeholder={
+                      formData.salaryType === 'percentage' ? 'Например: 30' :
+                      formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
+                      'Введите сумму'
+                    }
+                  />
+                </Grid>
+                {formData.salaryType === 'individual' && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Процент тренеру (%)"
+                      type="number"
+                      value={formData.salaryPercentage}
+                      onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
+                      placeholder="Например: 50"
+                      helperText="Остальная часть идет в зал"
+                    />
+                  </Grid>
+                )}
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.canViewAllGroups}
+                        onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
+                        style={{ width: 20, height: 20 }}
+                      />
+                      <Typography variant="body2">
+                        Тренер может видеть расписание всех групп (не только своих)
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
+                      Если отключено, тренер будет видеть только тренировки своих групп
+                    </Typography>
+                  </FormControl>
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -770,6 +1086,7 @@ const Trainers: React.FC = () => {
                 lastName: '',
                 middleName: '',
                 phone: '',
+                role: 'TRAINER',
                 qualification: '',
                 experience: '',
                 specialization: '',
@@ -806,7 +1123,7 @@ const Trainers: React.FC = () => {
             variant="contained"
             type="button"
           >
-            Создать тренера
+            Создать сотрудника
           </Button>
         </DialogActions>
       </Dialog>
@@ -834,7 +1151,7 @@ const Trainers: React.FC = () => {
         fullWidth
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
-        <DialogTitle>Редактировать тренера</DialogTitle>
+        <DialogTitle>Редактировать сотрудника</DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -847,7 +1164,22 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={4}>
+            {isOwner && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Роль</InputLabel>
+                  <Select
+                    value={formData.role}
+                    onChange={(e) => handleInputChange('role', e.target.value)}
+                    label="Роль"
+                  >
+                    <MenuItem value="TRAINER">Тренер</MenuItem>
+                    <MenuItem value="ADMIN">Администратор</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            <Grid item xs={4}>
               <TextField
                 fullWidth
                 label="Фамилия"
@@ -858,7 +1190,7 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.lastName}
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={4}>
               <TextField
                 fullWidth
                 label="Имя"
@@ -869,7 +1201,7 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.firstName}
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={4}>
               <TextField
                 fullWidth
                 label="Отчество"
@@ -913,114 +1245,118 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.phone}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Квалификация"
-                value={formData.qualification}
-                onChange={(e) => handleInputChange('qualification', e.target.value)}
-                placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
-                helperText={formErrors.qualification || "Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"}
-                error={!!formErrors.qualification}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Опыт (лет)"
-                type="number"
-                value={formData.experience}
-                onChange={(e) => handleInputChange('experience', e.target.value)}
-                error={!!formErrors.experience}
-                helperText={formErrors.experience}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Специализация"
-                value={formData.specialization}
-                onChange={(e) => handleInputChange('specialization', e.target.value)}
-                placeholder="например: Карате, Тхэквондо"
-                error={!!formErrors.specialization}
-                helperText={formErrors.specialization}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth error={!!formErrors.salaryType}>
-                <InputLabel>Тип зарплаты</InputLabel>
-                <Select
-                  value={formData.salaryType}
-                  onChange={(e) => handleInputChange('salaryType', e.target.value)}
-                >
-                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
-                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
-                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
-                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
-                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
-                </Select>
-                {formErrors.salaryType && (
-                  <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
-                    {formErrors.salaryType}
-                  </Typography>
-                )}
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label={
-                  formData.salaryType === 'percentage' ? 'Процент (%)' :
-                  formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
-                  formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
-                  formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
-                  formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
-                  'Размер зарплаты'
-                }
-                type="number"
-                value={formData.salaryAmount}
-                onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
-                placeholder={
-                  formData.salaryType === 'percentage' ? 'Например: 30' :
-                  formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
-                  'Введите сумму'
-                }
-                error={!!formErrors.salaryAmount}
-                helperText={formErrors.salaryAmount}
-              />
-            </Grid>
-            {formData.salaryType === 'individual' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Процент тренеру (%)"
-                  type="number"
-                  value={formData.salaryPercentage}
-                  onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
-                  placeholder="Например: 50"
-                  helperText={formErrors.salaryPercentage || "Остальная часть идет в зал"}
-                  error={!!formErrors.salaryPercentage}
-                />
-              </Grid>
-            )}
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.canViewAllGroups}
-                    onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
-                    style={{ width: 20, height: 20 }}
+            {formData.role === 'TRAINER' && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Квалификация"
+                    value={formData.qualification}
+                    onChange={(e) => handleInputChange('qualification', e.target.value)}
+                    placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
+                    helperText={formErrors.qualification || "Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"}
+                    error={!!formErrors.qualification}
                   />
-                  <Typography variant="body2">
-                    Тренер может видеть расписание всех групп (не только своих)
-                  </Typography>
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
-                  Если отключено, тренер будет видеть только тренировки своих групп
-                </Typography>
-              </FormControl>
-            </Grid>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Опыт (лет)"
+                    type="number"
+                    value={formData.experience}
+                    onChange={(e) => handleInputChange('experience', e.target.value)}
+                    error={!!formErrors.experience}
+                    helperText={formErrors.experience}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Специализация"
+                    value={formData.specialization}
+                    onChange={(e) => handleInputChange('specialization', e.target.value)}
+                    placeholder="например: Карате, Тхэквондо"
+                    error={!!formErrors.specialization}
+                    helperText={formErrors.specialization}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth error={!!formErrors.salaryType}>
+                    <InputLabel>Тип зарплаты</InputLabel>
+                    <Select
+                      value={formData.salaryType}
+                      onChange={(e) => handleInputChange('salaryType', e.target.value)}
+                    >
+                      <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
+                      <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
+                      <MenuItem value="fixed">Фиксированная плата</MenuItem>
+                      <MenuItem value="per_training">Оплата за тренировку</MenuItem>
+                      <MenuItem value="individual">Индивидуальное занятие</MenuItem>
+                    </Select>
+                    {formErrors.salaryType && (
+                      <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                        {formErrors.salaryType}
+                      </Typography>
+                    )}
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={
+                      formData.salaryType === 'percentage' ? 'Процент (%)' :
+                      formData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
+                      formData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
+                      formData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
+                      formData.salaryType === 'individual' ? 'Стоимость занятия (₽)' :
+                      'Размер зарплаты'
+                    }
+                    type="number"
+                    value={formData.salaryAmount}
+                    onChange={(e) => handleInputChange('salaryAmount', e.target.value)}
+                    placeholder={
+                      formData.salaryType === 'percentage' ? 'Например: 30' :
+                      formData.salaryType === 'individual' ? 'Общая стоимость занятия' :
+                      'Введите сумму'
+                    }
+                    error={!!formErrors.salaryAmount}
+                    helperText={formErrors.salaryAmount}
+                  />
+                </Grid>
+                {formData.salaryType === 'individual' && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Процент тренеру (%)"
+                      type="number"
+                      value={formData.salaryPercentage}
+                      onChange={(e) => handleInputChange('salaryPercentage', e.target.value)}
+                      placeholder="Например: 50"
+                      helperText={formErrors.salaryPercentage || "Остальная часть идет в зал"}
+                      error={!!formErrors.salaryPercentage}
+                    />
+                  </Grid>
+                )}
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.canViewAllGroups}
+                        onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
+                        style={{ width: 20, height: 20 }}
+                      />
+                      <Typography variant="body2">
+                        Тренер может видеть расписание всех групп (не только своих)
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
+                      Если отключено, тренер будет видеть только тренировки своих групп
+                    </Typography>
+                  </FormControl>
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -1045,15 +1381,32 @@ const Trainers: React.FC = () => {
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
               
-              // Выполняем валидацию синхронно
-              const validationErrors = validateTrainerForm(formData);
-              setFormErrors(validationErrors);
+              // Если редактируем администратора, используем упрощенную валидацию
+              const isEditingAdmin = formData.role === 'ADMIN' || !editingTrainer || !(editingTrainer as any).qualification;
               
-              // Если есть ошибки, показываем их и оставляем диалог открытым
-              if (Object.keys(validationErrors).length > 0) {
-                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                setSnackbarOpen(true);
-                return; // Не сохраняем, если есть ошибки
+              if (isEditingAdmin) {
+                const adminErrors: Record<string, string> = {};
+                if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
+                if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
+                if (!formData.email) adminErrors.email = 'Email обязателен';
+                
+                setFormErrors(adminErrors);
+                if (Object.keys(adminErrors).length > 0) {
+                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                  setSnackbarOpen(true);
+                  return;
+                }
+              } else {
+                // Выполняем валидацию синхронно для тренера
+                const validationErrors = validateTrainerForm(formData);
+                setFormErrors(validationErrors);
+                
+                // Если есть ошибки, показываем их и оставляем диалог открытым
+                if (Object.keys(validationErrors).length > 0) {
+                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+                  setSnackbarOpen(true);
+                  return; // Не сохраняем, если есть ошибки
+                }
               }
               
               // Если нет ошибок, вызываем handleUpdateTrainer для сохранения

@@ -7,6 +7,7 @@ import {
   createUser,
   getProfile,
   updateProfile,
+  updateUserById,
   changePassword,
   changeEmail,
   requestPasswordReset,
@@ -24,7 +25,7 @@ import {
   validateNewPassword,
   validateUpdateProfile
 } from '../controllers/authController';
-import { authenticate, requireOwnerOrAdmin } from '../middleware/auth';
+import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 
 const router = Router();
 
@@ -48,5 +49,8 @@ router.get('/verify', verifyToken);
 
 // Admin/Owner only routes
 router.post('/users', requireOwnerOrAdmin, validateCreateUser, createUser);
+
+// Owner only routes
+router.put('/users/:id', requireOwner, updateUserById);
 
 export default router;

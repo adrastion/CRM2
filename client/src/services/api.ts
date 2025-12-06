@@ -149,6 +149,16 @@ class ApiService {
     return response.data.data;
   }
 
+  async createUser(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/auth/users', data);
+    return response.data.data;
+  }
+
+  async updateUser(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/auth/users/${id}`, data);
+    return response.data.data;
+  }
+
   async changePassword(data: { currentPassword: string; newPassword: string }): Promise<void> {
     await this.api.post('/auth/change-password', data);
   }

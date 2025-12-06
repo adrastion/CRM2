@@ -54,7 +54,7 @@ const navigationItems = [
   { label: 'Панель управления', path: '/dashboard', icon: <Dashboard />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Клиенты', path: '/clients', icon: <People />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Нормативы', path: '/standards', icon: <Assignment />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
-  { label: 'Тренеры', path: '/trainers', icon: <Person />, roles: ['OWNER', 'ADMIN'] },
+  { label: 'Сотрудники', path: '/trainers', icon: <Person />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Мой заработок', path: '/trainer/earnings', icon: <AttachMoney />, roles: ['TRAINER'] },
   { label: 'Заработок тренеров', path: '/trainers/earnings', icon: <AttachMoney />, roles: ['OWNER', 'ADMIN'] },
   { label: 'Группы', path: '/groups', icon: <Groups />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },

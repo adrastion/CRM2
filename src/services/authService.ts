@@ -618,4 +618,97 @@ export class AuthService {
       role: user.role
     };
   }
+
+  /**
+   * Update user by ID (for owner/admin)
+   */
+  static async updateUserById(userId: string, data: {
+    firstName?: string;
+    lastName?: string;
+    middleName?: string;
+    phone?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+    tenantId?: string;
+  }) {
+    // Get current user to check role change
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { trainer: true }
+    });
+
+    if (!currentUser) {
+      throw new Error('User not found');
+    }
+
+    const updateData: any = {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      middleName: data.middleName,
+      phone: data.phone,
+    };
+
+    if (data.email) {
+      // Check if email is already registered by another user
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: data.email,
+          NOT: { id: userId }
+        }
+      });
+
+      if (existingUser) {
+        throw new Error('Email is already registered');
+      }
+      updateData.email = data.email;
+    }
+
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 12);
+    }
+
+    // Handle role change
+    if (data.role && data.role !== currentUser.role) {
+      updateData.role = data.role;
+
+      // If changing from TRAINER to ADMIN, delete trainer record
+      if (currentUser.role === 'TRAINER' && data.role === 'ADMIN') {
+        if (currentUser.trainer) {
+          await prisma.trainer.delete({
+            where: { id: currentUser.trainer.id }
+          });
+        }
+      }
+
+      // If changing from ADMIN to TRAINER, create trainer record
+      if (currentUser.role === 'ADMIN' && data.role === 'TRAINER') {
+        const tenantId = data.tenantId || currentUser.tenantId;
+        await prisma.trainer.create({
+          data: {
+            userId: userId,
+            tenantId: tenantId,
+            salaryType: 'fixed',
+            salaryAmount: 0
+          }
+        });
+      }
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      include: { trainer: true }
+    });
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      middleName: user.middleName,
+      phone: user.phone,
+      role: user.role
+    };
+  }
 }

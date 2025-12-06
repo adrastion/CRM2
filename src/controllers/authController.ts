@@ -198,6 +198,42 @@ export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 /**
+ * Update user by ID (owner only)
+ */
+export const updateUserById = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      error: 'Пользователь не аутентифицирован'
+    });
+    return;
+  }
+
+  // Only owner can update users
+  if (req.user.role !== 'OWNER') {
+    res.status(403).json({
+      success: false,
+      error: 'Доступ запрещен. Только владелец может обновлять пользователей'
+    });
+    return;
+  }
+
+  const { id } = req.params;
+  const updateData = {
+    ...req.body,
+    tenantId: req.tenantId // Добавляем tenantId для создания Trainer при смене роли
+  };
+  const result = await AuthService.updateUserById(id, updateData);
+  
+  res.json({
+    success: true,
+    data: result,
+    message: 'User updated successfully'
+  });
+  return;
+});
+
+/**
  * Change user password
  */
 export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
