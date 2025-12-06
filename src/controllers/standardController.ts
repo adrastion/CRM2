@@ -7,10 +7,11 @@ const prisma = new PrismaClient();
 
 /**
  * Get all standards for tenant
+ * Optional: filter by groupIds to get standards for specific groups
  */
 export const getStandards = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tenantId } = req;
-  const { search, isActive } = req.query;
+  const { search, isActive, groupIds } = req.query;
 
   if (!tenantId) {
     res.status(401).json({
@@ -34,10 +35,32 @@ export const getStandards = asyncHandler(async (req: AuthenticatedRequest, res: 
     where.isActive = isActive === 'true';
   }
 
+  // Filter by groups if groupIds provided
+  if (groupIds) {
+    const groupIdArray = Array.isArray(groupIds) ? groupIds : [groupIds];
+    where.groups = {
+      some: {
+        groupId: {
+          in: groupIdArray
+        }
+      }
+    };
+  }
+
   const standards = await prisma.standard.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     include: {
+      groups: {
+        include: {
+          group: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      },
       _count: {
         select: {
           clientStandards: true
@@ -106,10 +129,11 @@ export const getStandard = asyncHandler(async (req: AuthenticatedRequest, res: R
 
 /**
  * Create new standard
+ * Optional: attach to groups via groupIds array
  */
 export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tenantId } = req;
-  const { name, description, unit, targetValue, category, isActive } = req.body;
+  const { name, description, unit, targetValue, category, isActive, groupIds } = req.body;
 
   if (!tenantId) {
     res.status(401).json({
@@ -127,15 +151,39 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
     return;
   }
 
+  // Prepare standard data
+  const standardData: any = {
+    name,
+    description,
+    unit,
+    targetValue: targetValue ? parseFloat(targetValue) : null,
+    category,
+    isActive: isActive !== undefined ? isActive : true,
+    tenantId
+  };
+
+  // If groupIds provided, create StandardGroup relations
+  if (groupIds && Array.isArray(groupIds) && groupIds.length > 0) {
+    standardData.groups = {
+      create: groupIds.map((groupId: string) => ({
+        groupId
+      }))
+    };
+  }
+
   const standard = await prisma.standard.create({
-    data: {
-      name,
-      description,
-      unit,
-      targetValue: targetValue ? parseFloat(targetValue) : null,
-      category,
-      isActive: isActive !== undefined ? isActive : true,
-      tenantId
+    data: standardData,
+    include: {
+      groups: {
+        include: {
+          group: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }
     }
   });
 
@@ -148,11 +196,12 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
 
 /**
  * Update standard
+ * Optional: update group associations via groupIds array
  */
 export const updateStandard = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tenantId } = req;
   const { id } = req.params;
-  const { name, description, unit, targetValue, category, isActive } = req.body;
+  const { name, description, unit, targetValue, category, isActive, groupIds } = req.body;
 
   if (!tenantId) {
     res.status(401).json({
@@ -183,9 +232,38 @@ export const updateStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (category !== undefined) updateData.category = category;
   if (isActive !== undefined) updateData.isActive = isActive;
 
+  // Update group associations if groupIds provided
+  if (groupIds !== undefined) {
+    // Delete existing group associations
+    await prisma.standardGroup.deleteMany({
+      where: { standardId: id }
+    });
+
+    // Create new group associations
+    if (Array.isArray(groupIds) && groupIds.length > 0) {
+      updateData.groups = {
+        create: groupIds.map((groupId: string) => ({
+          groupId
+        }))
+      };
+    }
+  }
+
   const standard = await prisma.standard.update({
     where: { id },
-    data: updateData
+    data: updateData,
+    include: {
+      groups: {
+        include: {
+          group: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }
+    }
   });
 
   res.json({
@@ -241,6 +319,7 @@ export const deleteStandard = asyncHandler(async (req: AuthenticatedRequest, res
 
 /**
  * Get client standards (выполнения нормативов клиентом)
+ * Returns standards filtered by client's groups
  */
 export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tenantId } = req;
@@ -254,9 +333,21 @@ export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest,
     return;
   }
 
-  // Verify client belongs to tenant
+  // Verify client belongs to tenant and get client's groups
   const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId }
+    where: { id: clientId, tenantId },
+    include: {
+      groupMemberships: {
+        where: { isActive: true },
+        include: {
+          group: {
+            select: {
+              id: true
+            }
+          }
+        }
+      }
+    }
   });
 
   if (!client) {
@@ -267,12 +358,55 @@ export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest,
     return;
   }
 
+  // Get client's active group IDs
+  const clientGroupIds = client.groupMemberships.map(gm => gm.group.id);
+
+  // Get all standards that are either:
+  // 1. Not attached to any group (global standards)
+  // 2. Attached to one of client's groups
+  const standardsWhere: any = {
+    tenantId,
+    OR: [
+      { groups: { none: {} } }, // Global standards (not attached to any group)
+      ...(clientGroupIds.length > 0 ? [{
+        groups: {
+          some: {
+            groupId: { in: clientGroupIds }
+          }
+        }
+      }] : [])
+    ]
+  };
+
+  const availableStandards = await prisma.standard.findMany({
+    where: standardsWhere,
+    select: { id: true }
+  });
+
+  const availableStandardIds = availableStandards.map(s => s.id);
+
   const clientStandards = await prisma.clientStandard.findMany({
-    where: { clientId },
-    include: {
-      standard: true
+    where: {
+      clientId,
+      standardId: { in: availableStandardIds }
     },
-    orderBy: { completedAt: 'desc' }
+    include: {
+      standard: {
+        include: {
+          groups: {
+            include: {
+              group: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    orderBy: { updatedAt: 'desc' } // Sort by last update date
   });
 
   res.json({
@@ -283,6 +417,7 @@ export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest,
 
 /**
  * Add client standard (записать выполнение норматива)
+ * Verifies that standard is available for client's groups
  */
 export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { tenantId } = req;
@@ -297,9 +432,21 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
     return;
   }
 
-  // Verify client belongs to tenant
+  // Verify client belongs to tenant and get client's groups
   const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId }
+    where: { id: clientId, tenantId },
+    include: {
+      groupMemberships: {
+        where: { isActive: true },
+        include: {
+          group: {
+            select: {
+              id: true
+            }
+          }
+        }
+      }
+    }
   });
 
   if (!client) {
@@ -310,15 +457,31 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
     return;
   }
 
-  // Verify standard belongs to tenant
+  // Get client's active group IDs
+  const clientGroupIds = client.groupMemberships.map(gm => gm.group.id);
+
+  // Verify standard belongs to tenant and is available for client's groups
   const standard = await prisma.standard.findFirst({
-    where: { id: standardId, tenantId }
+    where: {
+      id: standardId,
+      tenantId,
+      OR: [
+        { groups: { none: {} } }, // Global standards (not attached to any group)
+        ...(clientGroupIds.length > 0 ? [{
+          groups: {
+            some: {
+              groupId: { in: clientGroupIds }
+            }
+          }
+        }] : [])
+      ]
+    }
   });
 
   if (!standard) {
     res.status(404).json({
       success: false,
-      error: 'Standard not found'
+      error: 'Standard not found or not available for this client\'s groups'
     });
     return;
   }
@@ -334,7 +497,20 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
       notes
     },
     include: {
-      standard: true
+      standard: {
+        include: {
+          groups: {
+            include: {
+              group: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   });
 
@@ -387,12 +563,27 @@ export const updateClientStandard = asyncHandler(async (req: AuthenticatedReques
   if (resultText !== undefined) updateData.resultText = resultText;
   if (status !== undefined) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
+  
+  // updatedAt will be automatically updated by Prisma @updatedAt
 
   const updated = await prisma.clientStandard.update({
     where: { id: clientStandardId },
     data: updateData,
     include: {
-      standard: true
+      standard: {
+        include: {
+          groups: {
+            include: {
+              group: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   });
 

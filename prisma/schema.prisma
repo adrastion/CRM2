@@ -51,18 +51,18 @@ model Tenant {
 }
 
 model TenantSettings {
-  id                      String   @id @default(cuid())
-  tenantId                String   @unique
-  defaultTrainingDuration Int      @default(60)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  hasCompletedOnboarding  Boolean  @default(false)
-  onboardingDeclined      Boolean  @default(false)
-  membershipFeeResetDate  String?
+  id                       String   @id @default(cuid())
+  tenantId                 String   @unique
+  defaultTrainingDuration  Int      @default(60)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  hasCompletedOnboarding   Boolean  @default(false)
+  onboardingDeclined       Boolean  @default(false)
+  membershipFeeResetDate   String?
   // Настройки личного кабинета клиента
   clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
-  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
 }
@@ -160,11 +160,11 @@ model Client {
   passportNumber           String?
   passportSeries           String?
   // Поля для личного кабинета клиента
-  password                 String?                  // Пароль для авторизации
+  password                 String? // Пароль для авторизации
   isAccountApproved        Boolean                  @default(false) // Подтвержден ли аккаунт администратором
-  accountApprovedAt        DateTime?                // Дата подтверждения
-  accountApprovedBy        String?                  // Кто подтвердил (userId)
-  lastLogin                DateTime?                // Последний вход
+  accountApprovedAt        DateTime? // Дата подтверждения
+  accountApprovedBy        String? // Кто подтвердил (userId)
+  lastLogin                DateTime? // Последний вход
   achievements             Achievement[]
   attendances              Attendance[]
   clientMemberships        ClientMembership[]
@@ -223,6 +223,7 @@ model Standard {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   clientStandards ClientStandard[]
+  groups          StandardGroup[]
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("standards")
@@ -243,6 +244,18 @@ model ClientStandard {
   standard    Standard @relation(fields: [standardId], references: [id], onDelete: Cascade)
 
   @@map("client_standards")
+}
+
+model StandardGroup {
+  id         String   @id @default(cuid())
+  standardId String
+  groupId    String
+  createdAt  DateTime @default(now())
+  standard   Standard @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([standardId, groupId])
+  @@map("standard_groups")
 }
 
 model Trainer {
@@ -273,36 +286,37 @@ model Trainer {
 }
 
 model Group {
-  id            String            @id @default(cuid())
-  name          String
-  description   String?
-  maxMembers    Int?
-  ageMin        Int?
-  ageMax        Int?
-  isActive      Boolean           @default(true)
-  tenantId      String
-  branchId      String
-  trainerId     String
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  color         String?
-  trainingPrice Decimal?
-  schedule      String?
+  id                        String            @id @default(cuid())
+  name                      String
+  description               String?
+  maxMembers                Int?
+  ageMin                    Int?
+  ageMax                    Int?
+  isActive                  Boolean           @default(true)
+  tenantId                  String
+  branchId                  String
+  trainerId                 String
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  color                     String?
+  trainingPrice             Decimal?
+  schedule                  String?
   // Ежемесячная оплата
-  isMonthlyPayment Boolean        @default(false)
-  monthlyPaymentAmount Decimal?
-  paymentDueDay Int?              // День месяца для оплаты (1-31)
+  isMonthlyPayment          Boolean           @default(false)
+  monthlyPaymentAmount      Decimal?
+  paymentDueDay             Int? // День месяца для оплаты (1-31)
   // Настройки зарплаты тренера
-  trainerSalaryType String?       // 'monthly_percentage', 'per_visit_percentage', 'per_visit_amount'
-  trainerMonthlyPercentage Decimal? // Процент от ежемесячной суммы оплаченной клиентами
+  trainerSalaryType         String? // 'monthly_percentage', 'per_visit_percentage', 'per_visit_amount'
+  trainerMonthlyPercentage  Decimal? // Процент от ежемесячной суммы оплаченной клиентами
   trainerPerVisitPercentage Decimal? // Процент за посещение
-  trainerPerVisitAmount Decimal?  // Фиксированная сумма за посещение
-  memberships   GroupMembership[]
-  branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  trainer       Trainer           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  trainings     Training[]
-  payments      Payment[]
+  trainerPerVisitAmount     Decimal? // Фиксированная сумма за посещение
+  memberships               GroupMembership[]
+  standardGroups            StandardGroup[]
+  branch                    Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trainer                   Trainer           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  trainings                 Training[]
+  payments                  Payment[]
 
   @@map("groups")
 }
@@ -360,65 +374,65 @@ model ClientMembership {
 }
 
 model Payment {
-  id             String          @id @default(cuid())
-  amount         Decimal
-  type           String
-  status         String
-  paymentMethod  String?
-  notes          String?
-  dueDate        DateTime?
-  paidAt         DateTime?
-  clientId       String
-  membershipId   String?
-  branchId       String?
-  groupId        String?         // Связь с группой для ежемесячных платежей
-  tenantId       String
-  isMonthlyPayment Boolean        @default(false) // Является ли это ежемесячным платежом
-  originalAmount Decimal?         // Оригинальная сумма до перерасчета
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  branch         Branch?         @relation(fields: [branchId], references: [id])
-  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  membership     Membership?     @relation(fields: [membershipId], references: [id])
-  group          Group?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  promoCodeUsage PromoCodeUsage?
-  transactions   Transaction[]
+  id               String          @id @default(cuid())
+  amount           Decimal
+  type             String
+  status           String
+  paymentMethod    String?
+  notes            String?
+  dueDate          DateTime?
+  paidAt           DateTime?
+  clientId         String
+  membershipId     String?
+  branchId         String?
+  groupId          String? // Связь с группой для ежемесячных платежей
+  tenantId         String
+  isMonthlyPayment Boolean         @default(false) // Является ли это ежемесячным платежом
+  originalAmount   Decimal? // Оригинальная сумма до перерасчета
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  branch           Branch?         @relation(fields: [branchId], references: [id])
+  client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  membership       Membership?     @relation(fields: [membershipId], references: [id])
+  group            Group?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promoCodeUsage   PromoCodeUsage?
+  transactions     Transaction[]
 
   @@map("payments")
 }
 
 model Training {
-  id           String        @id @default(cuid())
-  title        String
-  description  String?
-  startTime    DateTime
-  endTime      DateTime
-  isRecurring  Boolean       @default(false)
-  recurrence   String?
-  isCancelled  Boolean       @default(false)
-  tenantId     String
-  branchId     String
-  groupId      String?
-  trainerId    String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  hallId       String?
+  id                  String        @id @default(cuid())
+  title               String
+  description         String?
+  startTime           DateTime
+  endTime             DateTime
+  isRecurring         Boolean       @default(false)
+  recurrence          String?
+  isCancelled         Boolean       @default(false)
+  tenantId            String
+  branchId            String
+  groupId             String?
+  trainerId           String
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  hallId              String?
   // Цена и тип заработка тренера для индивидуальных тренировок
-  price        Decimal?
-  trainerEarningType String? // 'percentage', 'amount'
+  price               Decimal?
+  trainerEarningType  String? // 'percentage', 'amount'
   trainerEarningValue Decimal? // Процент или сумма
   // Замена тренера
   substituteTrainerId String? // ID тренера-замены
   originalTrainerId   String? // ID оригинального тренера (если есть замена)
-  attendances  Attendance[]
-  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  group        Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  hall         Hall?         @relation(fields: [hallId], references: [id])
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  trainer      Trainer       @relation("TrainingTrainer", fields: [trainerId], references: [id], onDelete: Cascade)
-  substituteTrainer Trainer? @relation("TrainingSubstitute", fields: [substituteTrainerId], references: [id])
-  transactions Transaction[]
+  attendances         Attendance[]
+  branch              Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  group               Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  hall                Hall?         @relation(fields: [hallId], references: [id])
+  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trainer             Trainer       @relation("TrainingTrainer", fields: [trainerId], references: [id], onDelete: Cascade)
+  substituteTrainer   Trainer?      @relation("TrainingSubstitute", fields: [substituteTrainerId], references: [id])
+  transactions        Transaction[]
 
   @@map("trainings")
 }

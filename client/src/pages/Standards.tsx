@@ -40,6 +40,8 @@ const Standards: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [editingStandard, setEditingStandard] = useState<Standard | null>(null);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -54,9 +56,14 @@ const Standards: React.FC = () => {
       setLoading(true);
       const response = await apiService.getStandards();
       setStandards(response.data);
+      setError(''); // Очищаем ошибку при успешной загрузке
     } catch (err: any) {
-      setError('Не удалось загрузить нормативы');
-      console.error('Standards error:', err);
+      if (err.response?.status === 429) {
+        setError('Слишком много запросов. Пожалуйста, подождите немного и попробуйте снова.');
+      } else {
+        setError('Не удалось загрузить нормативы');
+        console.error('Standards error:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -64,7 +71,32 @@ const Standards: React.FC = () => {
 
   useEffect(() => {
     fetchStandards();
+    // Загружаем группы только при необходимости (при открытии диалога)
   }, []);
+
+  // Загружаем группы при открытии диалогов
+  useEffect(() => {
+    if (openDialog || editDialog) {
+      fetchGroups();
+    }
+  }, [openDialog, editDialog]);
+
+  const fetchGroups = async () => {
+    // Если группы уже загружены, не загружаем повторно
+    if (groups.length > 0) {
+      return;
+    }
+    try {
+      const response = await apiService.getGroups({ limit: 1000, page: 1 });
+      setGroups(response.data || []);
+    } catch (err: any) {
+      if (err.response?.status === 429) {
+        setError('Слишком много запросов. Пожалуйста, подождите немного и попробуйте снова.');
+      } else {
+        console.error('Error loading groups:', err);
+      }
+    }
+  };
 
   const handleCreateStandard = async () => {
     if (!formData.name.trim()) {
@@ -73,10 +105,15 @@ const Standards: React.FC = () => {
     }
 
     try {
-      await apiService.createStandard(formData);
+      const dataToSend = {
+        ...formData,
+        ...(selectedGroupIds.length > 0 ? { groupIds: selectedGroupIds } : {})
+      };
+      await apiService.createStandard(dataToSend);
       await fetchStandards();
       setOpenDialog(false);
       setFormData({ name: '', description: '', unit: '', targetValue: '', category: '', isActive: true });
+      setSelectedGroupIds([]);
       setError('');
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось создать норматив');
@@ -93,6 +130,9 @@ const Standards: React.FC = () => {
       category: standard.category || '',
       isActive: standard.isActive,
     });
+    // Загружаем группы норматива из ответа API (если они включены)
+    const standardGroups = (standard as any).groups || [];
+    setSelectedGroupIds(standardGroups.map((sg: any) => sg.group?.id || sg.groupId).filter(Boolean));
     setEditDialog(true);
   };
 
@@ -103,11 +143,16 @@ const Standards: React.FC = () => {
     }
 
     try {
-      await apiService.updateStandard(editingStandard.id, formData);
+      const dataToSend = {
+        ...formData,
+        groupIds: selectedGroupIds // Передаем массив groupIds (пустой массив удалит все связи)
+      };
+      await apiService.updateStandard(editingStandard.id, dataToSend);
       await fetchStandards();
       setEditDialog(false);
       setEditingStandard(null);
       setFormData({ name: '', description: '', unit: '', targetValue: '', category: '', isActive: true });
+      setSelectedGroupIds([]);
       setError('');
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось обновить норматив');
@@ -233,7 +278,15 @@ const Standards: React.FC = () => {
       </Card>
 
       {/* Диалог создания норматива */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={() => {
+          setOpenDialog(false);
+          setSelectedGroupIds([]);
+        }} 
+        maxWidth="sm" 
+        fullWidth
+      >
         <DialogTitle>Добавить норматив</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -294,10 +347,37 @@ const Standards: React.FC = () => {
                 label="Активен"
               />
             </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Группы (необязательно)</InputLabel>
+                <Select
+                  multiple
+                  value={selectedGroupIds}
+                  onChange={(e) => setSelectedGroupIds(e.target.value as string[])}
+                  label="Группы (необязательно)"
+                  renderValue={(selected) => {
+                    const selectedGroups = groups.filter(g => selected.includes(g.id));
+                    return selectedGroups.map(g => g.name).join(', ') || 'Не выбрано';
+                  }}
+                >
+                  {groups.filter(g => g.isActive).map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Если группы не выбраны, норматив будет доступен для всех клиентов
+              </Typography>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Отмена</Button>
+          <Button onClick={() => {
+            setOpenDialog(false);
+            setSelectedGroupIds([]);
+          }}>Отмена</Button>
           <Button onClick={handleCreateStandard} variant="contained">
             Создать
           </Button>
@@ -305,7 +385,15 @@ const Standards: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования норматива */}
-      <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={editDialog} 
+        onClose={() => {
+          setEditDialog(false);
+          setSelectedGroupIds([]);
+        }} 
+        maxWidth="sm" 
+        fullWidth
+      >
         <DialogTitle>Редактировать норматив</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -366,10 +454,37 @@ const Standards: React.FC = () => {
                 label="Активен"
               />
             </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Группы (необязательно)</InputLabel>
+                <Select
+                  multiple
+                  value={selectedGroupIds}
+                  onChange={(e) => setSelectedGroupIds(e.target.value as string[])}
+                  label="Группы (необязательно)"
+                  renderValue={(selected) => {
+                    const selectedGroups = groups.filter(g => selected.includes(g.id));
+                    return selectedGroups.map(g => g.name).join(', ') || 'Не выбрано';
+                  }}
+                >
+                  {groups.filter(g => g.isActive).map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Если группы не выбраны, норматив будет доступен для всех клиентов
+              </Typography>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialog(false)}>Отмена</Button>
+          <Button onClick={() => {
+            setEditDialog(false);
+            setSelectedGroupIds([]);
+          }}>Отмена</Button>
           <Button onClick={handleUpdateStandard} variant="contained">
             Сохранить изменения
           </Button>

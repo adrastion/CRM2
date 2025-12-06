@@ -269,7 +269,11 @@ const Clients: React.FC = () => {
           return;
         }
         if (!isMounted) return;
-        setError('Не удалось загрузить данные');
+        if (err.response?.status === 429) {
+          setError('Слишком много запросов. Пожалуйста, подождите немного и обновите страницу.');
+        } else {
+          setError('Не удалось загрузить данные');
+        }
         console.error('Data loading error:', err);
       } finally {
         if (isMounted && !abortController.signal.aborted) {
@@ -1097,8 +1101,16 @@ const Clients: React.FC = () => {
       const standardsRes = await apiService.getClientStandards(client.id);
       setClientStandards(standardsRes.data);
       
-      // Загружаем шаблоны нормативов
-      const templatesRes = await apiService.getStandards({ isActive: 'true' });
+      // Получаем группы клиента для фильтрации нормативов
+      const clientGroupIds = client.groupMemberships
+        ?.filter((gm: any) => gm.isActive && gm.group?.id)
+        .map((gm: any) => gm.group.id) || [];
+      
+      // Загружаем шаблоны нормативов, отфильтрованные по группам клиента
+      const templatesRes = await apiService.getStandards({ 
+        isActive: 'true',
+        ...(clientGroupIds.length > 0 ? { groupIds: clientGroupIds } : {})
+      });
       setStandards(templatesRes.data);
     } catch (err: any) {
       setError('Не удалось загрузить нормативы');
@@ -4262,9 +4274,10 @@ const Clients: React.FC = () => {
                     <TableHead>
                       <TableRow>
                         <TableCell>Норматив</TableCell>
-                        <TableCell>Дата</TableCell>
+                        <TableCell>Дата выполнения</TableCell>
                         <TableCell>Результат</TableCell>
                         <TableCell>Статус</TableCell>
+                        <TableCell>Дата последнего изменения</TableCell>
                         <TableCell>Действия</TableCell>
                       </TableRow>
                     </TableHead>
@@ -4315,6 +4328,15 @@ const Clients: React.FC = () => {
                               color={cs.status === 'completed' ? 'success' : cs.status === 'failed' ? 'error' : 'warning'}
                               size="small"
                             />
+                          </TableCell>
+                          <TableCell>
+                            {new Date(cs.updatedAt).toLocaleDateString('ru-RU', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </TableCell>
                           <TableCell>
                             <IconButton
