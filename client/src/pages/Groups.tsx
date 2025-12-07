@@ -228,6 +228,23 @@ const Groups: React.FC = () => {
       };
       const createdGroup = await apiService.createGroup(groupData);
       
+      // Добавляем выбранных участников в группу
+      if (selectedClientIds && selectedClientIds.length > 0 && createdGroup && createdGroup.id) {
+        try {
+          for (const clientId of selectedClientIds) {
+            try {
+              await apiService.addClientToGroup(createdGroup.id, clientId);
+            } catch (addErr: any) {
+              console.error(`Error adding client ${clientId} to group:`, addErr);
+              // Продолжаем добавлять остальных клиентов даже если один не добавился
+            }
+          }
+        } catch (err: any) {
+          console.error('Error adding clients to group:', err);
+          // Не блокируем процесс, так как группа уже создана
+        }
+      }
+      
       // Обновляем данные, но не блокируем процесс, если будет ошибка
       try {
         await fetchData();
@@ -241,6 +258,7 @@ const Groups: React.FC = () => {
       
       setOpenDialog(false);
       setFormErrors({});
+      setSelectedClientIds([]); // Очищаем выбранных клиентов
       
       // Сохраняем флаг создания платежей, если группа с ежемесячной оплатой
       if (formData.isMonthlyPayment && formData.createPaymentsImmediately) {
@@ -1537,6 +1555,51 @@ const Groups: React.FC = () => {
                 />
               </Grid>
             )}
+            
+            {/* Выбор участников группы */}
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Участники группы</Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                options={clients}
+                getOptionLabel={(option) => {
+                  const name = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ') || `${option.firstName} ${option.lastName}`;
+                  return name;
+                }}
+                value={clients.filter(client => selectedClientIds.includes(client.id))}
+                onChange={(event, newValue) => {
+                  setSelectedClientIds(newValue.map(client => client.id));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Выберите участников группы"
+                    placeholder="Начните вводить имя клиента"
+                    helperText="Вы можете добавить участников сразу при создании группы"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={option.id}
+                      label={[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ') || `${option.firstName} ${option.lastName}`}
+                    />
+                  ))
+                }
+                filterOptions={(options, params) => {
+                  const filtered = options.filter(option => {
+                    const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').toLowerCase();
+                    const query = params.inputValue.toLowerCase();
+                    return fullName.includes(query);
+                  });
+                  return filtered;
+                }}
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -1571,6 +1634,7 @@ const Groups: React.FC = () => {
                 trainerPerVisitPercentage: '',
                 trainerPerVisitAmount: '',
               });
+              setSelectedClientIds([]); // Очищаем выбранных клиентов при отмене
             }}
             type="button"
           >

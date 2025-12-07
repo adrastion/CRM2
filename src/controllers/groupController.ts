@@ -235,6 +235,9 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
       }
     }
 
+    // Удаляем поле createPaymentsImmediately, так как оно используется только на фронтенде
+    delete groupData.createPaymentsImmediately;
+
     const group = await prisma.group.create({
       data: groupData,
       include: {
@@ -387,6 +390,9 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
         }
       }
     }
+
+    // Удаляем поле createPaymentsImmediately, так как оно используется только на фронтенде
+    delete updateData.createPaymentsImmediately;
 
     const updatedGroup = await prisma.group.update({
       where: { id },

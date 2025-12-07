@@ -160,6 +160,10 @@ class ApiService {
     return response.data.data;
   }
 
+  async deleteUser(id: string): Promise<void> {
+    await this.api.delete(`/auth/users/${id}`);
+  }
+
   async changePassword(data: { currentPassword: string; newPassword: string }): Promise<void> {
     await this.api.post('/auth/change-password', data);
   }

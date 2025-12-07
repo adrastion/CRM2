@@ -8,6 +8,7 @@ import {
   getProfile,
   updateProfile,
   updateUserById,
+  deleteUser,
   changePassword,
   changeEmail,
   requestPasswordReset,
@@ -52,5 +53,6 @@ router.post('/users', requireOwnerOrAdmin, validateCreateUser, createUser);
 
 // Owner only routes
 router.put('/users/:id', requireOwner, updateUserById);
+router.delete('/users/:id', requireOwner, deleteUser);
 
 export default router;

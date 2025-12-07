@@ -319,6 +319,58 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 });
 
 /**
+ * Delete user by ID (owner only)
+ */
+export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      error: 'Пользователь не аутентифицирован'
+    });
+    return;
+  }
+
+  // Only owner can delete users
+  if (req.user.role !== 'OWNER') {
+    res.status(403).json({
+      success: false,
+      error: 'Доступ запрещен. Только владелец может удалять пользователей'
+    });
+    return;
+  }
+
+  const { id } = req.params;
+  
+  // Нельзя удалить самого себя
+  if (id === req.user.id) {
+    res.status(400).json({
+      success: false,
+      error: 'Нельзя удалить самого себя'
+    });
+    return;
+  }
+
+  // Получаем tenantId из пользователя или из запроса
+  const tenantId = req.tenantId || req.user.tenantId;
+  if (!tenantId) {
+    res.status(400).json({
+      success: false,
+      error: 'Tenant ID не найден'
+    });
+    return;
+  }
+
+  const result = await AuthService.deleteUser(id, tenantId);
+  
+  res.json({
+    success: true,
+    data: result,
+    message: 'Пользователь успешно удален'
+  });
+  return;
+});
+
+/**
  * Verify token validity
  */
 export const verifyToken = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {

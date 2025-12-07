@@ -146,6 +146,27 @@ const Trainers: React.FC = () => {
     }
   };
 
+  const handleDeleteAdmin = async (userId: string) => {
+    console.log('Attempting to delete admin:', userId);
+    try {
+      console.log('Deleting admin...');
+      await apiService.deleteUser(userId);
+      console.log('Admin deleted successfully, updating list...');
+      setTrainers(trainers.filter(trainer => {
+        const user = (trainer as any).user || trainer;
+        return user.id !== userId;
+      }));
+      console.log('Admin list updated');
+      setSnackbarMessage('Администратор успешно удален');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      console.error('Error deleting admin:', err);
+      setError(err.response?.data?.error || 'Ошибка удаления администратора');
+      setSnackbarMessage(err.response?.data?.error || 'Ошибка удаления администратора');
+      setSnackbarOpen(true);
+    }
+  };
+
   const handleCreateTrainer = async () => {
     // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateTrainerForm(formData);
@@ -682,8 +703,7 @@ const Trainers: React.FC = () => {
                             e.stopPropagation();
                             if (isAdmin) {
                               if (window.confirm('Вы уверены, что хотите удалить этого администратора?')) {
-                                // TODO: Реализовать удаление администратора
-                                console.log('Delete admin:', employee.id || user.id);
+                                handleDeleteAdmin(user.id);
                               }
                             } else {
                               handleDeleteTrainer(employee.id);

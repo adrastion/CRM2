@@ -622,6 +622,54 @@ export class AuthService {
   /**
    * Update user by ID (for owner/admin)
    */
+  /**
+   * Delete user by ID (owner only)
+   */
+  static async deleteUser(userId: string, tenantId: string): Promise<User> {
+    // Проверяем, что пользователь существует и принадлежит тому же тенанту
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        tenantId: tenantId
+      }
+    });
+
+    if (!user) {
+      throw new Error('Пользователь не найден');
+    }
+
+    // Нельзя удалить владельца
+    if (user.role === 'OWNER') {
+      throw new Error('Нельзя удалить владельца');
+    }
+
+    // Если это администратор, просто удаляем пользователя
+    // Если это тренер, нужно также удалить связанную запись Trainer
+    if (user.role === 'TRAINER') {
+      const trainer = await prisma.trainer.findFirst({
+        where: {
+          userId: userId,
+          tenantId: tenantId
+        }
+      });
+
+      if (trainer) {
+        // Деактивируем тренера вместо удаления
+        await prisma.trainer.update({
+          where: { id: trainer.id },
+          data: { isActive: false }
+        });
+      }
+    }
+
+    // Удаляем пользователя
+    const deletedUser = await prisma.user.delete({
+      where: { id: userId }
+    });
+
+    return deletedUser;
+  }
+
   static async updateUserById(userId: string, data: {
     firstName?: string;
     lastName?: string;
