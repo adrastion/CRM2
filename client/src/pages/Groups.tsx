@@ -61,6 +61,7 @@ const Groups: React.FC = () => {
   const [trainingDialog, setTrainingDialog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [shouldCreatePaymentsAfterSchedule, setShouldCreatePaymentsAfterSchedule] = useState(false); // Флаг для создания платежей после создания графика
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
@@ -127,6 +128,7 @@ const Groups: React.FC = () => {
     isMonthlyPayment: false,
     monthlyPaymentAmount: '',
     paymentDueDay: '',
+    createPaymentsImmediately: false, // Создать платежи сразу после создания графика
     // Настройки зарплаты тренера
     trainerSalaryType: '' as 'monthly_percentage' | 'per_visit_percentage' | 'per_visit_amount' | '',
     trainerMonthlyPercentage: '',
@@ -240,6 +242,13 @@ const Groups: React.FC = () => {
       setOpenDialog(false);
       setFormErrors({});
       
+      // Сохраняем флаг создания платежей, если группа с ежемесячной оплатой
+      if (formData.isMonthlyPayment && formData.createPaymentsImmediately) {
+        setShouldCreatePaymentsAfterSchedule(true);
+      } else {
+        setShouldCreatePaymentsAfterSchedule(false);
+      }
+      
       // Если нужно открыть диалог создания тренировки
       if (openTrainingDialog && createdGroup && createdGroup.id) {
         // Загружаем полные данные группы для корректного отображения
@@ -268,6 +277,7 @@ const Groups: React.FC = () => {
         isMonthlyPayment: false,
         monthlyPaymentAmount: '',
         paymentDueDay: '',
+        createPaymentsImmediately: false,
         // Настройки зарплаты тренера
         trainerSalaryType: '',
         trainerMonthlyPercentage: '',
@@ -431,6 +441,7 @@ const Groups: React.FC = () => {
       isMonthlyPayment: group.isMonthlyPayment || false,
       monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
       paymentDueDay: group.paymentDueDay?.toString() || '',
+      createPaymentsImmediately: false, // При редактировании всегда false
       // Настройки зарплаты тренера
       trainerSalaryType: group.trainerSalaryType || '',
       trainerMonthlyPercentage: group.trainerMonthlyPercentage?.toString() || '',
@@ -749,6 +760,89 @@ const Groups: React.FC = () => {
         // Не блокируем процесс, так как тренировки уже созданы
       }
       
+      // Если нужно создать платежи сразу после создания графика
+      if (shouldCreatePaymentsAfterSchedule && selectedGroup) {
+        try {
+          // Получаем полные данные группы с клиентами
+          const fullGroup = await apiService.getGroup(selectedGroup.id);
+          
+          if (fullGroup.isMonthlyPayment && fullGroup.monthlyPaymentAmount && fullGroup.memberships) {
+            const monthlyAmount = Number(fullGroup.monthlyPaymentAmount);
+            const today = new Date();
+            const dueDate = new Date(today);
+            // Используем paymentDueDay группы или текущий день
+            const paymentDay = fullGroup.paymentDueDay || today.getDate();
+            dueDate.setDate(paymentDay);
+            if (dueDate < today) {
+              // Если день уже прошел, устанавливаем на следующий месяц
+              dueDate.setMonth(dueDate.getMonth() + 1);
+            }
+            dueDate.setHours(23, 59, 59, 999);
+            
+            // Создаем платежи для всех активных клиентов группы
+            const activeMemberships = fullGroup.memberships.filter(
+              (m: any) => m.isActive && !m.leftAt
+            );
+            
+            let createdCount = 0;
+            let errorCount = 0;
+            
+            for (const membership of activeMemberships) {
+              try {
+                // Проверяем, не существует ли уже платеж для этого клиента и группы в текущем месяце
+                const currentMonth = today.getMonth();
+                const currentYear = today.getFullYear();
+                const monthStart = new Date(currentYear, currentMonth, 1);
+                const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+                
+                const existingPayments = await apiService.getPayments({
+                  clientId: membership.clientId,
+                  groupId: fullGroup.id,
+                  limit: 100
+                });
+                
+                const hasExistingPayment = existingPayments.data?.some((p: any) => {
+                  const paymentDate = new Date(p.createdAt);
+                  return (
+                    p.isMonthlyPayment &&
+                    p.groupId === fullGroup.id &&
+                    paymentDate >= monthStart &&
+                    paymentDate <= monthEnd
+                  );
+                });
+                
+                if (!hasExistingPayment) {
+                  await apiService.createPayment({
+                    clientId: membership.clientId,
+                    groupId: fullGroup.id,
+                    branchId: fullGroup.branchId,
+                    amount: monthlyAmount,
+                    originalAmount: monthlyAmount,
+                    type: 'monthly_payment',
+                    status: 'pending',
+                    dueDate: dueDate.toISOString(),
+                    isMonthlyPayment: true
+                  });
+                  createdCount++;
+                }
+              } catch (paymentErr: any) {
+                console.error(`Error creating payment for client ${membership.clientId}:`, paymentErr);
+                errorCount++;
+              }
+            }
+            
+            if (createdCount > 0) {
+              alert(`Создано платежей: ${createdCount}${errorCount > 0 ? `. Ошибок: ${errorCount}` : ''}`);
+            }
+          }
+        } catch (paymentErr: any) {
+          console.error('Error creating payments after schedule:', paymentErr);
+          // Не показываем ошибку пользователю, так как тренировки уже созданы
+        } finally {
+          setShouldCreatePaymentsAfterSchedule(false);
+        }
+      }
+      
       setTrainingDialog(false);
       setSelectedGroup(null);
       setTrainingFormData({
@@ -923,6 +1017,7 @@ const Groups: React.FC = () => {
               isMonthlyPayment: false,
               monthlyPaymentAmount: '',
               paymentDueDay: '',
+              createPaymentsImmediately: false,
               // Настройки зарплаты тренера
               trainerSalaryType: '',
               trainerMonthlyPercentage: '',
@@ -1010,6 +1105,7 @@ const Groups: React.FC = () => {
                               isMonthlyPayment: group.isMonthlyPayment || false,
                               monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
                               paymentDueDay: group.paymentDueDay?.toString() || '',
+                              createPaymentsImmediately: false,
                               // Настройки зарплаты тренера
                               trainerSalaryType: group.trainerSalaryType || '',
                               trainerMonthlyPercentage: group.trainerMonthlyPercentage?.toString() || '',
@@ -1327,6 +1423,22 @@ const Groups: React.FC = () => {
                     helperText="День месяца, когда клиенты должны оплачивать (1-31)"
                   />
                 </Grid>
+                {!editDialog && (
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.createPaymentsImmediately}
+                          onChange={(e) => handleInputChange('createPaymentsImmediately', e.target.checked)}
+                        />
+                      }
+                      label="Создать платежи сразу после создания графика тренировок"
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      При проставлении этого чекбокса первый платеж будет создан сразу после создания графика тренировок для всех активных клиентов группы
+                    </Typography>
+                  </Grid>
+                )}
               </>
             )}
             
@@ -1452,6 +1564,7 @@ const Groups: React.FC = () => {
                 isMonthlyPayment: false,
                 monthlyPaymentAmount: '',
                 paymentDueDay: '',
+                createPaymentsImmediately: false,
                 // Настройки зарплаты тренера
                 trainerSalaryType: '',
                 trainerMonthlyPercentage: '',
@@ -1747,6 +1860,22 @@ const Groups: React.FC = () => {
                     helperText="День месяца, когда клиенты должны оплачивать (1-31)"
                   />
                 </Grid>
+                {!editDialog && (
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={formData.createPaymentsImmediately}
+                          onChange={(e) => handleInputChange('createPaymentsImmediately', e.target.checked)}
+                        />
+                      }
+                      label="Создать платежи сразу после создания графика тренировок"
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      При проставлении этого чекбокса первый платеж будет создан сразу после создания графика тренировок для всех активных клиентов группы
+                    </Typography>
+                  </Grid>
+                )}
               </>
             )}
             
