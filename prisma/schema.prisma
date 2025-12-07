@@ -105,6 +105,7 @@ model Branch {
   trainers    TrainerBranch[]
   trainings   Training[]
 
+  @@index([tenantId, isActive])
   @@map("branches")
 }
 
@@ -178,6 +179,11 @@ model Client {
   referralClicks           ReferralClick[]
   transactions             Transaction[]
 
+  @@index([tenantId, isActive])
+  @@index([tenantId, firstName, lastName])
+  @@index([tenantId, email])
+  @@index([tenantId, phone])
+  @@index([tenantId, createdAt])
   @@map("clients")
 }
 
@@ -283,6 +289,8 @@ model Trainer {
   transactions         Transaction[]
   notificationSettings TrainerNotificationSettings?
 
+  @@index([tenantId, isActive])
+  @@index([tenantId, userId])
   @@map("trainers")
 }
 
@@ -353,6 +361,9 @@ model Group {
   trainings                 Training[]
   payments                  Payment[]
 
+  @@index([tenantId, isActive])
+  @@index([tenantId, branchId])
+  @@index([tenantId, trainerId])
   @@map("groups")
 }
 
@@ -367,6 +378,8 @@ model GroupMembership {
   group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([clientId, groupId])
+  @@index([clientId, isActive])
+  @@index([groupId, isActive])
   @@map("group_memberships")
 }
 
@@ -434,6 +447,11 @@ model Payment {
   promoCodeUsage   PromoCodeUsage?
   transactions     Transaction[]
 
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@index([tenantId, dueDate])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status, paidAt])
   @@map("payments")
 }
 
@@ -469,6 +487,11 @@ model Training {
   substituteTrainer   Trainer?      @relation("TrainingSubstitute", fields: [substituteTrainerId], references: [id])
   transactions        Transaction[]
 
+  @@index([tenantId, startTime])
+  @@index([tenantId, trainerId, startTime])
+  @@index([tenantId, groupId, startTime])
+  @@index([trainerId, startTime])
+  @@index([tenantId, isCancelled])
   @@map("trainings")
 }
 
@@ -488,6 +511,10 @@ model Attendance {
   transactions Transaction[]
 
   @@unique([clientId, trainingId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, trainingId])
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
   @@map("attendances")
 }
 
@@ -510,6 +537,10 @@ model Transaction {
   trainer      Trainer?    @relation(fields: [trainerId], references: [id])
   training     Training?   @relation(fields: [trainingId], references: [id])
 
+  @@index([tenantId, type])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, clientId])
+  @@index([tenantId, trainerId])
   @@map("transactions")
 }
 
@@ -733,32 +764,32 @@ model AdminAuditLog {
 }
 
 model SuperAdmin {
-  id              String             @id @default(cuid())
-  email           String             @unique
-  password        String
-  firstName       String
-  lastName        String
-  isActive        Boolean            @default(true)
-  lastLogin       DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  transactions    AdminTransaction[]
-  auditLogs       AdminAuditLog[]
+  id               String             @id @default(cuid())
+  email            String             @unique
+  password         String
+  firstName        String
+  lastName         String
+  isActive         Boolean            @default(true)
+  lastLogin        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  transactions     AdminTransaction[]
+  auditLogs        AdminAuditLog[]
   dashboardPresets DashboardPreset[]
 
   @@map("super_admins")
 }
 
 model DashboardPreset {
-  id              String   @id @default(cuid())
-  superAdminId    String
-  name            String
-  isDefault       Boolean  @default(false)
-  widgetOrder     String   // JSON array of widget IDs in order
-  widgetVisibility String  // JSON object with widget visibility settings
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  superAdmin      SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+  id               String     @id @default(cuid())
+  superAdminId     String
+  name             String
+  isDefault        Boolean    @default(false)
+  widgetOrder      String // JSON array of widget IDs in order
+  widgetVisibility String // JSON object with widget visibility settings
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  superAdmin       SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
 
   @@map("dashboard_presets")
 }

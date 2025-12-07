@@ -192,7 +192,7 @@ VALUES (
 - Войдите на странице: http://localhost:3000/super-admin/login
 - Используйте указанные при создании email и пароль
 
-### 7. Запуск приложения
+### 7. Запуск 
 ```bash
 # Запуск в режиме разработки (backend + frontend)
 npm run dev

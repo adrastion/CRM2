@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { validateClientForm, validateField, hasFormErrors, ClientFormData, ValidationErrors } from '../utils/clientValidation';
 import {
@@ -145,6 +145,74 @@ const Clients: React.FC = () => {
   };
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Мемоизация фильтрации и сортировки для оптимизации производительности
+  const filteredAndSortedClients: Client[] = useMemo(() => {
+    return clients
+      .filter((client) => {
+        // Поиск по имени, фамилии, отчеству, телефону, email
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase();
+          const fullName = [client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ').toLowerCase();
+          const phone = (client.phone || '').toLowerCase();
+          const email = (client.email || '').toLowerCase();
+          if (!fullName.includes(query) && !phone.includes(query) && !email.includes(query)) {
+            return false;
+          }
+        }
+        // Фильтр по филиалу (через группы)
+        if (filterBranchId) {
+          const hasBranchGroup = client.groupMemberships?.some(
+            (gm) => gm.group?.branchId === filterBranchId
+          );
+          if (!hasBranchGroup) return false;
+        }
+        // Фильтр по группе
+        if (filterGroupId) {
+          const hasGroup = client.groupMemberships?.some(
+            (gm) => gm.group?.id === filterGroupId && gm.isActive
+          );
+          if (!hasGroup) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+        
+        switch (sortBy) {
+          case 'firstName':
+            aValue = [a.lastName, a.firstName, a.middleName].filter(Boolean).join(' ') || `${a.firstName} ${a.lastName}`;
+            bValue = [b.lastName, b.firstName, b.middleName].filter(Boolean).join(' ') || `${b.firstName} ${b.lastName}`;
+            break;
+          case 'email':
+            aValue = a.email || '';
+            bValue = b.email || '';
+            break;
+          case 'phone':
+            aValue = a.phone || '';
+            bValue = b.phone || '';
+            break;
+          case 'createdAt':
+            aValue = new Date((a as any).createdAt || 0).getTime();
+            bValue = new Date((b as any).createdAt || 0).getTime();
+            break;
+          default:
+            aValue = new Date((a as any).createdAt || 0).getTime();
+            bValue = new Date((b as any).createdAt || 0).getTime();
+        }
+        
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return sortOrder === 'asc' 
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        } else {
+          return sortOrder === 'asc' 
+            ? (aValue > bValue ? 1 : -1)
+            : (aValue < bValue ? 1 : -1);
+        }
+      });
+  }, [clients, searchQuery, filterBranchId, filterGroupId, sortBy, sortOrder]);
   const [editingPhoneClientId, setEditingPhoneClientId] = useState<string | null>(null);
   const [editingPhoneValue, setEditingPhoneValue] = useState<string>('');
   const [groupsDialog, setGroupsDialog] = useState(false);
@@ -1420,71 +1488,7 @@ const Clients: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {clients
-                  .filter((client) => {
-                    // Поиск по имени, фамилии, отчеству, телефону, email
-                    if (searchQuery) {
-                      const query = searchQuery.toLowerCase();
-                      const fullName = [client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ').toLowerCase();
-                      const phone = (client.phone || '').toLowerCase();
-                      const email = (client.email || '').toLowerCase();
-                      if (!fullName.includes(query) && !phone.includes(query) && !email.includes(query)) {
-                        return false;
-                      }
-                    }
-                    // Фильтр по филиалу (через группы)
-                    if (filterBranchId) {
-                      const hasBranchGroup = client.groupMemberships?.some(
-                        (gm) => gm.group?.branchId === filterBranchId
-                      );
-                      if (!hasBranchGroup) return false;
-                    }
-                    // Фильтр по группе
-                    if (filterGroupId) {
-                      const hasGroup = client.groupMemberships?.some(
-                        (gm) => gm.group?.id === filterGroupId && gm.isActive
-                      );
-                      if (!hasGroup) return false;
-                    }
-                    return true;
-                  })
-                  .sort((a, b) => {
-                    let aValue: any;
-                    let bValue: any;
-                    
-                    switch (sortBy) {
-                      case 'firstName':
-                        aValue = [a.lastName, a.firstName, a.middleName].filter(Boolean).join(' ') || `${a.firstName} ${a.lastName}`;
-                        bValue = [b.lastName, b.firstName, b.middleName].filter(Boolean).join(' ') || `${b.firstName} ${b.lastName}`;
-                        break;
-                      case 'email':
-                        aValue = a.email || '';
-                        bValue = b.email || '';
-                        break;
-                      case 'phone':
-                        aValue = a.phone || '';
-                        bValue = b.phone || '';
-                        break;
-                      case 'createdAt':
-                        aValue = new Date((a as any).createdAt || 0).getTime();
-                        bValue = new Date((b as any).createdAt || 0).getTime();
-                        break;
-                      default:
-                        aValue = new Date((a as any).createdAt || 0).getTime();
-                        bValue = new Date((b as any).createdAt || 0).getTime();
-                    }
-                    
-                    if (typeof aValue === 'string' && typeof bValue === 'string') {
-                      return sortOrder === 'asc' 
-                        ? aValue.localeCompare(bValue)
-                        : bValue.localeCompare(aValue);
-                    } else {
-                      return sortOrder === 'asc' 
-                        ? (aValue > bValue ? 1 : -1)
-                        : (aValue < bValue ? 1 : -1);
-                    }
-                  })
-                  .map((client) => (
+                {filteredAndSortedClients.map((client: Client) => (
                   <TableRow key={client.id}>
                     <TableCell>
                       <Typography

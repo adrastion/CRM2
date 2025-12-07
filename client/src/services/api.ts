@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { ApiResponse, AuthResponse, LoginForm, RegisterForm, MarketerStatsSummary } from '../types';
+import { apiCache, generateCacheKey } from '../utils/apiCache';
 
 class ApiService {
   private api: AxiosInstance;
@@ -176,12 +177,27 @@ class ApiService {
   }
 
   // Client endpoints
-  async getClients(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+  async getClients(params?: any, signal?: AbortSignal, useCache: boolean = true): Promise<{ data: any[]; pagination: any }> {
+    const cacheKey = generateCacheKey('/clients', params);
+    
+    if (useCache && !signal) {
+      const cached = apiCache.get<{ data: any[]; pagination: any }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    
     const response = await this.api.get<ApiResponse>('/clients', { params, signal });
-    return {
+    const result = {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+    
+    if (useCache && !signal) {
+      apiCache.set(cacheKey, result, 2 * 60 * 1000); // Кэш на 2 минуты
+    }
+    
+    return result;
   }
 
   async getClient(id: string): Promise<any> {
@@ -248,12 +264,27 @@ class ApiService {
   }
 
   // Trainer endpoints
-  async getTrainers(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+  async getTrainers(params?: any, signal?: AbortSignal, useCache: boolean = true): Promise<{ data: any[]; pagination: any }> {
+    const cacheKey = generateCacheKey('/trainers', params);
+    
+    if (useCache && !signal) {
+      const cached = apiCache.get<{ data: any[]; pagination: any }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    
     const response = await this.api.get<ApiResponse>('/trainers', { params, signal });
-    return {
+    const result = {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+    
+    if (useCache && !signal) {
+      apiCache.set(cacheKey, result, 5 * 60 * 1000); // Кэш на 5 минут
+    }
+    
+    return result;
   }
 
   async getTrainer(id: string): Promise<any> {
@@ -380,12 +411,27 @@ class ApiService {
   }
 
   // Group endpoints
-  async getGroups(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+  async getGroups(params?: any, signal?: AbortSignal, useCache: boolean = true): Promise<{ data: any[]; pagination: any }> {
+    const cacheKey = generateCacheKey('/groups', params);
+    
+    if (useCache && !signal) {
+      const cached = apiCache.get<{ data: any[]; pagination: any }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    
     const response = await this.api.get<ApiResponse>('/groups', { params, signal });
-    return {
+    const result = {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+    
+    if (useCache && !signal) {
+      apiCache.set(cacheKey, result, 5 * 60 * 1000); // Кэш на 5 минут
+    }
+    
+    return result;
   }
 
   async getGroup(id: string): Promise<any> {
@@ -417,12 +463,27 @@ class ApiService {
   }
 
   // Branch endpoints
-  async getBranches(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+  async getBranches(params?: any, signal?: AbortSignal, useCache: boolean = true): Promise<{ data: any[]; pagination: any }> {
+    const cacheKey = generateCacheKey('/branches', params);
+    
+    if (useCache && !signal) {
+      const cached = apiCache.get<{ data: any[]; pagination: any }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    
     const response = await this.api.get<ApiResponse>('/branches', { params, signal });
-    return {
+    const result = {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+    
+    if (useCache && !signal) {
+      apiCache.set(cacheKey, result, 10 * 60 * 1000); // Кэш на 10 минут (филиалы редко меняются)
+    }
+    
+    return result;
   }
 
   async getBranch(id: string): Promise<any> {
@@ -445,12 +506,27 @@ class ApiService {
   }
 
   // Hall endpoints
-  async getHalls(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
+  async getHalls(params?: any, signal?: AbortSignal, useCache: boolean = true): Promise<{ data: any[]; pagination: any }> {
+    const cacheKey = generateCacheKey('/halls', params);
+    
+    if (useCache && !signal) {
+      const cached = apiCache.get<{ data: any[]; pagination: any }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+    
     const response = await this.api.get<ApiResponse>('/halls', { params, signal });
-    return {
+    const result = {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+    
+    if (useCache && !signal) {
+      apiCache.set(cacheKey, result, 10 * 60 * 1000); // Кэш на 10 минут
+    }
+    
+    return result;
   }
 
   async getHall(id: string): Promise<any> {

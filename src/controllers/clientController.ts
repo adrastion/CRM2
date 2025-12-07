@@ -126,36 +126,55 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     prisma.client.count({ where })
   ]);
 
-  // Calculate debt for each client (overdue payments)
+  // Calculate debt for each client (overdue payments) - оптимизировано: один запрос вместо N
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const clientsWithDebt = await Promise.all(
-    clients.map(async (client) => {
-      // Find overdue payments (dueDate < today and status !== 'paid')
-      const overduePayments = await prisma.payment.findMany({
-        where: {
-          clientId: client.id,
-          tenantId,
-          status: { not: 'paid' },
-          dueDate: { lt: today }
-        },
-        include: {
-          group: true
+  // Загружаем все просроченные платежи одним запросом
+  const clientIds = clients.map(c => c.id);
+  const allOverduePayments = clientIds.length > 0 ? await prisma.payment.findMany({
+    where: {
+      clientId: { in: clientIds },
+      tenantId,
+      status: { not: 'paid' },
+      dueDate: { lt: today }
+    },
+    select: {
+      id: true,
+      clientId: true,
+      amount: true,
+      group: {
+        select: {
+          id: true,
+          name: true
         }
-      });
+      }
+    }
+  }) : [];
 
-      const totalDebt = overduePayments.reduce((sum, payment) => {
-        return sum + Number(payment.amount);
-      }, 0);
+  // Группируем платежи по clientId
+  const paymentsByClient = allOverduePayments.reduce((acc, payment) => {
+    if (!acc[payment.clientId]) {
+      acc[payment.clientId] = [];
+    }
+    acc[payment.clientId].push(payment);
+    return acc;
+  }, {} as Record<string, typeof allOverduePayments>);
 
-      return {
-        ...client,
-        debt: totalDebt,
-        overduePaymentsCount: overduePayments.length
-      };
-    })
-  );
+  const clientsWithDebt = clients.map((client) => {
+    // Find overdue payments for this client
+    const overduePayments = paymentsByClient[client.id] || [];
+
+    const totalDebt = overduePayments.reduce((sum, payment) => {
+      return sum + Number(payment.amount);
+    }, 0);
+
+    return {
+      ...client,
+      debt: totalDebt,
+      overduePaymentsCount: overduePayments.length
+    };
+  });
 
   res.json({
     success: true,

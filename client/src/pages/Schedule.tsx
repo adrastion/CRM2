@@ -181,11 +181,11 @@ const Schedule: React.FC = () => {
     try {
       setLoading(true);
       const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes] = await Promise.all([
-        apiService.getTrainings({ limit: 1000, page: 1 }), // Загружаем до 1000 тренировок
-        apiService.getGroups({ limit: 1000, page: 1 }), // Загружаем все группы
+        apiService.getTrainings({ limit: 1000, page: 1 }),
+        apiService.getGroups({ limit: 1000, page: 1 }),
         apiService.getTrainers({ limit: 1000, page: 1 }),
         apiService.getBranches({ limit: 1000, page: 1 }),
-        apiService.getClients({ limit: 1000, page: 1 }) // Загружаем всех клиентов
+        apiService.getClients({ limit: 1000, page: 1 })
       ]);
       
       // Логируем для отладки
@@ -236,7 +236,7 @@ const Schedule: React.FC = () => {
         if (!isMounted || abortController.signal.aborted) return;
         
         const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes] = await Promise.all([
-          apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 тренировок
+          apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
           apiService.getTrainers({ limit: 1000, page: 1 }, abortController.signal),
