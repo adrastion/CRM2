@@ -690,28 +690,77 @@ model TenantMarketer {
 }
 
 model SuperAdminSettings {
-  id                String   @id @default(cuid())
+  id                String        @id @default(cuid())
   reservePercentage Decimal?
   reserveAmount     Decimal?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  budgetLimits      BudgetLimit[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@map("super_admin_settings")
 }
 
-model SuperAdmin {
+model BudgetLimit {
   id           String             @id @default(cuid())
-  email        String             @unique
-  password     String
-  firstName    String
-  lastName     String
-  isActive     Boolean            @default(true)
-  lastLogin    DateTime?
+  categoryId   String?
+  categoryName String? // Название категории (если categoryId null, то общий лимит)
+  limitAmount  Decimal
+  period       String // 'month', 'quarter', 'year'
+  currentSpent Decimal            @default(0)
+  settingsId   String
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
-  transactions AdminTransaction[]
+  settings     SuperAdminSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@map("budget_limits")
+}
+
+model AdminAuditLog {
+  id           String      @id @default(cuid())
+  superAdminId String?
+  action       String // 'create_expense', 'pay_marketer', 'update_tenant_plan', 'update_settings', etc.
+  entityType   String? // 'expense', 'marketer', 'tenant', 'settings', etc.
+  entityId     String?
+  description  String
+  oldValue     String? // JSON string of old value
+  newValue     String? // JSON string of new value
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime    @default(now())
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
+
+  @@map("admin_audit_logs")
+}
+
+model SuperAdmin {
+  id              String             @id @default(cuid())
+  email           String             @unique
+  password        String
+  firstName       String
+  lastName        String
+  isActive        Boolean            @default(true)
+  lastLogin       DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  transactions    AdminTransaction[]
+  auditLogs       AdminAuditLog[]
+  dashboardPresets DashboardPreset[]
 
   @@map("super_admins")
+}
+
+model DashboardPreset {
+  id              String   @id @default(cuid())
+  superAdminId    String
+  name            String
+  isDefault       Boolean  @default(false)
+  widgetOrder     String   // JSON array of widget IDs in order
+  widgetVisibility String  // JSON object with widget visibility settings
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  superAdmin      SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@map("dashboard_presets")
 }
 
 model ExpenseCategory {
@@ -728,18 +777,22 @@ model ExpenseCategory {
 }
 
 model AdminTransaction {
-  id           String           @id @default(cuid())
-  type         String
-  amount       Decimal
-  description  String
-  marketerId   String?
-  superAdminId String?
-  categoryId   String? // Категория расхода
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  marketer     Marketer?        @relation(fields: [marketerId], references: [id])
-  superAdmin   SuperAdmin?      @relation(fields: [superAdminId], references: [id])
-  category     ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  id              String           @id @default(cuid())
+  type            String
+  amount          Decimal
+  description     String
+  marketerId      String?
+  superAdminId    String?
+  categoryId      String? // Категория расхода
+  documentUrl     String? // URL прикрепленного документа
+  isRecurring     Boolean          @default(false) // Повторяющийся расход
+  recurringPeriod String? // 'monthly', 'quarterly', 'yearly'
+  nextDueDate     DateTime? // Следующая дата для повторяющегося расхода
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  marketer        Marketer?        @relation(fields: [marketerId], references: [id])
+  superAdmin      SuperAdmin?      @relation(fields: [superAdminId], references: [id])
+  category        ExpenseCategory? @relation(fields: [categoryId], references: [id])
 
   @@map("admin_transactions")
 }

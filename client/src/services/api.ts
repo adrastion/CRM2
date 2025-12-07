@@ -1036,9 +1036,34 @@ class ApiService {
     return response.data.data;
   }
 
-  async createExpense(data: { amount: number; description: string; categoryId?: string }): Promise<any> {
+  async createExpense(data: {
+    amount: number;
+    description: string;
+    categoryId?: string;
+    documentUrl?: string;
+    isRecurring?: boolean;
+    recurringPeriod?: string;
+    nextDueDate?: string;
+  }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/expenses', data);
     return response.data.data;
+  }
+
+  async updateExpense(id: string, data: {
+    amount?: number;
+    description?: string;
+    categoryId?: string;
+    documentUrl?: string;
+    isRecurring?: boolean;
+    recurringPeriod?: string;
+    nextDueDate?: string;
+  }): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/expenses/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteExpense(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/expenses/${id}`);
   }
 
   async getExpenseCategories(): Promise<any> {
@@ -1051,7 +1076,11 @@ class ApiService {
     return response.data.data;
   }
 
-  async getAnalyticsByPeriod(params?: { period?: string; startDate?: string; endDate?: string }): Promise<any> {
+  async getAnalyticsByPeriod(params?: {
+    period?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/analytics/period', { params });
     return response.data.data;
   }
@@ -1061,9 +1090,69 @@ class ApiService {
     return response.data.data;
   }
 
-  async bulkUpdateTenants(data: { tenantIds: string[]; action: string; data?: any }): Promise<any> {
+  async getKPIMetrics(period?: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/analytics/kpi', {
+      params: { period },
+    });
+    return response.data.data;
+  }
+
+  async getAuditLogs(params?: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    entityType?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/audit-logs', { params });
+    return response.data.data;
+  }
+
+  async getBudgetLimits(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/budget/limits');
+    return response.data.data;
+  }
+
+  async setBudgetLimit(data: {
+    categoryId?: string;
+    categoryName?: string;
+    limitAmount: number;
+    period: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/budget/limits', data);
+    return response.data.data;
+  }
+
+  async getPlanPrices(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/plans/prices');
+    return response.data.data;
+  }
+
+  async updatePlanPrice(data: { planType: string; price?: number; limits?: any }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/plans/prices', data);
+    return response.data.data;
+  }
+
+  async getAdminMarketerStats(marketerId?: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketers/stats', {
+      params: marketerId ? { marketerId } : {},
+    });
+    return response.data.data;
+  }
+
+  async bulkUpdateTenants(data: {
+    tenantIds: string[];
+    action: string;
+    data?: any;
+  }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/tenants/bulk', data);
     return response.data;
+  }
+
+  async updateTenantPlan(tenantId: string, planType: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, { planType });
+    return response.data.data;
   }
 
   async payMarketer(data: { marketerId: string; amount: number; description?: string }): Promise<any> {
@@ -1071,9 +1160,51 @@ class ApiService {
     return response.data.data;
   }
 
-  async updateTenantPlan(tenantId: string, planType: string): Promise<any> {
-    const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, { planType });
+  async exportTransactions(params?: {
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+    categoryId?: string;
+  }): Promise<Blob> {
+    const response = await this.api.get('/admin-dashboard/export/transactions', {
+      params,
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async exportTenants(): Promise<Blob> {
+    const response = await this.api.get('/admin-dashboard/export/tenants', {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async exportMarketers(): Promise<Blob> {
+    const response = await this.api.get('/admin-dashboard/export/marketers', {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async getDashboardPresets(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/dashboard/presets');
     return response.data.data;
+  }
+
+  async saveDashboardPreset(data: {
+    id?: string;
+    name: string;
+    isDefault?: boolean;
+    widgetOrder: string[];
+    widgetVisibility: Record<string, boolean>;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/dashboard/presets', data);
+    return response.data.data;
+  }
+
+  async deleteDashboardPreset(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/dashboard/presets/${id}`);
   }
 
   // Client auth endpoints
