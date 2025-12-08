@@ -198,6 +198,15 @@ model Parent {
   tenantId         String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  // Поля для подтверждения регистрации (автоматически подтверждается при создании)
+  isApproved       Boolean  @default(true) // Подтвержден ли родитель (автоматически true)
+  approvedAt       DateTime? // Дата подтверждения
+  // Поля для личного кабинета родителя
+  password                 String? // Пароль для авторизации
+  isAccountApproved        Boolean                  @default(false) // Подтвержден ли аккаунт администратором
+  accountApprovedAt        DateTime? // Дата подтверждения
+  accountApprovedBy        String? // Кто подтвердил (userId)
+  lastLogin                DateTime? // Последний вход
   client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

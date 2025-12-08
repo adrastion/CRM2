@@ -11,6 +11,75 @@ import multer from 'multer';
 const prisma = new PrismaClient();
 
 /**
+ * Approve parent account registration
+ * Only OWNER or ADMIN can approve
+ */
+export const approveParentAccount = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { parentId } = req.params;
+  const userId = req.user?.id;
+
+  // Check if user has permission (OWNER or ADMIN only)
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец или администратор могут подтверждать регистрацию родителей'
+    });
+    return;
+  }
+
+  // Find parent
+  const parent = await prisma.parent.findFirst({
+    where: {
+      id: parentId,
+      tenantId: tenantId
+    },
+    include: {
+      client: true
+    }
+  });
+
+  if (!parent) {
+    res.status(404).json({
+      success: false,
+      error: 'Родитель не найден'
+    });
+    return;
+  }
+
+  if (!parent.password) {
+    res.status(400).json({
+      success: false,
+      error: 'Родитель еще не зарегистрирован (не установлен пароль)'
+    });
+    return;
+  }
+
+  if (parent.isAccountApproved) {
+    res.status(400).json({
+      success: false,
+      error: 'Аккаунт родителя уже подтвержден'
+    });
+    return;
+  }
+
+  // Approve parent account
+  await prisma.parent.update({
+    where: { id: parentId },
+    data: {
+      isAccountApproved: true,
+      accountApprovedAt: new Date(),
+      accountApprovedBy: userId || null
+    }
+  });
+
+  res.json({
+    success: true,
+    message: 'Регистрация родителя успешно подтверждена'
+  });
+});
+
+/**
  * Update client membership fee status
  * Only OWNER or ADMIN can update this field
  */
@@ -277,19 +346,26 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined
   };
 
+  // Создаем родителей без токенов подтверждения
+  const parentsData = parents && parents.length > 0 ? parents.map((parent: any) => {
+    return {
+      ...parent,
+      tenantId,
+      isApproved: true // Автоматически подтверждаем без email
+    };
+  }) : undefined;
+
   // Создаем клиента вместе с родителями
   const client = await prisma.client.create({
     data: {
       ...processedData,
-      parents: parents && parents.length > 0 ? {
-        create: parents.map((parent: any) => ({
-          ...parent,
-          tenantId
-        }))
+      parents: parentsData ? {
+        create: parentsData
       } : undefined
     },
     include: {
-      parents: true
+      parents: true,
+      tenant: true
     }
   });
 
@@ -339,11 +415,16 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 
     // Создаем новых родителей, если они есть
     if (parents.length > 0) {
-      processedData.parents = {
-        create: parents.map((parent: any) => ({
+      const parentsData = parents.map((parent: any) => {
+        return {
           ...parent,
-          tenantId
-        }))
+          tenantId,
+          isApproved: true // Автоматически подтверждаем без email
+        };
+      });
+      
+      processedData.parents = {
+        create: parentsData
       };
     }
   }
@@ -352,7 +433,8 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     where: { id },
     data: processedData,
     include: {
-      parents: true
+      parents: true,
+      tenant: true
     }
   });
 

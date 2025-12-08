@@ -1028,6 +1028,11 @@ class ApiService {
     return response.data;
   }
 
+  async approveParentAccount(parentId: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/clients/parents/${parentId}/approve`);
+    return response.data;
+  }
+
   async resetMembershipFees(): Promise<any> {
     const response = await this.api.post<ApiResponse>('/settings/reset-membership-fees');
     return response.data;
@@ -1296,6 +1301,20 @@ class ApiService {
   async registerClient(clientId: string, tenantId: string, password: string): Promise<any> {
     const response = await this.api.post<ApiResponse>('/client-auth/register', {
       clientId,
+      tenantId,
+      password
+    });
+    return response.data;
+  }
+
+  async findParentsForRegistration(phone?: string, email?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/parent/find', { phone, email });
+    return response.data.data;
+  }
+
+  async registerParent(parentId: string, tenantId: string, password: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/parent/register', {
+      parentId,
       tenantId,
       password
     });

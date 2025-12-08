@@ -2361,24 +2361,85 @@ const Clients: React.FC = () => {
                   </Button>
                 </Box>
                 
-                {formData.parents.map((parent, index) => (
+                {formData.parents.map((parent, index) => {
+                  // Получаем полную информацию о родителе из editingClient
+                  const fullParentInfo = editingClient?.parents?.find((p: any) => 
+                    p.fullName === parent.fullName || 
+                    (p.phone && p.phone === parent.phone) ||
+                    (p.email && p.email === parent.email)
+                  );
+                  
+                  const hasPassword = fullParentInfo?.password;
+                  const isAccountApproved = fullParentInfo?.isAccountApproved;
+                  const needsApproval = hasPassword && !isAccountApproved;
+                  
+                  return (
                   <Paper key={index} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="subtitle2" fontWeight="medium">
-                        Родитель {index + 1}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            parents: formData.parents.filter((_, i) => i !== index)
-                          });
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle2" fontWeight="medium">
+                          Родитель {index + 1}
+                        </Typography>
+                        {hasPassword && (
+                          <Chip
+                            label={isAccountApproved ? 'Подтвержден' : 'Ожидает подтверждения'}
+                            color={isAccountApproved ? 'success' : 'warning'}
+                            size="small"
+                          />
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        {needsApproval && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            startIcon={<Check />}
+                            onClick={async () => {
+                              if (fullParentInfo?.id) {
+                                try {
+                                  await apiService.approveParentAccount(fullParentInfo.id);
+                                  setSnackbarMessage('Регистрация родителя подтверждена');
+                                  setSnackbarOpen(true);
+                                  // Обновляем данные клиента
+                                  if (editingClient) {
+                                    const updatedClient = await apiService.getClient(editingClient.id);
+                                    setEditingClient(updatedClient);
+                                    setFormData({
+                                      ...formData,
+                                      parents: updatedClient.parents?.map((p: any) => ({
+                                        fullName: p.fullName || '',
+                                        phone: p.phone || '',
+                                        email: p.email || '',
+                                        workplace: p.workplace || '',
+                                        workplaceContact: p.workplaceContact || '',
+                                      })) || []
+                                    });
+                                  }
+                                } catch (err: any) {
+                                  setError(err.response?.data?.error || 'Ошибка подтверждения регистрации');
+                                  setSnackbarMessage(err.response?.data?.error || 'Ошибка подтверждения регистрации');
+                                  setSnackbarOpen(true);
+                                }
+                              }
+                            }}
+                          >
+                            Подтвердить регистрацию
+                          </Button>
+                        )}
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              parents: formData.parents.filter((_, i) => i !== index)
+                            });
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Box>
                     </Box>
                     <Grid container spacing={2}>
                       <Grid item xs={12}>
@@ -2473,7 +2534,8 @@ const Clients: React.FC = () => {
                       </Grid>
                     </Grid>
                   </Paper>
-                ))}
+                  );
+                })}
                 
                 {formData.parents.length === 0 && (
                   <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
@@ -3589,24 +3651,85 @@ const Clients: React.FC = () => {
                   </Button>
                 </Box>
                 
-                {formData.parents.map((parent, index) => (
+                {formData.parents.map((parent, index) => {
+                  // Получаем полную информацию о родителе из editingClient
+                  const fullParentInfo = editingClient?.parents?.find((p: any) => 
+                    p.fullName === parent.fullName || 
+                    (p.phone && p.phone === parent.phone) ||
+                    (p.email && p.email === parent.email)
+                  );
+                  
+                  const hasPassword = fullParentInfo?.password;
+                  const isAccountApproved = fullParentInfo?.isAccountApproved;
+                  const needsApproval = hasPassword && !isAccountApproved;
+                  
+                  return (
                   <Paper key={index} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="subtitle2" fontWeight="medium">
-                        Родитель {index + 1}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            parents: formData.parents.filter((_, i) => i !== index)
-                          });
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle2" fontWeight="medium">
+                          Родитель {index + 1}
+                        </Typography>
+                        {hasPassword && (
+                          <Chip
+                            label={isAccountApproved ? 'Подтвержден' : 'Ожидает подтверждения'}
+                            color={isAccountApproved ? 'success' : 'warning'}
+                            size="small"
+                          />
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        {needsApproval && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            startIcon={<Check />}
+                            onClick={async () => {
+                              if (fullParentInfo?.id) {
+                                try {
+                                  await apiService.approveParentAccount(fullParentInfo.id);
+                                  setSnackbarMessage('Регистрация родителя подтверждена');
+                                  setSnackbarOpen(true);
+                                  // Обновляем данные клиента
+                                  if (editingClient) {
+                                    const updatedClient = await apiService.getClient(editingClient.id);
+                                    setEditingClient(updatedClient);
+                                    setFormData({
+                                      ...formData,
+                                      parents: updatedClient.parents?.map((p: any) => ({
+                                        fullName: p.fullName || '',
+                                        phone: p.phone || '',
+                                        email: p.email || '',
+                                        workplace: p.workplace || '',
+                                        workplaceContact: p.workplaceContact || '',
+                                      })) || []
+                                    });
+                                  }
+                                } catch (err: any) {
+                                  setError(err.response?.data?.error || 'Ошибка подтверждения регистрации');
+                                  setSnackbarMessage(err.response?.data?.error || 'Ошибка подтверждения регистрации');
+                                  setSnackbarOpen(true);
+                                }
+                              }
+                            }}
+                          >
+                            Подтвердить регистрацию
+                          </Button>
+                        )}
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              parents: formData.parents.filter((_, i) => i !== index)
+                            });
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Box>
                     </Box>
                     <Grid container spacing={2}>
                       <Grid item xs={12}>
@@ -3701,7 +3824,8 @@ const Clients: React.FC = () => {
                       </Grid>
                     </Grid>
                   </Paper>
-                ))}
+                  );
+                })}
                 
                 {formData.parents.length === 0 && (
                   <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>

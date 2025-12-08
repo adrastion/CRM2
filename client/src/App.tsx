@@ -44,6 +44,7 @@ const ClientRegister = lazy(() => import('./pages/ClientRegister'));
 const ClientLogin = lazy(() => import('./pages/ClientLogin'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
 const UserTypeSelection = lazy(() => import('./pages/UserTypeSelection'));
+const ParentRegister = lazy(() => import('./pages/ParentRegister'));
 
 // Create Material-UI theme with dark mode support
 const getTheme = (darkMode: boolean) => createTheme({
@@ -351,6 +352,10 @@ const AppContent: React.FC = () => {
         <Route
           path="/client/register"
           element={<ClientRegister />}
+        />
+        <Route
+          path="/parent/register"
+          element={<ParentRegister />}
         />
         <Route
           path="/client/login"

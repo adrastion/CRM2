@@ -251,6 +251,90 @@ class EmailService {
       text
     });
   }
+
+  /**
+   * Send parent registration confirmation email
+   */
+  async sendParentConfirmationEmail(
+    email: string, 
+    data: { 
+      parentName: string; 
+      childName: string; 
+      tenantName: string; 
+      confirmationUrl: string 
+    }
+  ): Promise<void> {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Подтверждение регистрации</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #f4f4f4; padding: 20px; text-align: center; }
+          .content { padding: 20px; }
+          .button { 
+            display: inline-block; 
+            padding: 12px 24px; 
+            background-color: #007bff; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 4px; 
+            margin: 20px 0;
+          }
+          .footer { background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>${data.tenantName}</h1>
+          </div>
+          <div class="content">
+            <h2>Подтверждение регистрации</h2>
+            <p>Здравствуйте, ${data.parentName}!</p>
+            <p>Вы были добавлены как родитель клиента <strong>${data.childName}</strong> в системе ${data.tenantName}.</p>
+            <p>Для подтверждения регистрации и активации вашего доступа к информации о ребенке, пожалуйста, нажмите на кнопку ниже:</p>
+            <a href="${data.confirmationUrl}" class="button">Подтвердить регистрацию</a>
+            <p>Если кнопка не работает, скопируйте и вставьте эту ссылку в браузер:</p>
+            <p>${data.confirmationUrl}</p>
+            <p>Ссылка действительна в течение 7 дней.</p>
+            <p>Если вы не ожидали это письмо, пожалуйста, проигнорируйте его.</p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Martial Arts CRM. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+      Подтверждение регистрации
+      
+      Здравствуйте, ${data.parentName}!
+      
+      Вы были добавлены как родитель клиента ${data.childName} в системе ${data.tenantName}.
+      
+      Для подтверждения регистрации перейдите по ссылке:
+      ${data.confirmationUrl}
+      
+      Ссылка действительна в течение 7 дней.
+      
+      Если вы не ожидали это письмо, пожалуйста, проигнорируйте его.
+      
+      © 2024 Martial Arts CRM. All rights reserved.
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject: `Подтверждение регистрации - ${data.tenantName}`,
+      html,
+      text
+    });
+  }
 }
 
 export const emailService = new EmailService();

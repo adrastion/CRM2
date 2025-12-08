@@ -16,7 +16,8 @@ import {
   downloadClientTemplate,
   upload,
   updateMembershipFeeStatus,
-  approveClientAccount
+  approveClientAccount,
+  approveParentAccount
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
@@ -50,5 +51,8 @@ router.put('/:id/membership-fee', requireOwnerOrAdmin, updateMembershipFeeStatus
 
 // Approve client account (OWNER, ADMIN, or TRAINER)
 router.put('/:id/approve-account', requireOwnerAdminOrTrainer, approveClientAccount);
+
+// Approve parent account (OWNER or ADMIN)
+router.put('/parents/:parentId/approve', requireOwnerOrAdmin, approveParentAccount);
 
 export default router;

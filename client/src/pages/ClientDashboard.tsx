@@ -23,11 +23,10 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  IconButton
+  DialogActions
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Edit, CheckCircle, Cancel } from '@mui/icons-material';
+import { Edit } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -75,26 +74,30 @@ const ClientDashboard: React.FC = () => {
     if (tabValue === 0) {
       fetchTrainings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (tabValue === 0 && clientData) {
       fetchTrainings();
     }
-  }, [tabValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabValue, clientData]);
 
   const fetchClientData = async () => {
     try {
       const data = await apiService.getClientProfile();
       setClientData(data);
       if (data) {
+        // Если это родитель, используем данные его ребенка для паспорта
+        const clientInfo = data.userType === 'parent' ? data : data;
         setPassportData({
-          passportSeries: data.passportSeries || '',
-          passportNumber: data.passportNumber || '',
-          passportIssueDate: data.passportIssueDate ? format(new Date(data.passportIssueDate), 'yyyy-MM-dd') : '',
-          passportIssuedBy: data.passportIssuedBy || '',
-          passportDivisionCode: data.passportDivisionCode || '',
-          passportBirthPlace: data.passportBirthPlace || ''
+          passportSeries: clientInfo.passportSeries || '',
+          passportNumber: clientInfo.passportNumber || '',
+          passportIssueDate: clientInfo.passportIssueDate ? format(new Date(clientInfo.passportIssueDate), 'yyyy-MM-dd') : '',
+          passportIssuedBy: clientInfo.passportIssuedBy || '',
+          passportDivisionCode: clientInfo.passportDivisionCode || '',
+          passportBirthPlace: clientInfo.passportBirthPlace || ''
         });
       }
     } catch (err: any) {
@@ -102,6 +105,7 @@ const ClientDashboard: React.FC = () => {
         localStorage.removeItem('clientToken');
         localStorage.removeItem('client');
         localStorage.removeItem('clientTenant');
+        localStorage.removeItem('userType');
         navigate('/client/login');
       } else {
         setError('Ошибка загрузки данных');

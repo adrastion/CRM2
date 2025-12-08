@@ -4,7 +4,9 @@ import {
   registerClient,
   loginClient,
   getClientProfile,
-  getClientTrainings
+  getClientTrainings,
+  findParentsForRegistration,
+  registerParent
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
 
@@ -14,6 +16,8 @@ const router = Router();
 router.post('/find', findClientsForRegistration);
 router.post('/register', registerClient);
 router.post('/login', loginClient);
+router.post('/parent/find', findParentsForRegistration);
+router.post('/parent/register', registerParent);
 
 // Защищенные маршруты
 router.get('/profile', authenticateClient, getClientProfile);

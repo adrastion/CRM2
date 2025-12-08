@@ -38,6 +38,12 @@ export interface Parent {
   clientId: string;
   createdAt: string;
   updatedAt: string;
+  // Поля для регистрации
+  password?: string;
+  isAccountApproved?: boolean;
+  accountApprovedAt?: string;
+  accountApprovedBy?: string;
+  lastLogin?: string;
 }
 
 export interface Client {

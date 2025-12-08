@@ -6,10 +6,15 @@ export interface ClientRequest extends Request {
     id: string;
     tenantId: string;
   };
+  parent?: {
+    id: string;
+    tenantId: string;
+  };
+  userType?: 'client' | 'parent';
 }
 
 /**
- * Middleware для аутентификации клиента
+ * Middleware для аутентификации клиента или родителя
  */
 export const authenticateClient = (req: ClientRequest, res: Response, next: NextFunction) => {
   try {
@@ -25,17 +30,24 @@ export const authenticateClient = (req: ClientRequest, res: Response, next: Next
     const token = authHeader.substring(7);
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
 
-    if (decoded.type !== 'client') {
+    if (decoded.type === 'client') {
+      req.client = {
+        id: decoded.clientId,
+        tenantId: decoded.tenantId
+      };
+      req.userType = 'client';
+    } else if (decoded.type === 'parent') {
+      req.parent = {
+        id: decoded.parentId,
+        tenantId: decoded.tenantId
+      };
+      req.userType = 'parent';
+    } else {
       return res.status(401).json({
         success: false,
         error: 'Invalid token type'
       });
     }
-
-    req.client = {
-      id: decoded.clientId,
-      tenantId: decoded.tenantId
-    };
 
     return next();
   } catch (error: any) {

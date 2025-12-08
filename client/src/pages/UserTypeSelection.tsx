@@ -102,7 +102,7 @@ const UserTypeSelection: React.FC = () => {
           </Box>
 
           <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Нет аккаунта?{' '}
               <Button 
                 variant="text" 
@@ -111,6 +111,17 @@ const UserTypeSelection: React.FC = () => {
                 sx={{ textTransform: 'none' }}
               >
                 Зарегистрироваться как клиент
+              </Button>
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Родитель?{' '}
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={() => navigate('/parent/register')}
+                sx={{ textTransform: 'none' }}
+              >
+                Зарегистрироваться как родитель
               </Button>
             </Typography>
           </Box>

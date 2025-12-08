@@ -10,7 +10,6 @@ import {
   CircularProgress,
   Link,
   Divider,
-  FormHelperText,
   Card,
   CardContent
 } from '@mui/material';
@@ -62,26 +61,62 @@ const ClientLogin: React.FC = () => {
     setError('');
 
     try {
-      const results = await apiService.findClientsForRegistration(formData.phone || undefined, formData.email || undefined);
+      // Ищем и клиентов, и родителей
+      const [clientsResults, parentsResults] = await Promise.all([
+        apiService.findClientsForRegistration(formData.phone || undefined, formData.email || undefined).catch(() => []),
+        apiService.findParentsForRegistration(formData.phone || undefined, formData.email || undefined).catch(() => [])
+      ]);
       
-      if (!results || results.length === 0) {
-        setError('Клиент с такими данными не найден. Обратитесь к администратору школы.');
+      // Объединяем результаты
+      const allResults: TenantOption[] = [];
+      const tenantsMap = new Map<string, TenantOption>();
+
+      // Добавляем клиентов
+      if (clientsResults && clientsResults.length > 0) {
+        clientsResults.forEach((tenantOption: TenantOption) => {
+          if (!tenantsMap.has(tenantOption.tenant.id)) {
+            tenantsMap.set(tenantOption.tenant.id, {
+              tenant: tenantOption.tenant,
+              clients: tenantOption.clients || []
+            });
+          } else {
+            tenantsMap.get(tenantOption.tenant.id)!.clients.push(...(tenantOption.clients || []));
+          }
+        });
+      }
+
+      // Добавляем родителей (преобразуем в формат клиентов для совместимости)
+      if (parentsResults && parentsResults.length > 0) {
+        parentsResults.forEach((tenantOption: any) => {
+          if (!tenantsMap.has(tenantOption.tenant.id)) {
+            tenantsMap.set(tenantOption.tenant.id, {
+              tenant: tenantOption.tenant,
+              clients: [] // Родители не отображаются в списке клиентов
+            });
+          }
+        });
+      }
+
+      allResults.push(...Array.from(tenantsMap.values()));
+      
+      if (allResults.length === 0) {
+        setError('Клиент или родитель с такими данными не найден. Обратитесь к администратору школы.');
         setIsLoading(false);
         return;
       }
 
-      setTenants(results);
+      setTenants(allResults);
       
-      if (results.length === 1) {
-        setSelectedTenant(results[0]);
-        setFormData(prev => ({ ...prev, tenantId: results[0].tenant.id }));
+      if (allResults.length === 1) {
+        setSelectedTenant(allResults[0]);
+        setFormData(prev => ({ ...prev, tenantId: allResults[0].tenant.id }));
         setStep('login');
       } else {
         // Несколько школ - нужно выбрать
         setStep('login');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка при поиске клиента');
+      setError(err.response?.data?.error || 'Ошибка при поиске');
     } finally {
       setIsLoading(false);
     }
@@ -135,9 +170,15 @@ const ClientLogin: React.FC = () => {
         formData.tenantId
       );
 
-      // Сохраняем токен и данные клиента
+      // Сохраняем токен и данные клиента/родителя
       localStorage.setItem('clientToken', result.token);
-      localStorage.setItem('client', JSON.stringify(result.client));
+      if (result.userType === 'parent' && result.parent) {
+        localStorage.setItem('client', JSON.stringify(result.parent));
+        localStorage.setItem('userType', 'parent');
+      } else if (result.client) {
+        localStorage.setItem('client', JSON.stringify(result.client));
+        localStorage.setItem('userType', 'client');
+      }
       localStorage.setItem('clientTenant', JSON.stringify(result.tenant));
 
       // Очищаем ошибки при успешном входе
@@ -155,9 +196,9 @@ const ClientLogin: React.FC = () => {
 
       if (lowerErrorMessage.includes('аккаунт ожидает подтверждения')) {
         setError('Ваш аккаунт ожидает подтверждения администратором');
-      } else if (lowerErrorMessage.includes('клиент не найден')) {
-        serverErrors.phone = 'Клиент не найден';
-        serverErrors.email = 'Клиент не найден';
+      } else if (lowerErrorMessage.includes('клиент') && lowerErrorMessage.includes('не найден')) {
+        serverErrors.phone = 'Клиент или родитель не найден';
+        serverErrors.email = 'Клиент или родитель не найден';
       } else if (lowerErrorMessage.includes('неверный пароль')) {
         serverErrors.password = 'Неверный пароль';
       } else {
@@ -188,7 +229,7 @@ const ClientLogin: React.FC = () => {
           {step === 'search' && (
             <Box>
               <Typography variant="body1" sx={{ mb: 3, textAlign: 'center' }}>
-                Введите ваш телефон или email для поиска в базе школы
+                Введите ваш телефон или email для поиска в базе школы (клиент или родитель)
               </Typography>
               
               <TextField
