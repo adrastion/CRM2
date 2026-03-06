@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "trainers" ADD COLUMN IF NOT EXISTS "balance" DECIMAL(65,30) NOT NULL DEFAULT 0;
+ALTER TABLE "trainers" ADD COLUMN IF NOT EXISTS "salaryPercentage" DECIMAL(65,30);
