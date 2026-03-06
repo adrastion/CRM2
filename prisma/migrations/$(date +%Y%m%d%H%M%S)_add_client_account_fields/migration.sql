@@ -1,11 +1,11 @@
--- AlterTable
-ALTER TABLE "clients" ADD COLUMN "password" TEXT,
-ADD COLUMN "isAccountApproved" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN "accountApprovedAt" TIMESTAMP(3),
-ADD COLUMN "accountApprovedBy" TEXT,
-ADD COLUMN "lastLogin" TIMESTAMP(3);
+-- AlterTable (IF NOT EXISTS for idempotency in case a previous run failed partially)
+ALTER TABLE "clients" ADD COLUMN IF NOT EXISTS "password" TEXT,
+ADD COLUMN IF NOT EXISTS "isAccountApproved" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "accountApprovedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "accountApprovedBy" TEXT,
+ADD COLUMN IF NOT EXISTS "lastLogin" TIMESTAMP(3);
 
 -- AlterTable
-ALTER TABLE "tenant_settings" ADD COLUMN "clientCanViewAllTrainers" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN "clientCanViewAllBranches" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "tenant_settings" ADD COLUMN IF NOT EXISTS "clientCanViewAllTrainers" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "clientCanViewAllBranches" BOOLEAN NOT NULL DEFAULT false;
 
