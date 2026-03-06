@@ -24,4 +24,3 @@ ALTER TABLE "halls" ADD CONSTRAINT "halls_tenantId_fkey" FOREIGN KEY ("tenantId"
 
 -- AddForeignKey
 ALTER TABLE "trainings" ADD CONSTRAINT "trainings_hallId_fkey" FOREIGN KEY ("hallId") REFERENCES "halls"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
