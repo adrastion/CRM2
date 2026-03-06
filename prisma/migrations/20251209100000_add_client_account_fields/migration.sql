@@ -8,4 +8,3 @@ ADD COLUMN IF NOT EXISTS "lastLogin" TIMESTAMP(3);
 -- AlterTable
 ALTER TABLE "tenant_settings" ADD COLUMN IF NOT EXISTS "clientCanViewAllTrainers" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS "clientCanViewAllBranches" BOOLEAN NOT NULL DEFAULT false;
-
