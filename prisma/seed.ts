@@ -125,97 +125,133 @@ async function main() {
     console.log('✅ Trainer2 user already exists:', trainer2.email);
   }
 
-  // Create trainer profiles
-  const trainerProfile1 = await prisma.trainer.create({
-    data: {
-      userId: trainer1.id,
-      qualification: '5th Dan Black Belt, Certified Instructor',
-      experience: 15,
-      specialization: 'Karate, Self-Defense',
-      salaryType: 'fixed',
-      salaryAmount: 3500,
-      tenantId: tenant.id
-    }
+  // Create trainer profiles (or use existing)
+  let trainerProfile1 = await prisma.trainer.findFirst({
+    where: { userId: trainer1.id, tenantId: tenant.id }
   });
+  if (!trainerProfile1) {
+    trainerProfile1 = await prisma.trainer.create({
+      data: {
+        userId: trainer1.id,
+        qualification: '5th Dan Black Belt, Certified Instructor',
+        experience: 15,
+        specialization: 'Karate, Self-Defense',
+        salaryType: 'fixed',
+        salaryAmount: 3500,
+        tenantId: tenant.id
+      }
+    });
+    console.log('✅ Created trainer1 profile');
+  } else {
+    console.log('✅ Trainer1 profile already exists');
+  }
 
-  const trainerProfile2 = await prisma.trainer.create({
-    data: {
-      userId: trainer2.id,
-      qualification: '3rd Dan Black Belt, Youth Specialist',
-      experience: 8,
-      specialization: 'Taekwondo, Youth Programs',
-      salaryType: 'percentage',
-      salaryAmount: 30,
-      tenantId: tenant.id
-    }
+  let trainerProfile2 = await prisma.trainer.findFirst({
+    where: { userId: trainer2.id, tenantId: tenant.id }
   });
+  if (!trainerProfile2) {
+    trainerProfile2 = await prisma.trainer.create({
+      data: {
+        userId: trainer2.id,
+        qualification: '3rd Dan Black Belt, Youth Specialist',
+        experience: 8,
+        specialization: 'Taekwondo, Youth Programs',
+        salaryType: 'percentage',
+        salaryAmount: 30,
+        tenantId: tenant.id
+      }
+    });
+    console.log('✅ Created trainer2 profile');
+  } else {
+    console.log('✅ Trainer2 profile already exists');
+  }
 
-  console.log('✅ Created trainer profiles');
-
-  // Create branches
-  const branch1 = await prisma.branch.create({
-    data: {
-      name: 'Main Dojo',
-      address: '123 Martial Arts Street, City, State 12345',
-      phone: '+1-555-0123',
-      email: 'main@dragonacademy.com',
-      description: 'Main training facility with full equipment',
-      tenantId: tenant.id
-    }
+  // Create branches (or use existing)
+  let branch1 = await prisma.branch.findFirst({
+    where: { name: 'Main Dojo', tenantId: tenant.id }
   });
-
-  const branch2 = await prisma.branch.create({
-    data: {
-      name: 'Westside Branch',
-      address: '456 West Street, City, State 12345',
-      phone: '+1-555-0127',
-      email: 'west@dragonacademy.com',
-      description: 'Smaller facility for specialized training',
-      tenantId: tenant.id
-    }
+  if (!branch1) {
+    branch1 = await prisma.branch.create({
+      data: {
+        name: 'Main Dojo',
+        address: '123 Martial Arts Street, City, State 12345',
+        phone: '+1-555-0123',
+        email: 'main@dragonacademy.com',
+        description: 'Main training facility with full equipment',
+        tenantId: tenant.id
+      }
+    });
+  }
+  let branch2 = await prisma.branch.findFirst({
+    where: { name: 'Westside Branch', tenantId: tenant.id }
   });
+  if (!branch2) {
+    branch2 = await prisma.branch.create({
+      data: {
+        name: 'Westside Branch',
+        address: '456 West Street, City, State 12345',
+        phone: '+1-555-0127',
+        email: 'west@dragonacademy.com',
+        description: 'Smaller facility for specialized training',
+        tenantId: tenant.id
+      }
+    });
+  }
+  console.log('✅ Branches ready');
 
-  console.log('✅ Created branches');
-
-  // Create groups
-  const group1 = await prisma.group.create({
-    data: {
-      name: 'Adult Karate - Beginners',
-      description: 'Karate classes for adult beginners',
-      maxMembers: 20,
-      ageMin: 18,
-      ageMax: 65,
-      branchId: branch1.id,
-      trainerId: trainerProfile1.id,
-      tenantId: tenant.id
-    }
+  // Create groups (or use existing)
+  let group1 = await prisma.group.findFirst({
+    where: { name: 'Adult Karate - Beginners', tenantId: tenant.id }
   });
-
-  const group2 = await prisma.group.create({
-    data: {
-      name: 'Youth Taekwondo - Intermediate',
-      description: 'Taekwondo classes for youth (ages 8-16)',
-      maxMembers: 15,
-      ageMin: 8,
-      ageMax: 16,
-      branchId: branch1.id,
-      trainerId: trainerProfile2.id,
-      tenantId: tenant.id
-    }
+  if (!group1) {
+    group1 = await prisma.group.create({
+      data: {
+        name: 'Adult Karate - Beginners',
+        description: 'Karate classes for adult beginners',
+        maxMembers: 20,
+        ageMin: 18,
+        ageMax: 65,
+        branchId: branch1.id,
+        trainerId: trainerProfile1.id,
+        tenantId: tenant.id
+      }
+    });
+  }
+  let group2 = await prisma.group.findFirst({
+    where: { name: 'Youth Taekwondo - Intermediate', tenantId: tenant.id }
   });
-
-  const group3 = await prisma.group.create({
-    data: {
-      name: 'Advanced Karate',
-      description: 'Advanced karate techniques and sparring',
-      maxMembers: 12,
-      ageMin: 16,
-      ageMax: 50,
-      branchId: branch2.id,
-      trainerId: trainerProfile1.id,
-      tenantId: tenant.id
-    }
+  if (!group2) {
+    group2 = await prisma.group.create({
+      data: {
+        name: 'Youth Taekwondo - Intermediate',
+        description: 'Taekwondo classes for youth (ages 8-16)',
+        maxMembers: 15,
+        ageMin: 8,
+        ageMax: 16,
+        branchId: branch1.id,
+        trainerId: trainerProfile2.id,
+        tenantId: tenant.id
+      }
+    });
+  }
+  let group3 = await prisma.group.findFirst({
+    where: { name: 'Advanced Karate', tenantId: tenant.id }
   });
+  if (!group3) {
+    group3 = await prisma.group.create({
+      data: {
+        name: 'Advanced Karate',
+        description: 'Advanced karate techniques and sparring',
+        maxMembers: 12,
+        ageMin: 16,
+        ageMax: 50,
+        branchId: branch2.id,
+        trainerId: trainerProfile1.id,
+        tenantId: tenant.id
+      }
+    });
+  }
+  console.log('✅ Groups ready');
 
   console.log('✅ Created groups');
 
