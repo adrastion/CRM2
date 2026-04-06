@@ -9,9 +9,6 @@ import {
 } from '@mui/material';
 import {
   ContactMail,
-  Phone,
-  LocationOn,
-  AccountBalance,
   Email,
   Business,
 } from '@mui/icons-material';

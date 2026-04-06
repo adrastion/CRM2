@@ -256,6 +256,7 @@ const Competitions: React.FC = () => {
     if (formData.startDate && formData.endDate && formData.trainerIds.length > 0 && editingCompetition) {
       checkTrainerConflicts(editingCompetition.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- checkTrainerConflicts when form dates/trainers change
   }, [formData.startDate, formData.endDate, formData.trainerIds, editingCompetition]);
 
   const handleCreateCompetition = async () => {

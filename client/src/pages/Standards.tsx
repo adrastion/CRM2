@@ -79,6 +79,7 @@ const Standards: React.FC = () => {
     if (openDialog || editDialog) {
       fetchGroups();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchGroups when dialogs open
   }, [openDialog, editDialog]);
 
   const fetchGroups = async () => {

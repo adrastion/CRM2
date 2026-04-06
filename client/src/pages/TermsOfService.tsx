@@ -4,7 +4,6 @@ import {
   Container,
   Typography,
   Paper,
-  Divider,
 } from '@mui/material';
 import {
   Description,

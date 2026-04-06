@@ -1,5 +1,15 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config();
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL не задан в .env (корень проекта).');
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 

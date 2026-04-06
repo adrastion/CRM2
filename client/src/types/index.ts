@@ -27,6 +27,32 @@ export interface AuthResponse {
   token: string;
 }
 
+/** Ответ POST /auth/unified-staff-login */
+export type UnifiedStaffLoginResponse =
+  | ({ accountType: 'TENANT_USER' } & AuthResponse)
+  | {
+      accountType: 'MARKETER';
+      marketer: { id: string; email: string; name: string; type: string; tenantId: string };
+      tenant: Tenant;
+      token: string;
+    }
+  | {
+      accountType: 'PROMO_CODE_ADMIN';
+      admin: { id: string; email: string; name: string; tenantId: string };
+      tenant: Tenant;
+      token: string;
+    }
+  | {
+      accountType: 'SUPER_ADMIN';
+      superAdmin: { id: string; email: string; firstName: string; lastName: string };
+      token: string;
+    }
+  | {
+      accountType: 'PLATFORM_STAFF';
+      staff: { id: string; email: string; firstName: string; lastName: string; role: string; mustChangePassword?: boolean };
+      token: string;
+    };
+
 // Client Types
 export interface Parent {
   id: string;

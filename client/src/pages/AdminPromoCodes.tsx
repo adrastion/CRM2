@@ -167,12 +167,14 @@ const AdminPromoCodes: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData on tab change
   }, [tabValue]);
 
   useEffect(() => {
     if (marketers.length === 0) {
       loadMarketers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadMarketers once on mount
   }, []);
 
   const handleCreatePromoCode = async () => {
@@ -422,7 +424,7 @@ const AdminPromoCodes: React.FC = () => {
             startIcon={<Logout />}
             onClick={() => {
               logout();
-              navigate('/promo-code-admin/login');
+              navigate('/login');
             }}
           >
             Выйти

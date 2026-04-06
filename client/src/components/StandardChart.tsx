@@ -75,7 +75,6 @@ const StandardChart: React.FC<StandardChartProps> = ({
   // Кастомный формат для tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
       return (
         <Paper sx={{ p: 1.5, boxShadow: 3 }}>
           <Typography variant="body2" fontWeight="bold" gutterBottom>

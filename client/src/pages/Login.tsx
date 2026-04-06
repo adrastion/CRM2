@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Container,
   Paper,
@@ -11,10 +11,59 @@ import {
   Link,
   Divider,
 } from '@mui/material';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { LoginForm } from '../types';
+import { Link as RouterLink } from 'react-router-dom';
+import { LoginForm, UnifiedStaffLoginResponse } from '../types';
+import { apiService } from '../services/api';
 import PublicFooter from '../components/PublicFooter';
+
+/** Перед записью новой сессии убираем все staff-токены, чтобы контексты не конфликтовали. */
+function clearAllNonClientAuthStorage(): void {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('tenant');
+  localStorage.removeItem('marketerToken');
+  localStorage.removeItem('marketer');
+  localStorage.removeItem('marketerTenant');
+  sessionStorage.removeItem('marketerLoggedOut');
+  localStorage.removeItem('promoCodeAdminToken');
+  localStorage.removeItem('promoCodeAdmin');
+  localStorage.removeItem('promoCodeAdminTenant');
+  localStorage.removeItem('superAdminToken');
+  localStorage.removeItem('superAdmin');
+  localStorage.removeItem('platformStaffToken');
+  localStorage.removeItem('platformStaff');
+}
+
+function applyUnifiedStaffLogin(data: UnifiedStaffLoginResponse): string {
+  clearAllNonClientAuthStorage();
+  switch (data.accountType) {
+    case 'TENANT_USER':
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('tenant', JSON.stringify(data.tenant));
+      return '/dashboard';
+    case 'MARKETER':
+      localStorage.setItem('marketerToken', data.token);
+      localStorage.setItem('marketer', JSON.stringify(data.marketer));
+      localStorage.setItem('marketerTenant', JSON.stringify(data.tenant));
+      return '/marketer/panel';
+    case 'PROMO_CODE_ADMIN':
+      localStorage.setItem('promoCodeAdminToken', data.token);
+      localStorage.setItem('promoCodeAdmin', JSON.stringify(data.admin));
+      localStorage.setItem('promoCodeAdminTenant', JSON.stringify(data.tenant));
+      return '/admin/promo-codes';
+    case 'SUPER_ADMIN':
+      localStorage.setItem('superAdminToken', data.token);
+      localStorage.setItem('superAdmin', JSON.stringify(data.superAdmin));
+      return '/admin/dashboard';
+    case 'PLATFORM_STAFF':
+      localStorage.setItem('platformStaffToken', data.token);
+      localStorage.setItem('platformStaff', JSON.stringify(data.staff));
+      return data.staff.mustChangePassword ? '/platform-staff/change-password' : '/platform-staff/desk';
+    default:
+      return '/dashboard';
+  }
+}
 
 const Login: React.FC = () => {
   const [formData, setFormData] = useState<LoginForm>({
@@ -54,9 +103,6 @@ const Login: React.FC = () => {
   const fieldErrorsRef = useRef<Record<string, string>>(getInitialRefValue());
   const isSubmittingRef = useRef<boolean>(false);
   const [forceUpdate, setForceUpdate] = useState(0); // Для принудительного обновления
-  
-  const { login } = useAuth();
-  const navigate = useNavigate();
   
   // НЕ синхронизируем ref с state автоматически - это очищает sessionStorage когда state пустой
   // Вместо этого обновляем ref и sessionStorage только когда устанавливаем ошибки
@@ -131,13 +177,15 @@ const Login: React.FC = () => {
     try {
       // Приводим email к нижнему регистру перед отправкой
       const normalizedEmail = formData.email.trim().toLowerCase();
-      await login(normalizedEmail, formData.password);
-      // Только при успешной авторизации переходим на dashboard
-      // Очищаем ошибки при успешной авторизации
+      const data = await apiService.unifiedStaffLogin({
+        email: normalizedEmail,
+        password: formData.password,
+      });
       setFieldErrors({});
       fieldErrorsRef.current = {};
       sessionStorage.removeItem('loginFieldErrors');
-      navigate('/dashboard');
+      const dest = applyUnifiedStaffLogin(data);
+      window.location.assign(dest);
     } catch (err: any) {
       // КРИТИЧЕСКИ ВАЖНО: предотвращаем любую перезагрузку или навигацию при ошибке
       console.log('Error caught, preventing navigation');
@@ -247,7 +295,8 @@ const Login: React.FC = () => {
       // Пароль можно очистить для безопасности, но email оставляем
       // setFormData(prev => ({ ...prev, password: '' }));
     } finally {
-      setIsLoading(false); // Всегда сбрасываем loading
+      setIsLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 

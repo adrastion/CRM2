@@ -154,7 +154,7 @@ sudo -u postgres psql
 
 ```sql
 -- Создать пользователя для приложения
-CREATE USER crm_user WITH PASSWORD 'ВАШ_БЕЗОПАСНЫЙ_ПАРОЛЬ';
+CREATE USER crm_user WITH PASSWORD '0408';
 
 -- Создать базу данных
 CREATE DATABASE martial_arts_crm OWNER crm_user;
@@ -333,7 +333,7 @@ sudo nano /etc/nginx/sites-available/martial-arts-crm
 server {
     listen 80;
     listen [::]:80;
-    server_name yourdomain.com www.yourdomain.com;
+    server_name profsportcrm.ru www.profsportcrm.ru;
 
     # Перенаправление на HTTPS (после настройки SSL)
     return 301 https://$server_name$request_uri;
@@ -538,7 +538,7 @@ sudo apt install -y certbot python3-certbot-nginx
 
 ```bash
 # Получить сертификат для вашего домена
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+sudo certbot --nginx -d profsportcrm.ru -d www.profsportcrm.ru
 
 # Следовать инструкциям на экране:
 # - Ввести email для уведомлений

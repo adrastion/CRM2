@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import {
   Box,
@@ -30,14 +30,14 @@ import {
   InputAdornment,
   Snackbar,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, Search, FilterList, Calculate, CalendarMonth } from '@mui/icons-material';
+import { Add, Edit, Delete, Search, FilterList, Calculate, CalendarMonth } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { Payment, Client, Branch, Group } from '../types';
+import { Payment, Client, Branch } from '../types';
 import { validatePaymentForm } from '../utils/validation';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -58,7 +58,7 @@ const Payments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
+  const [, setGroups] = useState<any[]>([]);
   const [memberships, setMemberships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +177,7 @@ const Payments: React.FC = () => {
 
   const handleSearch = useCallback(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData is stable
   }, []);
 
   const handleCreatePayment = async () => {

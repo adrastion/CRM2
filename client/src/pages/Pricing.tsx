@@ -21,7 +21,6 @@ import {
   DialogActions,
   TextField,
   InputAdornment,
-  IconButton,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -34,12 +33,12 @@ import {
   Support,
   TrendingUp,
   LocalOffer,
-  Close,
 } from '@mui/icons-material';
 import PublicFooter from '../components/PublicFooter';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- type reserved for plans display
 interface PricingPlan {
   name: string;
   price: string;
@@ -167,7 +166,7 @@ const Pricing: React.FC = () => {
     plan: null,
   });
   const [promoCode, setPromoCode] = useState<string>('');
-  const [appliedPromoCode, setAppliedPromoCode] = useState<PromoCodeData | null>(null);
+  const [, setAppliedPromoCode] = useState<PromoCodeData | null>(null);
   const [promoCodeError, setPromoCodeError] = useState<string | null>(null);
   const [validatingPromoCode, setValidatingPromoCode] = useState(false);
   const [promoCodeByPlan, setPromoCodeByPlan] = useState<Record<string, PromoCodeData>>({});

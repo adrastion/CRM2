@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   register,
   login,
+  unifiedStaffLogin,
   marketerLogin,
   promoCodeAdminLogin,
   createUser,
@@ -33,6 +34,7 @@ const router = Router();
 // Public routes
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
+router.post('/unified-staff-login', validateLogin, unifiedStaffLogin);
 router.post('/marketer/login', validateMarketerLogin, marketerLogin);
 router.post('/promo-code-admin/login', validatePromoCodeAdminLogin, promoCodeAdminLogin);
 router.post('/request-password-reset', validateResetPassword, requestPasswordReset);

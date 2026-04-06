@@ -51,10 +51,6 @@ const SubscriptionSuccess: React.FC = () => {
         }
       } else if (data.subscription?.status !== 'active') {
         // Если нет платежей и подписка не активна, возможно платеж не был завершен
-        // Проверяем, есть ли недавние попытки оплаты (в течение последних 10 минут)
-        const now = new Date();
-        const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
-        
         // Если подписка не активна и мы на странице успеха, вероятно платеж не был завершен
         if (data.subscription?.status === 'expired' || data.subscription?.status === 'cancelled') {
           setError('Что-то пошло не так. Платеж не был завершен. Пожалуйста, попробуйте еще раз.');

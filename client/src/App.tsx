@@ -6,10 +6,12 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthContext';
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
+import { PlatformStaffAuthProvider, usePlatformStaffAuth } from './contexts/PlatformStaffAuthContext';
 import { TelegramBannerProvider } from './contexts/TelegramBannerContext';
 import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
+import SupportFAB from './components/SupportFAB';
 
 // Lazy load pages for better performance
 const Login = lazy(() => import('./pages/Login'));
@@ -35,11 +37,11 @@ const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess'));
 const AdminPromoCodes = lazy(() => import('./pages/AdminPromoCodes'));
 const MarketerPanel = lazy(() => import('./pages/MarketerPanel'));
-const MarketerLogin = lazy(() => import('./pages/MarketerLogin'));
-const PromoCodeAdminLogin = lazy(() => import('./pages/PromoCodeAdminLogin'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
+const SuperAdminSupportHub = lazy(() => import('./pages/SuperAdminSupportHub'));
+const PlatformStaffDesk = lazy(() => import('./pages/PlatformStaffDesk'));
+const PlatformStaffChangePassword = lazy(() => import('./pages/PlatformStaffChangePassword'));
 const ClientRegister = lazy(() => import('./pages/ClientRegister'));
 const ClientLogin = lazy(() => import('./pages/ClientLogin'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
@@ -92,7 +94,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     const marketerToken = localStorage.getItem('marketerToken');
     const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
     const superAdminToken = localStorage.getItem('superAdminToken');
-    if (marketerToken || promoCodeAdminToken || superAdminToken) {
+    const platformStaffToken = localStorage.getItem('platformStaffToken');
+    if (marketerToken || promoCodeAdminToken || superAdminToken || platformStaffToken) {
       // User is trying to access regular routes but has other tokens
       // Clear it to prevent conflicts
       if (marketerToken) {
@@ -109,6 +112,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       if (superAdminToken) {
         localStorage.removeItem('superAdminToken');
         localStorage.removeItem('superAdmin');
+      }
+      if (platformStaffToken) {
+        localStorage.removeItem('platformStaffToken');
+        localStorage.removeItem('platformStaff');
       }
     }
   }, []);
@@ -129,7 +136,8 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const marketerToken = localStorage.getItem('marketerToken');
     const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
     const superAdminToken = localStorage.getItem('superAdminToken');
-    if (marketerToken || promoCodeAdminToken || superAdminToken) {
+    const platformStaffToken = localStorage.getItem('platformStaffToken');
+    if (marketerToken || promoCodeAdminToken || superAdminToken || platformStaffToken) {
       // User is trying to access regular login but has other tokens
       // Clear it to prevent conflicts
       if (marketerToken) {
@@ -146,6 +154,10 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       if (superAdminToken) {
         localStorage.removeItem('superAdminToken');
         localStorage.removeItem('superAdmin');
+      }
+      if (platformStaffToken) {
+        localStorage.removeItem('platformStaffToken');
+        localStorage.removeItem('platformStaff');
       }
     }
   }, []);
@@ -165,7 +177,7 @@ const ProtectedMarketerRoute: React.FC<{ children: React.ReactNode }> = ({ child
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/marketer/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 // Protected Promo Code Admin Route Component
@@ -176,36 +188,7 @@ const ProtectedPromoCodeAdminRoute: React.FC<{ children: React.ReactNode }> = ({
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/promo-code-admin/login" replace />;
-};
-
-// Public Marketer Login Route (redirect if already authenticated as marketer)
-const MarketerLoginRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useMarketerAuth();
-
-  if (isLoading) {
-    return <PageLoader />;
-  }
-
-  // Check if user explicitly logged out
-  const wasLoggedOut = sessionStorage.getItem('marketerLoggedOut');
-  if (wasLoggedOut === 'true') {
-    // Allow access to login page even if token exists
-    return <>{children}</>;
-  }
-
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/marketer/panel" replace />;
-};
-
-// Public Promo Code Admin Login Route (redirect if already authenticated)
-const PromoCodeAdminLoginRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = usePromoCodeAdminAuth();
-
-  if (isLoading) {
-    return <PageLoader />;
-  }
-
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/admin/promo-codes" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 // Protected Super Admin Route Component
@@ -216,18 +199,13 @@ const ProtectedSuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ chi
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/super-admin/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
-// Public Super Admin Login Route (redirect if already authenticated)
-const SuperAdminLoginRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useSuperAdminAuth();
-
-  if (isLoading) {
-    return <PageLoader />;
-  }
-
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/admin/dashboard" replace />;
+const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = usePlatformStaffAuth();
+  if (isLoading) return <PageLoader />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 // Main App Component
@@ -317,6 +295,7 @@ const AppContent: React.FC = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
     <Router>
+      <SupportFAB />
       {!onboardingLoading && user?.role === 'OWNER' && (
         <InteractiveOnboarding
           open={onboardingOpen}
@@ -534,14 +513,7 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/super-admin/login"
-          element={
-            <SuperAdminLoginRoute>
-              <SuperAdminLogin />
-            </SuperAdminLoginRoute>
-          }
-        />
+        <Route path="/super-admin/login" element={<Navigate to="/login" replace />} />
         <Route
           path="/admin/dashboard"
           element={
@@ -553,21 +525,34 @@ const AppContent: React.FC = () => {
           }
         />
         <Route
-          path="/marketer/login"
+          path="/admin/support-hub"
           element={
-            <MarketerLoginRoute>
-              <MarketerLogin />
-            </MarketerLoginRoute>
+            <ProtectedSuperAdminRoute>
+              <AppLayout>
+                <SuperAdminSupportHub />
+              </AppLayout>
+            </ProtectedSuperAdminRoute>
+          }
+        />
+        <Route path="/platform-staff/login" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/platform-staff/desk"
+          element={
+            <ProtectedPlatformStaffRoute>
+              <PlatformStaffDesk />
+            </ProtectedPlatformStaffRoute>
           }
         />
         <Route
-          path="/promo-code-admin/login"
+          path="/platform-staff/change-password"
           element={
-            <PromoCodeAdminLoginRoute>
-              <PromoCodeAdminLogin />
-            </PromoCodeAdminLoginRoute>
+            <ProtectedPlatformStaffRoute>
+              <PlatformStaffChangePassword />
+            </ProtectedPlatformStaffRoute>
           }
         />
+        <Route path="/marketer/login" element={<Navigate to="/login" replace />} />
+        <Route path="/promo-code-admin/login" element={<Navigate to="/login" replace />} />
         <Route
           path="/admin/promo-codes"
           element={
@@ -616,9 +601,11 @@ const App: React.FC = () => {
         <MarketerAuthProvider>
           <PromoCodeAdminAuthProvider>
           <SuperAdminAuthProvider>
+            <PlatformStaffAuthProvider>
             <TelegramBannerProvider>
               <AppContent />
             </TelegramBannerProvider>
+            </PlatformStaffAuthProvider>
           </SuperAdminAuthProvider>
           </PromoCodeAdminAuthProvider>
         </MarketerAuthProvider>

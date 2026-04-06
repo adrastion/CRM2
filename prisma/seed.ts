@@ -1,5 +1,22 @@
-import { PrismaClient } from '@prisma/client';
+import path from 'path';
+import dotenv from 'dotenv';
+import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+
+// Prisma CLI не подгружает .env автоматически для ts-node seed
+const rootEnv = path.resolve(__dirname, '..', '.env');
+dotenv.config({ path: rootEnv });
+dotenv.config();
+
+if (!process.env.DATABASE_URL) {
+  console.error(
+    '\n❌ DATABASE_URL не задан. Создайте файл `.env` в корне проекта (рядом с package.json).\n' +
+      '   PowerShell:  Copy-Item env.example .env\n' +
+      '   Укажите строку подключения, например:\n' +
+      '   DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/martial_arts_crm?schema=public"\n'
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -610,6 +627,55 @@ async function main() {
     console.log('✅ Media partner already exists:', mediaPartner.email);
   }
 
+  // Служебный тенант для внутренних тикетов (чат дизайнер ↔ супер-админы), не для клиентов
+  await prisma.tenant.upsert({
+    where: { subdomain: '__platform_internal__' },
+    create: {
+      name: 'Платформа (служебный тенант)',
+      subdomain: '__platform_internal__',
+      email: 'platform-internal-system@crm.local',
+    },
+    update: {},
+  });
+  console.log('✅ Platform internal tenant ready');
+
+  // Платформенные роли (таблица появляется после миграции 20251210120000_platform_support_hub)
+  let platformStaffReady = false;
+  try {
+    const staffPassword = await bcrypt.hash('password123', 12);
+    const platformStaffSeeds = [
+      { email: 'support@platform.local', role: 'SUPPORT', firstName: 'Support', lastName: 'Agent' },
+      { email: 'designer@platform.local', role: 'DESIGNER', firstName: 'Design', lastName: 'Pro' },
+      { email: 'security@platform.local', role: 'SECURITY', firstName: 'Security', lastName: 'Officer' },
+    ];
+    for (const s of platformStaffSeeds) {
+      const existing = await prisma.platformStaffUser.findUnique({ where: { email: s.email } });
+      if (!existing) {
+        await prisma.platformStaffUser.create({
+          data: {
+            email: s.email,
+            password: staffPassword,
+            firstName: s.firstName,
+            lastName: s.lastName,
+            role: s.role,
+          },
+        });
+        console.log('✅ Created platform staff:', s.email, s.role);
+      }
+    }
+    platformStaffReady = true;
+  } catch (e: unknown) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2021') {
+      console.warn(
+        '⚠️  Пропуск сида platform staff: в БД нет таблицы platform_staff_users.\n' +
+          '   Примените миграции: npx prisma migrate deploy\n' +
+          '   Затем снова: npx prisma db seed'
+      );
+    } else {
+      throw e;
+    }
+  }
+
   console.log('🎉 Database seeding completed successfully!');
   console.log('\n📋 Test Accounts:');
   console.log('Owner: owner@dragonacademy.com / password123');
@@ -619,11 +685,15 @@ async function main() {
   console.log('Promo Code Admin: promo-admin@dragonacademy.com / password123');
   console.log('Marketer: marketer@dragonacademy.com / password123');
   console.log('Media Partner: media-partner@dragonacademy.com / password123');
+  if (platformStaffReady) {
+    console.log('Platform SUPPORT: support@platform.local / password123');
+    console.log('Platform DESIGNER: designer@platform.local / password123');
+    console.log('Platform SECURITY: security@platform.local / password123');
+  }
   console.log('\n🏢 Tenant: dragon-academy');
   console.log('\n🔗 Login URLs:');
   console.log('Admin Panel: http://localhost:3000/login');
-  console.log('Marketer Panel: http://localhost:3000/marketer/login');
-  console.log('Promo Code Admin: http://localhost:3000/promo-code-admin/login');
+  console.log('Staff login (marketer, promo admin, etc.): http://localhost:3000/login');
 }
 
 main()

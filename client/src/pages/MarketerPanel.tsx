@@ -43,6 +43,7 @@ const MarketerPanel: React.FC = () => {
       setError('Маркетолог не найден. Обратитесь к администратору.');
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchMarketerData when marketerId changes
   }, [marketerId]);
 
   const fetchMarketerData = async () => {
@@ -113,7 +114,7 @@ const MarketerPanel: React.FC = () => {
               logout();
               // Use setTimeout to ensure state is updated before navigation
               setTimeout(() => {
-                navigate('/marketer/login', { replace: true });
+                navigate('/login', { replace: true });
               }, 0);
             }}
           >

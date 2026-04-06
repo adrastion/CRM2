@@ -28,6 +28,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Edit } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import ClientSupportFAB from '../components/ClientSupportFAB';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -191,6 +192,7 @@ const ClientDashboard: React.FC = () => {
   const tenantSubscription = clientData.tenant?.subscription;
 
   return (
+    <>
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4">
@@ -564,6 +566,8 @@ const ClientDashboard: React.FC = () => {
         </DialogActions>
       </Dialog>
     </Container>
+    <ClientSupportFAB />
+    </>
   );
 };
 

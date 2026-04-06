@@ -5,6 +5,9 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validate, validateQuery } from '../middleware/validation';
 import Joi from 'joi';
 
+/** Без проверки списка TLD — иначе Joi отклоняет служебные адреса (*.local и т.п.). */
+const loginEmail = Joi.string().email({ tlds: { allow: false } }).required();
+
 // Validation schemas
 const registerSchema = Joi.object({
   tenantName: Joi.string().min(2).max(100).required(),
@@ -16,17 +19,17 @@ const registerSchema = Joi.object({
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: loginEmail,
   password: Joi.string().required()
 });
 
 const marketerLoginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: loginEmail,
   password: Joi.string().required()
 });
 
 const promoCodeAdminLoginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: loginEmail,
   password: Joi.string().required()
 });
 
@@ -96,6 +99,20 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
     message: 'Login successful'
   });
   return;
+});
+
+/**
+ * Единый вход для всех ролей кроме клиентов (форма /login)
+ */
+export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { email, password } = req.body;
+  const result = await AuthService.unifiedStaffLogin(email, password);
+
+  res.json({
+    success: true,
+    data: result,
+    message: 'Login successful',
+  });
 });
 
 /**

@@ -16,12 +16,10 @@ import {
   Alert,
   Chip,
   Button,
-  TextField,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 
@@ -34,6 +32,7 @@ const AllTrainersEarnings: React.FC = () => {
 
   useEffect(() => {
     fetchEarnings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEarnings is stable, startDate/endDate trigger refetch
   }, [startDate, endDate]);
 
   const fetchEarnings = async () => {

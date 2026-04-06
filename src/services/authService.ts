@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { PrismaClient, User } from '@prisma/client';
 import { JWTPayload, CreateClientData } from '../types';
 import { emailService } from './emailService';
@@ -344,6 +344,123 @@ export class AuthService {
       },
       token
     };
+  }
+
+  /**
+   * Единый вход для всех ролей кроме клиентов (владелец/админ/тренер, маркетолог, админ промокодов, супер-админ, персонал платформы).
+   */
+  static async unifiedStaffLogin(email: string, password: string) {
+    try {
+      const result = await this.login(email, password);
+      return { accountType: 'TENANT_USER' as const, ...result };
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : '';
+      if (m !== 'Аккаунт не существует') throw e;
+    }
+
+    try {
+      const result = await this.marketerLogin(email, password);
+      return { accountType: 'MARKETER' as const, ...result };
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : '';
+      if (m !== 'Аккаунт не существует') throw e;
+    }
+
+    try {
+      const result = await this.promoCodeAdminLogin(email, password);
+      return { accountType: 'PROMO_CODE_ADMIN' as const, ...result };
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : '';
+      if (m !== 'Аккаунт не существует') throw e;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const superAdmin = await prisma.superAdmin.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (superAdmin) {
+      if (!superAdmin.isActive) {
+        throw new Error('Account is deactivated');
+      }
+      const isPasswordValid = await bcrypt.compare(password, superAdmin.password);
+      if (!isPasswordValid) {
+        throw new Error('Неверный пароль');
+      }
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET is not configured');
+      }
+      const token = jwt.sign(
+        {
+          userId: superAdmin.id,
+          email: superAdmin.email,
+          type: 'SUPER_ADMIN',
+        },
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as SignOptions
+      );
+      await prisma.superAdmin.update({
+        where: { id: superAdmin.id },
+        data: { lastLogin: new Date() },
+      });
+      return {
+        accountType: 'SUPER_ADMIN' as const,
+        superAdmin: {
+          id: superAdmin.id,
+          email: superAdmin.email,
+          firstName: superAdmin.firstName,
+          lastName: superAdmin.lastName,
+        },
+        token,
+      };
+    }
+
+    const staff = await prisma.platformStaffUser.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (staff) {
+      if (!staff.isActive) {
+        throw new Error('Account is deactivated');
+      }
+      const ok = await bcrypt.compare(password, staff.password);
+      if (!ok) {
+        throw new Error('Неверный пароль');
+      }
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET is not configured');
+      }
+      const token = jwt.sign(
+        {
+          userId: staff.id,
+          email: staff.email,
+          type: 'PLATFORM_STAFF',
+          role: staff.role,
+        },
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as SignOptions
+      );
+      await prisma.platformStaffUser.update({
+        where: { id: staff.id },
+        data: { lastLogin: new Date() },
+      });
+      return {
+        accountType: 'PLATFORM_STAFF' as const,
+        staff: {
+          id: staff.id,
+          email: staff.email,
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          role: staff.role,
+          mustChangePassword: (staff as any).mustChangePassword ?? false,
+        },
+        token,
+      };
+    }
+
+    throw new Error('Аккаунт не существует');
   }
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { validateClientForm, validateField, hasFormErrors, ClientFormData, ValidationErrors } from '../utils/clientValidation';
 import {
@@ -281,9 +281,11 @@ const Clients: React.FC = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter used for file input
   const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
   const [birthCertificatePreview, setBirthCertificatePreview] = useState<string | null>(null);
   const birthCertificateInputRef = useRef<HTMLInputElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter used for file input
   const [medicalCertificateFile, setMedicalCertificateFile] = useState<File | null>(null);
   const [medicalCertificatePreview, setMedicalCertificatePreview] = useState<string | null>(null);
   const medicalCertificateInputRef = useRef<HTMLInputElement>(null);
@@ -820,6 +822,7 @@ const Clients: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for validation button
   const handleValidateForm = (e?: React.MouseEvent<HTMLButtonElement>) => {
     // Prevent form submission and event bubbling
     if (e) {

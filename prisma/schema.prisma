@@ -46,6 +46,7 @@ model Tenant {
   trainings               Training[]
   transactions            Transaction[]
   users                   User[]
+  supportTickets          SupportTicket[]
 
   @@map("tenants")
 }
@@ -178,6 +179,7 @@ model Client {
   promoCodeUsages          PromoCodeUsage[]
   referralClicks           ReferralClick[]
   transactions             Transaction[]
+  supportTickets           SupportTicket[] @relation("ClientSupportTickets")
 
   @@index([tenantId, isActive])
   @@index([tenantId, firstName, lastName])
@@ -209,6 +211,7 @@ model Parent {
   lastLogin                DateTime? // Последний вход
   client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supportTickets   SupportTicket[] @relation("ParentSupportTickets")
 
   @@map("parents")
 }
@@ -785,6 +788,7 @@ model SuperAdmin {
   transactions     AdminTransaction[]
   auditLogs        AdminAuditLog[]
   dashboardPresets DashboardPreset[]
+  supportMessages  SupportTicketMessage[]
 
   @@map("super_admins")
 }
@@ -922,4 +926,102 @@ model CompetitionAttendance {
   tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("competition_attendances")
+}
+
+// --- Платформа: техподдержка, дизайнеры, служба безопасности, записи звонков ---
+
+model PlatformStaffUser {
+  id               String                 @id @default(cuid())
+  email            String                 @unique
+  password         String
+  firstName        String
+  lastName         String
+  role             String // SUPPORT | DESIGNER | SECURITY
+  isActive         Boolean                @default(true)
+  mustChangePassword Boolean              @default(true)
+  passwordChangedAt DateTime?
+  lastLogin        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  assignedTickets  SupportTicket[]        @relation("TicketAssignedStaff")
+  messages         SupportTicketMessage[]
+  callRecordings   DesignerCallRecording[]
+
+  @@map("platform_staff_users")
+}
+
+model SupportTicket {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  channel         String // SUPPORT | DESIGNER (клиенты) | DESIGNER_SUPERADMIN (дизайнер ↔ супер-админы)
+  status          String                  @default("OPEN") // OPEN | WAITING | ASSIGNED | CLOSED
+  clientId        String?
+  parentId        String?
+  assignedStaffId String?
+  subject         String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  closedAt        DateTime?
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          Client?                 @relation("ClientSupportTickets", fields: [clientId], references: [id], onDelete: Cascade)
+  parent          Parent?                 @relation("ParentSupportTickets", fields: [parentId], references: [id], onDelete: Cascade)
+  assignedStaff   PlatformStaffUser?      @relation("TicketAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  messages        SupportTicketMessage[]
+  callRecordings  DesignerCallRecording[]
+
+  @@index([tenantId, channel, status])
+  @@index([channel, status])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id                   String             @id @default(cuid())
+  ticketId             String
+  authorType           String // client | parent | platform_staff | super_admin
+  body                 String
+  authorClientId       String?
+  authorParentId       String?
+  authorStaffId        String?
+  authorSuperAdminId   String?
+  createdAt            DateTime           @default(now())
+  ticket               SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorStaff          PlatformStaffUser? @relation(fields: [authorStaffId], references: [id], onDelete: SetNull)
+  authorSuperAdmin     SuperAdmin?        @relation(fields: [authorSuperAdminId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
+}
+
+model SupportKnowledgeArticle {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  category  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("support_knowledge_articles")
+}
+
+/// Записи видеозвонков дизайнер–клиент; хранятся 14 суток (expiresAt), затем удаляются кроном
+model DesignerCallRecording {
+  id                       String             @id @default(cuid())
+  ticketId                 String
+  storagePath              String
+  mimeType                 String
+  durationSec              Int?
+  startedAt                DateTime
+  endedAt                  DateTime?
+  expiresAt                DateTime
+  recordedByStaffId        String?
+  uploadedByRequesterKind  String? // TENANT_USER | MARKETER | PROMO_CODE_ADMIN
+  uploadedByRequesterId    String?
+  ticket                   SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  recordedBy               PlatformStaffUser? @relation(fields: [recordedByStaffId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([ticketId])
+  @@map("designer_call_recordings")
 }

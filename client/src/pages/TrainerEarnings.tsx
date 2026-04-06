@@ -15,12 +15,7 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  TextField,
   Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -40,6 +35,7 @@ const TrainerEarnings: React.FC = () => {
 
   useEffect(() => {
     fetchEarnings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEarnings refetch on date change
   }, [startDate, endDate]);
 
   const fetchEarnings = async () => {

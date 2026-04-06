@@ -1,6 +1,19 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as readline from 'readline';
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config();
+
+if (!process.env.DATABASE_URL) {
+  console.error(
+    '\n❌ DATABASE_URL не задан. Создайте `.env` в корне проекта (рядом с package.json), например:\n' +
+      '   DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/martial_arts_crm?schema=public"\n'
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 

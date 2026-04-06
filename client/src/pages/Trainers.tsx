@@ -42,7 +42,6 @@ import { useAuth } from '../contexts/AuthContext';
 const Trainers: React.FC = () => {
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
-  const isAdmin = user?.role === 'ADMIN';
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);

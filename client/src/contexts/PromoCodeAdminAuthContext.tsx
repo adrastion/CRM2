@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, ReactNode, useReducer } from 'react';
 import { apiService } from '../services/api';
 
 interface PromoCodeAdmin {

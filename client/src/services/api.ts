@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { ApiResponse, AuthResponse, LoginForm, RegisterForm, MarketerStatsSummary } from '../types';
+import { ApiResponse, AuthResponse, LoginForm, RegisterForm, MarketerStatsSummary, UnifiedStaffLoginResponse } from '../types';
 import { apiCache, generateCacheKey } from '../utils/apiCache';
 
 class ApiService {
@@ -19,6 +19,7 @@ class ApiService {
       (config) => {
         // Check for super admin token first (for admin dashboard routes)
         const superAdminToken = localStorage.getItem('superAdminToken');
+        const platformStaffToken = localStorage.getItem('platformStaffToken');
         const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
         const marketerToken = localStorage.getItem('marketerToken');
         const clientToken = localStorage.getItem('clientToken');
@@ -26,6 +27,8 @@ class ApiService {
         
         if (superAdminToken) {
           config.headers.Authorization = `Bearer ${superAdminToken}`;
+        } else if (platformStaffToken && (config.url?.includes('/platform-staff/') || config.url?.includes('/platform-staff/auth/'))) {
+          config.headers.Authorization = `Bearer ${platformStaffToken}`;
         } else if (promoCodeAdminToken) {
           config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
         } else if (marketerToken) {
@@ -59,9 +62,11 @@ class ApiService {
           
           // Don't redirect on login endpoints - let them handle the error
           const isLoginEndpoint = url.includes('/auth/login') || 
+                                 url.includes('/auth/unified-staff-login') ||
                                  url.includes('/auth/marketer/login') ||
                                  url.includes('/auth/promo-code-admin/login') ||
                                  url.includes('/auth/super-admin/login') ||
+                                 url.includes('/platform-staff/auth/login') ||
                                  url.includes('/client-auth/login') ||
                                  url.includes('/client-auth/register');
           
@@ -87,17 +92,21 @@ class ApiService {
           if (isSuperAdminRoute) {
             localStorage.removeItem('superAdminToken');
             localStorage.removeItem('superAdmin');
-            window.location.href = '/super-admin/login';
+            window.location.href = '/login';
           } else if (isMarketerRoute) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
-            window.location.href = '/marketer/login';
+            window.location.href = '/login';
           } else if (isPromoCodeAdminRoute) {
             localStorage.removeItem('promoCodeAdminToken');
             localStorage.removeItem('promoCodeAdmin');
             localStorage.removeItem('promoCodeAdminTenant');
-            window.location.href = '/promo-code-admin/login';
+            window.location.href = '/login';
+          } else if (url.includes('/platform-staff/')) {
+            localStorage.removeItem('platformStaffToken');
+            localStorage.removeItem('platformStaff');
+            window.location.href = '/login';
           } else if (url.includes('/client-auth/')) {
             localStorage.removeItem('clientToken');
             localStorage.removeItem('client');
@@ -118,6 +127,14 @@ class ApiService {
   // Auth endpoints
   async login(credentials: LoginForm): Promise<AuthResponse> {
     const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/login', credentials);
+    return response.data.data!;
+  }
+
+  async unifiedStaffLogin(credentials: LoginForm): Promise<UnifiedStaffLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedStaffLoginResponse>>(
+      '/auth/unified-staff-login',
+      credentials
+    );
     return response.data.data!;
   }
 
@@ -1346,6 +1363,137 @@ class ApiService {
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     const response = await this.api.get<ApiResponse>('/client-auth/trainings', { params });
+    return response.data.data;
+  }
+
+  // Клиент: техподдержка / дизайн
+  async clientCreateSupportTicket(body: { channel: 'SUPPORT' | 'DESIGNER'; subject?: string; message: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/support/tickets', body);
+    return response.data.data;
+  }
+
+  async clientListSupportTickets(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/client-auth/support/tickets');
+    return response.data.data;
+  }
+
+  async clientGetSupportTicketMessages(ticketId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/client-auth/support/tickets/${ticketId}/messages`);
+    return response.data.data;
+  }
+
+  async clientPostSupportMessage(ticketId: string, message: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/client-auth/support/tickets/${ticketId}/messages`, { message });
+    return response.data.data;
+  }
+
+  // Non-client support (tenant users / marketers / promo admins)
+  async requesterCreateSupportTicket(body: {
+    channel?: 'SUPPORT' | 'DESIGNER';
+    subject?: string;
+    message: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/support/tickets', body);
+    return response.data.data;
+  }
+
+  async requesterListSupportTickets(params?: { channel?: 'SUPPORT' | 'DESIGNER' }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/support/tickets', { params });
+    return response.data.data;
+  }
+
+  async requesterGetSupportTicketMessages(ticketId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/support/tickets/${ticketId}/messages`);
+    return response.data.data;
+  }
+
+  async requesterPostSupportMessage(ticketId: string, message: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/support/tickets/${ticketId}/messages`, { message });
+    return response.data.data;
+  }
+
+  async requesterUploadDesignerRecording(ticketId: string, formData: FormData): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/support/tickets/${ticketId}/recordings`, formData);
+    return response.data.data;
+  }
+
+  async platformStaffLogin(email: string, password: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform-staff/auth/login', { email, password });
+    return response.data.data;
+  }
+
+  async platformStaffChangePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.api.post<ApiResponse>('/platform-staff/auth/change-password', { currentPassword, newPassword });
+  }
+
+  async platformStaffListTickets(params?: { status?: string; channel?: string }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/platform-staff/tickets', { params });
+    return response.data.data;
+  }
+
+  async platformStaffClaimTicket(ticketId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/platform-staff/tickets/${ticketId}/claim`, {});
+    return response.data.data;
+  }
+
+  async platformStaffGetMessages(ticketId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/platform-staff/tickets/${ticketId}/messages`);
+    return response.data.data;
+  }
+
+  async platformStaffPostMessage(ticketId: string, message: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/platform-staff/tickets/${ticketId}/messages`, { message });
+    return response.data.data;
+  }
+
+  async platformStaffListKnowledge(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/platform-staff/knowledge');
+    return response.data.data;
+  }
+
+  async platformStaffUploadRecording(formData: FormData): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform-staff/recordings', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async superAdminListSupportTickets(params?: { channel?: string; tenantId?: string }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/tickets', { params });
+    return response.data.data;
+  }
+
+  async superAdminGetSupportTicketDetail(ticketId: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/super-admin/support/tickets/${ticketId}`);
+    return response.data.data;
+  }
+
+  async superAdminPostSupportMessage(ticketId: string, message: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/super-admin/support/tickets/${ticketId}/messages`, { message });
+    return response.data.data;
+  }
+
+  async superAdminListDesignerRecordings(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/recordings');
+    return response.data.data;
+  }
+
+  async superAdminDeleteDesignerRecording(id: string): Promise<void> {
+    await this.api.delete(`/super-admin/support/recordings/${id}`);
+  }
+
+  async superAdminListSupportKnowledge(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/knowledge');
+    return response.data.data;
+  }
+
+  async superAdminCreateSupportKnowledge(payload: { title: string; body: string; category?: string; sortOrder?: number }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/super-admin/support/knowledge', payload);
+    return response.data.data;
+  }
+
+  async superAdminCreatePlatformStaffUser(payload: { email: string; role: 'SUPPORT' | 'DESIGNER' | 'SECURITY'; firstName: string; lastName: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/super-admin/support/platform-staff/users', payload);
     return response.data.data;
   }
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -31,8 +32,6 @@ import {
   FormControl,
   InputLabel,
   Divider,
-  Checkbox,
-  FormControlLabel,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -47,7 +46,6 @@ import {
   Edit,
   Delete,
   GetApp,
-  Search,
   Assessment,
   Security,
   AttachMoney,
@@ -55,7 +53,6 @@ import {
   DragIndicator,
   Visibility,
   VisibilityOff,
-  Save,
   Bookmark,
 } from '@mui/icons-material';
 import {
@@ -95,7 +92,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+
+type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
 interface DashboardData {
   tenants: {
@@ -227,6 +225,14 @@ const AdminDashboard: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsDialog, setSettingsDialog] = useState(false);
+  const [staffDialog, setStaffDialog] = useState(false);
+  const [newStaff, setNewStaff] = useState<{ email: string; role: PlatformStaffRole; firstName: string; lastName: string }>({
+    email: '',
+    role: 'SUPPORT',
+    firstName: '',
+    lastName: '',
+  });
+  const [oneTimePassword, setOneTimePassword] = useState<string | null>(null);
   const [reservePercentage, setReservePercentage] = useState<string>('');
   const [reserveAmount, setReserveAmount] = useState<string>('');
   const [savingSettings, setSavingSettings] = useState(false);
@@ -271,7 +277,7 @@ const AdminDashboard: React.FC = () => {
   const [presetDialog, setPresetDialog] = useState(false);
   const [presetName, setPresetName] = useState<string>('');
   const [presetIsDefault, setPresetIsDefault] = useState<boolean>(false);
-  const [presetsLoading, setPresetsLoading] = useState(false);
+  const [, setPresetsLoading] = useState(false);
   
   // Датчики для drag & drop
   const sensors = useSensors(
@@ -312,8 +318,10 @@ const AdminDashboard: React.FC = () => {
   // Логи аудита
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
+  /* eslint-disable @typescript-eslint/no-unused-vars -- offset/total reserved for audit log pagination */
   const [auditLogsOffset, setAuditLogsOffset] = useState(0);
   const [auditLogsTotal, setAuditLogsTotal] = useState(0);
+  /* eslint-enable @typescript-eslint/no-unused-vars */
   const [auditLogsActionFilter, setAuditLogsActionFilter] = useState<string>('all');
   const [auditLogsEntityTypeFilter, setAuditLogsEntityTypeFilter] = useState<string>('all');
   
@@ -334,6 +342,7 @@ const AdminDashboard: React.FC = () => {
   // Расширенная статистика маркетологов
   const [marketerStats, setMarketerStats] = useState<any>(null);
   const [marketerStatsLoading, setMarketerStatsLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter reserved for marketer filter UI
   const [selectedMarketerId, setSelectedMarketerId] = useState<string>('');
   
   // Редактирование расходов
@@ -980,10 +989,25 @@ const AdminDashboard: React.FC = () => {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Панель управления
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1" fontWeight="bold">
+            Панель управления
+          </Typography>
+          <Button component={RouterLink} to="/admin/support-hub" size="small" sx={{ mt: 1 }}>
+            Поддержка и дизайн — чаты и записи
+          </Button>
+        </Box>
         <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setOneTimePassword(null);
+              setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
+              setStaffDialog(true);
+            }}
+          >
+            Создать сотрудника платформы
+          </Button>
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Пресет дашборда</InputLabel>
             <Select
@@ -1037,6 +1061,79 @@ const AdminDashboard: React.FC = () => {
           </Button>
         </Box>
       </Box>
+
+      <Dialog open={staffDialog} onClose={() => setStaffDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Создание сотрудника платформы</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Будет создана учётная запись техподдержки / дизайнера / безопасности. Система выдаст одноразовый пароль — при первом входе сотрудник обязан сменить пароль.
+          </Typography>
+          {oneTimePassword && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Одноразовый пароль: <b>{oneTimePassword}</b>
+            </Alert>
+          )}
+          <TextField
+            label="Email"
+            fullWidth
+            margin="normal"
+            value={newStaff.email}
+            onChange={(e) => setNewStaff((p) => ({ ...p, email: e.target.value }))}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Роль</InputLabel>
+            <Select
+              value={newStaff.role}
+              label="Роль"
+              onChange={(e) => setNewStaff((p) => ({ ...p, role: e.target.value as PlatformStaffRole }))}
+            >
+              <MenuItem value="SUPPORT">SUPPORT (техподдержка)</MenuItem>
+              <MenuItem value="DESIGNER">DESIGNER (дизайнер)</MenuItem>
+              <MenuItem value="SECURITY">SECURITY (безопасность)</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Имя"
+            fullWidth
+            margin="normal"
+            value={newStaff.firstName}
+            onChange={(e) => setNewStaff((p) => ({ ...p, firstName: e.target.value }))}
+          />
+          <TextField
+            label="Фамилия"
+            fullWidth
+            margin="normal"
+            value={newStaff.lastName}
+            onChange={(e) => setNewStaff((p) => ({ ...p, lastName: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStaffDialog(false)}>Закрыть</Button>
+          <Button
+            variant="contained"
+            disabled={submitting}
+            onClick={async () => {
+              setSubmitting(true);
+              setError(null);
+              try {
+                const resp = await apiService.superAdminCreatePlatformStaffUser({
+                  email: newStaff.email,
+                  role: newStaff.role,
+                  firstName: newStaff.firstName,
+                  lastName: newStaff.lastName,
+                });
+                setOneTimePassword(resp.oneTimePassword);
+              } catch (e: any) {
+                setError(e?.response?.data?.error || 'Ошибка создания сотрудника');
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>

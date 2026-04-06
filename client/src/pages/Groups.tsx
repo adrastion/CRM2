@@ -28,16 +28,13 @@ import {
   Select,
   MenuItem,
   Checkbox,
-  ListItemText,
   Link,
   Snackbar,
   Divider,
   FormControlLabel,
-  RadioGroup,
-  Radio,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
-import { Add, Edit, Delete, Visibility, People, Delete as DeleteIcon, CalendarToday } from '@mui/icons-material';
+import { Add, Edit, Delete, People, CalendarToday } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -64,7 +61,7 @@ const Groups: React.FC = () => {
   const [shouldCreatePaymentsAfterSchedule, setShouldCreatePaymentsAfterSchedule] = useState(false); // Флаг для создания платежей после создания графика
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
-  const [clientSearchQuery, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
+  const [clientSearchQuery] = useState<string>(''); // Поиск клиентов (setClientSearchQuery reserved for UI)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -322,7 +319,8 @@ const Groups: React.FC = () => {
     }));
   };
 
-  // Функции для управления графиком тренировок
+  // Функции для управления графиком тренировок (reserved for schedule UI)
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   const addScheduleItem = () => {
     setFormData(prev => ({
       ...prev,
@@ -347,6 +345,7 @@ const Groups: React.FC = () => {
   };
 
   const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   // Функции для создания тренера и филиала
   const handleCreateTrainerFromGroup = async () => {
@@ -897,6 +896,7 @@ const Groups: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for add-client UI
   const handleAddClientToGroup = async () => {
     if (!selectedGroup || !selectedClientId) return;
 

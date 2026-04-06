@@ -20,7 +20,6 @@ import {
   Chip,
   List,
   ListItem,
-  ListItemText,
   IconButton,
   Table,
   TableBody,
@@ -46,15 +45,10 @@ import {
   Group as GroupIcon,
   Edit,
   People,
-  CheckCircle,
-  Cancel,
-  HelpOutline,
   Delete,
-  Remove,
   EmojiEvents,
   ChevronLeft,
   ChevronRight,
-  MeetingRoom,
   Person,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -119,7 +113,8 @@ const Schedule: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
   const [clients, setClients] = useState<Client[]>([]); // Все клиенты для выбора в индивидуальной тренировке
-  const [clientSearchQuery, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter reserved for client search UI
+  const [, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
   const [loading, setLoading] = useState(true);
   const [trainingTypeDialog, setTrainingTypeDialog] = useState(false); // Диалог выбора типа тренировки
   const [openDialog, setOpenDialog] = useState(false);
@@ -1174,6 +1169,7 @@ const Schedule: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for delete action
   const handleDeleteTraining = async (training: Training) => {
     if (!window.confirm(`Вы уверены, что хотите удалить тренировку "${training.title}"?`)) {
       return;
@@ -1516,6 +1512,7 @@ const Schedule: React.FC = () => {
   };
 
   // Получить тренировки для конкретного дня и времени
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for schedule grid
   const getTrainingsForDayAndTime = (day: Date, hour: number) => {
     const dayStart = new Date(day);
     dayStart.setHours(hour, 0, 0, 0);
@@ -2080,6 +2077,7 @@ const Schedule: React.FC = () => {
         <Grid container spacing={1}>
           {weekDays.map((day, index) => {
             const dayTrainings = getTrainingsForDate(day);
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for day view competitions display
             const dayCompetitions = getCompetitionsForDate(day);
             const isToday = isSameDay(day, new Date());
             

@@ -74,6 +74,7 @@ const CustomModalFull: React.FC<CustomModalFullProps> = ({
         wasOpenRef.current = false;
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- shouldPreventCloseRef is ref, stable
   }, [open, externalIsCancellingRef]);
 
   // Принудительно открываем, если внешнее состояние open=true, а внутреннее false
@@ -188,6 +189,7 @@ const CustomModalFull: React.FC<CustomModalFullProps> = ({
     return () => {
       window.removeEventListener('keydown', handleEscape);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refs intentionally excluded
   }, [internalOpen, disableEscapeKeyDown]);
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {

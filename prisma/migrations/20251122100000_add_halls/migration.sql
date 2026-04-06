@@ -1,5 +1,7 @@
+-- Halls + trainings.hallId (идемпотентно: БД могла получить hallId через db push / ручные правки)
+
 -- CreateTable
-CREATE TABLE "halls" (
+CREATE TABLE IF NOT EXISTS "halls" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
@@ -14,13 +16,23 @@ CREATE TABLE "halls" (
 );
 
 -- AlterTable
-ALTER TABLE "trainings" ADD COLUMN "hallId" TEXT;
+ALTER TABLE "trainings" ADD COLUMN IF NOT EXISTS "hallId" TEXT;
 
--- AddForeignKey
-ALTER TABLE "halls" ADD CONSTRAINT "halls_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (без ошибки, если ограничение уже есть)
+DO $$ BEGIN
+  ALTER TABLE "halls" ADD CONSTRAINT "halls_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "halls" ADD CONSTRAINT "halls_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "halls" ADD CONSTRAINT "halls_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "trainings" ADD CONSTRAINT "trainings_hallId_fkey" FOREIGN KEY ("hallId") REFERENCES "halls"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "trainings" ADD CONSTRAINT "trainings_hallId_fkey" FOREIGN KEY ("hallId") REFERENCES "halls"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;

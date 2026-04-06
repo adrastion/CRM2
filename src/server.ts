@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -35,11 +36,29 @@ import adminDashboardRoutes from './routes/adminDashboard';
 import superAdminAuthRoutes from './routes/superAdminAuth';
 import competitionRoutes from './routes/competition';
 import pushNotificationRoutes from './routes/pushNotifications';
+import platformStaffAuthRoutes from './routes/platformStaffAuthRoutes';
+import platformStaffRoutes from './routes/platformStaffRoutes';
+import superAdminSupportRoutes from './routes/superAdminSupportRoutes';
+import supportRequesterRoutes from './routes/supportRequesterRoutes';
+import { attachSupportCallSocket } from './services/supportCallSocket';
+import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
 
-// Load environment variables
-dotenv.config();
+// Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
+const rootEnv = path.join(__dirname, '..', '.env');
+dotenv.config({ path: rootEnv });
+if (!process.env.DATABASE_URL) {
+  dotenv.config();
+}
+if (!process.env.DATABASE_URL) {
+  console.warn(
+    '\n⚠️  DATABASE_URL is not set. Create a `.env` file in the project root (next to package.json).\n' +
+      '   Example (Windows PowerShell):  Copy-Item env.example .env\n' +
+      '   Then edit .env and set DATABASE_URL, e.g. postgresql://USER:PASSWORD@localhost:5432/martial_arts_crm?schema=public\n' +
+      '   Cron jobs that use the database are disabled until DATABASE_URL is set.\n'
+  );
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -62,8 +81,9 @@ const limiter = rateLimit({
   legacyHeaders: false,
   // Исключаем batch endpoints и health check из строгого лимитирования
   skip: (req) => {
-    return req.path.includes('/batch') || 
-           req.path.includes('/remove-duplicates') || 
+    return req.path.includes('/batch') ||
+           req.path.includes('/remove-duplicates') ||
+           req.path.startsWith('/socket.io') ||
            req.path === '/health';
   }
 });
@@ -130,16 +150,27 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/super-admin/auth', superAdminAuthRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
 app.use('/api/push-notifications', pushNotificationRoutes);
+app.use('/api/platform-staff/auth', platformStaffAuthRoutes);
+app.use('/api/platform-staff', platformStaffRoutes);
+app.use('/api/super-admin/support', superAdminSupportRoutes);
+app.use('/api/support', supportRequesterRoutes);
 
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
+const httpServer = http.createServer(app);
+attachSupportCallSocket(httpServer);
+
 // Start server
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+
+  if (!process.env.DATABASE_URL) {
+    return;
+  }
 
   // Настройка автоматического создания ежемесячных платежей
   // Запускается каждый день в 00:00 (полночь)
@@ -183,6 +214,21 @@ app.listen(PORT, () => {
   });
 
   console.log(`⏰ Training notifications cron jobs scheduled (timezone: ${process.env.TZ || 'Europe/Moscow'})`);
+
+  // Удаление просроченных записей звонков дизайнеров (хранение 14 дней)
+  cron.schedule('15 3 * * *', async () => {
+    try {
+      const removed = await cleanupExpiredDesignerRecordings();
+      if (removed > 0) {
+        console.log(`[Cron] Removed ${removed} expired designer call recording(s)`);
+      }
+    } catch (error) {
+      console.error('[Cron] Error cleaning designer call recordings:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Designer call recordings cleanup scheduled (daily 03:15)');
 });
 
 export default app;
