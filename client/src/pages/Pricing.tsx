@@ -232,7 +232,7 @@ const Pricing: React.FC = () => {
 
   const handleSelectPlan = (plan: PlanType) => {
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate('/auth');
       return;
     }
 

@@ -1,573 +1,373 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import {
-  Container,
-  Typography,
-  Box,
-  Paper,
-  Button,
-  Alert,
-  CircularProgress,
-  Tabs,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Card,
-  CardContent,
-  Grid,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
-} from '@mui/material';
+  DashboardOutlined,
+  BadgeOutlined,
+  AssignmentOutlined,
+  GroupsOutlined,
+  PeopleAltOutlined,
+  CalendarMonthOutlined,
+  PaymentsOutlined,
+  HelpOutline,
+  MenuBookOutlined,
+  AccountBalanceWalletOutlined,
+  FactCheckOutlined,
+  SportsMartialArtsOutlined,
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { Edit } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import ClientSupportFAB from '../components/ClientSupportFAB';
-import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { ClientDashboardData, ClientDashboardEvent } from '../types';
+import { clearAllAuthStorage, extractApiError, CLIENT_APPROVED_KEY } from '../utils/authSession';
+import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
+import Panel from '../components/dashboard/Panel';
+import MetricCard from '../components/dashboard/MetricCard';
+import MonthCalendar, { toIso } from '../components/dashboard/MonthCalendar';
+import ScheduleList, { ScheduleRow } from '../components/dashboard/ScheduleList';
+import StaffCardList from '../components/dashboard/StaffCardList';
+import { colors, radii, typography } from '../theme/tokens';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
+/** Пункты меню личного кабинета клиента (по макету). */
+const NAV: Array<{ key: string; label: string; icon: React.ReactNode }> = [
+  { key: 'dashboard', label: 'Панель управления', icon: <DashboardOutlined /> },
+  { key: 'card', label: 'Карточка спортсмена', icon: <BadgeOutlined /> },
+  { key: 'standards', label: 'Нормативы', icon: <AssignmentOutlined /> },
+  { key: 'staff', label: 'Персонал', icon: <PeopleAltOutlined /> },
+  { key: 'groups', label: 'Группы', icon: <GroupsOutlined /> },
+  { key: 'plan', label: 'Календарный план', icon: <CalendarMonthOutlined /> },
+  { key: 'payments', label: 'Платежи', icon: <PaymentsOutlined /> },
+  { key: 'faq', label: 'FAQ', icon: <HelpOutline /> },
+  { key: 'knowledge', label: 'База знаний для клиентов', icon: <MenuBookOutlined /> },
+];
+
+const RUB = new Intl.NumberFormat('ru-RU', {
+  style: 'currency',
+  currency: 'RUB',
+  maximumFractionDigits: 0,
+});
+
+function timeLabel(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
+function toScheduleRow(event: ClientDashboardEvent): ScheduleRow {
+  const start = new Date(event.startTime);
+  return {
+    id: event.id,
+    dateLabel: `${start.getDate()}.${String(start.getMonth() + 1).padStart(2, '0')}`,
+    timeLabel: `${timeLabel(event.startTime)}-${timeLabel(event.endTime)}`,
+    title: event.groupName || event.title,
+    icon: <SportsMartialArtsOutlined />,
+    color: event.color,
+  };
 }
 
+/**
+ * Личный кабинет ученика или родителя.
+ *
+ * Два состояния:
+ * — аккаунт подтверждён школой: реальные данные (баланс, посещаемость, персонал,
+ *   календарь событий и расписание недели);
+ * — не подтверждён: те же блоки, но некликабельные заглушки без данных школы
+ *   и сообщение «Ожидайте подтверждения от администратора организации».
+ */
 const ClientDashboard: React.FC = () => {
-  const [tabValue, setTabValue] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [clientData, setClientData] = useState<any>(null);
-  const [trainings, setTrainings] = useState<any[]>([]);
-  const [passportDialog, setPassportDialog] = useState(false);
-  const [passportData, setPassportData] = useState({
-    passportSeries: '',
-    passportNumber: '',
-    passportIssueDate: '',
-    passportIssuedBy: '',
-    passportDivisionCode: '',
-    passportBirthPlace: ''
-  });
   const navigate = useNavigate();
+  const [data, setData] = React.useState<ClientDashboardData | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+  const [month, setMonth] = React.useState(() => new Date());
+  const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem('clientToken');
-    if (!token) {
-      navigate('/client/login');
+  React.useEffect(() => {
+    if (!localStorage.getItem('clientToken')) {
+      navigate('/auth', { replace: true });
       return;
     }
 
-    fetchClientData();
-    if (tabValue === 0) {
-      fetchTrainings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (tabValue === 0 && clientData) {
-      fetchTrainings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabValue, clientData]);
-
-  const fetchClientData = async () => {
-    try {
-      const data = await apiService.getClientProfile();
-      setClientData(data);
-      if (data) {
-        // Если это родитель, используем данные его ребенка для паспорта
-        const clientInfo = data.userType === 'parent' ? data : data;
-        setPassportData({
-          passportSeries: clientInfo.passportSeries || '',
-          passportNumber: clientInfo.passportNumber || '',
-          passportIssueDate: clientInfo.passportIssueDate ? format(new Date(clientInfo.passportIssueDate), 'yyyy-MM-dd') : '',
-          passportIssuedBy: clientInfo.passportIssuedBy || '',
-          passportDivisionCode: clientInfo.passportDivisionCode || '',
-          passportBirthPlace: clientInfo.passportBirthPlace || ''
-        });
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await apiService.getClientDashboard();
+        if (cancelled) return;
+        setData(result);
+        // Сохраняем статус, чтобы глобальная кнопка поддержки знала о нём.
+        localStorage.setItem(CLIENT_APPROVED_KEY, String(result.isAccountApproved));
+      } catch (err) {
+        if (cancelled) return;
+        const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
+        if (status === 401) {
+          clearAllAuthStorage();
+          navigate('/auth', { replace: true });
+          return;
+        }
+        setError(message);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (err: any) {
-      if (err.response?.status === 401) {
-        localStorage.removeItem('clientToken');
-        localStorage.removeItem('client');
-        localStorage.removeItem('clientTenant');
-        localStorage.removeItem('userType');
-        navigate('/client/login');
-      } else {
-        setError('Ошибка загрузки данных');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
 
-  const fetchTrainings = async () => {
-    try {
-      const startDate = new Date().toISOString();
-      const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + 1);
-      const data = await apiService.getClientTrainings(startDate, endDate.toISOString());
-      setTrainings(data || []);
-    } catch (err: any) {
-      console.error('Error fetching trainings:', err);
-    }
-  };
-
-  const handleSavePassport = async () => {
-    try {
-      // Обновляем паспортные данные через API
-      const updated = await apiService.updateClient(clientData.id, {
-        passportSeries: passportData.passportSeries || null,
-        passportNumber: passportData.passportNumber || null,
-        passportIssueDate: passportData.passportIssueDate || null,
-        passportIssuedBy: passportData.passportIssuedBy || null,
-        passportDivisionCode: passportData.passportDivisionCode || null,
-        passportBirthPlace: passportData.passportBirthPlace || null
-      });
-      setClientData({ ...clientData, ...updated });
-      setPassportDialog(false);
-      alert('Паспортные данные успешно обновлены');
-    } catch (err: any) {
-      alert('Ошибка при обновлении паспортных данных: ' + (err.response?.data?.error || err.message));
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const handleLogout = () => {
-    localStorage.removeItem('clientToken');
-    localStorage.removeItem('client');
-    localStorage.removeItem('clientTenant');
-    navigate('/client/login');
-  };
-
-  const formatDate = (date: string | Date | null | undefined): string => {
-    try {
-      if (!date) return '-';
-      const dateObj = date instanceof Date ? date : new Date(date);
-      if (isNaN(dateObj.getTime())) return '-';
-      return format(dateObj, 'dd.MM.yyyy HH:mm', { locale: ru });
-    } catch {
-      return '-';
-    }
+    clearAllAuthStorage();
+    navigate('/auth', { replace: true });
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-        <CircularProgress />
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: colors.surface,
+        }}
+      >
+        <CircularProgress sx={{ color: colors.primary }} />
       </Box>
     );
   }
 
-  if (error) {
+  if (error || !data) {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Alert severity="error">{error}</Alert>
-      </Container>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          bgcolor: colors.surface,
+          px: 3,
+          textAlign: 'center',
+        }}
+      >
+        <Typography sx={{ color: colors.danger, fontSize: typography.panelTitle }}>
+          {error || 'Данные недоступны'}
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          onClick={handleLogout}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: colors.primary,
+            fontFamily: 'inherit',
+            fontSize: typography.label,
+          }}
+        >
+          Вернуться к входу
+        </Typography>
+      </Box>
     );
   }
 
-  if (!clientData) {
-    return null;
-  }
+  const pending = !data.isAccountApproved;
 
-  const clientGroups = clientData.groupMemberships || [];
-  const clientStandards = clientData.clientStandards || [];
-  const competitions = clientData.competitionParticipants || [];
-  const payments = clientData.payments || [];
-  const tenantSubscription = clientData.tenant?.subscription;
+  const navItems: ShellNavItem[] = NAV.map((item) => ({
+    ...item,
+    // До подтверждения меню — некликабельные заглушки.
+    disabled: pending,
+    onClick: pending
+      ? undefined
+      : item.key === 'faq'
+      ? () => navigate('/faq')
+      : undefined,
+  }));
+
+  const marks = data.monthEvents.map((e) => ({
+    date: toIso(new Date(e.startTime)),
+    color: e.color,
+  }));
+
+  const weekRows = data.upcomingTrainings.map(toScheduleRow);
+  const dayRows = selectedDay
+    ? data.monthEvents.filter((e) => toIso(new Date(e.startTime)) === selectedDay).map(toScheduleRow)
+    : weekRows;
+
+  const attendanceValue = data.attendance
+    ? `${data.attendance.present}/${data.attendance.total}`
+    : '—';
+
+  const balanceCaption =
+    data.balance?.nextCharge && !pending
+      ? `${new Date(data.balance.nextCharge.date).toLocaleDateString('ru-RU')} будет списано ${RUB.format(
+          data.balance.nextCharge.amount
+        )}`
+      : undefined;
+
+  const content = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
+      {/* Верхний ряд: баланс, посещаемость, персонал */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 2fr' },
+          gap: { xs: 2, md: 3 },
+        }}
+      >
+        <MetricCard
+          label="Баланс"
+          value={data.balance ? RUB.format(data.balance.amount) : '—'}
+          icon={<AccountBalanceWalletOutlined />}
+          progress={
+            data.balance
+              ? {
+                  value: Math.max(0, data.balance.amount),
+                  max: Math.max(1, data.balance.nextCharge?.amount || data.balance.amount || 1),
+                  danger: data.balance.amount < 0,
+                }
+              : { value: 0, max: 1 }
+          }
+          caption={balanceCaption}
+          placeholder={pending}
+        />
+        <MetricCard
+          label="Посещаемость"
+          value={attendanceValue}
+          icon={<FactCheckOutlined />}
+          progress={
+            data.attendance
+              ? { value: data.attendance.present, max: Math.max(1, data.attendance.total) }
+              : { value: 0, max: 1 }
+          }
+          placeholder={pending}
+        />
+        <Panel title="Персонал">
+          <StaffCardList staff={data.staff} placeholder={pending} />
+        </Panel>
+      </Box>
+
+      {/* Нижний ряд: календарь событий и расписание */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+          gap: { xs: 2, md: 3 },
+        }}
+      >
+        <Panel title="Календарь событий" minHeight={420}>
+          <MonthCalendar
+            month={month}
+            onMonthChange={pending ? undefined : setMonth}
+            marks={marks}
+            selected={selectedDay}
+            onSelect={pending ? undefined : (iso) => setSelectedDay(iso === selectedDay ? null : iso)}
+            placeholder={pending}
+          />
+        </Panel>
+
+        <Panel
+          title={selectedDay ? 'Тренировки за день' : 'Расписание на неделю'}
+          minHeight={420}
+          action={
+            !pending && selectedDay ? (
+              <Typography
+                component="button"
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                sx={{
+                  border: 'none',
+                  background: colors.surface,
+                  borderRadius: `${radii.cell}px`,
+                  px: 1.5,
+                  py: 0.75,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: typography.hint,
+                  color: colors.textMuted,
+                }}
+              >
+                Показать неделю
+              </Typography>
+            ) : undefined
+          }
+        >
+          <ScheduleList
+            rows={dayRows}
+            placeholder={pending}
+            emptyText={selectedDay ? 'В этот день тренировок нет' : 'Нет предстоящих тренировок'}
+          />
+        </Panel>
+      </Box>
+    </Box>
+  );
 
   return (
-    <>
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4">
-          Личный кабинет
-        </Typography>
-        <Button variant="outlined" onClick={handleLogout}>
-          Выйти
-        </Button>
-      </Box>
-
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              {[clientData.lastName, clientData.firstName, clientData.middleName].filter(Boolean).join(' ')}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {clientData.email || clientData.phone}
-            </Typography>
-            {clientData.membershipFeePaid && (
-              <Chip label="Членский взнос оплачен" color="success" sx={{ mt: 1 }} />
-            )}
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              Мои группы
-            </Typography>
-            {clientGroups.length > 0 ? (
-              clientGroups.map((gm: any) => (
-                <Typography key={gm.id} variant="body2">
-                  {gm.group?.name}
-                </Typography>
-              ))
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                Нет активных групп
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {tenantSubscription && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Тариф: {tenantSubscription.planType}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Статус: {tenantSubscription.status}
-          </Typography>
-        </Paper>
-      )}
-
-      <Paper>
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
-          <Tab label="Расписание" />
-          <Tab label="Нормативы" />
-          <Tab label="Соревнования" />
-          <Tab label="Платежи" />
-          <Tab label="Профиль" />
-        </Tabs>
-
-        <TabPanel value={tabValue} index={0}>
-          <Typography variant="h6" gutterBottom>Мое расписание</Typography>
-          {trainings.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Дата и время</TableCell>
-                    <TableCell>Название</TableCell>
-                    <TableCell>Группа</TableCell>
-                    <TableCell>Тренер</TableCell>
-                    <TableCell>Филиал</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {trainings.map((training: any) => (
-                    <TableRow key={training.id}>
-                      <TableCell>{formatDate(training.startTime as string | Date)}</TableCell>
-                      <TableCell>{training.title || training.group?.name || 'Тренировка'}</TableCell>
-                      <TableCell>{training.group?.name || 'Индивидуальная'}</TableCell>
-                      <TableCell>
-                        {training.trainer?.user 
-                          ? `${training.trainer.user.lastName} ${training.trainer.user.firstName}`
-                          : '-'}
-                      </TableCell>
-                      <TableCell>{training.branch?.name || '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Нет запланированных тренировок
-            </Typography>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
-          <Typography variant="h6" gutterBottom>Мои нормативы</Typography>
-          {clientStandards.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Норматив</TableCell>
-                    <TableCell>Дата выполнения</TableCell>
-                    <TableCell>Результат</TableCell>
-                    <TableCell>Статус</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {clientStandards.map((cs: any) => (
-                    <TableRow key={cs.id}>
-                      <TableCell>{cs.standard?.name || '-'}</TableCell>
-                      <TableCell>{formatDate(cs.completedAt as string | Date)}</TableCell>
-                      <TableCell>
-                        {cs.result ? `${cs.result} ${cs.standard?.unit || ''}` : cs.resultText || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={cs.status === 'completed' ? 'Выполнено' : cs.status}
-                          color={cs.status === 'completed' ? 'success' : 'default'}
-                          size="small"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Нет выполненных нормативов
-            </Typography>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={2}>
-          <Typography variant="h6" gutterBottom>Соревнования</Typography>
-          {competitions.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Название</TableCell>
-                    <TableCell>Дата</TableCell>
-                    <TableCell>Результат</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {competitions.map((cp: any) => (
-                    <TableRow key={cp.id}>
-                      <TableCell>{cp.competition?.name || '-'}</TableCell>
-                      <TableCell>
-                        {cp.competition?.date ? formatDate(cp.competition.date as string | Date) : '-'}
-                      </TableCell>
-                      <TableCell>{cp.result || '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Нет участий в соревнованиях
-            </Typography>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={3}>
-          <Typography variant="h6" gutterBottom>Платежи</Typography>
-          {payments.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Тип</TableCell>
-                    <TableCell>Сумма</TableCell>
-                    <TableCell>Статус</TableCell>
-                    <TableCell>Дата</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {payments.map((payment: any) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{payment.type}</TableCell>
-                      <TableCell>{payment.amount} ₽</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={payment.status}
-                          color={payment.status === 'paid' ? 'success' : 'default'}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {payment.paidAt ? formatDate(payment.paidAt as string | Date) : 
-                         payment.dueDate ? formatDate(payment.dueDate as string | Date) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Нет платежей
-            </Typography>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={4}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">Профиль</Typography>
-            <Button
-              variant="outlined"
-              startIcon={<Edit />}
-              onClick={() => setPassportDialog(true)}
-            >
-              Редактировать паспортные данные
-            </Button>
+    <DashboardShell
+      pageTitle="Панель управления"
+      navItems={navItems}
+      activeKey="dashboard"
+      userName={data.viewerName}
+      userRole={data.userType === 'parent' ? 'Родитель' : 'Ученик'}
+      onLogout={handleLogout}
+      searchDisabled={pending}
+    >
+      {pending ? (
+        <Box sx={{ position: 'relative' }}>
+          {/* Заглушки под затемнением: данных школы нет, клики не работают */}
+          <Box
+            aria-hidden
+            sx={{
+              pointerEvents: 'none',
+              filter: 'grayscale(0.35)',
+            }}
+          >
+            {content}
           </Box>
 
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Паспортные данные
-                  </Typography>
-                  <Typography variant="body2">
-                    Серия: {clientData.passportSeries || 'Не указано'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Номер: {clientData.passportNumber || 'Не указано'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Дата выдачи: {clientData.passportIssueDate ? formatDate(clientData.passportIssueDate as string | Date) : 'Не указано'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Кем выдан: {clientData.passportIssuedBy || 'Не указано'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Код подразделения: {clientData.passportDivisionCode || 'Не указано'}
-                  </Typography>
-                  <Typography variant="body2">
-                    Место рождения: {clientData.passportBirthPlace || 'Не указано'}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Тренеры
-                  </Typography>
-                  {clientGroups.length > 0 ? (
-                    clientGroups.map((gm: any) => (
-                      <Typography key={gm.id} variant="body2">
-                        {gm.group?.trainer?.user 
-                          ? `${gm.group.trainer.user.lastName} ${gm.group.trainer.user.firstName} ${gm.group.trainer.user.middleName || ''}`
-                          : 'Не указано'}
-                      </Typography>
-                    ))
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Нет тренеров
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Филиалы
-                  </Typography>
-                  {clientGroups.length > 0 ? (
-                    clientGroups.map((gm: any) => (
-                      <Typography key={gm.id} variant="body2">
-                        {gm.group?.branch?.name || 'Не указано'}
-                      </Typography>
-                    ))
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Нет филиалов
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
-      </Paper>
-
-      <Dialog open={passportDialog} onClose={() => setPassportDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Редактировать паспортные данные</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Серия паспорта"
-                value={passportData.passportSeries}
-                onChange={(e) => setPassportData({ ...passportData, passportSeries: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Номер паспорта"
-                value={passportData.passportNumber}
-                onChange={(e) => setPassportData({ ...passportData, passportNumber: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Дата выдачи"
-                type="date"
-                value={passportData.passportIssueDate}
-                onChange={(e) => setPassportData({ ...passportData, passportIssueDate: e.target.value })}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Кем выдан"
-                value={passportData.passportIssuedBy}
-                onChange={(e) => setPassportData({ ...passportData, passportIssuedBy: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Код подразделения"
-                value={passportData.passportDivisionCode}
-                onChange={(e) => {
-                  let value = e.target.value.replace(/\D/g, '');
-                  if (value.length > 6) value = value.slice(0, 6);
-                  if (value.length === 6) {
-                    value = value.slice(0, 3) + '-' + value.slice(3);
-                  }
-                  setPassportData({ ...passportData, passportDivisionCode: value });
+          <Box
+            role="status"
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+              bgcolor: `${colors.overlay}D9`,
+              borderRadius: `${radii.panel}px`,
+            }}
+          >
+            <Box
+              sx={{
+                maxWidth: 900,
+                bgcolor: colors.textMuted,
+                color: colors.white,
+                borderRadius: `${radii.card}px`,
+                px: { xs: 3, md: 6 },
+                py: { xs: 4, md: 6 },
+                textAlign: 'center',
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: typography.sectionTitle,
+                  fontWeight: 600,
+                  lineHeight: 1.25,
                 }}
-                placeholder="000-000"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Место рождения"
-                value={passportData.passportBirthPlace}
-                onChange={(e) => setPassportData({ ...passportData, passportBirthPlace: e.target.value })}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPassportDialog(false)}>Отмена</Button>
-          <Button variant="contained" onClick={handleSavePassport}>
-            Сохранить
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
-    <ClientSupportFAB />
-    </>
+              >
+                Ожидайте подтверждения от администратора организации
+              </Typography>
+              <Typography sx={{ mt: 2, fontSize: typography.label, opacity: 0.85 }}>
+                Как только школа подтвердит ваш аккаунт, здесь появятся баланс, посещаемость,
+                расписание и контакты тренеров.
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      ) : (
+        content
+      )}
+    </DashboardShell>
   );
 };
 

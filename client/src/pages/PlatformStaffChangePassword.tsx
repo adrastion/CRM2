@@ -90,7 +90,7 @@ const PlatformStaffChangePassword: React.FC = () => {
             sx={{ mt: 1 }}
             onClick={() => {
               logout();
-              navigate('/login', { replace: true });
+              navigate('/auth', { replace: true });
             }}
           >
             Выйти

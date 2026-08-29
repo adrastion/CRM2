@@ -424,7 +424,7 @@ const AdminPromoCodes: React.FC = () => {
             startIcon={<Logout />}
             onClick={() => {
               logout();
-              navigate('/login');
+              navigate('/auth');
             }}
           >
             Выйти

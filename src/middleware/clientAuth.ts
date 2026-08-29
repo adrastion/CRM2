@@ -28,7 +28,14 @@ export const authenticateClient = (req: ClientRequest, res: Response, next: Next
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({
+        success: false,
+        error: 'JWT secret not configured'
+      });
+    }
+    const decoded = jwt.verify(token, secret) as any;
 
     if (decoded.type === 'client') {
       req.client = {

@@ -9,6 +9,7 @@ import {
   registerParent
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
+import { getClientDashboard } from '../controllers/clientDashboardController';
 import {
   clientCreateSupportTicket,
   clientListSupportTickets,
@@ -28,6 +29,8 @@ router.post('/parent/register', registerParent);
 // Защищенные маршруты
 router.get('/profile', authenticateClient, getClientProfile);
 router.get('/trainings', authenticateClient, getClientTrainings);
+// Данные для новой панели управления клиента (учитывает статус подтверждения)
+router.get('/dashboard', authenticateClient, getClientDashboard);
 
 // Техподдержка / дизайн (клиент или родитель)
 router.post('/support/tickets', authenticateClient, clientCreateSupportTicket);

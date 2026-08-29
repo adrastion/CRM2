@@ -168,7 +168,6 @@ const Settings: React.FC = () => {
           const defaultTabs: { [key: string]: boolean } = {
             dashboard: true,
             clients: true,
-            clientCategories: true,
             standards: true,
             trainers: true,
             trainerEarnings: true,
@@ -181,6 +180,7 @@ const Settings: React.FC = () => {
             clientMemberships: true,
             settings: true,
             faq: true,
+            knowledgeBase: true,
           };
           setVisibleTabs(defaultTabs);
         }
@@ -465,22 +465,23 @@ const Settings: React.FC = () => {
     window.dispatchEvent(event);
   };
 
+  // Подписи должны совпадать с пунктами меню в AppLayout.
   const tabLabels: { [key: string]: string } = {
     dashboard: 'Панель управления',
     clients: 'Клиенты',
-    clientCategories: 'Категории клиентов',
     standards: 'Нормативы',
-    trainers: 'Тренеры',
+    trainers: 'Сотрудники',
     trainerEarnings: 'Мой заработок',
     allTrainersEarnings: 'Заработок тренеров',
     groups: 'Группы',
     branches: 'Филиалы',
-    schedule: 'Расписание',
+    schedule: 'Календарный план',
     payments: 'Платежи',
     memberships: 'Тарифы',
     clientMemberships: 'Выданные тарифы',
     settings: 'Настройки',
     faq: 'FAQ',
+    knowledgeBase: 'База знаний',
   };
 
   if (loading) {

@@ -10,12 +10,33 @@ const loginEmail = Joi.string().email({ tlds: { allow: false } }).required();
 
 // Validation schemas
 const registerSchema = Joi.object({
-  tenantName: Joi.string().min(2).max(100).required(),
-  email: Joi.string().email().required(),
-  password: Joi.string().min(6).required(),
-  firstName: Joi.string().min(2).max(50).required(),
-  lastName: Joi.string().min(2).max(50).required(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional()
+  tenantName: Joi.string().min(2).max(100).required().messages({
+    'string.empty': 'Введите название школы',
+    'any.required': 'Введите название школы'
+  }),
+  email: Joi.string().email({ tlds: { allow: false } }).required().messages({
+    'string.email': 'Введите корректный email',
+    'any.required': 'Введите email'
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.min': 'Пароль должен содержать минимум 6 символов',
+    'any.required': 'Придумайте пароль'
+  }),
+  confirmPassword: Joi.string().valid(Joi.ref('password')).optional().messages({
+    'any.only': 'Пароли не совпадают'
+  }),
+  firstName: Joi.string().min(2).max(50).required().messages({
+    'any.required': 'Введите имя'
+  }),
+  lastName: Joi.string().min(2).max(50).required().messages({
+    'any.required': 'Введите фамилию'
+  }),
+  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Формат: +79999999999'
+  }),
+  acceptTerms: Joi.boolean().valid(true).optional().messages({
+    'any.only': 'Необходимо принять условия соглашения'
+  })
 });
 
 const loginSchema = Joi.object({

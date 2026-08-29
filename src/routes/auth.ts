@@ -27,9 +27,25 @@ import {
   validateNewPassword,
   validateUpdateProfile
 } from '../controllers/authController';
+import {
+  identify,
+  setupPassword,
+  login as unifiedLogin,
+  selectAccount,
+  validateIdentify,
+  validateUnifiedLogin,
+  validateSetupPassword,
+  validateSelectAccount
+} from '../controllers/unifiedAuthController';
 import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 
 const router = Router();
+
+// Единая авторизация: один идентификатор (телефон ИЛИ email) для всех ролей
+router.post('/identify', validateIdentify, identify);
+router.post('/setup-password', validateSetupPassword, setupPassword);
+router.post('/unified-login', validateUnifiedLogin, unifiedLogin);
+router.post('/select-account', validateSelectAccount, selectAccount);
 
 // Public routes
 router.post('/register', validateRegister, register);

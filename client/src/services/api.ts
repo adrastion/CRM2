@@ -1,5 +1,17 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { ApiResponse, AuthResponse, LoginForm, RegisterForm, MarketerStatsSummary, UnifiedStaffLoginResponse } from '../types';
+import {
+  ApiResponse,
+  AuthResponse,
+  LoginForm,
+  RegisterForm,
+  MarketerStatsSummary,
+  UnifiedStaffLoginResponse,
+  IdentifyResponse,
+  UnifiedLoginResponse,
+  UnifiedSession,
+  AccountType,
+  ClientDashboardData,
+} from '../types';
 import { apiCache, generateCacheKey } from '../utils/apiCache';
 
 class ApiService {
@@ -63,6 +75,10 @@ class ApiService {
           // Don't redirect on login endpoints - let them handle the error
           const isLoginEndpoint = url.includes('/auth/login') || 
                                  url.includes('/auth/unified-staff-login') ||
+                                 url.includes('/auth/identify') ||
+                                 url.includes('/auth/unified-login') ||
+                                 url.includes('/auth/setup-password') ||
+                                 url.includes('/auth/select-account') ||
                                  url.includes('/auth/marketer/login') ||
                                  url.includes('/auth/promo-code-admin/login') ||
                                  url.includes('/auth/super-admin/login') ||
@@ -92,31 +108,32 @@ class ApiService {
           if (isSuperAdminRoute) {
             localStorage.removeItem('superAdminToken');
             localStorage.removeItem('superAdmin');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           } else if (isMarketerRoute) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           } else if (isPromoCodeAdminRoute) {
             localStorage.removeItem('promoCodeAdminToken');
             localStorage.removeItem('promoCodeAdmin');
             localStorage.removeItem('promoCodeAdminTenant');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           } else if (url.includes('/platform-staff/')) {
             localStorage.removeItem('platformStaffToken');
             localStorage.removeItem('platformStaff');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           } else if (url.includes('/client-auth/')) {
             localStorage.removeItem('clientToken');
             localStorage.removeItem('client');
             localStorage.removeItem('clientTenant');
-            window.location.href = '/client/login';
+            localStorage.removeItem('userType');
+            window.location.href = '/auth';
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('tenant');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           }
         }
         return Promise.reject(error);
@@ -125,6 +142,57 @@ class ApiService {
   }
 
   // Auth endpoints
+  /* ---------------- Единая авторизация ---------------- */
+
+  /** Шаг 1: проверяем телефон/email и узнаём, нужен ли экран создания пароля. */
+  async identify(identifier: string): Promise<IdentifyResponse> {
+    const response = await this.api.post<ApiResponse<IdentifyResponse>>('/auth/identify', {
+      identifier,
+    });
+    return response.data.data!;
+  }
+
+  /** Шаг 2а: первый вход — создание пароля. */
+  async setupPassword(payload: {
+    identifier: string;
+    password: string;
+    confirmPassword: string;
+    acceptTerms: boolean;
+    rememberMe?: boolean;
+  }): Promise<UnifiedLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
+      '/auth/setup-password',
+      payload
+    );
+    return response.data.data!;
+  }
+
+  /** Шаг 2б: вход по существующему паролю. */
+  async unifiedLogin(payload: {
+    identifier: string;
+    password: string;
+    rememberMe?: boolean;
+  }): Promise<UnifiedLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
+      '/auth/unified-login',
+      payload
+    );
+    return response.data.data!;
+  }
+
+  /** Шаг 3: выбор организации/роли, когда найдено несколько аккаунтов. */
+  async selectAccount(payload: {
+    selectionToken: string;
+    accountType: AccountType;
+    accountId: string;
+  }): Promise<UnifiedSession> {
+    const response = await this.api.post<ApiResponse<UnifiedSession>>(
+      '/auth/select-account',
+      payload
+    );
+    return response.data.data!;
+  }
+
   async login(credentials: LoginForm): Promise<AuthResponse> {
     const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/login', credentials);
     return response.data.data!;
@@ -1351,6 +1419,12 @@ class ApiService {
   async getClientProfile(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/client-auth/profile');
     return response.data.data;
+  }
+
+  /** Данные для панели управления клиента/родителя (учитывает подтверждение школой). */
+  async getClientDashboard(): Promise<ClientDashboardData> {
+    const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard');
+    return response.data.data!;
   }
 
   async approveClientAccount(clientId: string): Promise<any> {

@@ -2,43 +2,41 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Grid,
-  Card,
-  CardContent,
   Typography,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Chip,
-  Avatar,
   CircularProgress,
-  Alert,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Button,
   LinearProgress,
+  Chip,
   Divider,
+  Alert,
 } from '@mui/material';
 import {
-  People,
-  Person,
-  Groups,
-  Business,
-  AttachMoney,
-  TrendingUp,
-  Schedule,
-  CheckCircle,
+  PeopleAltOutlined,
+  CheckCircleOutline,
+  BadgeOutlined,
+  GroupsOutlined,
+  BusinessOutlined,
+  PaymentsOutlined,
+  TrendingUpOutlined,
+  CalendarMonthOutlined,
   CardMembership,
+  PersonAddAlt1Outlined,
+  EventAvailableOutlined,
+  ReceiptLongOutlined,
+  AssignmentOutlined,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import { DashboardStats } from '../types';
+import Panel from '../components/dashboard/Panel';
+import MetricCard from '../components/dashboard/MetricCard';
+import { colors, radii, typography } from '../theme/tokens';
 
 interface Activity {
   type: string;
@@ -52,22 +50,76 @@ interface Activity {
 interface UpcomingTraining {
   id: string;
   title: string;
-  description?: string;
   startTime: string;
   endTime: string;
-  group?: {
-    name: string;
-  };
-  trainer?: {
-    user?: {
-      firstName: string;
-      lastName: string;
-      middleName?: string;
-    };
-  };
+  group?: { name: string };
+  trainer?: { user?: { firstName: string; lastName: string; middleName?: string } };
   memberCount: number;
 }
 
+const RUB = new Intl.NumberFormat('ru-RU', {
+  style: 'currency',
+  currency: 'RUB',
+  maximumFractionDigits: 0,
+});
+
+/** Карточка быстрого действия из макета. */
+const QuickAction: React.FC<{
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}> = ({ title, description, icon, onClick }) => (
+  <Box
+    component="button"
+    type="button"
+    onClick={onClick}
+    sx={{
+      border: 'none',
+      textAlign: 'center',
+      cursor: 'pointer',
+      fontFamily: 'inherit',
+      bgcolor: colors.card,
+      borderRadius: `${radii.panel}px`,
+      boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
+      px: { xs: 2.5, md: 4 },
+      py: { xs: 3, md: 4 },
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 1.5,
+      transition: 'transform 160ms ease, box-shadow 160ms ease',
+      '&:hover': {
+        transform: 'translateY(-3px)',
+        boxShadow: '0 10px 28px rgba(32, 34, 36, 0.12)',
+      },
+      '&:focus-visible': { outline: `3px solid ${colors.primarySoft}`, outlineOffset: 3 },
+    }}
+  >
+    <Box
+      aria-hidden
+      sx={{
+        color: colors.primary,
+        display: 'flex',
+        '& svg': { fontSize: { xs: 38, md: 48 } },
+      }}
+    >
+      {icon}
+    </Box>
+    <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, color: colors.text }}>
+      {title}
+    </Typography>
+    <Typography sx={{ fontSize: typography.label, color: colors.textSubtle }}>
+      {description}
+    </Typography>
+  </Box>
+);
+
+/**
+ * Панель управления школы по макету dorabot/1920w Панель управления.pdf:
+ * восемь KPI-карт, «Последняя активность», «Предстоящие тренировки»
+ * и блок быстрых действий.
+ */
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, tenant } = useAuth();
@@ -75,7 +127,7 @@ const Dashboard: React.FC = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [upcomingTrainings, setUpcomingTrainings] = useState<UpcomingTraining[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState('');
   const [planUsageDialog, setPlanUsageDialog] = useState(false);
   const [planUsage, setPlanUsage] = useState<any>(null);
   const [planUsageLoading, setPlanUsageLoading] = useState(false);
@@ -84,38 +136,28 @@ const Dashboard: React.FC = () => {
     let isMounted = true;
     const abortController = new AbortController();
 
-    const fetchDashboardData = async () => {
+    (async () => {
       try {
-        if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
         setError('');
-        
         const [statsData, activitiesData, trainingsData] = await Promise.all([
           apiService.getDashboardStats(abortController.signal),
           apiService.getRecentActivity(10, abortController.signal),
-          apiService.getUpcomingTrainings(10, 7, abortController.signal)
+          apiService.getUpcomingTrainings(10, 7, abortController.signal),
         ]);
-        
         if (!isMounted || abortController.signal.aborted) return;
         setStats(statsData);
         setActivities(activitiesData);
         setUpcomingTrainings(trainingsData);
       } catch (err: any) {
-        // Ignore cancelled requests
         if (err?.code === 'ERR_CANCELED' || err?.message === 'canceled' || abortController.signal.aborted) {
           return;
         }
-        if (!isMounted) return;
-        setError('Не удалось загрузить данные панели управления');
-        console.error('Dashboard error:', err);
+        if (isMounted) setError('Не удалось загрузить данные панели управления');
       } finally {
-        if (isMounted && !abortController.signal.aborted) {
-          setLoading(false);
-        }
+        if (isMounted && !abortController.signal.aborted) setLoading(false);
       }
-    };
-
-    fetchDashboardData();
+    })();
 
     return () => {
       isMounted = false;
@@ -123,350 +165,356 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const getActivityIcon = useCallback((iconName: string) => {
-    switch (iconName) {
-      case 'People':
-        return <People color="primary" />;
-      case 'AttachMoney':
-        return <AttachMoney color="success" />;
-      case 'CheckCircle':
-        return <CheckCircle color="success" />;
-      case 'Person':
-        return <Person color="warning" />;
-      default:
-        return <CheckCircle color="primary" />;
-    }
-  }, []);
-
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffTime = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      return `Сегодня, ${format(date, 'HH:mm', { locale: ru })}`;
-    } else if (diffDays === 1) {
-      return `Завтра, ${format(date, 'HH:mm', { locale: ru })}`;
-    } else if (diffDays < 7) {
-      return format(date, 'EEEE, d MMMM, HH:mm', { locale: ru });
-    } else {
-      return format(date, 'd MMMM, HH:mm', { locale: ru });
-    }
+    const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return `Сегодня, ${format(date, 'HH:mm', { locale: ru })}`;
+    if (diffDays === 1) return `Завтра, ${format(date, 'HH:mm', { locale: ru })}`;
+    if (diffDays < 7) return format(date, 'EEEE, d MMMM, HH:mm', { locale: ru });
+    return format(date, 'd MMMM, HH:mm', { locale: ru });
   }, []);
 
   const handleOpenPlanUsage = async () => {
     setPlanUsageDialog(true);
     setPlanUsageLoading(true);
     try {
-      const data = await apiService.getPlanUsage();
-      setPlanUsage(data);
-    } catch (err: any) {
+      setPlanUsage(await apiService.getPlanUsage());
+    } catch {
       setError('Не удалось загрузить информацию о тарифе');
-      console.error('Error loading plan usage:', err);
     } finally {
       setPlanUsageLoading(false);
     }
   };
 
-  const statCards = useMemo(() => {
-    const isTrainer = user?.role === 'TRAINER';
-    
-    const allCards = [
+  const isTrainer = user?.role === 'TRAINER';
+
+  const metricCards = useMemo(() => {
+    const cards = [
       {
-        title: 'Всего клиентов',
-        value: stats?.totalClients || 0,
-        icon: <People />,
-        color: '#1976d2',
+        label: 'Всего клиентов',
+        value: stats?.totalClients ?? 0,
+        icon: <PeopleAltOutlined />,
         show: true,
       },
       {
-        title: 'Активные клиенты',
-        value: stats?.activeClients || 0,
-        icon: <CheckCircle />,
-        color: '#388e3c',
+        label: 'Активные клиенты',
+        value: stats?.activeClients ?? 0,
+        icon: <CheckCircleOutline />,
         show: true,
       },
       {
-        title: 'Тренеры',
-        value: stats?.totalTrainers || 0,
-        icon: <Person />,
-        color: '#f57c00',
+        label: 'Тренеры',
+        value: stats?.totalTrainers ?? 0,
+        icon: <BadgeOutlined />,
         show: !isTrainer,
       },
       {
-        title: 'Группы',
-        value: stats?.totalGroups || 0,
-        icon: <Groups />,
-        color: '#7b1fa2',
+        label: 'Группы',
+        value: stats?.totalGroups ?? 0,
+        icon: <GroupsOutlined />,
         show: true,
       },
       {
-        title: 'Филиалы',
-        value: stats?.totalBranches || 0,
-        icon: <Business />,
-        color: '#d32f2f',
+        label: 'Филиалы',
+        value: stats?.totalBranches ?? 0,
+        icon: <BusinessOutlined />,
         show: !isTrainer,
       },
       {
-        title: 'Месячный доход',
-        value: new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(stats?.monthlyRevenue || 0),
-        icon: <AttachMoney />,
-        color: '#388e3c',
+        label: 'Месячный доход',
+        value: RUB.format(stats?.monthlyRevenue ?? 0),
+        icon: <PaymentsOutlined />,
         show: !isTrainer,
       },
       {
-        title: 'Посещаемость',
-        value: `${stats?.attendanceRate || 0}%`,
-        icon: <TrendingUp />,
-        color: '#1976d2',
+        label: 'Посещаемость',
+        value: `${stats?.attendanceRate ?? 0}%`,
+        icon: <TrendingUpOutlined />,
         show: true,
       },
       {
-        title: 'Предстоящие тренировки',
-        value: stats?.upcomingTrainings || 0,
-        icon: <Schedule />,
-        color: '#f57c00',
+        label: isTrainer ? 'Мои тренировки' : 'Предстоящие тренировки',
+        value: stats?.upcomingTrainings ?? 0,
+        icon: <CalendarMonthOutlined />,
         show: true,
       },
       {
-        title: 'Заработок за месяц',
-        value: new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(stats?.trainerMonthlyEarnings || 0),
-        icon: <AttachMoney />,
-        color: '#388e3c',
+        label: 'Заработок за месяц',
+        value: RUB.format(stats?.trainerMonthlyEarnings ?? 0),
+        icon: <PaymentsOutlined />,
         show: isTrainer,
       },
     ];
-    
-    return allCards.filter(card => card.show);
-  }, [stats, user?.role]);
+    return cards.filter((c) => c.show);
+  }, [stats, isTrainer]);
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 420 }}>
+        <CircularProgress sx={{ color: colors.primary }} />
       </Box>
     );
   }
 
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mb: 2 }}>
-        {error}
-      </Alert>
-    );
-  }
-
   return (
-    <Box data-onboarding="dashboard-page">
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }} data-onboarding="dashboard">
-    <Box>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
-          Добро пожаловать, {user?.firstName}!
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          {tenant?.name} - Обзор панели управления
-        </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }} data-onboarding="dashboard-page">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 2,
+          flexWrap: 'wrap',
+        }}
+        data-onboarding="dashboard"
+      >
+        <Box>
+          <Typography
+            component="h1"
+            sx={{
+              fontSize: typography.pageTitle,
+              fontWeight: 700,
+              color: colors.text,
+              lineHeight: 1.1,
+            }}
+          >
+            Панель управления
+          </Typography>
+          <Typography sx={{ mt: 1, fontSize: typography.label, color: colors.textMuted }}>
+            {tenant?.name}
+            {user?.firstName ? ` · Добро пожаловать, ${user.firstName}!` : ''}
+          </Typography>
         </Box>
+
         {user?.role === 'OWNER' && (
           <Button
             variant="outlined"
             startIcon={<CardMembership />}
             onClick={handleOpenPlanUsage}
+            sx={{
+              borderRadius: `${radii.button}px`,
+              borderColor: colors.primary,
+              color: colors.primary,
+              textTransform: 'none',
+              px: 3,
+              py: 1.25,
+            }}
           >
             Мой тариф
           </Button>
         )}
       </Box>
 
-      <Grid container spacing={3} data-onboarding="dashboard-stats">
-        {statCards.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Box display="flex" alignItems="center" justifyContent="space-between">
-                  <Box>
-                    <Typography color="text.secondary" gutterBottom variant="body2">
-                      {stat.title}
-                    </Typography>
-                    <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
-                      {stat.value}
-                    </Typography>
-                  </Box>
-                  <Avatar
-                    sx={{
-                      backgroundColor: stat.color,
-                      width: 56,
-                      height: 56,
-                    }}
-                  >
-                    {stat.icon}
-                  </Avatar>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+      {error && <Alert severity="error">{error}</Alert>}
 
-        {user?.role !== 'TRAINER' && (
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2, height: 400, overflow: 'auto' }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
-                Последняя активность
-              </Typography>
+      {/* KPI-карты */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
+          gap: { xs: 2, md: 3 },
+        }}
+        data-onboarding="dashboard-stats"
+      >
+        {metricCards.map((card) => (
+          <MetricCard key={card.label} label={card.label} value={card.value} icon={card.icon} />
+        ))}
+      </Box>
+
+      {/* Активность и тренировки */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', lg: isTrainer ? '1fr' : '1fr 1fr' },
+          gap: { xs: 2, md: 3 },
+        }}
+      >
+        {!isTrainer && (
+          <Panel title="Последняя активность" minHeight={380}>
             {activities.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
+              <Box
+                sx={{
+                  minHeight: 240,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography sx={{ color: colors.textEmpty, fontSize: typography.label }}>
                   Нет активности
                 </Typography>
               </Box>
             ) : (
-              <List>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {activities.map((activity, index) => (
-                  <ListItem key={index}>
-                    <ListItemIcon>
-                      {getActivityIcon(activity.icon)}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={activity.title}
-                      secondary={
-                        <>
-                          <Typography variant="body2" component="span">
-                            {activity.description}
-                          </Typography>
-                          {activity.amount && (
-                            <Typography variant="body2" component="span" sx={{ ml: 1, fontWeight: 'bold', color: 'success.main' }}>
-                              {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(activity.amount)}
-                            </Typography>
-                          )}
-                          <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                            {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
-                          </Typography>
-                        </>
-                      }
-                    />
-                  </ListItem>
+                  <Box
+                    key={`${activity.type}-${index}`}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 2,
+                      px: 2,
+                      py: 1.5,
+                      borderRadius: `${radii.cell}px`,
+                      bgcolor: index % 2 === 0 ? colors.surface : colors.rowAlt,
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography
+                        sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}
+                      >
+                        {activity.title}
+                      </Typography>
+                      <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+                        {activity.description}
+                      </Typography>
+                      <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.5 }}>
+                        {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
+                      </Typography>
+                    </Box>
+                    {activity.amount != null && (
+                      <Typography
+                        sx={{
+                          fontSize: typography.label,
+                          fontWeight: 700,
+                          color: colors.success,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {RUB.format(activity.amount)}
+                      </Typography>
+                    )}
+                  </Box>
                 ))}
-              </List>
+              </Box>
             )}
-          </Paper>
-          </Grid>
+          </Panel>
         )}
 
-        <Grid item xs={12} md={user?.role !== 'TRAINER' ? 6 : 12}>
-          <Paper sx={{ p: 2, height: 400, overflow: 'auto' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
-              Предстоящие тренировки
-            </Typography>
-            {upcomingTrainings.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Нет предстоящих тренировок
-                </Typography>
-              </Box>
-            ) : (
-              <List>
-                {upcomingTrainings.map((training) => (
-                  <ListItem 
-                    key={training.id}
-                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
-                    onClick={() => navigate('/schedule')}
-                  >
-                    <ListItemIcon>
-                      <Schedule color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={training.title || training.group?.name || 'Тренировка'}
-                      secondary={
-                        <>
-                          <Typography variant="body2" component="span">
-                            {formatDate(training.startTime)} - {format(new Date(training.endTime), 'HH:mm', { locale: ru })}
-                          </Typography>
-                          {training.trainer?.user && (
-                            <Typography variant="body2" component="span" display="block" color="text.secondary">
-                              Тренер: {training.trainer.user.lastName} {training.trainer.user.firstName} {training.trainer.user.middleName || ''}
-                            </Typography>
-                          )}
-                        </>
-                      }
-                    />
-                    <Chip 
-                      label={`${training.memberCount} ${training.memberCount === 1 ? 'ученик' : training.memberCount < 5 ? 'ученика' : 'учеников'}`} 
-                      size="small" 
-                      color={training.memberCount > 15 ? 'primary' : training.memberCount > 10 ? 'secondary' : 'default'} 
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'medium' }}>
-              Быстрые действия
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card 
-                  sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                  onClick={() => navigate('/clients')}
-                >
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <People sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">Добавить клиента</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Зарегистрировать нового ученика
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card 
-                  sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+        <Panel title="Предстоящие тренировки" minHeight={380}>
+          {upcomingTrainings.length === 0 ? (
+            <Box
+              sx={{
+                minHeight: 240,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography sx={{ color: colors.textEmpty, fontSize: typography.label }}>
+                Нет предстоящих тренировок
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {upcomingTrainings.map((training, index) => (
+                <Box
+                  key={training.id}
+                  component="button"
+                  type="button"
                   onClick={() => navigate('/schedule')}
+                  sx={{
+                    border: 'none',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    px: 2,
+                    py: 1.5,
+                    borderRadius: `${radii.cell}px`,
+                    bgcolor: index === 0 ? colors.primarySoft : colors.rowAlt,
+                    '&:hover': { filter: 'brightness(0.97)' },
+                  }}
                 >
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <Schedule sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">Запланировать тренировку</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Создать новый класс
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}
+                    >
+                      {training.title || training.group?.name || 'Тренировка'}
                     </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              {user?.role !== 'TRAINER' && (
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card 
-                    sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                    onClick={() => navigate('/payments')}
-                  >
-                    <CardContent sx={{ textAlign: 'center' }}>
-                      <AttachMoney sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                      <Typography variant="h6">Записать платеж</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Обработать платеж
+                    <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+                      {formatDate(training.startTime)} –{' '}
+                      {format(new Date(training.endTime), 'HH:mm', { locale: ru })}
+                    </Typography>
+                    {training.trainer?.user && (
+                      <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
+                        Тренер: {training.trainer.user.lastName} {training.trainer.user.firstName}
                       </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
-            </Grid>
-          </Paper>
-        </Grid>
-      </Grid>
+                    )}
+                  </Box>
+                  <Chip
+                    label={`${training.memberCount} чел.`}
+                    size="small"
+                    sx={{ bgcolor: colors.card, fontWeight: 600 }}
+                  />
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Panel>
+      </Box>
 
-      {/* Диалог информации о тарифе */}
+      {/* Быстрые действия */}
+      <Box>
+        <Typography
+          component="h2"
+          sx={{
+            fontSize: typography.panelTitle,
+            fontWeight: 700,
+            color: colors.text,
+            mb: { xs: 2, md: 2.5 },
+          }}
+        >
+          Быстрые действия
+        </Typography>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' },
+            gap: { xs: 2, md: 3 },
+          }}
+        >
+          <QuickAction
+            title="Добавить клиента"
+            description="Зарегистрировать нового клиента"
+            icon={<PersonAddAlt1Outlined />}
+            onClick={() => navigate('/clients')}
+          />
+          <QuickAction
+            title="Запланировать тренировку"
+            description="Создать занятие в расписании"
+            icon={<EventAvailableOutlined />}
+            onClick={() => navigate('/schedule')}
+          />
+          {!isTrainer ? (
+            <QuickAction
+              title="Записать платеж"
+              description="Обработать оплату клиента"
+              icon={<ReceiptLongOutlined />}
+              onClick={() => navigate('/payments')}
+            />
+          ) : (
+            <QuickAction
+              title="Нормативы"
+              description="Внести результаты учеников"
+              icon={<AssignmentOutlined />}
+              onClick={() => navigate('/standards')}
+            />
+          )}
+        </Box>
+      </Box>
+
+      {/* Диалог тарифа */}
       <Dialog
         open={planUsageDialog}
         onClose={() => setPlanUsageDialog(false)}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          Мой тариф: {planUsage?.subscription?.planType || 'Загрузка...'}
-        </DialogTitle>
+        <DialogTitle>Мой тариф: {planUsage?.subscription?.planType || 'Загрузка...'}</DialogTitle>
         <DialogContent>
           {planUsageLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -475,9 +523,6 @@ const Dashboard: React.FC = () => {
           ) : planUsage ? (
             <Box>
               <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Статус подписки
-                </Typography>
                 <Chip
                   label={planUsage.subscription.status === 'active' ? 'Активна' : 'Неактивна'}
                   color={planUsage.subscription.status === 'active' ? 'success' : 'default'}
@@ -485,28 +530,20 @@ const Dashboard: React.FC = () => {
                 />
                 {planUsage.subscription.endDate && (
                   <Typography variant="body2" color="text.secondary">
-                    Действует до: {new Date(planUsage.subscription.endDate).toLocaleDateString('ru-RU')}
-                  </Typography>
-                )}
-                {planUsage.subscription.nextPlanType && (
-                  <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
-                    Запланирован переход на тариф: {planUsage.subscription.nextPlanType}
+                    Действует до:{' '}
+                    {new Date(planUsage.subscription.endDate).toLocaleDateString('ru-RU')}
                   </Typography>
                 )}
               </Box>
 
               <Divider sx={{ my: 3 }} />
 
-              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                Использование ресурсов
-              </Typography>
-
               {[
-                { key: 'clients', label: 'Клиенты', icon: <People /> },
-                { key: 'trainers', label: 'Тренеры', icon: <Person /> },
-                { key: 'groups', label: 'Группы', icon: <Groups /> },
-                { key: 'branches', label: 'Филиалы', icon: <Business /> },
-                { key: 'trainings', label: 'Тренировки (в месяц)', icon: <Schedule /> },
+                { key: 'clients', label: 'Клиенты' },
+                { key: 'trainers', label: 'Тренеры' },
+                { key: 'groups', label: 'Группы' },
+                { key: 'branches', label: 'Филиалы' },
+                { key: 'trainings', label: 'Тренировки (в месяц)' },
               ].map((resource) => {
                 const limit = planUsage.limits[resource.key];
                 const used = planUsage.usage[resource.key];
@@ -515,13 +552,10 @@ const Dashboard: React.FC = () => {
 
                 return (
                   <Box key={resource.key} sx={{ mb: 3 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {resource.icon}
-                        <Typography variant="body1" fontWeight="medium">
-                          {resource.label}
-                        </Typography>
-                      </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body1" fontWeight="medium">
+                        {resource.label}
+                      </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {used} / {limit === 'unlimited' ? '∞' : limit}
                       </Typography>
@@ -534,24 +568,10 @@ const Dashboard: React.FC = () => {
                           color={percent >= 90 ? 'error' : percent >= 70 ? 'warning' : 'primary'}
                           sx={{ height: 8, borderRadius: 4, mb: 1 }}
                         />
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Использовано: {used}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color={remaining === 0 ? 'error.main' : 'text.secondary'}
-                            fontWeight={remaining === 0 ? 'bold' : 'normal'}
-                          >
-                            Осталось: {remaining === 'unlimited' ? '∞' : remaining}
-                          </Typography>
-                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Осталось: {remaining === 'unlimited' ? '∞' : remaining}
+                        </Typography>
                       </>
-                    )}
-                    {limit === 'unlimited' && (
-                      <Typography variant="caption" color="success.main">
-                        Безлимитный тариф
-                      </Typography>
                     )}
                   </Box>
                 );

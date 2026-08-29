@@ -53,6 +53,129 @@ export type UnifiedStaffLoginResponse =
       token: string;
     };
 
+/* ------------------------------------------------------------------ */
+/* Единая авторизация                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Все типы аккаунтов единой авторизации. */
+export type AccountType =
+  | 'TENANT_USER'
+  | 'CLIENT'
+  | 'PARENT'
+  | 'MARKETER'
+  | 'PROMO_CODE_ADMIN'
+  | 'SUPER_ADMIN'
+  | 'PLATFORM_STAFF';
+
+export type IdentifierType = 'phone' | 'email';
+
+export interface TenantBrief {
+  id: string;
+  name: string;
+  subdomain: string;
+}
+
+/** Ответ POST /auth/identify — шаг 1. */
+export interface IdentifyResponse {
+  identifierType: IdentifierType;
+  identifier: string;
+  exists: boolean;
+  /** true → показываем экран «Придумайте пароль». */
+  needsPasswordSetup: boolean;
+  accountsCount: number;
+}
+
+/** Аккаунт для экрана выбора организации. */
+export interface PublicAccount {
+  accountType: AccountType;
+  id: string;
+  displayName: string;
+  role?: string;
+  tenant?: TenantBrief;
+  isAccountApproved: boolean;
+  /** ФИО ребёнка — для родителей. */
+  childName?: string;
+}
+
+/** Выданная сессия. */
+export interface UnifiedSession {
+  requiresSelection: false;
+  accountType: AccountType;
+  token: string;
+  tenant?: TenantBrief;
+  user?: User;
+  client?: any;
+  parent?: any;
+  marketer?: any;
+  admin?: any;
+  superAdmin?: any;
+  staff?: { id: string; email: string; firstName: string; lastName: string; role: string; mustChangePassword?: boolean };
+  isAccountApproved?: boolean;
+}
+
+/** Нужен выбор организации/роли. */
+export interface UnifiedSelectionRequired {
+  requiresSelection: true;
+  selectionToken: string;
+  clientAccounts: PublicAccount[];
+  staffAccounts: PublicAccount[];
+}
+
+export type UnifiedLoginResponse = UnifiedSession | UnifiedSelectionRequired;
+
+/* ------------------------------------------------------------------ */
+/* Личный кабинет клиента/родителя                                     */
+/* ------------------------------------------------------------------ */
+
+export interface ClientDashboardStaffMember {
+  id: string;
+  /** «Тренер», «Администратор», «Владелец». */
+  roleLabel: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface ClientDashboardEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  groupName: string | null;
+  color: string | null;
+  branchName: string | null;
+  hallName: string | null;
+  trainerName: string | null;
+}
+
+export interface ClientDashboardData {
+  /** false → показываем экран ожидания подтверждения с заглушками. */
+  isAccountApproved: boolean;
+  userType: 'client' | 'parent';
+  viewerName: string;
+  parent: { id: string; fullName: string; phone: string | null; email: string | null } | null;
+  tenant: (TenantBrief & { logo?: string | null }) | null;
+  client?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    photo?: string | null;
+    membershipFeePaid: boolean;
+  };
+  balance: { amount: number; nextCharge: { date: string; amount: number } | null } | null;
+  attendance: { present: number; total: number } | null;
+  staff: ClientDashboardStaffMember[];
+  groups: Array<{ id?: string; name?: string; color?: string | null; branchName: string | null }>;
+  weekRange?: { start: string; end: string };
+  upcomingTrainings: ClientDashboardEvent[];
+  monthEvents: ClientDashboardEvent[];
+}
+
+
+
 // Client Types
 export interface Parent {
   id: string;

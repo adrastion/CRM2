@@ -7,6 +7,15 @@ import { asyncHandler } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
 
+/** JWT-секрет обязателен: fallback-константа сделала бы токены подделываемыми. */
+function jwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+  return secret;
+}
+
 /**
  * Поиск клиентов по телефону или email для регистрации
  */
@@ -277,10 +286,9 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       }
 
       if (!client.isAccountApproved) {
-        return res.status(403).json({
-          success: false,
-          error: 'Ваш аккаунт ожидает подтверждения администратором'
-        });
+        // Не блокируем вход: кабинет сам показывает экран ожидания подтверждения
+        // и не отдаёт данные школы, пока администратор не подтвердит аккаунт.
+        console.info(`[clientAuth] Вход клиента ${client.id} до подтверждения администратором`);
       }
 
       // Обновляем lastLogin
@@ -296,7 +304,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
           tenantId: client.tenantId,
           type: 'client'
         },
-        process.env.JWT_SECRET || 'your-secret-key',
+        jwtSecret(),
         { expiresIn: '30d' }
       );
 
@@ -317,7 +325,8 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
             middleName: client.middleName,
             email: client.email,
             phone: client.phone,
-            tenantId: client.tenantId
+            tenantId: client.tenantId,
+            isAccountApproved: client.isAccountApproved
           },
           tenant: {
             id: client.tenant.id,
@@ -325,7 +334,8 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
             subdomain: client.tenant.subdomain
           },
           token,
-          userType: 'client'
+          userType: 'client',
+          isAccountApproved: client.isAccountApproved
         },
         message: 'Login successful'
       });
@@ -349,10 +359,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       }
 
       if (!parent.isAccountApproved) {
-        return res.status(403).json({
-          success: false,
-          error: 'Ваш аккаунт ожидает подтверждения администратором'
-        });
+        console.info(`[clientAuth] Вход родителя ${parent.id} до подтверждения администратором`);
       }
 
       // Обновляем lastLogin
@@ -368,7 +375,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
           tenantId: parent.tenantId,
           type: 'parent'
         },
-        process.env.JWT_SECRET || 'your-secret-key',
+        jwtSecret(),
         { expiresIn: '30d' }
       );
 
@@ -402,7 +409,8 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
             subdomain: parent.tenant.subdomain
           },
           token,
-          userType: 'parent'
+          userType: 'parent',
+          isAccountApproved: parent.isAccountApproved
         },
         message: 'Login successful'
       });

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { ApiResponse } from '../types';
+import { HttpError } from '../utils/httpError';
 
 /**
  * Global error handler middleware
@@ -12,6 +13,16 @@ export const errorHandler = (
   next: NextFunction
 ): void => {
   console.error('Error:', error);
+
+  // Ошибки с явным статусом (единая авторизация и т.п.)
+  if (error instanceof HttpError) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      ...(error.field ? { data: [{ field: error.field, message: error.message }] } : {})
+    });
+    return;
+  }
 
   // Prisma errors
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

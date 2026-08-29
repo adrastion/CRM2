@@ -12,10 +12,12 @@ import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
+import { colors, radii } from './theme/tokens';
+import { hasAnySession, currentSessionDestination } from './utils/authSession';
 
 // Lazy load pages for better performance
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
+const Auth = lazy(() => import('./pages/Auth'));
+const PartnerRegister = lazy(() => import('./pages/PartnerRegister'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Clients = lazy(() => import('./pages/Clients'));
 const Standards = lazy(() => import('./pages/Standards'));
@@ -42,31 +44,36 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const SuperAdminSupportHub = lazy(() => import('./pages/SuperAdminSupportHub'));
 const PlatformStaffDesk = lazy(() => import('./pages/PlatformStaffDesk'));
 const PlatformStaffChangePassword = lazy(() => import('./pages/PlatformStaffChangePassword'));
-const ClientRegister = lazy(() => import('./pages/ClientRegister'));
-const ClientLogin = lazy(() => import('./pages/ClientLogin'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
-const UserTypeSelection = lazy(() => import('./pages/UserTypeSelection'));
-const ParentRegister = lazy(() => import('./pages/ParentRegister'));
 
 // Create Material-UI theme with dark mode support
 const getTheme = (darkMode: boolean) => createTheme({
   palette: {
     mode: darkMode ? 'dark' : 'light',
     primary: {
-      main: '#1976d2',
+      main: colors.primary,
     },
     secondary: {
-      main: '#dc004e',
+      main: colors.danger,
     },
+    background: {
+      default: darkMode ? '#151719' : colors.surface,
+      paper: darkMode ? '#1E2124' : colors.card,
+    },
+    text: darkMode ? undefined : { primary: colors.text, secondary: colors.textMuted },
+    success: { main: colors.success },
+    error: { main: colors.danger },
   },
+  shape: { borderRadius: radii.panel },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Nunito Sans", "Roboto", "Helvetica", "Arial", sans-serif',
   },
   components: {
     MuiButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
+          borderRadius: radii.button,
         },
       },
     },
@@ -80,45 +87,40 @@ const PageLoader: React.FC = () => (
     justifyContent="center"
     alignItems="center"
     minHeight="100vh"
+    sx={{ bgcolor: colors.surface }}
   >
-    <CircularProgress />
+    <CircularProgress sx={{ color: colors.primary }} />
   </Box>
 );
+
+/**
+ * Убирает токены всех ролей, кроме указанной.
+ *
+ * Axios-интерцептор выбирает токен по фиксированному приоритету, поэтому
+ * «чужой» токен в localStorage перехватил бы запросы текущей роли.
+ */
+const useExclusiveSession = (keep: 'tenant' | 'client' | 'marketer' | 'promoAdmin' | 'superAdmin' | 'platformStaff') => {
+  React.useEffect(() => {
+    const groups: Record<string, string[]> = {
+      tenant: ['token', 'user', 'tenant'],
+      client: ['clientToken', 'client', 'clientTenant', 'userType'],
+      marketer: ['marketerToken', 'marketer', 'marketerTenant'],
+      promoAdmin: ['promoCodeAdminToken', 'promoCodeAdmin', 'promoCodeAdminTenant'],
+      superAdmin: ['superAdminToken', 'superAdmin'],
+      platformStaff: ['platformStaffToken', 'platformStaff'],
+    };
+
+    Object.entries(groups).forEach(([name, keys]) => {
+      if (name === keep) return;
+      keys.forEach((k) => localStorage.removeItem(k));
+    });
+  }, [keep]);
+};
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-
-  // Clear other tokens if trying to access regular routes
-  React.useEffect(() => {
-    const marketerToken = localStorage.getItem('marketerToken');
-    const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
-    const superAdminToken = localStorage.getItem('superAdminToken');
-    const platformStaffToken = localStorage.getItem('platformStaffToken');
-    if (marketerToken || promoCodeAdminToken || superAdminToken || platformStaffToken) {
-      // User is trying to access regular routes but has other tokens
-      // Clear it to prevent conflicts
-      if (marketerToken) {
-        localStorage.removeItem('marketerToken');
-        localStorage.removeItem('marketer');
-        localStorage.removeItem('marketerTenant');
-        sessionStorage.setItem('marketerLoggedOut', 'true');
-      }
-      if (promoCodeAdminToken) {
-        localStorage.removeItem('promoCodeAdminToken');
-        localStorage.removeItem('promoCodeAdmin');
-        localStorage.removeItem('promoCodeAdminTenant');
-      }
-      if (superAdminToken) {
-        localStorage.removeItem('superAdminToken');
-        localStorage.removeItem('superAdmin');
-      }
-      if (platformStaffToken) {
-        localStorage.removeItem('platformStaffToken');
-        localStorage.removeItem('platformStaff');
-      }
-    }
-  }, []);
+  useExclusiveSession('tenant');
 
   if (isLoading) {
     return <PageLoader />;
@@ -127,46 +129,27 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
-// Public Route Component (redirect to dashboard if already authenticated)
-const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  // Clear other tokens if trying to access regular login
-  React.useEffect(() => {
-    const marketerToken = localStorage.getItem('marketerToken');
-    const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
-    const superAdminToken = localStorage.getItem('superAdminToken');
-    const platformStaffToken = localStorage.getItem('platformStaffToken');
-    if (marketerToken || promoCodeAdminToken || superAdminToken || platformStaffToken) {
-      // User is trying to access regular login but has other tokens
-      // Clear it to prevent conflicts
-      if (marketerToken) {
-        localStorage.removeItem('marketerToken');
-        localStorage.removeItem('marketer');
-        localStorage.removeItem('marketerTenant');
-        sessionStorage.setItem('marketerLoggedOut', 'true');
-      }
-      if (promoCodeAdminToken) {
-        localStorage.removeItem('promoCodeAdminToken');
-        localStorage.removeItem('promoCodeAdmin');
-        localStorage.removeItem('promoCodeAdminTenant');
-      }
-      if (superAdminToken) {
-        localStorage.removeItem('superAdminToken');
-        localStorage.removeItem('superAdmin');
-      }
-      if (platformStaffToken) {
-        localStorage.removeItem('platformStaffToken');
-        localStorage.removeItem('platformStaff');
-      }
-    }
-  }, []);
+/** Маршрут единой авторизации: авторизованных сразу уводим в их кабинет. */
+const AuthRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return <PageLoader />;
   }
 
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
+  if (hasAnySession()) {
+    const dest = currentSessionDestination();
+    if (dest) return <Navigate to={dest} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+/** Личный кабинет ученика/родителя: нужен clientToken. */
+const ProtectedClientRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  useExclusiveSession('client');
+  const hasToken = Boolean(localStorage.getItem('clientToken'));
+  return hasToken ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 // Protected Marketer Route Component
@@ -177,7 +160,7 @@ const ProtectedMarketerRoute: React.FC<{ children: React.ReactNode }> = ({ child
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 // Protected Promo Code Admin Route Component
@@ -188,7 +171,7 @@ const ProtectedPromoCodeAdminRoute: React.FC<{ children: React.ReactNode }> = ({
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 // Protected Super Admin Route Component
@@ -199,13 +182,13 @@ const ProtectedSuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ chi
     return <PageLoader />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = usePlatformStaffAuth();
   if (isLoading) return <PageLoader />;
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
 // Main App Component
@@ -306,43 +289,40 @@ const AppContent: React.FC = () => {
       )}
       <Suspense fallback={<PageLoader />}>
       <Routes>
-        {/* User Type Selection - Entry point for unauthenticated users */}
+        {/* Единая авторизация — единственная точка входа для всех роле́й */}
         <Route
           path="/auth"
-          element={<UserTypeSelection />}
-        />
-        {/* Public Routes */}
-        <Route
-          path="/login"
           element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
+            <AuthRoute>
+              <Auth />
+            </AuthRoute>
           }
         />
+        {/* Регистрация школы («Стать партнером») */}
         <Route
-          path="/register"
+          path="/partner/register"
           element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
+            <AuthRoute>
+              <PartnerRegister />
+            </AuthRoute>
           }
         />
-        <Route
-          path="/client/register"
-          element={<ClientRegister />}
-        />
-        <Route
-          path="/parent/register"
-          element={<ParentRegister />}
-        />
-        <Route
-          path="/client/login"
-          element={<ClientLogin />}
-        />
+
+        {/* Старые адреса входа/регистрации ведут на единую форму */}
+        <Route path="/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/client/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/client/register" element={<Navigate to="/auth" replace />} />
+        <Route path="/parent/register" element={<Navigate to="/auth" replace />} />
+        <Route path="/register" element={<Navigate to="/partner/register" replace />} />
+
+        {/* Личный кабинет ученика/родителя */}
         <Route
           path="/client/dashboard"
-          element={<ClientDashboard />}
+          element={
+            <ProtectedClientRoute>
+              <ClientDashboard />
+            </ProtectedClientRoute>
+          }
         />
           {/* Public routes - accessible for both authenticated and non-authenticated users */}
           <Route
@@ -513,7 +493,7 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route path="/super-admin/login" element={<Navigate to="/login" replace />} />
+        <Route path="/super-admin/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/admin/dashboard"
           element={
@@ -534,7 +514,7 @@ const AppContent: React.FC = () => {
             </ProtectedSuperAdminRoute>
           }
         />
-        <Route path="/platform-staff/login" element={<Navigate to="/login" replace />} />
+        <Route path="/platform-staff/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/platform-staff/desk"
           element={
@@ -551,8 +531,8 @@ const AppContent: React.FC = () => {
             </ProtectedPlatformStaffRoute>
           }
         />
-        <Route path="/marketer/login" element={<Navigate to="/login" replace />} />
-        <Route path="/promo-code-admin/login" element={<Navigate to="/login" replace />} />
+        <Route path="/marketer/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/promo-code-admin/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/admin/promo-codes"
           element={
