@@ -114,7 +114,7 @@ const MarketerPanel: React.FC = () => {
               logout();
               // Use setTimeout to ensure state is updated before navigation
               setTimeout(() => {
-                navigate('/auth', { replace: true });
+                navigate('/login', { replace: true });
               }, 0);
             }}
           >

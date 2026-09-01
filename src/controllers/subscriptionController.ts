@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
-import { SubscriptionService, PlanType, PLAN_PRICES } from '../services/subscriptionService';
+import { SubscriptionService, PlanType } from '../services/subscriptionService';
+import { PlanCatalogService } from '../services/planCatalogService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 /**
@@ -41,7 +42,7 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
 
   const { planType, returnUrl, promoCode } = req.body;
 
-  if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
+  if (!planType || !(await PlanCatalogService.findByCode(String(planType)))) {
     res.status(400).json({
       success: false,
       error: 'Invalid plan type',
@@ -114,7 +115,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
     return;
   }
 
-  if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
+  if (!planType) {
     res.status(400).json({
       success: false,
       error: 'Invalid plan type',
@@ -124,7 +125,22 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
 
   try {
     console.log('validatePromoCode controller called:', { tenantId: req.tenant?.id, promoCode, planType });
-    const planPrice = PLAN_PRICES[planType as PlanType];
+    const plan = await PlanCatalogService.findByCode(String(planType));
+    if (!plan) {
+      res.status(400).json({
+        success: false,
+        error: 'Тариф не найден',
+      });
+      return;
+    }
+    if (plan.price == null) {
+      res.status(400).json({
+        success: false,
+        error: 'Для тарифа с договорной ценой промокод не применим',
+      });
+      return;
+    }
+    const planPrice = plan.price;
     console.log('Plan price:', planPrice);
     
     // Проверяем, использовал ли пользователь промокод маркетолога
@@ -217,7 +233,7 @@ export const updatePlan = asyncHandler(async (req: AuthenticatedRequest, res: Re
 
   const { planType } = req.body;
 
-  if (!planType || !['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'].includes(planType)) {
+  if (!planType || !(await PlanCatalogService.findByCode(String(planType)))) {
     res.status(400).json({
       success: false,
       error: 'Invalid plan type',

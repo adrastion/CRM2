@@ -10,6 +10,8 @@ import {
   deleteExpense,
   payMarketer,
   updateTenantPlan,
+  updateTenantSubscriptionEndDate,
+  getTenantGrantHistory,
   getExpenseCategories,
   createExpenseCategory,
   getAnalyticsByPeriod,
@@ -19,6 +21,10 @@ import {
   getAuditLogs,
   getPlanPrices,
   updatePlanPrice,
+  createPlan,
+  updatePlan,
+  archivePlan,
+  restorePlan,
   getMarketerStats,
   exportTransactions,
   exportTenants,
@@ -27,11 +33,35 @@ import {
   saveDashboardPreset,
   deleteDashboardPreset,
 } from '../controllers/adminDashboardController';
-import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
+import {
+  getLogFileInfo,
+  readLogFile,
+  downloadLogFile,
+  clearLogFile,
+} from '../controllers/logFileController';
+import {
+  authenticateSuperAdmin,
+  authenticatePlatformViewer,
+  requirePlatformWrite,
+} from '../middleware/superAdminAuth';
 
 const router = Router();
 
-// Все маршруты требуют аутентификации суперадмина
+/* ------------------------------------------------------------------ */
+/* Каталог тарифов                                                    */
+/*                                                                    */
+/* Просмотр доступен супер-админу и персоналу платформы, изменение —   */
+/* только супер-админу (requirePlatformWrite).                        */
+/* ------------------------------------------------------------------ */
+router.get('/plans/prices', authenticatePlatformViewer, getPlanPrices);
+router.get('/plans', authenticatePlatformViewer, getPlanPrices);
+router.post('/plans', authenticatePlatformViewer, requirePlatformWrite, createPlan);
+router.put('/plans/prices', authenticatePlatformViewer, requirePlatformWrite, updatePlanPrice);
+router.put('/plans/:code', authenticatePlatformViewer, requirePlatformWrite, updatePlan);
+router.post('/plans/:code/archive', authenticatePlatformViewer, requirePlatformWrite, archivePlan);
+router.post('/plans/:code/restore', authenticatePlatformViewer, requirePlatformWrite, restorePlan);
+
+// Остальные маршруты требуют аутентификации суперадмина
 router.use(authenticateSuperAdmin);
 
 // Получить статистику дашборда
@@ -39,6 +69,12 @@ router.get('/', getAdminDashboard);
 
 // Обновить настройки суперадмина
 router.put('/settings', updateAdminSettings);
+
+// Файл ошибок сервера: путь задаётся в настройках
+router.get('/logs/error-file', getLogFileInfo);
+router.get('/logs/error-file/content', readLogFile);
+router.get('/logs/error-file/download', downloadLogFile);
+router.delete('/logs/error-file', clearLogFile);
 
 // Получить детальную информацию о tenant'е
 router.get('/tenants/:tenantId', getTenantDetails);
@@ -58,8 +94,10 @@ router.delete('/expenses/:id', deleteExpense);
 router.post('/marketers/pay', payMarketer);
 router.get('/marketers/stats', getMarketerStats);
 
-// Обновить тариф tenant'а
+// Выдача тарифа аккаунту, изменение срока и история выдачи
 router.put('/tenants/:tenantId/plan', updateTenantPlan);
+router.put('/tenants/:tenantId/subscription/end-date', updateTenantSubscriptionEndDate);
+router.get('/tenants/:tenantId/grant-history', getTenantGrantHistory);
 
 // Массовое обновление аккаунтов
 router.post('/tenants/bulk', bulkUpdateTenants);
@@ -76,10 +114,6 @@ router.get('/analytics/kpi', getKPIMetrics);
 // Логи аудита
 router.get('/audit-logs', getAuditLogs);
 
-// Управление тарифами
-router.get('/plans/prices', getPlanPrices);
-router.put('/plans/prices', updatePlanPrice);
-
 // Экспорт данных
 router.get('/export/transactions', exportTransactions);
 router.get('/export/tenants', exportTenants);
@@ -91,4 +125,3 @@ router.post('/dashboard/presets', saveDashboardPreset);
 router.delete('/dashboard/presets/:id', deleteDashboardPreset);
 
 export default router;
-

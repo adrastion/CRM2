@@ -29,8 +29,8 @@ const StepTransition: React.FC<StepTransitionProps> = ({
       key={stepKey}
       sx={{
         '@keyframes authStepIn': {
-          from: { opacity: 0, transform: `translateX(${from}px)` },
-          to: { opacity: 1, transform: 'translateX(0)' },
+          from: { opacity: 0, transform: `translateX(${from}px) scale(0.98)` },
+          to: { opacity: 1, transform: 'translateX(0) scale(1)' },
         },
         animation: `authStepIn ${motion.stepDuration}ms ${motion.easing} both`,
         willChange: 'opacity, transform',

@@ -1,18 +1,15 @@
 import React from 'react';
 import { Box, IconButton, InputBase, Typography, Menu, MenuItem, ListItemIcon } from '@mui/material';
-import {
-  Search,
-  NotificationsNone,
-  KeyboardArrowDown,
-  Logout,
-  MenuOutlined,
-} from '@mui/icons-material';
+import { KeyboardArrowDown, Logout, MenuOutlined, NotificationsNone } from '@mui/icons-material';
 import { colors, radii, sizes, typography } from '../../theme/tokens';
+import DesignIcon from '../common/DesignIcon';
+import { NavIconName } from '../../assets/icons/registry';
 
 export interface ShellNavItem {
   key: string;
   label: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
+  iconName?: NavIconName;
   /** Не переходить по клику (заглушки в неподтверждённом кабинете). */
   disabled?: boolean;
   onClick?: () => void;
@@ -121,10 +118,14 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     bgcolor: colors.primaryDark,
                   }
                 : undefined,
-              '& svg': { fontSize: 24, flexShrink: 0 },
+              '& img': { flexShrink: 0 },
             }}
           >
-            {item.icon}
+            {item.iconName ? (
+              <DesignIcon category="nav" name={item.iconName} size={34} active={active} />
+            ) : (
+              item.icon
+            )}
             <Typography
               component="span"
               sx={{ fontSize: typography.label, fontWeight: active ? 600 : 500, lineHeight: 1.25 }}
@@ -196,7 +197,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             opacity: searchDisabled ? 0.6 : 1,
           }}
         >
-          <Search sx={{ color: colors.textHint, fontSize: 22 }} />
+          <DesignIcon category="ui" name="search" size={22} />
           <InputBase
             placeholder="Поиск"
             value={searchValue}
@@ -216,7 +217,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
 
         <Box sx={{ position: 'relative', flexShrink: 0 }}>
           <IconButton aria-label="Уведомления" sx={{ color: colors.textMuted }}>
-            <NotificationsNone />
+            <NotificationsNone sx={{ fontSize: 26 }} />
           </IconButton>
           {notifications > 0 && (
             <Box

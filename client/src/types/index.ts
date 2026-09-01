@@ -124,6 +124,98 @@ export interface UnifiedSelectionRequired {
 export type UnifiedLoginResponse = UnifiedSession | UnifiedSelectionRequired;
 
 /* ------------------------------------------------------------------ */
+/* Каталог тарифов (панель супер-админа)                               */
+/* ------------------------------------------------------------------ */
+
+/** Лимит тарифа: число или «безлимит». */
+export type PlanLimitValue = number | 'unlimited';
+
+export interface PlanLimitsDto {
+  trainers: PlanLimitValue;
+  clients: PlanLimitValue;
+  groups: PlanLimitValue;
+  branches: PlanLimitValue;
+  trainings: PlanLimitValue;
+}
+
+/** Тариф в панели супер-админа. */
+export interface SubscriptionPlanItem {
+  /** Совместимость с прежним интерфейсом — то же, что code. */
+  planType: string;
+  /** Неизменяемый код тарифа, связывает его с историей платежей. */
+  code: string;
+  name: string;
+  description: string | null;
+  /** null — «Цена договорная». */
+  price: number | null;
+  isNegotiable: boolean;
+  limits: PlanLimitsDto;
+  /** false — индивидуальный тариф, не показывается на странице тарифов. */
+  isPublic: boolean;
+  /** false — тариф в архиве, выдать его нельзя. */
+  isActive: boolean;
+  sortOrder: number;
+  supportLevel: string | null;
+  /** Сколько аккаунтов используют тариф. */
+  subscriptionsCount: number;
+}
+
+/** Тариф для публичной страницы /pricing. */
+export interface PublicPlanItem {
+  code: string;
+  planType: string;
+  name: string;
+  description: string | null;
+  price: number | null;
+  isNegotiable: boolean;
+  limits: PlanLimitsDto;
+  supportLevel: string | null;
+  sortOrder: number;
+}
+
+/** Запись в истории выдачи и продления тарифа. */
+export interface SubscriptionGrantLogItem {
+  id: string;
+  /** 'grant' — выдача, 'extend' — изменение срока. */
+  action: string;
+  planCode: string;
+  planName: string;
+  oldPlanCode: string | null;
+  oldPlanName: string | null;
+  oldEndDate: string | null;
+  newEndDate: string | null;
+  comment: string | null;
+  createdAt: string;
+  superAdmin: { id: string; name: string; email: string } | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Файл логов сервера                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface LogFileInfoResponse {
+  path: string;
+  exists: boolean;
+  size: number;
+  sizeHuman: string;
+  modifiedAt: string | null;
+  writable: boolean;
+  defaultPath: string;
+}
+
+export interface LogFileContentResponse {
+  path: string;
+  exists: boolean;
+  size: number;
+  sizeHuman: string;
+  modifiedAt: string | null;
+  lines: number;
+  /** true — показан только хвост файла. */
+  truncated: boolean;
+  content: string;
+}
+
+/* ------------------------------------------------------------------ */
 /* Личный кабинет клиента/родителя                                     */
 /* ------------------------------------------------------------------ */
 
@@ -172,9 +264,10 @@ export interface ClientDashboardData {
   weekRange?: { start: string; end: string };
   upcomingTrainings: ClientDashboardEvent[];
   monthEvents: ClientDashboardEvent[];
+  /** Спортсмены на одном номере — переключатель в шапке. */
+  linkedAthletes?: Array<{ id: string; firstName: string; lastName: string }>;
+  activeClientId?: string;
 }
-
-
 
 // Client Types
 export interface Parent {
@@ -409,6 +502,72 @@ export interface Payment {
   client?: Client;
   membership?: Membership;
   group?: Group;
+}
+
+/* ------------------------------------------------------------------ */
+/* Раздел «Финансы»                                                    */
+/* ------------------------------------------------------------------ */
+
+export type FinanceDirection = 'income' | 'expense';
+
+export interface FinanceOperationType {
+  id: string;
+  tenantId?: string | null;
+  code: string;
+  name: string;
+  defaultDirection: FinanceDirection | string;
+  isSystem: boolean;
+  isActive: boolean;
+}
+
+export interface FinanceOperation {
+  id: string;
+  direction: FinanceDirection | string;
+  typeCode: string;
+  typeName?: string;
+  title: string;
+  amount: number;
+  occurredAt: string;
+  notes?: string | null;
+  clientId?: string | null;
+  trainerId?: string | null;
+  groupId?: string | null;
+  branchId?: string | null;
+  paymentId?: string | null;
+  client?: { id: string; firstName: string; lastName: string; middleName?: string | null } | null;
+  trainer?: { id: string; firstName: string; lastName: string } | null;
+  group?: { id: string; name: string } | null;
+  branch?: { id: string; name: string } | null;
+}
+
+export interface FinanceOperationsResponse {
+  items: FinanceOperation[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FinanceSalaryRow {
+  trainerId: string;
+  trainerName: string;
+  periodStart: string;
+  periodEnd: string;
+  trainingsCount: number;
+  accrued: number;
+  paid: number;
+  remaining: number;
+}
+
+export interface FinanceMembershipRow {
+  clientId: string;
+  clientName: string;
+  membershipPrice: number;
+  paidAmount: number;
+  debt: number;
+  remaining: number;
+  status: 'paid' | 'unpaid' | 'partial';
+  latestPaymentId: string | null;
+  groups: Array<{ id: string; name: string; trainerId?: string; branchId?: string }>;
 }
 
 // Training Types

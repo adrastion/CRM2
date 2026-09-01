@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { Box, Typography, Paper, Chip } from '@mui/material';
 import { TrendingUp, TrendingDown, Remove } from '@mui/icons-material';
+import { colors } from '../theme/tokens';
 
 interface ClientStandard {
   id: string;
@@ -158,7 +159,7 @@ const StandardChart: React.FC<StandardChartProps> = ({
           <Line
             type="monotone"
             dataKey="result"
-            stroke="#1976d2"
+            stroke={colors.primary}
             strokeWidth={2}
             dot={{ r: 5 }}
             activeDot={{ r: 8 }}

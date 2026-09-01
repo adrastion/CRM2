@@ -37,6 +37,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import ClientNameLink from '../components/ClientNameLink';
 import { Payment, Client, Branch } from '../types';
 import { validatePaymentForm } from '../utils/validation';
 import { useAuth } from '../contexts/AuthContext';
@@ -527,7 +528,11 @@ const Payments: React.FC = () => {
                     filteredPayments.map((payment) => (
                       <TableRow key={payment.id}>
                   <TableCell>
-                          {payment.client ? [payment.client.lastName, payment.client.firstName, payment.client.middleName].filter(Boolean).join(' ') : '-'}
+                          {payment.client ? (
+                            <ClientNameLink clientId={payment.clientId} client={payment.client} />
+                          ) : (
+                            '-'
+                          )}
                   </TableCell>
                   <TableCell>
                           <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
@@ -1189,9 +1194,17 @@ const Payments: React.FC = () => {
           {recalculatingPayment && (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Клиент: {recalculatingPayment.client ? 
-                  [recalculatingPayment.client.lastName, recalculatingPayment.client.firstName, recalculatingPayment.client.middleName].filter(Boolean).join(' ') 
-                  : '-'}
+                Клиент:{' '}
+                {recalculatingPayment.client ? (
+                  <ClientNameLink
+                    clientId={recalculatingPayment.clientId}
+                    client={recalculatingPayment.client}
+                    variant="inherit"
+                    sx={{ color: 'text.secondary', fontWeight: 400, display: 'inline' }}
+                  />
+                ) : (
+                  '-'
+                )}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Текущая сумма: {recalculatingPayment.amount.toLocaleString('ru-RU', {

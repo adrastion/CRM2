@@ -23,7 +23,7 @@ const SubscriptionSuccess: React.FC = () => {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      navigate('/auth');
+      navigate('/login');
       return;
     }
 

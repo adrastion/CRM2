@@ -32,6 +32,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import ClientNameLink from '../components/ClientNameLink';
 import { Client, Membership } from '../types';
 
 interface ClientMembership {
@@ -196,7 +197,11 @@ const ClientMemberships: React.FC = () => {
                       return (
                         <TableRow key={membership.id}>
                           <TableCell>
-                            {membership.client ? [membership.client.lastName, membership.client.firstName, membership.client.middleName].filter(Boolean).join(' ') : '-'}
+                            {membership.client ? (
+                              <ClientNameLink clientId={membership.clientId} client={membership.client} />
+                            ) : (
+                              '-'
+                            )}
                           </TableCell>
                           <TableCell>{membership.membership?.name || '-'}</TableCell>
                           <TableCell>

@@ -10,12 +10,17 @@ import {
   getPlanUsage,
 } from '../controllers/subscriptionController';
 import { authenticate, requireOwner } from '../middleware/auth';
+import { getPublicPlans } from '../controllers/publicPlansController';
 
 const router = Router();
 
 // Webhook от YooKassa (не требует аутентификации, должен быть ПЕРЕД authenticate)
 // Должен быть защищен IP-адресами YooKassa или проверкой подписи
 router.post('/webhook', handleWebhook);
+
+// Публичный каталог тарифов для страницы тарифов (без аутентификации:
+// страница доступна и неавторизованным посетителям)
+router.get('/plans', getPublicPlans);
 
 // Все остальные маршруты требуют аутентификации
 router.use(authenticate);

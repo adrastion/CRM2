@@ -1,65 +1,19 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { PlanCatalogService, PlanLimits, LimitKey } from './planCatalogService';
 
 const prisma = new PrismaClient();
 
 // YooKassa API базовый URL
 const YOOKASSA_API_URL = 'https://api.yookassa.ru/v3';
 
-export type PlanType = 'FREE' | 'STARTER' | 'BUSINESS' | 'PROFESSIONAL' | 'ENTERPRISE';
+/**
+ * Код тарифа. Раньше это было объединение литералов, теперь тарифы хранятся
+ * в таблице `subscription_plans` и создаются супер-админом, поэтому код —
+ * произвольная строка, валидируемая по каталогу.
+ */
+export type PlanType = string;
 
-export interface PlanLimits {
-  trainers: number | 'unlimited';
-  clients: number | 'unlimited';
-  groups: number | 'unlimited';
-  branches: number | 'unlimited';
-  trainings: number | 'unlimited';
-}
-
-export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
-  FREE: {
-    trainers: 1,
-    clients: 30,
-    groups: 3,
-    branches: 1,
-    trainings: 10, // в месяц
-  },
-  STARTER: {
-    trainers: 3,
-    clients: 90,
-    groups: 9,
-    branches: 2,
-    trainings: 'unlimited',
-  },
-  BUSINESS: {
-    trainers: 10,
-    clients: 600,
-    groups: 30,
-    branches: 5,
-    trainings: 'unlimited',
-  },
-  PROFESSIONAL: {
-    trainers: 25,
-    clients: 1500,
-    groups: 50,
-    branches: 10,
-    trainings: 'unlimited',
-  },
-  ENTERPRISE: {
-    trainers: 'unlimited',
-    clients: 'unlimited',
-    groups: 'unlimited',
-    branches: 'unlimited',
-    trainings: 'unlimited',
-  },
-};
-
-export const PLAN_PRICES: Record<PlanType, number> = {
-  FREE: 0,
-  STARTER: 990,
-  BUSINESS: 2490,
-  PROFESSIONAL: 4990,
-  ENTERPRISE: 0, // По запросу
-};
+export type { PlanLimits, LimitKey };
 
 export class SubscriptionService {
   /**
@@ -465,10 +419,18 @@ export class SubscriptionService {
   ) {
     const subscription = await this.getOrCreateSubscription(tenantId);
 
-    let amount = PLAN_PRICES[planType];
-    if (amount === 0 && planType !== 'FREE') {
-      throw new Error('Enterprise plan requires manual setup');
+    // Цена и параметры тарифа берутся из каталога в БД.
+    const plan = await PlanCatalogService.requireByCode(planType);
+    if (!plan.isActive) {
+      throw new Error(`Тариф «${plan.name}» архивирован и недоступен для оплаты`);
     }
+    if (plan.price === null) {
+      // «Цена договорная» — оплатить самостоятельно нельзя, тариф выдаёт супер-админ.
+      throw new Error(`Тариф «${plan.name}» оформляется по договору, обратитесь к менеджеру`);
+    }
+
+    const listPrice = plan.price;
+    let amount = listPrice;
 
     let validatedPromoCode = null;
     let discountAmount = 0;
@@ -491,11 +453,16 @@ export class SubscriptionService {
 
       // Сохраняем использование промокода, если был применен
       if (validatedPromoCode) {
-        // Создаем запись о платеже для отслеживания использования промокода
+        // Создаем запись о платеже для отслеживания использования промокода.
+        // amount — фактически полученная сумма (0), listPrice — цена до скидки:
+        // так выручка не завышается на стоимость тарифа, который не оплачивали.
         const subscriptionPayment = await prisma.subscriptionPayment.create({
           data: {
             subscriptionId: subscription.id,
-            amount: PLAN_PRICES[planType], // Оригинальная сумма
+            amount: 0,
+            planCode: planType,
+            listPrice,
+            discountAmount,
             currency: 'RUB',
             status: 'succeeded',
             paymentMethod: 'promo_code',
@@ -522,12 +489,11 @@ export class SubscriptionService {
         // Если это промокод маркетолога, создаем связь tenant -> marketer
         if (validatedPromoCode.marketerId) {
           await this.linkTenantToMarketer(tenantId, validatedPromoCode.marketerId);
-          
+
           // Начисляем комиссию маркетологу за бесплатную подписку через промокод
-          const originalAmount = PLAN_PRICES[planType];
-          await this.addCommissionToMarketer(tenantId, originalAmount);
+          await this.addCommissionToMarketer(tenantId, listPrice);
         }
-        
+
         console.log('Promo code applied for free subscription:', {
           promoCodeId: validatedPromoCode.id,
           code: validatedPromoCode.code,
@@ -543,7 +509,7 @@ export class SubscriptionService {
         status: 'succeeded',
         promoCodeApplied: !!validatedPromoCode,
         discountAmount: discountAmount,
-        originalAmount: PLAN_PRICES[planType],
+        originalAmount: listPrice,
         finalAmount: 0,
       };
     }
@@ -577,12 +543,12 @@ export class SubscriptionService {
         type: 'redirect',
         return_url: returnUrl,
       },
-      description: `Подписка ${planType} для тенанта ${tenantId}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
+      description: `Подписка ${plan.name} для тенанта ${tenantId}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
       metadata: {
         tenantId,
         planType,
         subscriptionId: subscription.id,
-        originalAmount: PLAN_PRICES[planType].toString(),
+        originalAmount: listPrice.toString(),
         discountAmount: discountAmount.toString(),
         ...(validatedPromoCode && {
           promoCodeId: validatedPromoCode.id,
@@ -594,7 +560,7 @@ export class SubscriptionService {
         customer: Object.keys(customer).length > 0 ? customer : { email: 'noreply@example.com' }, // Минимальные данные, если нет email/phone
         items: [
           {
-            description: `Подписка ${planType}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
+            description: `Подписка ${plan.name}${validatedPromoCode ? ` (промокод: ${validatedPromoCode.code})` : ''}`,
             quantity: '1.00',
             amount: {
               value: amount.toFixed(2),
@@ -625,11 +591,15 @@ export class SubscriptionService {
 
     const payment: any = await response.json();
 
-    // Сохраняем платеж в БД
+    // Сохраняем платеж в БД вместе со снимком тарифа: последующее изменение
+    // цены в каталоге не должно менять историю выручки.
     const subscriptionPayment = await prisma.subscriptionPayment.create({
       data: {
         subscriptionId: subscription.id,
         amount: amount, // Итоговая сумма после скидки
+        planCode: planType,
+        listPrice,
+        discountAmount,
         currency: 'RUB',
         status: 'pending',
         paymentMethod: 'yookassa',
@@ -649,7 +619,7 @@ export class SubscriptionService {
       status: 'pending',
       promoCodeApplied: !!validatedPromoCode,
       discountAmount: discountAmount,
-      originalAmount: PLAN_PRICES[planType],
+      originalAmount: listPrice,
       finalAmount: amount,
     };
   }
@@ -928,7 +898,7 @@ export class SubscriptionService {
     }
 
     // Используем текущий план (не nextPlanType), так как лимиты применяются к текущему тарифу
-    const limits = PLAN_LIMITS[subscription.planType as PlanType];
+    const limits = await PlanCatalogService.getLimits(subscription.planType);
     const limit = limits[resource];
 
     if (limit === 'unlimited') {
@@ -982,7 +952,7 @@ export class SubscriptionService {
    */
   static async getLimits(tenantId: string): Promise<PlanLimits> {
     const subscription = await this.getSubscription(tenantId);
-    return PLAN_LIMITS[subscription.planType as PlanType];
+    return PlanCatalogService.getLimits(subscription.planType);
   }
 
   /**
@@ -990,7 +960,10 @@ export class SubscriptionService {
    */
   static async getPlanUsage(tenantId: string) {
     const subscription = await this.getSubscription(tenantId);
-    const limits = PLAN_LIMITS[subscription.planType as PlanType];
+    const plan = await PlanCatalogService.findByCode(subscription.planType);
+    const limits = plan
+      ? plan.limits
+      : await PlanCatalogService.getLimits(subscription.planType);
 
     // Подсчитываем текущее использование ресурсов
     const [trainersCount, clientsCount, groupsCount, branchesCount, trainingsCount] = await Promise.all([
@@ -1041,10 +1014,12 @@ export class SubscriptionService {
     return {
       subscription: {
         planType: subscription.planType,
+        planName: plan?.name || subscription.planType,
         status: subscription.status,
         startDate: subscription.startDate,
         endDate: subscription.endDate,
         nextPlanType: subscription.nextPlanType,
+        isGranted: (subscription as any).isGranted ?? false,
       },
       limits: {
         trainers: limits.trainers,
@@ -1081,8 +1056,8 @@ export class SubscriptionService {
    * Деактивация лишних ресурсов при переходе на меньший тариф
    */
   static async deactivateExcessResources(tenantId: string, oldPlanType: PlanType, newPlanType: PlanType) {
-    const oldLimits = PLAN_LIMITS[oldPlanType];
-    const newLimits = PLAN_LIMITS[newPlanType];
+    const oldLimits = await PlanCatalogService.getLimits(oldPlanType);
+    const newLimits = await PlanCatalogService.getLimits(newPlanType);
 
     console.log('Checking for excess resources after downgrade:', {
       tenantId,
@@ -1207,9 +1182,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Обновление плана подписки
-   * При переходе на более дорогой план - активируется сразу
-   * При переходе на более дешевый план - активируется после окончания текущего периода
+   * Обновление плана подписки (самостоятельная смена тарифа клиентом).
+   *
+   * Переход «выше» применяется сразу, «ниже» — после окончания оплаченного
+   * периода. Иерархия определяется полем sortOrder каталога, а не ценой:
+   * у договорных тарифов цены нет и сравнивать их численно нельзя.
    */
   static async updatePlan(tenantId: string, newPlanType: PlanType) {
     const subscription = await this.getSubscription(tenantId);
@@ -1217,20 +1194,24 @@ export class SubscriptionService {
       throw new Error('Subscription not found');
     }
 
-    // Если переход на более дорогой план - сразу активируем
-    const currentPrice = PLAN_PRICES[subscription.planType as PlanType];
-    const newPrice = PLAN_PRICES[newPlanType];
+    const newPlan = await PlanCatalogService.requireByCode(newPlanType);
+    if (!newPlan.isActive) {
+      throw new Error(`Тариф «${newPlan.name}» архивирован и недоступен`);
+    }
 
-    if (newPrice > currentPrice) {
-      // Upgrade - активируем сразу (лимиты увеличиваются, ничего не деактивируем)
+    const currentRank = await PlanCatalogService.getSortOrder(subscription.planType);
+    const newRank = newPlan.sortOrder;
+
+    if (newRank > currentRank) {
+      // Повышение тарифа — активируем сразу, лимиты только растут
       console.log('Upgrading subscription immediately:', {
         tenantId,
         from: subscription.planType,
         to: newPlanType
       });
       return this.activateSubscription(tenantId, newPlanType, subscription.id);
-    } else if (newPrice < currentPrice) {
-      // Downgrade - устанавливаем nextPlanType, план изменится после окончания текущего периода
+    } else if (newRank < currentRank) {
+      // Понижение — планируем на конец оплаченного периода
       console.log('Scheduling subscription downgrade:', {
         tenantId,
         from: subscription.planType,
@@ -1244,25 +1225,156 @@ export class SubscriptionService {
           // План изменится в конце текущего периода, тогда деактивируем лишние ресурсы
         },
       });
-    } else {
-      // Переход на тариф с той же ценой - применяем сразу и деактивируем лишние ресурсы
-      console.log('Changing to plan with same price, applying immediately:', {
-        tenantId,
-        from: subscription.planType,
-        to: newPlanType
-      });
-
-      // Деактивируем лишние ресурсы перед изменением тарифа
-      await this.deactivateExcessResources(
-        tenantId,
-        subscription.planType as PlanType,
-        newPlanType
-      );
-
-      return this.activateSubscription(tenantId, newPlanType, subscription.id);
     }
-    // Если тарифы одинаковые - просто возвращаем текущую подписку
+
+    // Тариф того же уровня: применяем сразу, лишние ресурсы деактивируем
+    if (subscription.planType === newPlanType) {
+      return subscription;
+    }
+
+    console.log('Changing to plan of the same rank, applying immediately:', {
+      tenantId,
+      from: subscription.planType,
+      to: newPlanType
+    });
+
+    await this.deactivateExcessResources(tenantId, subscription.planType, newPlanType);
+    return this.activateSubscription(tenantId, newPlanType, subscription.id);
+  }
+
+  /**
+   * Выдача тарифа супер-админом.
+   *
+   * В отличие от `updatePlan` изменение применяется немедленно независимо от
+   * уровня тарифа: администратор действует осознанно, и «отложенное понижение»
+   * здесь только сбивало бы с толку. Подписка помечается как выданная, чтобы
+   * не попадать в финансовые метрики, и записывается в журнал выдачи.
+   */
+  static async grantPlan(params: {
+    tenantId: string;
+    planCode: PlanType;
+    superAdminId?: string | null;
+    /** Срок действия. Если не передан — месяц от текущей даты. */
+    endDate?: Date | null;
+    comment?: string | null;
+  }) {
+    const { tenantId, planCode, superAdminId, comment } = params;
+
+    const plan = await PlanCatalogService.requireByCode(planCode);
+    if (!plan.isActive) {
+      throw new Error(`Тариф «${plan.name}» архивирован и не может быть выдан`);
+    }
+
+    const current = await this.getOrCreateSubscription(tenantId, planCode);
+    const oldPlanCode = current.planType;
+    const oldEndDate = current.endDate;
+
+    const startDate = new Date();
+    let endDate: Date;
+    if (params.endDate) {
+      endDate = params.endDate;
+    } else if (plan.code === 'FREE') {
+      // Базовый тариф бессрочный
+      endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 100);
+    } else {
+      endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + 1);
+    }
+
+    // Если тариф понижается, лишние ресурсы деактивируются сразу:
+    // иначе аккаунт остался бы с превышенными лимитами.
+    const oldRank = await PlanCatalogService.getSortOrder(oldPlanCode);
+    if (plan.sortOrder < oldRank) {
+      await this.deactivateExcessResources(tenantId, oldPlanCode, planCode);
+    }
+
+    const [subscription] = await prisma.$transaction([
+      prisma.subscription.update({
+        where: { id: current.id },
+        data: {
+          planType: planCode,
+          nextPlanType: null,
+          status: 'active',
+          startDate,
+          endDate,
+          autoRenew: false, // выданный тариф не продлевается автоматически
+          isGranted: true,
+          grantedAt: startDate,
+          grantedBy: superAdminId || null,
+        },
+      }),
+      prisma.subscriptionGrantLog.create({
+        data: {
+          subscriptionId: current.id,
+          tenantId,
+          superAdminId: superAdminId || null,
+          action: 'grant',
+          planCode,
+          oldPlanCode,
+          oldEndDate,
+          newEndDate: endDate,
+          comment: comment || null,
+        },
+      }),
+    ]);
+
     return subscription;
+  }
+
+  /**
+   * Изменение срока действия выданного тарифа с записью в журнал.
+   */
+  static async updateGrantedEndDate(params: {
+    tenantId: string;
+    endDate: Date;
+    superAdminId?: string | null;
+    comment?: string | null;
+  }) {
+    const { tenantId, endDate, superAdminId, comment } = params;
+
+    const current = await prisma.subscription.findUnique({ where: { tenantId } });
+    if (!current) {
+      throw new Error('Subscription not found');
+    }
+
+    const oldEndDate = current.endDate;
+    // Продление возвращает подписку в активное состояние, если срок ещё не истёк.
+    const status = endDate > new Date() ? 'active' : current.status;
+
+    const [subscription] = await prisma.$transaction([
+      prisma.subscription.update({
+        where: { id: current.id },
+        data: { endDate, status },
+      }),
+      prisma.subscriptionGrantLog.create({
+        data: {
+          subscriptionId: current.id,
+          tenantId,
+          superAdminId: superAdminId || null,
+          action: 'extend',
+          planCode: current.planType,
+          oldPlanCode: current.planType,
+          oldEndDate,
+          newEndDate: endDate,
+          comment: comment || null,
+        },
+      }),
+    ]);
+
+    return subscription;
+  }
+
+  /** История выдачи и продлений тарифа для аккаунта. */
+  static async getGrantHistory(tenantId: string) {
+    return prisma.subscriptionGrantLog.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        superAdmin: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
   }
 
   /**
@@ -1296,8 +1408,8 @@ export class SubscriptionService {
       // Деактивируем лишние ресурсы при переходе на меньший тариф
       await this.deactivateExcessResources(
         tenantId,
-        subscription.planType as PlanType,
-        subscription.nextPlanType as PlanType
+        subscription.planType,
+        subscription.nextPlanType
       );
       
       return await prisma.subscription.update({

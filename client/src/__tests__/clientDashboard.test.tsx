@@ -168,6 +168,20 @@ describe('Подтверждённый кабинет', () => {
     // Глобальный SupportFAB читает флаг подтверждения из localStorage.
     expect(localStorage.getItem('clientApproved')).toBe('true');
   });
+
+  it('показывает переключатель спортсменов при нескольких детях', async () => {
+    mocked.getClientDashboard.mockResolvedValue({
+      ...approved,
+      linkedAthletes: [
+        { id: 'c1', firstName: 'Мася', lastName: 'Иванов' },
+        { id: 'c2', firstName: 'Вася', lastName: 'Иванов' },
+      ],
+      activeClientId: 'c1',
+    });
+    await mount();
+    expect(container.textContent).toContain('Мася');
+    expect(container.textContent).toContain('Вася');
+  });
 });
 
 describe('Кабинет в ожидании подтверждения', () => {

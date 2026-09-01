@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
+import { FinanceService } from '../services/financeService';
 
 const prisma = new PrismaClient();
 
@@ -190,6 +191,14 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       await createClientMembershipFromPayment(payment, req.tenant.id);
     }
 
+    // Ledger «Финансы»: приход при оплате
+    if (payment.status === 'paid' && req.tenant?.id) {
+      const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
+      await FinanceService.recordPaymentIncome(payment, clientName).catch((err) => {
+        console.error('Finance ledger record failed:', err);
+      });
+    }
+
     // Если платеж создан как оплаченный и это ежемесячный платеж группы, проверяем нужно ли начислить зарплату тренеру
     if (payment.status === 'paid' && payment.isMonthlyPayment && payment.groupId && req.tenant?.id) {
       await checkAndCalculateTrainerMonthlySalary(payment.groupId, req.tenant.id);
@@ -252,6 +261,14 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
     // Если статус изменился на 'paid', создаем ClientMembership
     if (statusChangedToPaid && req.tenant?.id) {
       await createClientMembershipFromPayment(updatedPayment, req.tenant.id);
+    }
+
+    // Ledger «Финансы»
+    if (statusChangedToPaid && req.tenant?.id) {
+      const clientName = `${updatedPayment.client.lastName} ${updatedPayment.client.firstName}`.trim();
+      await FinanceService.recordPaymentIncome(updatedPayment, clientName).catch((err) => {
+        console.error('Finance ledger record failed:', err);
+      });
     }
 
     // Если платеж стал оплаченным и это ежемесячный платеж группы, проверяем нужно ли начислить зарплату тренеру

@@ -34,6 +34,76 @@ function fullName(parts: Array<string | null | undefined>): string {
   return parts.filter(Boolean).join(' ').trim();
 }
 
+function normalizePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length > 0 ? digits : null;
+}
+
+/** Спортсмены, доступные текущему аккаунту (один номер — несколько детей). */
+async function findLinkedAthletes(
+  tenantId: string,
+  userType: string | undefined,
+  clientAuthId: string | undefined,
+  parentAuthId: string | undefined
+): Promise<Array<{ id: string; firstName: string; lastName: string }>> {
+  if (userType === 'parent' && parentAuthId) {
+    const parent = await prisma.parent.findUnique({
+      where: { id: parentAuthId },
+      select: { phone: true, email: true },
+    });
+    if (!parent) return [];
+
+    const phone = normalizePhone(parent.phone);
+    const email = parent.email?.toLowerCase().trim() || null;
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (phone) orConditions.push({ phone: { contains: phone } });
+    if (email) orConditions.push({ email: { equals: email, mode: 'insensitive' } });
+    if (orConditions.length === 0) return [];
+
+    const parents = await prisma.parent.findMany({
+      where: { tenantId, OR: orConditions },
+      select: { clientId: true },
+    });
+    const clientIds = [...new Set(parents.map((p) => p.clientId))];
+    if (clientIds.length === 0) return [];
+
+    return prisma.client.findMany({
+      where: { tenantId, id: { in: clientIds }, isActive: true },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+  }
+
+  if (clientAuthId) {
+    const authClient = await prisma.client.findUnique({
+      where: { id: clientAuthId },
+      select: { phone: true, email: true },
+    });
+    if (!authClient) return [];
+
+    const phone = normalizePhone(authClient.phone);
+    const email = authClient.email?.toLowerCase().trim() || null;
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (phone) orConditions.push({ phone: { contains: phone } });
+    if (email) orConditions.push({ email: { equals: email, mode: 'insensitive' } });
+    if (orConditions.length === 0) {
+      return prisma.client.findMany({
+        where: { id: clientAuthId, tenantId, isActive: true },
+        select: { id: true, firstName: true, lastName: true },
+      });
+    }
+
+    return prisma.client.findMany({
+      where: { tenantId, isActive: true, OR: orConditions },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+  }
+
+  return [];
+}
+
 /**
  * Данные для личного кабинета ученика/родителя.
  *
@@ -103,6 +173,20 @@ export const getClientDashboard = asyncHandler(
       viewerName = fullName([client.lastName, client.firstName, client.middleName]);
     }
 
+    const linkedAthletes = await findLinkedAthletes(tenantId, userType, clientAuthId, parentAuthId);
+    const requestedClientId =
+      typeof req.query.clientId === 'string' && req.query.clientId.trim()
+        ? req.query.clientId.trim()
+        : null;
+
+    if (requestedClientId) {
+      const allowed = linkedAthletes.some((a) => a.id === requestedClientId);
+      if (!allowed) throw unauthorized('Нет доступа к выбранному спортсмену');
+      clientId = requestedClientId;
+    }
+
+    const activeClientId = clientId;
+
     /* --- Аккаунт не подтверждён: отдаём только имя, без данных школы --- */
     if (!isAccountApproved) {
       res.json({
@@ -112,6 +196,8 @@ export const getClientDashboard = asyncHandler(
           userType: userType || 'client',
           viewerName,
           parent: parentInfo,
+          linkedAthletes,
+          activeClientId,
           // Пустые структуры, чтобы фронтенд отрисовал заглушки
           tenant: null,
           balance: null,
@@ -337,6 +423,8 @@ export const getClientDashboard = asyncHandler(
         userType: userType || 'client',
         viewerName,
         parent: parentInfo,
+        linkedAthletes,
+        activeClientId,
         tenant,
         client: {
           id: client.id,

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { ApiResponse } from '../types';
 import { HttpError } from '../utils/httpError';
+import { LogFileService } from '../services/logFileService';
 
 /**
  * Global error handler middleware
@@ -13,6 +14,15 @@ export const errorHandler = (
   next: NextFunction
 ): void => {
   console.error('Error:', error);
+
+  // Дублируем ошибку в файл логов: панель супер-админа умеет его просматривать,
+  // выгружать и очищать. Ожидаемые ошибки авторизации не записываем, чтобы
+  // файл не заполнялся шумом.
+  if (!(error instanceof HttpError) || error.statusCode >= 500) {
+    LogFileService.appendError(
+      `${req.method} ${req.originalUrl} — ${error.name}: ${error.message}\n${error.stack || ''}`
+    );
+  }
 
   // Ошибки с явным статусом (единая авторизация и т.п.)
   if (error instanceof HttpError) {

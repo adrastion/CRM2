@@ -1,19 +1,6 @@
 import React from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
-import {
-  DashboardOutlined,
-  BadgeOutlined,
-  AssignmentOutlined,
-  GroupsOutlined,
-  PeopleAltOutlined,
-  CalendarMonthOutlined,
-  PaymentsOutlined,
-  HelpOutline,
-  MenuBookOutlined,
-  AccountBalanceWalletOutlined,
-  FactCheckOutlined,
-  SportsMartialArtsOutlined,
-} from '@mui/icons-material';
+import { HourglassEmpty, SportsMartialArtsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { ClientDashboardData, ClientDashboardEvent } from '../types';
@@ -24,19 +11,22 @@ import MetricCard from '../components/dashboard/MetricCard';
 import MonthCalendar, { toIso } from '../components/dashboard/MonthCalendar';
 import ScheduleList, { ScheduleRow } from '../components/dashboard/ScheduleList';
 import StaffCardList from '../components/dashboard/StaffCardList';
+import AthleteSwitcher from '../components/dashboard/AthleteSwitcher';
+import DesignIcon from '../components/common/DesignIcon';
+import { NavIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
 
 /** Пункты меню личного кабинета клиента (по макету). */
-const NAV: Array<{ key: string; label: string; icon: React.ReactNode }> = [
-  { key: 'dashboard', label: 'Панель управления', icon: <DashboardOutlined /> },
-  { key: 'card', label: 'Карточка спортсмена', icon: <BadgeOutlined /> },
-  { key: 'standards', label: 'Нормативы', icon: <AssignmentOutlined /> },
-  { key: 'staff', label: 'Персонал', icon: <PeopleAltOutlined /> },
-  { key: 'groups', label: 'Группы', icon: <GroupsOutlined /> },
-  { key: 'plan', label: 'Календарный план', icon: <CalendarMonthOutlined /> },
-  { key: 'payments', label: 'Платежи', icon: <PaymentsOutlined /> },
-  { key: 'faq', label: 'FAQ', icon: <HelpOutline /> },
-  { key: 'knowledge', label: 'База знаний для клиентов', icon: <MenuBookOutlined /> },
+const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
+  { key: 'dashboard', label: 'Панель управления', iconName: 'dashboard' },
+  { key: 'card', label: 'Карточка спортсмена', iconName: 'clients' },
+  { key: 'standards', label: 'Нормативы', iconName: 'standards' },
+  { key: 'staff', label: 'Персонал', iconName: 'staff' },
+  { key: 'groups', label: 'Группы', iconName: 'groups' },
+  { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
+  { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
+  { key: 'faq', label: 'FAQ', iconName: 'faq' },
+  { key: 'knowledge', label: 'База знаний для клиентов', iconName: 'knowledge-base' },
 ];
 
 const RUB = new Intl.NumberFormat('ru-RU', {
@@ -57,19 +47,19 @@ function toScheduleRow(event: ClientDashboardEvent): ScheduleRow {
     dateLabel: `${start.getDate()}.${String(start.getMonth() + 1).padStart(2, '0')}`,
     timeLabel: `${timeLabel(event.startTime)}-${timeLabel(event.endTime)}`,
     title: event.groupName || event.title,
-    icon: <SportsMartialArtsOutlined />,
+    icon: <SportsMartialArtsOutlined sx={{ color: colors.primary, fontSize: 22 }} />,
     color: event.color,
   };
 }
 
+async function loadDashboard(clientId?: string): Promise<ClientDashboardData> {
+  const result = await apiService.getClientDashboard(clientId);
+  localStorage.setItem(CLIENT_APPROVED_KEY, String(result.isAccountApproved));
+  return result;
+}
+
 /**
- * Личный кабинет ученика или родителя.
- *
- * Два состояния:
- * — аккаунт подтверждён школой: реальные данные (баланс, посещаемость, персонал,
- *   календарь событий и расписание недели);
- * — не подтверждён: те же блоки, но некликабельные заглушки без данных школы
- *   и сообщение «Ожидайте подтверждения от администратора организации».
+ * Личный кабинет ученика или родителя по макету Figma 180-2 / 215-637.
  */
 const ClientDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -78,6 +68,7 @@ const ClientDashboard: React.FC = () => {
   const [error, setError] = React.useState('');
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
+  const [switchClientId, setSwitchClientId] = React.useState<string | undefined>();
 
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
@@ -86,13 +77,12 @@ const ClientDashboard: React.FC = () => {
     }
 
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
-        const result = await apiService.getClientDashboard();
+        const result = await loadDashboard(switchClientId);
         if (cancelled) return;
         setData(result);
-        // Сохраняем статус, чтобы глобальная кнопка поддержки знала о нём.
-        localStorage.setItem(CLIENT_APPROVED_KEY, String(result.isAccountApproved));
       } catch (err) {
         if (cancelled) return;
         const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
@@ -110,14 +100,19 @@ const ClientDashboard: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, switchClientId]);
 
   const handleLogout = () => {
     clearAllAuthStorage();
     navigate('/auth', { replace: true });
   };
 
-  if (loading) {
+  const handleAthleteChange = (id: string) => {
+    setSelectedDay(null);
+    setSwitchClientId(id);
+  };
+
+  if (loading && !data) {
     return (
       <Box
         sx={{
@@ -171,16 +166,20 @@ const ClientDashboard: React.FC = () => {
   }
 
   const pending = !data.isAccountApproved;
+  const linkedAthletes = data.linkedAthletes || [];
+  const currentAthleteId = data.activeClientId || switchClientId || linkedAthletes[0]?.id || '';
 
   const navItems: ShellNavItem[] = NAV.map((item) => ({
-    ...item,
-    // До подтверждения меню — некликабельные заглушки.
+    key: item.key,
+    label: item.label,
+    icon: <DesignIcon category="nav" name={item.iconName} size={34} />,
+    iconName: item.iconName,
     disabled: pending,
     onClick: pending
       ? undefined
       : item.key === 'faq'
-      ? () => navigate('/faq')
-      : undefined,
+        ? () => navigate('/faq')
+        : undefined,
   }));
 
   const marks = data.monthEvents.map((e) => ({
@@ -204,9 +203,18 @@ const ClientDashboard: React.FC = () => {
         )}`
       : undefined;
 
+  const athleteSwitcher =
+    linkedAthletes.length > 1 ? (
+      <AthleteSwitcher
+        athletes={linkedAthletes}
+        activeId={currentAthleteId}
+        disabled={pending}
+        onChange={handleAthleteChange}
+      />
+    ) : null;
+
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
-      {/* Верхний ряд: баланс, посещаемость, персонал */}
       <Box
         sx={{
           display: 'grid',
@@ -217,7 +225,8 @@ const ClientDashboard: React.FC = () => {
         <MetricCard
           label="Баланс"
           value={data.balance ? RUB.format(data.balance.amount) : '—'}
-          icon={<AccountBalanceWalletOutlined />}
+          icon={<DesignIcon category="metric" name="balance" size={81} />}
+          designIcon
           progress={
             data.balance
               ? {
@@ -233,7 +242,8 @@ const ClientDashboard: React.FC = () => {
         <MetricCard
           label="Посещаемость"
           value={attendanceValue}
-          icon={<FactCheckOutlined />}
+          icon={<DesignIcon category="metric" name="attendance" size={81} />}
+          designIcon
           progress={
             data.attendance
               ? { value: data.attendance.present, max: Math.max(1, data.attendance.total) }
@@ -246,7 +256,6 @@ const ClientDashboard: React.FC = () => {
         </Panel>
       </Box>
 
-      {/* Нижний ряд: календарь событий и расписание */}
       <Box
         sx={{
           display: 'grid',
@@ -304,6 +313,7 @@ const ClientDashboard: React.FC = () => {
   return (
     <DashboardShell
       pageTitle="Панель управления"
+      pageAction={athleteSwitcher}
       navItems={navItems}
       activeKey="dashboard"
       userName={data.viewerName}
@@ -313,7 +323,6 @@ const ClientDashboard: React.FC = () => {
     >
       {pending ? (
         <Box sx={{ position: 'relative' }}>
-          {/* Заглушки под затемнением: данных школы нет, клики не работают */}
           <Box
             aria-hidden
             sx={{
@@ -330,13 +339,16 @@ const ClientDashboard: React.FC = () => {
               position: 'absolute',
               inset: 0,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               px: 2,
               bgcolor: `${colors.overlay}D9`,
               borderRadius: `${radii.panel}px`,
+              pointerEvents: 'auto',
             }}
           >
+            <HourglassEmpty sx={{ fontSize: 72, color: colors.text, mb: 3 }} />
             <Box
               sx={{
                 maxWidth: 900,

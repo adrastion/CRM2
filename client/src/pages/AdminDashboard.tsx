@@ -32,6 +32,8 @@ import {
   FormControl,
   InputLabel,
   Divider,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -55,6 +57,12 @@ import {
   VisibilityOff,
   Bookmark,
 } from '@mui/icons-material';
+import type {
+  SubscriptionPlanItem,
+  SubscriptionGrantLogItem,
+  LogFileInfoResponse,
+  LogFileContentResponse,
+} from '../types';
 import {
   LineChart,
   Line,
@@ -147,6 +155,7 @@ interface DashboardData {
     settings: {
       reservePercentage: number | null;
       reserveAmount: number | null;
+      errorLogPath?: string | null;
     };
   };
   recentPayments: Array<{
@@ -326,11 +335,15 @@ const AdminDashboard: React.FC = () => {
   const [auditLogsEntityTypeFilter, setAuditLogsEntityTypeFilter] = useState<string>('all');
   
   // Управление тарифами
-  const [planPrices, setPlanPrices] = useState<any[]>([]);
+  const canWrite = true; // супер-админ страница; доступ только через ProtectedSuperAdminRoute
+  const [planPrices, setPlanPrices] = useState<SubscriptionPlanItem[]>([]);
   const [planPricesLoading, setPlanPricesLoading] = useState(false);
   const [editPlanDialog, setEditPlanDialog] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<any>(null);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlanItem | null>(null);
   const [editingPlanPrice, setEditingPlanPrice] = useState<string>('');
+  const [editingPlanName, setEditingPlanName] = useState('');
+  const [editingPlanDescription, setEditingPlanDescription] = useState('');
+  const [editingPlanIsPublic, setEditingPlanIsPublic] = useState(true);
   const [editingPlanLimits, setEditingPlanLimits] = useState({
     trainers: '',
     clients: '',
@@ -338,7 +351,26 @@ const AdminDashboard: React.FC = () => {
     branches: '',
     trainings: '',
   });
-  
+  const [createPlanDialog, setCreatePlanDialog] = useState(false);
+  const [planForm, setPlanForm] = useState({
+    code: '',
+    name: '',
+    description: '',
+    price: '',
+    isPublic: true,
+    trainers: '',
+    clients: '',
+    groups: '',
+    branches: '',
+    trainings: '',
+  });
+  const [grantEndDate, setGrantEndDate] = useState<Date | null>(null);
+  const [grantComment, setGrantComment] = useState('');
+  const [grantHistory, setGrantHistory] = useState<SubscriptionGrantLogItem[]>([]);
+  const [errorLogPath, setErrorLogPath] = useState('');
+  const [logFileInfo, setLogFileInfo] = useState<LogFileInfoResponse | null>(null);
+  const [logContent, setLogContent] = useState<string | null>(null);
+
   // Расширенная статистика маркетологов
   const [marketerStats, setMarketerStats] = useState<any>(null);
   const [marketerStatsLoading, setMarketerStatsLoading] = useState(false);
@@ -488,6 +520,9 @@ const AdminDashboard: React.FC = () => {
       if (dashboardData.budget.settings.reserveAmount !== null) {
         setReserveAmount(dashboardData.budget.settings.reserveAmount.toString());
       }
+      if (dashboardData.budget.settings.errorLogPath !== undefined) {
+        setErrorLogPath(dashboardData.budget.settings.errorLogPath || '');
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки дашборда');
     } finally {
@@ -501,13 +536,77 @@ const AdminDashboard: React.FC = () => {
       await apiService.updateAdminSettings({
         reservePercentage: reservePercentage ? parseFloat(reservePercentage) : undefined,
         reserveAmount: reserveAmount ? parseFloat(reserveAmount) : undefined,
+        errorLogPath: errorLogPath.trim() ? errorLogPath.trim() : null,
       });
       setSettingsDialog(false);
       await loadDashboard();
+      await loadLogFileInfo();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка сохранения настроек');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const loadLogFileInfo = async () => {
+    try {
+      const info = await apiService.getLogFileInfo();
+      setLogFileInfo(info);
+      if (info.path) {
+        setErrorLogPath(info.path);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки сведений о файле логов');
+    }
+  };
+
+  const openSettingsDialog = async () => {
+    setLogContent(null);
+    setSettingsDialog(true);
+    await loadLogFileInfo();
+  };
+
+  const handleDownloadLogFile = async () => {
+    try {
+      const blob = await apiService.downloadLogFile();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `error-log-${new Date().toISOString().split('T')[0]}.log`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка скачивания файла логов');
+    }
+  };
+
+  const handleClearLogFile = async () => {
+    if (!window.confirm('Очистить файл логов? Это действие нельзя отменить.')) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await apiService.clearLogFile();
+      setLogContent(null);
+      await loadLogFileInfo();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка очистки файла логов');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePreviewLogFile = async () => {
+    try {
+      setSubmitting(true);
+      const data: LogFileContentResponse = await apiService.readLogFile(200);
+      setLogContent(data.content || (data.exists ? '' : 'Файл не существует'));
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка чтения файла логов');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -810,58 +909,236 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleEditPlan = (plan: any) => {
-    setEditingPlan(plan);
-    setEditingPlanPrice(plan.price.toString());
+  const parseLimitsForm = (limits: {
+    trainers: string;
+    clients: string;
+    groups: string;
+    branches: string;
+    trainings: string;
+  }) => {
+    const result: Record<string, number | 'unlimited'> = {};
+    Object.keys(limits).forEach((key) => {
+      const value = limits[key as keyof typeof limits];
+      if (value === 'unlimited') {
+        result[key] = 'unlimited';
+      } else if (value !== '' && !isNaN(Number(value))) {
+        result[key] = Number(value);
+      }
+    });
+    return result;
+  };
+
+  const formatPlanPrice = (plan: { price: number | null; isNegotiable?: boolean }) => {
+    if (plan.price == null || plan.isNegotiable) {
+      return 'Цена договорная';
+    }
+    return formatCurrency(Number(plan.price));
+  };
+
+  const resetEditingPlanForm = () => {
+    setEditingPlan(null);
+    setEditingPlanPrice('');
+    setEditingPlanName('');
+    setEditingPlanDescription('');
+    setEditingPlanIsPublic(true);
     setEditingPlanLimits({
-      trainers: plan.limits.trainers === 'unlimited' ? 'unlimited' : plan.limits.trainers.toString(),
-      clients: plan.limits.clients === 'unlimited' ? 'unlimited' : plan.limits.clients.toString(),
-      groups: plan.limits.groups === 'unlimited' ? 'unlimited' : plan.limits.groups.toString(),
-      branches: plan.limits.branches === 'unlimited' ? 'unlimited' : plan.limits.branches.toString(),
-      trainings: plan.limits.trainings === 'unlimited' ? 'unlimited' : plan.limits.trainings.toString(),
+      trainers: '',
+      clients: '',
+      groups: '',
+      branches: '',
+      trainings: '',
+    });
+  };
+
+  const resetPlanForm = () => {
+    setPlanForm({
+      code: '',
+      name: '',
+      description: '',
+      price: '',
+      isPublic: true,
+      trainers: '',
+      clients: '',
+      groups: '',
+      branches: '',
+      trainings: '',
+    });
+  };
+
+  const handleEditPlan = (plan: SubscriptionPlanItem) => {
+    setEditingPlan(plan);
+    setEditingPlanName(plan.name || '');
+    setEditingPlanDescription(plan.description || '');
+    setEditingPlanIsPublic(plan.isPublic !== false);
+    setEditingPlanPrice(plan.price == null ? '' : plan.price.toString());
+    setEditingPlanLimits({
+      trainers: plan.limits.trainers === 'unlimited' ? 'unlimited' : String(plan.limits.trainers ?? ''),
+      clients: plan.limits.clients === 'unlimited' ? 'unlimited' : String(plan.limits.clients ?? ''),
+      groups: plan.limits.groups === 'unlimited' ? 'unlimited' : String(plan.limits.groups ?? ''),
+      branches: plan.limits.branches === 'unlimited' ? 'unlimited' : String(plan.limits.branches ?? ''),
+      trainings: plan.limits.trainings === 'unlimited' ? 'unlimited' : String(plan.limits.trainings ?? ''),
     });
     setEditPlanDialog(true);
   };
 
   const handleUpdatePlanPrice = async () => {
-    if (!editingPlan || !editingPlanPrice) {
-      setError('Заполните все обязательные поля');
+    if (!editingPlan || !editingPlanName.trim()) {
+      setError('Укажите название тарифа');
       return;
     }
 
     try {
       setSubmitting(true);
-      const limits: any = {};
-      
-      // Преобразуем лимиты
-      Object.keys(editingPlanLimits).forEach((key) => {
-        const value = editingPlanLimits[key as keyof typeof editingPlanLimits];
-        if (value === 'unlimited') {
-          limits[key] = 'unlimited';
-        } else if (value && !isNaN(Number(value))) {
-          limits[key] = Number(value);
-        }
-      });
+      const limits = parseLimitsForm(editingPlanLimits);
+      const priceValue =
+        editingPlanPrice.trim() === '' ? null : parseFloat(editingPlanPrice);
 
-      await apiService.updatePlanPrice({
-        planType: editingPlan.planType,
-        price: parseFloat(editingPlanPrice),
+      await apiService.updatePlan(editingPlan.code || editingPlan.planType, {
+        name: editingPlanName.trim(),
+        description: editingPlanDescription.trim() || null,
+        price: Number.isFinite(priceValue as number) ? priceValue : null,
         limits,
+        isPublic: editingPlanIsPublic,
       });
       setEditPlanDialog(false);
-      setEditingPlan(null);
-      setEditingPlanPrice('');
-      setEditingPlanLimits({
-        trainers: '',
-        clients: '',
-        groups: '',
-        branches: '',
-        trainings: '',
-      });
+      resetEditingPlanForm();
       await loadPlanPrices();
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления тарифа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreatePlan = async () => {
+    if (!planForm.code.trim() || !planForm.name.trim()) {
+      setError('Укажите код и название тарифа');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const limits = parseLimitsForm({
+        trainers: planForm.trainers,
+        clients: planForm.clients,
+        groups: planForm.groups,
+        branches: planForm.branches,
+        trainings: planForm.trainings,
+      });
+      const priceValue = planForm.price.trim() === '' ? null : parseFloat(planForm.price);
+      await apiService.createPlan({
+        code: planForm.code.trim().toUpperCase(),
+        name: planForm.name.trim(),
+        description: planForm.description.trim() || null,
+        price: Number.isFinite(priceValue as number) ? priceValue : null,
+        limits,
+        isPublic: planForm.isPublic,
+      });
+      setCreatePlanDialog(false);
+      resetPlanForm();
+      await loadPlanPrices();
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка создания тарифа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleArchivePlan = async () => {
+    if (!editingPlan) return;
+    if (!window.confirm(`Архивировать тариф «${editingPlan.name || editingPlan.code}»?`)) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await apiService.archivePlan(editingPlan.code || editingPlan.planType);
+      setEditPlanDialog(false);
+      resetEditingPlanForm();
+      await loadPlanPrices();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка архивации тарифа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRestorePlan = async () => {
+    if (!editingPlan) return;
+    try {
+      setSubmitting(true);
+      await apiService.restorePlan(editingPlan.code || editingPlan.planType);
+      setEditPlanDialog(false);
+      resetEditingPlanForm();
+      await loadPlanPrices();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка восстановления тарифа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openGrantDialog = async (tenant: any) => {
+    setSelectedTenantId(tenant.id);
+    setSelectedPlanType(tenant.subscription?.planType || '');
+    setGrantEndDate(
+      tenant.subscription?.endDate ? new Date(tenant.subscription.endDate) : null
+    );
+    setGrantComment('');
+    setGrantHistory([]);
+    setPlanDialog(true);
+    try {
+      if (planPrices.length === 0) {
+        await loadPlanPrices();
+      }
+      const history = await apiService.getTenantGrantHistory(tenant.id);
+      setGrantHistory(history || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки истории выдачи');
+    }
+  };
+
+  const handleGrantPlan = async () => {
+    if (!selectedTenantId || !selectedPlanType) return;
+    setSubmitting(true);
+    try {
+      await apiService.updateTenantPlan(selectedTenantId, selectedPlanType, {
+        endDate: grantEndDate ? grantEndDate.toISOString() : null,
+        comment: grantComment.trim() || null,
+      });
+      await loadAllTenants();
+      await loadDashboard();
+      setPlanDialog(false);
+      setSelectedTenantId('');
+      setSelectedPlanType('');
+      setGrantEndDate(null);
+      setGrantComment('');
+      setGrantHistory([]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка обновления тарифа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateGrantEndDate = async () => {
+    if (!selectedTenantId || !grantEndDate) {
+      setError('Укажите дату окончания');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiService.updateTenantSubscriptionEndDate(
+        selectedTenantId,
+        grantEndDate.toISOString(),
+        grantComment.trim() || null
+      );
+      const history = await apiService.getTenantGrantHistory(selectedTenantId);
+      setGrantHistory(history || []);
+      await loadAllTenants();
+      await loadDashboard();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка обновления срока тарифа');
     } finally {
       setSubmitting(false);
     }
@@ -1055,7 +1332,7 @@ const AdminDashboard: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<Settings />}
-            onClick={() => setSettingsDialog(true)}
+            onClick={() => openSettingsDialog()}
           >
             Настройки резерва
           </Button>
@@ -2000,7 +2277,26 @@ const AdminDashboard: React.FC = () => {
                           <TableCell>{tenant.subdomain}</TableCell>
                           <TableCell>
                             {tenant.subscription ? (
-                              <Chip label={tenant.subscription.planType} size="small" />
+                              <Box display="flex" flexWrap="wrap" gap={0.5} alignItems="center">
+                                <Chip label={tenant.subscription.planType} size="small" />
+                                {tenant.subscription.isGranted && (
+                                  <Chip label="Выдан" color="info" size="small" variant="outlined" />
+                                )}
+                                {tenant.subscription.nextPlanType && (
+                                  <Chip
+                                    label={`Далее: ${tenant.subscription.nextPlanType}`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                                {tenant.subscription.endDate && (
+                                  <Chip
+                                    label={`до ${new Date(tenant.subscription.endDate).toLocaleDateString('ru-RU')}`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
                             ) : (
                               '-'
                             )}
@@ -2020,11 +2316,7 @@ const AdminDashboard: React.FC = () => {
                             <IconButton
                               size="small"
                               color="primary"
-                              onClick={() => {
-                                setSelectedTenantId(tenant.id);
-                                setSelectedPlanType(tenant.subscription?.planType || 'FREE');
-                                setPlanDialog(true);
-                              }}
+                              onClick={() => openGrantDialog(tenant)}
                               title="Изменить тариф"
                             >
                               <Settings />
@@ -2499,6 +2791,18 @@ const AdminDashboard: React.FC = () => {
             <Typography variant="h5" fontWeight="bold">
               Управление тарифами
             </Typography>
+            {canWrite && (
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => {
+                  resetPlanForm();
+                  setCreatePlanDialog(true);
+                }}
+              >
+                Создать тариф
+              </Button>
+            )}
           </Box>
 
           {planPricesLoading ? (
@@ -2507,26 +2811,55 @@ const AdminDashboard: React.FC = () => {
             </Box>
           ) : planPrices && planPrices.length > 0 ? (
             <Grid container spacing={3}>
-              {planPrices.map((plan: any) => (
-                <Grid item xs={12} md={6} lg={4} key={plan.planType}>
-                  <Card 
-                    sx={{ 
-                      cursor: 'pointer',
-                      '&:hover': { boxShadow: 6 },
+              {planPrices.map((plan) => (
+                <Grid item xs={12} md={6} lg={4} key={plan.code || plan.planType}>
+                  <Card
+                    sx={{
+                      cursor: canWrite ? 'pointer' : 'default',
+                      opacity: plan.isActive ? 1 : 0.7,
+                      '&:hover': canWrite ? { boxShadow: 6 } : undefined,
                       transition: 'box-shadow 0.3s',
                     }}
-                    onClick={() => handleEditPlan(plan)}
+                    onClick={() => canWrite && handleEditPlan(plan)}
                   >
                     <CardContent>
-                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                        <Typography variant="h6" fontWeight="bold">
-                          {plan.planType}
-                        </Typography>
-                        <Edit fontSize="small" color="action" />
+                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                        <Box>
+                          <Typography variant="h6" fontWeight="bold">
+                            {plan.name || plan.planType}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {plan.code || plan.planType}
+                          </Typography>
+                        </Box>
+                        {canWrite && <Edit fontSize="small" color="action" />}
+                      </Box>
+                      <Box display="flex" flexWrap="wrap" gap={0.5} mb={1}>
+                        <Chip
+                          label={plan.isPublic ? 'Публичный' : 'Индивидуальный'}
+                          size="small"
+                          color={plan.isPublic ? 'primary' : 'default'}
+                          variant="outlined"
+                        />
+                        <Chip
+                          label={plan.isActive ? 'Активен' : 'Архив'}
+                          size="small"
+                          color={plan.isActive ? 'success' : 'warning'}
+                        />
+                        <Chip
+                          label={`Подписок: ${plan.subscriptionsCount ?? 0}`}
+                          size="small"
+                          variant="outlined"
+                        />
                       </Box>
                       <Typography variant="h4" fontWeight="bold" color="primary" gutterBottom>
-                        {formatCurrency(Number(plan.price))}
+                        {formatPlanPrice(plan)}
                       </Typography>
+                      {plan.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {plan.description}
+                        </Typography>
+                      )}
                       <Divider sx={{ my: 2 }} />
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                         Лимиты:
@@ -2554,7 +2887,7 @@ const AdminDashboard: React.FC = () => {
               ))}
             </Grid>
           ) : (
-            <Alert severity="info">Загрузка тарифов...</Alert>
+            <Alert severity="info">Тарифы не найдены</Alert>
           )}
         </Box>
       )}
@@ -2980,29 +3313,62 @@ const AdminDashboard: React.FC = () => {
       {/* Диалог редактирования тарифа */}
       <Dialog open={editPlanDialog} onClose={() => {
         setEditPlanDialog(false);
-        setEditingPlan(null);
-        setEditingPlanPrice('');
-        setEditingPlanLimits({
-          trainers: '',
-          clients: '',
-          groups: '',
-          branches: '',
-          trainings: '',
-        });
+        resetEditingPlanForm();
       }} maxWidth="md" fullWidth>
-        <DialogTitle>Редактировать тариф: {editingPlan?.planType}</DialogTitle>
+        <DialogTitle>
+          Редактировать тариф: {editingPlan?.name || editingPlan?.code || editingPlan?.planType}
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Код"
+              value={editingPlan?.code || editingPlan?.planType || ''}
+              disabled
+              sx={{ mb: 2 }}
+              helperText="Код тарифа неизменяем"
+            />
+            <TextField
+              fullWidth
+              label="Название"
+              value={editingPlanName}
+              onChange={(e) => setEditingPlanName(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+              disabled={!canWrite}
+            />
+            <TextField
+              fullWidth
+              label="Описание"
+              multiline
+              rows={2}
+              value={editingPlanDescription}
+              onChange={(e) => setEditingPlanDescription(e.target.value)}
+              sx={{ mb: 2 }}
+              disabled={!canWrite}
+            />
             <TextField
               fullWidth
               label="Цена (₽)"
               type="number"
               value={editingPlanPrice}
               onChange={(e) => setEditingPlanPrice(e.target.value)}
-              sx={{ mb: 3 }}
-              required
+              sx={{ mb: 2 }}
+              helperText="Оставьте пустым для «Цена договорная»"
+              disabled={!canWrite}
             />
-            
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={editingPlanIsPublic}
+                  onChange={(e) => setEditingPlanIsPublic(e.target.checked)}
+                  disabled={!canWrite}
+                />
+              }
+              label="Публичный тариф (на странице /pricing)"
+              sx={{ mb: 2 }}
+            />
+
             <Divider sx={{ my: 2 }} />
             <Typography variant="h6" gutterBottom>
               Лимиты
@@ -3022,6 +3388,7 @@ const AdminDashboard: React.FC = () => {
                     }
                   }}
                   helperText="Введите число или 'unlimited'"
+                  disabled={!canWrite}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -3037,6 +3404,7 @@ const AdminDashboard: React.FC = () => {
                     }
                   }}
                   helperText="Введите число или 'unlimited'"
+                  disabled={!canWrite}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -3052,6 +3420,7 @@ const AdminDashboard: React.FC = () => {
                     }
                   }}
                   helperText="Введите число или 'unlimited'"
+                  disabled={!canWrite}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -3067,6 +3436,7 @@ const AdminDashboard: React.FC = () => {
                     }
                   }}
                   helperText="Введите число или 'unlimited'"
+                  disabled={!canWrite}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -3082,37 +3452,148 @@ const AdminDashboard: React.FC = () => {
                     }
                   }}
                   helperText="Введите число или 'unlimited'"
+                  disabled={!canWrite}
                 />
               </Grid>
             </Grid>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => {
             setEditPlanDialog(false);
-            setEditingPlan(null);
-            setEditingPlanPrice('');
-            setEditingPlanLimits({
-              trainers: '',
-              clients: '',
-              groups: '',
-              branches: '',
-              trainings: '',
-            });
+            resetEditingPlanForm();
+          }}>Отмена</Button>
+          {canWrite && editingPlan?.isActive !== false && (
+            <Button color="warning" onClick={handleArchivePlan} disabled={submitting}>
+              Архивировать
+            </Button>
+          )}
+          {canWrite && editingPlan?.isActive === false && (
+            <Button color="success" onClick={handleRestorePlan} disabled={submitting}>
+              Восстановить
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              onClick={handleUpdatePlanPrice}
+              variant="contained"
+              disabled={submitting || !editingPlanName.trim()}
+            >
+              {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог создания тарифа */}
+      <Dialog open={createPlanDialog} onClose={() => {
+        setCreatePlanDialog(false);
+        resetPlanForm();
+      }} maxWidth="md" fullWidth>
+        <DialogTitle>Создать тариф</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Код"
+              value={planForm.code}
+              onChange={(e) => setPlanForm({ ...planForm, code: e.target.value.toUpperCase() })}
+              sx={{ mb: 2 }}
+              required
+              helperText="Латиница, уникальный код (например STARTER)"
+            />
+            <TextField
+              fullWidth
+              label="Название"
+              value={planForm.name}
+              onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+              sx={{ mb: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Описание"
+              multiline
+              rows={2}
+              value={planForm.description}
+              onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Цена (₽)"
+              type="number"
+              value={planForm.price}
+              onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
+              sx={{ mb: 2 }}
+              helperText="Оставьте пустым для «Цена договорная»"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={planForm.isPublic}
+                  onChange={(e) => setPlanForm({ ...planForm, isPublic: e.target.checked })}
+                />
+              }
+              label="Публичный тариф"
+              sx={{ mb: 2 }}
+            />
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="h6" gutterBottom>Лимиты</Typography>
+            <Grid container spacing={2}>
+              {(['trainers', 'clients', 'groups', 'branches', 'trainings'] as const).map((key) => (
+                <Grid item xs={12} sm={6} key={key}>
+                  <TextField
+                    fullWidth
+                    label={
+                      key === 'trainers' ? 'Тренеры'
+                        : key === 'clients' ? 'Клиенты'
+                          : key === 'groups' ? 'Группы'
+                            : key === 'branches' ? 'Филиалы'
+                              : 'Тренировки в месяц'
+                    }
+                    value={planForm[key]}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                        setPlanForm({ ...planForm, [key]: value });
+                      }
+                    }}
+                    helperText="Число или 'unlimited'"
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCreatePlanDialog(false);
+            resetPlanForm();
           }}>Отмена</Button>
           <Button
-            onClick={handleUpdatePlanPrice}
+            onClick={handleCreatePlan}
             variant="contained"
-            disabled={submitting || !editingPlanPrice}
+            disabled={submitting || !planForm.code.trim() || !planForm.name.trim()}
           >
-            {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
+            {submitting ? <CircularProgress size={24} /> : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Диалог изменения тарифа */}
-      <Dialog open={planDialog} onClose={() => setPlanDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Изменить тариф</DialogTitle>
+      <Dialog
+        open={planDialog}
+        onClose={() => {
+          setPlanDialog(false);
+          setGrantEndDate(null);
+          setGrantComment('');
+          setGrantHistory([]);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Выдать / изменить тариф</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
             <FormControl fullWidth sx={{ mb: 2 }}>
@@ -3121,46 +3602,117 @@ const AdminDashboard: React.FC = () => {
                 value={selectedPlanType}
                 label="Тариф"
                 onChange={(e) => setSelectedPlanType(e.target.value)}
+                disabled={!canWrite}
               >
-                <MenuItem value="FREE">FREE</MenuItem>
-                <MenuItem value="STARTER">STARTER</MenuItem>
-                <MenuItem value="BUSINESS">BUSINESS</MenuItem>
-                <MenuItem value="PROFESSIONAL">PROFESSIONAL</MenuItem>
-                <MenuItem value="ENTERPRISE">ENTERPRISE</MenuItem>
+                {planPrices
+                  .filter(
+                    (p) =>
+                      p.isActive ||
+                      p.code === selectedPlanType ||
+                      p.planType === selectedPlanType
+                  )
+                  .map((p) => (
+                    <MenuItem key={p.code || p.planType} value={p.code || p.planType}>
+                      {p.name || p.code || p.planType}
+                      {p.price == null || p.isNegotiable
+                        ? ' — Цена договорная'
+                        : ` — ${formatCurrency(Number(p.price))}`}
+                    </MenuItem>
+                  ))}
               </Select>
             </FormControl>
+            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
+              <DatePicker
+                label="Дата окончания"
+                value={grantEndDate}
+                onChange={(newValue) => setGrantEndDate(newValue)}
+                disabled={!canWrite}
+                slotProps={{ textField: { fullWidth: true, sx: { mb: 2 } } }}
+              />
+            </LocalizationProvider>
+            <TextField
+              fullWidth
+              label="Комментарий"
+              multiline
+              rows={2}
+              value={grantComment}
+              onChange={(e) => setGrantComment(e.target.value)}
+              sx={{ mb: 2 }}
+              disabled={!canWrite}
+            />
+            {canWrite && (
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{ mb: 2 }}
+                disabled={submitting || !grantEndDate}
+                onClick={handleUpdateGrantEndDate}
+              >
+                Обновить только срок действия
+              </Button>
+            )}
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+              История выдачи
+            </Typography>
+            {grantHistory.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Записей пока нет
+              </Typography>
+            ) : (
+              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 240 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Дата</TableCell>
+                      <TableCell>Действие</TableCell>
+                      <TableCell>Тариф</TableCell>
+                      <TableCell>Срок</TableCell>
+                      <TableCell>Комментарий</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {grantHistory.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell>{formatDateTime(log.createdAt)}</TableCell>
+                        <TableCell>{log.action === 'extend' ? 'Продление' : 'Выдача'}</TableCell>
+                        <TableCell>{log.planName || log.planCode}</TableCell>
+                        <TableCell>
+                          {log.newEndDate
+                            ? new Date(log.newEndDate).toLocaleDateString('ru-RU')
+                            : '—'}
+                        </TableCell>
+                        <TableCell>{log.comment || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPlanDialog(false)}>Отмена</Button>
-          <Button
-            onClick={async () => {
-              if (!selectedTenantId || !selectedPlanType) return;
-              setSubmitting(true);
-              try {
-                await apiService.updateTenantPlan(selectedTenantId, selectedPlanType);
-                await loadAllTenants();
-                await loadDashboard();
-                setPlanDialog(false);
-                setSelectedTenantId('');
-                setSelectedPlanType('');
-              } catch (err: any) {
-                setError(err.response?.data?.error || 'Ошибка обновления тарифа');
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-            variant="contained"
-            disabled={submitting || !selectedPlanType}
-          >
-            {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
-          </Button>
+          <Button onClick={() => {
+            setPlanDialog(false);
+            setGrantEndDate(null);
+            setGrantComment('');
+            setGrantHistory([]);
+          }}>Отмена</Button>
+          {canWrite && (
+            <Button
+              onClick={handleGrantPlan}
+              variant="contained"
+              disabled={submitting || !selectedPlanType}
+            >
+              {submitting ? <CircularProgress size={24} /> : 'Выдать тариф'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
       {/* Диалог настроек резерва */}
       <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Настройки резерва</DialogTitle>
+        <DialogTitle>Настройки</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
             <TextField
@@ -3189,7 +3741,57 @@ const AdminDashboard: React.FC = () => {
                 }
               }}
               helperText="Если указана фиксированная сумма, процент будет проигнорирован"
+              sx={{ mb: 3 }}
             />
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Файл логов ошибок
+            </Typography>
+            <TextField
+              fullWidth
+              label="Путь к файлу логов"
+              value={errorLogPath}
+              onChange={(e) => setErrorLogPath(e.target.value)}
+              sx={{ mb: 1 }}
+              helperText="Абсолютный путь на сервере"
+            />
+            {logFileInfo && (
+              <Alert severity={logFileInfo.exists ? 'info' : 'warning'} sx={{ mb: 2 }}>
+                Путь: {logFileInfo.path}
+                <br />
+                {logFileInfo.exists
+                  ? `Размер: ${logFileInfo.sizeHuman}${logFileInfo.modifiedAt ? ` • изменён: ${formatDateTime(logFileInfo.modifiedAt)}` : ''}`
+                  : 'Файл не существует'}
+              </Alert>
+            )}
+            <Box display="flex" flexWrap="wrap" gap={1} mb={2}>
+              <Button variant="outlined" size="small" onClick={handleDownloadLogFile}>
+                Скачать
+              </Button>
+              <Button variant="outlined" size="small" color="error" onClick={handleClearLogFile} disabled={submitting}>
+                Очистить
+              </Button>
+              <Button variant="outlined" size="small" onClick={handlePreviewLogFile} disabled={submitting}>
+                Превью
+              </Button>
+            </Box>
+            {logContent !== null && (
+              <TextField
+                fullWidth
+                multiline
+                minRows={6}
+                maxRows={12}
+                value={logContent}
+                InputProps={{ readOnly: true }}
+                sx={{
+                  mb: 1,
+                  '& .MuiInputBase-input': {
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  },
+                }}
+              />
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

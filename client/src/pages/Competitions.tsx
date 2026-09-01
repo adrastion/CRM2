@@ -51,6 +51,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import ClientNameLink from '../components/ClientNameLink';
 import { Competition, Client, Trainer, CompetitionResult } from '../types';
 
 interface CompetitionFormData {
@@ -1254,7 +1255,11 @@ const Competitions: React.FC = () => {
                           return (
                             <TableRow key={participant.id}>
                               <TableCell>
-                                {client ? `${client.lastName} ${client.firstName} ${client.middleName || ''}`.trim() : `Участник #${participant.id}`}
+                                {client ? (
+                                  <ClientNameLink clientId={participant.clientId} client={client} />
+                                ) : (
+                                  `Участник #${participant.id}`
+                                )}
                               </TableCell>
                               <TableCell>{age !== null ? `${age} лет` : '-'}</TableCell>
                               <TableCell>{client?.weight ? `${client.weight} кг` : '-'}</TableCell>

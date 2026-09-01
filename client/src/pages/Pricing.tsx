@@ -37,11 +37,15 @@ import {
 import PublicFooter from '../components/PublicFooter';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
+import type { PublicPlanItem, PlanLimitValue } from '../types';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- type reserved for plans display
-interface PricingPlan {
+interface PricingPlanCard {
+  code: string;
   name: string;
-  price: string;
+  planType: string;
+  priceLabel: string;
+  priceValue: number | null;
+  isNegotiable: boolean;
   description: string;
   features: {
     trainers: number | string;
@@ -53,97 +57,6 @@ interface PricingPlan {
   };
   popular?: boolean;
 }
-
-
-interface PlanType {
-  name: string;
-  planType: 'FREE' | 'STARTER' | 'BUSINESS' | 'PROFESSIONAL' | 'ENTERPRISE';
-  price: string;
-  description: string;
-  features: {
-    trainers: number | string;
-    clients: number | string;
-    groups: number | string;
-    branches: number | string;
-    trainings: string;
-    support: string;
-  };
-  popular?: boolean;
-}
-
-const planTypes: PlanType[] = [
-  {
-    name: 'БЕСПЛАТНЫЙ',
-    planType: 'FREE',
-    price: '0₽',
-    description: 'Для начинающих школ и тестирования системы',
-    features: {
-      trainers: 1,
-      clients: 30,
-      groups: 3,
-      branches: 1,
-      trainings: '10/месяц',
-      support: 'Email (48 часов)',
-    },
-  },
-  {
-    name: 'СТАРТОВЫЙ',
-    planType: 'STARTER',
-    price: '990₽',
-    description: 'Для небольших школ, 1-2 филиала',
-    features: {
-      trainers: 3,
-      clients: 90,
-      groups: 9,
-      branches: 2,
-      trainings: 'Безлимит',
-      support: 'Email (24 часа)',
-    },
-  },
-  {
-    name: 'БИЗНЕС',
-    planType: 'BUSINESS',
-    price: '2,490₽',
-    description: 'Для средних школ, сеть филиалов',
-    features: {
-      trainers: 10,
-      clients: 600,
-      groups: 30,
-      branches: 5,
-      trainings: 'Безлимит',
-      support: 'Email + Telegram (12 часов)',
-    },
-    popular: true,
-  },
-  {
-    name: 'ПРОФЕССИОНАЛЬНЫЙ',
-    planType: 'PROFESSIONAL',
-    price: '4,990₽',
-    description: 'Для крупных школ и федераций',
-    features: {
-      trainers: 25,
-      clients: 1500,
-      groups: 50,
-      branches: 10,
-      trainings: 'Безлимит',
-      support: 'Email + Telegram + Телефон (4 часа)',
-    },
-  },
-  {
-    name: 'КОРПОРАТИВНЫЙ',
-    planType: 'ENTERPRISE',
-    price: 'По запросу',
-    description: 'Для крупных сетей и корпораций',
-    features: {
-      trainers: 'Безлимит',
-      clients: 'Безлимит',
-      groups: 'Безлимит',
-      branches: 'Безлимит',
-      trainings: 'Безлимит',
-      support: '24/7 с персональным менеджером',
-    },
-  },
-];
 
 interface PromoCodeData {
   promoCode: string;
@@ -154,14 +67,51 @@ interface PromoCodeData {
   discountValue: number;
 }
 
+const formatLimit = (value: PlanLimitValue | undefined): string | number => {
+  if (value === undefined || value === null) return '—';
+  return value === 'unlimited' ? 'Безлимит' : value;
+};
+
+const formatTrainings = (value: PlanLimitValue | undefined): string => {
+  if (value === undefined || value === null) return '—';
+  return value === 'unlimited' ? 'Безлимит' : `${value}/месяц`;
+};
+
+const mapPublicPlan = (plan: PublicPlanItem, index: number): PricingPlanCard => {
+  const isNegotiable = plan.isNegotiable || plan.price == null;
+  return {
+    code: plan.code || plan.planType,
+    name: plan.name,
+    planType: plan.planType || plan.code,
+    priceLabel: isNegotiable
+      ? 'Цена договорная'
+      : `${Number(plan.price).toLocaleString('ru-RU')}₽`,
+    priceValue: plan.price,
+    isNegotiable,
+    description: plan.description || '',
+    features: {
+      trainers: formatLimit(plan.limits?.trainers),
+      clients: formatLimit(plan.limits?.clients),
+      groups: formatLimit(plan.limits?.groups),
+      branches: formatLimit(plan.limits?.branches),
+      trainings: formatTrainings(plan.limits?.trainings),
+      support: plan.supportLevel || 'Email',
+    },
+    // Помечаем средний тариф как популярный, если в каталоге ≥ 3 позиций
+    popular: index === 2,
+  };
+};
+
 const Pricing: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [planTypes, setPlanTypes] = useState<PricingPlanCard[]>([]);
   const [subscription, setSubscription] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; plan: PlanType | null }>({
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; plan: PricingPlanCard | null }>({
     open: false,
     plan: null,
   });
@@ -172,10 +122,29 @@ const Pricing: React.FC = () => {
   const [promoCodeByPlan, setPromoCodeByPlan] = useState<Record<string, PromoCodeData>>({});
 
   useEffect(() => {
+    loadPublicPlans();
+  }, []);
+
+  useEffect(() => {
     if (isAuthenticated && user?.role === 'OWNER') {
       loadSubscription();
     }
   }, [isAuthenticated, user]);
+
+  const loadPublicPlans = async () => {
+    try {
+      setPlansLoading(true);
+      const data = await apiService.getPublicPlans();
+      const sorted = [...(data || [])].sort(
+        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+      );
+      setPlanTypes(sorted.map(mapPublicPlan));
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки тарифов');
+    } finally {
+      setPlansLoading(false);
+    }
+  };
 
   const loadSubscription = async () => {
     try {
@@ -230,9 +199,9 @@ const Pricing: React.FC = () => {
     setPromoCodeError(null);
   };
 
-  const handleSelectPlan = (plan: PlanType) => {
+  const handleSelectPlan = (plan: PricingPlanCard) => {
     if (!isAuthenticated) {
-      navigate('/auth');
+      navigate('/login');
       return;
     }
 
@@ -241,9 +210,8 @@ const Pricing: React.FC = () => {
       return;
     }
 
-    if (plan.planType === 'ENTERPRISE') {
-      // Для корпоративного тарифа нужна связь с менеджером
-      setError('Для корпоративного тарифа свяжитесь с нами');
+    if (plan.isNegotiable) {
+      setError('Для тарифа с договорной ценой свяжитесь с нами');
       return;
     }
 
@@ -259,11 +227,12 @@ const Pricing: React.FC = () => {
 
     try {
       const returnUrl = `${window.location.origin}/subscription/success`;
-      const appliedPromo = promoCodeByPlan[confirmDialog.plan.planType];
+      const planKey = confirmDialog.plan.planType || confirmDialog.plan.code;
+      const appliedPromo = promoCodeByPlan[planKey];
       const promoCodeToUse = appliedPromo ? appliedPromo.promoCode : undefined;
       
       const payment = await apiService.createSubscriptionPayment(
-        confirmDialog.plan.planType,
+        planKey,
         returnUrl,
         promoCodeToUse
       );
@@ -277,7 +246,7 @@ const Pricing: React.FC = () => {
         await loadSubscription();
         setConfirmDialog({ open: false, plan: null });
         // Очищаем промокод после успешной оплаты
-        handleRemovePromoCode(confirmDialog.plan.planType);
+        handleRemovePromoCode(planKey);
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка при создании платежа');
@@ -288,7 +257,11 @@ const Pricing: React.FC = () => {
 
   const getCurrentPlan = () => {
     if (!subscription) return null;
-    return planTypes.find((p) => p.planType === subscription.planType);
+    return planTypes.find(
+      (p) =>
+        p.planType === subscription.planType ||
+        p.code === subscription.planType
+    );
   };
 
   const currentPlan = getCurrentPlan();
@@ -327,13 +300,22 @@ const Pricing: React.FC = () => {
         )}
       </Box>
 
+      {plansLoading ? (
+        <Box display="flex" justifyContent="center" p={6}>
+          <CircularProgress />
+        </Box>
+      ) : planTypes.length === 0 ? (
+        <Alert severity="info">Тарифы временно недоступны</Alert>
+      ) : (
       <Grid container spacing={3}>
         {planTypes.map((plan, index) => {
-          const isCurrentPlan = currentPlan?.planType === plan.planType && subscription?.status === 'active';
-          const isEnterprise = plan.planType === 'ENTERPRISE';
+          const isCurrentPlan =
+            (currentPlan?.planType === plan.planType || currentPlan?.code === plan.code) &&
+            subscription?.status === 'active';
+          const isNegotiable = plan.isNegotiable;
           
           return (
-          <Grid item xs={12} sm={6} md={4} lg={index === 4 ? 12 : undefined} key={plan.name}>
+          <Grid item xs={12} sm={6} md={4} lg={index === 4 ? 12 : undefined} key={plan.code || plan.planType}>
             <Paper
               sx={{
                 p: 4,
@@ -374,9 +356,9 @@ const Pricing: React.FC = () => {
                 
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
                   <Typography variant="h3" component="div" fontWeight="bold" color="primary.main">
-                    {plan.price}
+                    {plan.priceLabel}
                   </Typography>
-                  {plan.price !== 'По запросу' && (
+                  {!isNegotiable && (
                     <Typography variant="body2" color="text.secondary">
                       /месяц
                     </Typography>
@@ -448,14 +430,14 @@ const Pricing: React.FC = () => {
                 fullWidth
                 size="large"
                 sx={{ mt: 3 }}
-                disabled={isEnterprise || loading || isCurrentPlan}
+                disabled={isNegotiable || loading || isCurrentPlan}
                 onClick={() => handleSelectPlan(plan)}
               >
                 {loading ? (
                   <CircularProgress size={24} />
                 ) : isCurrentPlan ? (
                   'Текущий тариф'
-                ) : isEnterprise ? (
+                ) : isNegotiable ? (
                   'Связаться с нами'
                 ) : (
                   'Выбрать тариф'
@@ -466,13 +448,14 @@ const Pricing: React.FC = () => {
           );
         })}
       </Grid>
+      )}
 
       {/* Dialog для подтверждения платежа */}
       <Dialog open={confirmDialog.open} onClose={() => {
         setConfirmDialog({ open: false, plan: null });
         // Очищаем промокод при закрытии диалога
         if (confirmDialog.plan) {
-          handleRemovePromoCode(confirmDialog.plan.planType);
+          handleRemovePromoCode(confirmDialog.plan.planType || confirmDialog.plan.code);
         }
       }} maxWidth="sm" fullWidth>
         <DialogTitle>Подтверждение выбора тарифа</DialogTitle>
@@ -484,7 +467,7 @@ const Pricing: React.FC = () => {
               </Typography>
               
               {/* Поле для ввода промокода */}
-              {confirmDialog.plan.planType !== 'FREE' && confirmDialog.plan.planType !== 'ENTERPRISE' && (
+              {!confirmDialog.plan.isNegotiable && confirmDialog.plan.priceValue !== 0 && (
                 <Box sx={{ mt: 3, mb: 2 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Введите промокод для получения скидки
@@ -508,15 +491,27 @@ const Pricing: React.FC = () => {
                     />
                     <Button
                       variant="outlined"
-                      onClick={() => handleApplyPromoCode(confirmDialog.plan!.planType)}
+                      onClick={() =>
+                        handleApplyPromoCode(
+                          confirmDialog.plan!.planType || confirmDialog.plan!.code
+                        )
+                      }
                       disabled={!promoCode.trim() || validatingPromoCode}
                     >
                       {validatingPromoCode ? <CircularProgress size={20} /> : 'Применить'}
                     </Button>
                   </Box>
-                  {promoCodeByPlan[confirmDialog.plan.planType] && (
+                  {promoCodeByPlan[confirmDialog.plan.planType || confirmDialog.plan.code] && (
                     <Alert severity="success" sx={{ mt: 1 }}>
-                      Промокод <strong>{promoCodeByPlan[confirmDialog.plan.planType].promoCode}</strong> применен!
+                      Промокод{' '}
+                      <strong>
+                        {
+                          promoCodeByPlan[
+                            confirmDialog.plan.planType || confirmDialog.plan.code
+                          ].promoCode
+                        }
+                      </strong>{' '}
+                      применен!
                     </Alert>
                   )}
                 </Box>
@@ -524,23 +519,38 @@ const Pricing: React.FC = () => {
 
               {/* Отображение цены */}
               <Box sx={{ mt: 2 }}>
-                {promoCodeByPlan[confirmDialog.plan.planType] ? (
+                {promoCodeByPlan[confirmDialog.plan.planType || confirmDialog.plan.code] ? (
                   <Box>
                     <Typography variant="body1" gutterBottom>
                       <Box component="span" sx={{ textDecoration: 'line-through', color: 'text.secondary', mr: 1 }}>
-                        {confirmDialog.plan.price}/месяц
+                        {confirmDialog.plan.priceLabel}/месяц
                       </Box>
                     </Typography>
                     <Typography variant="h6" color="success.main" gutterBottom>
-                      Стоимость со скидкой: <strong>{promoCodeByPlan[confirmDialog.plan.planType].finalAmount.toLocaleString('ru-RU')}₽/месяц</strong>
+                      Стоимость со скидкой:{' '}
+                      <strong>
+                        {promoCodeByPlan[
+                          confirmDialog.plan.planType || confirmDialog.plan.code
+                        ].finalAmount.toLocaleString('ru-RU')}
+                        ₽/месяц
+                      </strong>
                     </Typography>
                     <Typography variant="body2" color="success.main">
-                      Скидка: {promoCodeByPlan[confirmDialog.plan.planType].discountAmount.toLocaleString('ru-RU')}₽
+                      Скидка:{' '}
+                      {promoCodeByPlan[
+                        confirmDialog.plan.planType || confirmDialog.plan.code
+                      ].discountAmount.toLocaleString('ru-RU')}
+                      ₽
                     </Typography>
                   </Box>
                 ) : (
               <Typography variant="body1" gutterBottom>
-                Стоимость: <strong>{confirmDialog.plan.price}/месяц</strong>
+                Стоимость:{' '}
+                <strong>
+                  {confirmDialog.plan.isNegotiable
+                    ? confirmDialog.plan.priceLabel
+                    : `${confirmDialog.plan.priceLabel}/месяц`}
+                </strong>
               </Typography>
                 )}
               </Box>
@@ -556,7 +566,7 @@ const Pricing: React.FC = () => {
             setConfirmDialog({ open: false, plan: null });
             // Очищаем промокод при закрытии диалога
             if (confirmDialog.plan) {
-              handleRemovePromoCode(confirmDialog.plan.planType);
+              handleRemovePromoCode(confirmDialog.plan.planType || confirmDialog.plan.code);
             }
           }}>
             Отмена
@@ -630,4 +640,3 @@ const Pricing: React.FC = () => {
 };
 
 export default Pricing;
-

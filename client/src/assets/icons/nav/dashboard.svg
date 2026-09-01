@@ -1,0 +1,13 @@
+<svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<defs>
+<filter id="navGray" color-interpolation-filters="sRGB">
+<feFlood flood-color="#404040" result="color"/>
+<feComposite in="color" in2="SourceGraphic" operator="in"/>
+</filter>
+<pattern id="pattern0_173_943" patternContentUnits="objectBoundingBox" width="1" height="1">
+<use xlink:href="#image0_173_943" transform="scale(0.01)"/>
+</pattern>
+<image id="image0_173_943" width="100" height="100" preserveAspectRatio="none" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAEZklEQVR4nO2dz6sVZRjHT5H201DrupLcdUXLjS70L2gRQou6RhtFS4laBAUFar24ELOSfpObSDp2wzYKpQvB4poQqHfTtUU/oF/apgQNMoX6yAvvxUuv3Zk555nzPHPm+cDsDvP9znw4M3PmvDNvp+M4juM4juM4jtMAgDuBdcAeoAscEF7GgTeAx4FFgr0XAU+kdY/X0Lub9skYME+q92wbdDPwEvAng+MK8A6wsI/edwHvpnUNiovA9rjPZC1c26gR4AR6fAeM9tB7KfCDYu8vgbulZcwFvkCfH6scwuKOUJYxzQnRbwoQsMNHFXp/gh22S57A4/HQCv8Cy0v0vj991goXRU70wKPYI5TovQN7jEkIeQ17fFai9xHs8YqEkP0FIb/UcD1/piBzskTvyYJ1nKmhd9wXs9GVEBKDZuNA3yHVLyKmSqxjqt/Dnsl95ULK40JmwYUIggtRDskzgwvRDMkzgwvRDMkzgwvRDMkzgwvRDMkzgwvRDMkzgwvRDMkzgwvRDMkzgwvRDKlHyMmCdZwDTgkv5wsy97VZyCHssbPNQp7DHg+0WcgS4DJ2OBsHi7RWSAR4HTts6kjQcCG3AF+hTxz9ckOn7UJmjFo8hh7vS4/JarSQCHAT8CTwK4Pja+ChjjTDIGQa4EZgdRrEHTN2CS/bgPXAsk5dDJOQocCFGMOFGMOFGMOFGMOFGMOFNE/IUWCl8LK3TiHAgviMSQ294+Nzt8vt/euXL9o5Gkz0sB33AG+WGKEuwTfpWz6/DiEvYI8PKm7DM8AlhZ5/AGulhazAHusq9H9Zues/8XaKtJQJ7PAzcGvJ3o9hg7/jOUZSyCpD/749UrLzbelfusae94o2cH36+jVikAB2vh0zWSEtZS3wu8KG/AU8XbHrh9jjeVEhaUPnp0u6ogczJfgp/S++uIeex7HHe+JCrnOcHq3hB9byfq/hS4xc3FtD7/gjeaB3NRoDwzqUtKngQmyBC7EFLsQWuBBb4EJsQduEpBeEbYi/PmtaNgNr4uC2Hvu1Q0i8uZf+gBkUZ4GngDkVew63kPSKWM37Q5/HgdMV+g6vkDiUPr58En1Ox9s1JTsPtZAt2GFPq4WkQ9Vv2OFyHLDQZiEPYo9n2ywkPvdgjYNtFrKvIOR8DQ/gnyvIPNlmIY0cSooLkQMXohySZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYXohmSZwYX8v8hPuURtqY8ehV7fFqi92HssVtCSJyE2BovNmwyzGkelhAyz+DEkstK9L7P2MSSF8RmkE6zHlthf4XeH2OHrSIy0obNMTQ58UjFF2AO3+TEM2ZejlNRa/EtcG8PveP7R75X7H1cfPru/wwJ2jbgc8oV4K34wpg+ei8E3h7wBPfxnLFV5G3WJU/0Y+mSuFvD9fx4evp2Y5VDVIneI/EN02nd4zX07qZ9Esc/3yHV23Ecx3Ecx3Ecp1MjVwEVuUfdTSBofwAAAABJRU5ErkJggg=="/>
+</defs>
+<rect width="34" height="34" fill="url(#pattern0_173_943)" filter="url(#navGray)"/>
+</svg>

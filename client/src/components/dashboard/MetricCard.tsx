@@ -7,6 +7,8 @@ interface MetricCardProps {
   label: string;
   value: React.ReactNode;
   icon: React.ReactNode;
+  /** Иконка из макета (SVG с синим фоном) — без дополнительной синей обёртки. */
+  designIcon?: boolean;
   /** Прирост в процентах: положительный — зелёная стрелка вверх. */
   trend?: number | null;
   trendLabel?: string;
@@ -31,6 +33,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   progress,
   caption,
   placeholder,
+  designIcon,
 }) => {
   const progressPercent =
     progress && progress.max > 0 ? Math.min(100, Math.round((progress.value / progress.max) * 100)) : 0;
@@ -76,23 +79,29 @@ const MetricCard: React.FC<MetricCardProps> = ({
           </Typography>
         </Box>
 
-        <Box
-          aria-hidden
-          sx={{
-            flexShrink: 0,
-            width: { xs: 48, md: 60 },
-            height: { xs: 48, md: 60 },
-            borderRadius: '16px',
-            bgcolor: placeholder ? colors.divider : colors.primary,
-            color: colors.white,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            '& svg': { fontSize: { xs: 26, md: 32 } },
-          }}
-        >
-          {icon}
-        </Box>
+        {designIcon ? (
+          <Box aria-hidden sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+            {icon}
+          </Box>
+        ) : (
+          <Box
+            aria-hidden
+            sx={{
+              flexShrink: 0,
+              width: { xs: 48, md: 60 },
+              height: { xs: 48, md: 60 },
+              borderRadius: '16px',
+              bgcolor: placeholder ? colors.divider : colors.primary,
+              color: colors.white,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              '& svg': { fontSize: { xs: 26, md: 32 } },
+            }}
+          >
+            {icon}
+          </Box>
+        )}
       </Box>
 
       {progress && !placeholder && (

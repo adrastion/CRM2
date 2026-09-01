@@ -28,7 +28,6 @@ import {
   Select,
   MenuItem,
   Checkbox,
-  Link,
   Snackbar,
   Divider,
   FormControlLabel,
@@ -41,6 +40,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import ClientNameLink from '../components/ClientNameLink';
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
 
@@ -116,7 +116,7 @@ const Groups: React.FC = () => {
     maxMembers: '',
     ageMin: '',
     ageMax: '',
-    color: '#1976d2', // Цвет по умолчанию
+    color: '#4880FF', // Цвет по умолчанию
     trainingPrice: '',
     branchId: '',
     trainerId: '',
@@ -283,7 +283,7 @@ const Groups: React.FC = () => {
         maxMembers: '',
         ageMin: '',
         ageMax: '',
-        color: '#1976d2',
+        color: '#4880FF',
         trainingPrice: '',
         branchId: '',
         trainerId: '',
@@ -449,7 +449,7 @@ const Groups: React.FC = () => {
       maxMembers: group.maxMembers?.toString() || '',
       ageMin: group.ageMin?.toString() || '',
       ageMax: group.ageMax?.toString() || '',
-      color: group.color || '#1976d2',
+      color: group.color || '#4880FF',
       trainingPrice: (group as any).trainingPrice?.toString() || '',
       branchId: group.branchId || '',
       trainerId: group.trainerId || '',
@@ -1026,7 +1026,7 @@ const Groups: React.FC = () => {
               maxMembers: '',
               ageMin: '',
               ageMax: '',
-              color: '#1976d2',
+              color: '#4880FF',
               trainingPrice: '',
               branchId: '',
               trainerId: '',
@@ -1114,7 +1114,7 @@ const Groups: React.FC = () => {
                               maxMembers: group.maxMembers?.toString() || '',
                               ageMin: group.ageMin?.toString() || '',
                               ageMax: group.ageMax?.toString() || '',
-                              color: group.color || '#1976d2',
+                              color: group.color || '#4880FF',
                               trainingPrice: group.trainingPrice?.toString() || '',
                               branchId: group.branchId,
                               trainerId: group.trainerId,
@@ -1618,7 +1618,7 @@ const Groups: React.FC = () => {
                 maxMembers: '',
                 ageMin: '',
                 ageMax: '',
-                color: '#1976d2',
+                color: '#4880FF',
                 trainingPrice: '',
                 branchId: '',
                 trainerId: '',
@@ -2230,25 +2230,7 @@ const Groups: React.FC = () => {
                         <TableRow key={membership.id}>
                           <TableCell>
                             {membership.client ? (
-                              <Link
-                                component="button"
-                                variant="body2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (membership.client) {
-                                    navigate(`/clients?clientId=${membership.client.id}`);
-                                  }
-                                }}
-                                sx={{
-                                  cursor: 'pointer',
-                                  textDecoration: 'none',
-                                  '&:hover': {
-                                    textDecoration: 'underline',
-                                  },
-                                }}
-                              >
-                                {[membership.client.lastName, membership.client.firstName, membership.client.middleName].filter(Boolean).join(' ') || `${membership.client.firstName} ${membership.client.lastName}`}
-                              </Link>
+                              <ClientNameLink clientId={membership.client.id} client={membership.client} />
                             ) : (
                               '-'
                             )}

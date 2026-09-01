@@ -882,7 +882,7 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
                         currentStep.targetSelector.includes('branches') ? '/branches' :
                         currentStep.targetSelector.includes('memberships') ? '/memberships' :
                         currentStep.targetSelector.includes('client-memberships') ? '/client-memberships' :
-                        currentStep.targetSelector.includes('payments') ? '/payments' :
+                        currentStep.targetSelector.includes('payments') || currentStep.targetSelector.includes('finance') ? '/finance' :
                         currentStep.targetSelector.includes('settings') ? '/settings' :
                         currentStep.targetSelector.includes('faq') ? '/faq' :
                         currentStep.targetSelector.includes('knowledge-base') ? '/knowledge-base' : null;

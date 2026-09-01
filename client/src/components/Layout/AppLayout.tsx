@@ -1,26 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Box } from '@mui/material';
-import {
-  DashboardOutlined,
-  PeopleAltOutlined,
-  AssignmentOutlined,
-  BadgeOutlined,
-  GroupsOutlined,
-  BusinessOutlined,
-  CalendarMonthOutlined,
-  EmojiEventsOutlined,
-  PaymentsOutlined,
-  LocalOfferOutlined,
-  SettingsOutlined,
-  HelpOutline,
-  MenuBookOutlined,
-  AttachMoneyOutlined,
-} from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardShell, { ShellNavItem } from '../dashboard/DashboardShell';
 import TelegramBanner from '../TelegramBanner';
 import { clearAllAuthStorage } from '../../utils/authSession';
+import { NavIconName } from '../../assets/icons/registry';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -32,29 +17,26 @@ interface AppLayoutProps {
 const navigationItems: Array<{
   label: string;
   path: string;
-  icon: React.ReactNode;
+  iconName: NavIconName;
   roles: string[];
   /** Ключ для настройки видимости вкладок в Settings. */
   tabKey?: string;
   /** Атрибут для интерактивного обучения (InteractiveOnboarding). */
   onboarding?: string;
 }> = [
-  { label: 'Панель управления', path: '/dashboard', icon: <DashboardOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'dashboard', onboarding: 'dashboard' },
-  { label: 'Клиенты', path: '/clients', icon: <PeopleAltOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'clients', onboarding: 'clients-nav' },
-  { label: 'Нормативы', path: '/standards', icon: <AssignmentOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'standards', onboarding: 'standards-nav' },
-  { label: 'Сотрудники', path: '/trainers', icon: <BadgeOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
-  { label: 'Мой заработок', path: '/trainer/earnings', icon: <AttachMoneyOutlined />, roles: ['TRAINER'], tabKey: 'trainerEarnings' },
-  { label: 'Заработок тренеров', path: '/trainers/earnings', icon: <AttachMoneyOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'allTrainersEarnings', onboarding: 'trainer-salaries-nav' },
-  { label: 'Группы', path: '/groups', icon: <GroupsOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
-  { label: 'Филиалы', path: '/branches', icon: <BusinessOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'branches', onboarding: 'branches-nav' },
-  { label: 'Календарный план', path: '/schedule', icon: <CalendarMonthOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'schedule', onboarding: 'schedule-nav' },
-  { label: 'Соревнования', path: '/competitions', icon: <EmojiEventsOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'] },
-  { label: 'Платежи', path: '/payments', icon: <PaymentsOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'payments', onboarding: 'payments-nav' },
-  { label: 'Тарифы', path: '/memberships', icon: <LocalOfferOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'memberships', onboarding: 'memberships-nav' },
-  { label: 'Выданные тарифы', path: '/client-memberships', icon: <LocalOfferOutlined />, roles: ['OWNER', 'ADMIN'], tabKey: 'clientMemberships', onboarding: 'client-memberships-nav' },
-  { label: 'Настройки', path: '/settings', icon: <SettingsOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'settings', onboarding: 'settings-nav' },
-  { label: 'FAQ', path: '/faq', icon: <HelpOutline />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'faq', onboarding: 'faq-nav' },
-  { label: 'База знаний', path: '/knowledge-base', icon: <MenuBookOutlined />, roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'knowledgeBase', onboarding: 'knowledge-base-nav' },
+  { label: 'Панель управления', path: '/dashboard', iconName: 'dashboard', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'dashboard', onboarding: 'dashboard' },
+  { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'clients', onboarding: 'clients-nav' },
+  { label: 'Сотрудники', path: '/trainers', iconName: 'staff', roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
+  { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER'], tabKey: 'trainerEarnings' },
+  { label: 'Группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
+  { label: 'Филиалы', path: '/branches', iconName: 'branches', roles: ['OWNER', 'ADMIN'], tabKey: 'branches', onboarding: 'branches-nav' },
+  { label: 'Календарный план', path: '/schedule', iconName: 'schedule', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'schedule', onboarding: 'schedule-nav' },
+  { label: 'Соревнования', path: '/competitions', iconName: 'competitions', roles: ['OWNER', 'ADMIN', 'TRAINER'] },
+  { label: 'Финансы', path: '/finance', iconName: 'finance', roles: ['OWNER', 'ADMIN'], tabKey: 'finance', onboarding: 'payments-nav' },
+  { label: 'Тарифы', path: '/memberships', iconName: 'tariffs', roles: ['OWNER', 'ADMIN'], tabKey: 'memberships', onboarding: 'memberships-nav' },
+  { label: 'Настройки', path: '/settings', iconName: 'settings', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'settings', onboarding: 'settings-nav' },
+  { label: 'FAQ', path: '/faq', iconName: 'faq', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'faq', onboarding: 'faq-nav' },
+  { label: 'База знаний', path: '/knowledge-base', iconName: 'knowledge-base', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'knowledgeBase', onboarding: 'knowledge-base-nav' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -98,7 +80,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     .map((item) => ({
       key: item.path,
       label: item.label,
-      icon: item.icon,
+      iconName: item.iconName,
       dataOnboarding: item.onboarding,
       onClick: () => navigate(item.path),
     }));

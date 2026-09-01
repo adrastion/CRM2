@@ -40,6 +40,7 @@ import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Do
 import { apiService } from '../services/api';
 import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
+import ClientsList from '../components/dashboard/ClientsList';
 import { useAuth } from '../contexts/AuthContext';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -197,6 +198,19 @@ const Clients: React.FC = () => {
             aValue = new Date((a as any).createdAt || 0).getTime();
             bValue = new Date((b as any).createdAt || 0).getTime();
             break;
+          case 'isActive':
+            aValue = a.isActive ? 1 : 0;
+            bValue = b.isActive ? 1 : 0;
+            break;
+          case 'group': {
+            const groupName = (c: Client) => {
+              const active = (c.groupMemberships || []).filter((gm: any) => gm.isActive);
+              return active[0]?.group?.name || '';
+            };
+            aValue = groupName(a);
+            bValue = groupName(b);
+            break;
+          }
           default:
             aValue = new Date((a as any).createdAt || 0).getTime();
             bValue = new Date((b as any).createdAt || 0).getTime();
@@ -481,83 +495,34 @@ const Clients: React.FC = () => {
     return () => clearInterval(interval);
   }, [editDialogOpen, formErrors, editingClient]);
 
-  // Handle clientId from URL params
+  // Handle clientId from URL params — открыть карточку спортсмена из любого раздела
   useEffect(() => {
     const clientIdFromUrl = searchParams.get('clientId');
-    if (clientIdFromUrl && clients.length > 0 && !editDialog) {
-      const client = clients.find(c => c.id === clientIdFromUrl);
-      if (client) {
-        // Use the same logic as handleEditClient
-        setEditingClient(client);
-        setFormData({
-          firstName: client.firstName || '',
-          lastName: client.lastName || '',
-          middleName: client.middleName || '',
-          email: client.email || '',
-          phone: client.phone || '',
-          dateOfBirth: client.dateOfBirth ? client.dateOfBirth.split('T')[0] : '',
-          gender: client.gender || '',
-          address: client.address || '',
-          birthCertificateNumber: client.birthCertificateNumber || '',
-          birthCertificate: client.birthCertificate || '',
-          medicalCertificateNumber: client.medicalCertificateNumber || '',
-          medicalCertificate: client.medicalCertificate || '',
-          schoolOrKindergarten: client.schoolOrKindergarten || '',
-          photo: client.photo || '',
-          weight: client.weight ? String(client.weight) : '',
-          groupIds: client.groupMemberships
-            ?.filter((gm: any) => gm.isActive)
-            .map((gm: any) => gm.group?.id)
-            .filter(Boolean) || [],
-          parents: client.parents?.map(p => ({
-            fullName: p.fullName || '',
-            phone: p.phone || '',
-            email: p.email || '',
-            workplace: p.workplace || '',
-            workplaceContact: p.workplaceContact || '',
-          })) || [],
-        });
-        setPhotoPreview(client.photo || null);
-        setPhotoFile(null);
-        setBirthCertificatePreview(client.birthCertificate || null);
-        setBirthCertificateFile(null);
-        setMedicalCertificatePreview(client.medicalCertificate || null);
-        setMedicalCertificateFile(null);
-        setEditDialog(true);
-        setEditDialogOpen(true);
-        
-        // Загружаем нормативы клиента для отображения в карточке
-        setLoadingClientStandardsForEdit(true);
-        (async () => {
-          try {
-            const standardsRes = await apiService.getClientStandards(client.id);
-            setClientStandardsForEdit(standardsRes.data);
-            // Автоматически выбираем первый норматив, если есть
-            const uniqueStandardIds = Array.from(new Set(
-              standardsRes.data
-                .filter((cs: any) => cs.standard?.id && cs.result !== null && cs.result !== undefined)
-                .map((cs: any) => cs.standard.id)
-            ));
-            if (uniqueStandardIds.length > 0) {
-              setSelectedStandardsForChart([uniqueStandardIds[0] as string]);
-            } else {
-              setSelectedStandardsForChart([]);
-            }
-          } catch (err: any) {
-            console.error('Error loading client standards for edit:', err);
-            setClientStandardsForEdit([]);
-            setSelectedStandardsForChart([]);
-          } finally {
-            setLoadingClientStandardsForEdit(false);
-          }
-        })();
-        
-        // Remove clientId from URL
+    if (!clientIdFromUrl || editDialog) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        let client = clients.find((c) => c.id === clientIdFromUrl);
+        if (!client) {
+          client = await apiService.getClient(clientIdFromUrl);
+        }
+        if (cancelled || !client) return;
+
+        await handleEditClient(client);
+
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.delete('clientId');
         setSearchParams(newSearchParams, { replace: true });
+      } catch (err) {
+        console.error('Failed to open client card from URL:', err);
       }
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [clients, searchParams, editDialog, setSearchParams]);
 
   const handleCreateClient = async () => {
@@ -1276,37 +1241,16 @@ const Clients: React.FC = () => {
     );
   }
 
-  return (
-    <Box data-onboarding="clients-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-          Клиенты
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }} data-onboarding="clients-import-export">
-          <Button
-            variant="outlined"
-            startIcon={<FileDownload />}
-            sx={{ textTransform: 'none' }}
-            onClick={handleExportClients}
-          >
-            Экспорт в Excel
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<FileUpload />}
-            sx={{ textTransform: 'none' }}
-            onClick={() => {
-              setImportDialog(true);
-              setImportResult(null);
-            }}
-          >
-            Импорт из Excel
-          </Button>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
-          onClick={() => {
+  const handleClientsSort = (key: string) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder(key === 'isActive' ? 'desc' : 'asc');
+    }
+  };
+
+  const openAddClientDialog = () => {
             // Сбрасываем форму при открытии диалога создания
             setFormData({
               firstName: '',
@@ -1345,495 +1289,89 @@ const Clients: React.FC = () => {
             setValidFields(new Set());
             setError('');
             setOpenDialog(true);
-          }}
-          data-onboarding="add-client-button"
-        >
-          Добавить клиента
-        </Button>
-        </Box>
-      </Box>
+  };
 
-      {/* Фильтры и поиск */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <TextField
-          sx={{ minWidth: 250 }}
-          label="Поиск клиентов"
-          placeholder="ФИО, телефон, email..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          variant="outlined"
-        />
-        <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel>Филиал</InputLabel>
-          <Select
-            value={filterBranchId}
-            onChange={(e) => setFilterBranchId(e.target.value)}
-            label="Филиал"
-          >
-            <MenuItem value="">Все филиалы</MenuItem>
-            {branches.map((branch) => (
-              <MenuItem key={branch.id} value={branch.id}>
-                {branch.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel>Группа</InputLabel>
-          <Select
-            value={filterGroupId}
-            onChange={(e) => setFilterGroupId(e.target.value)}
-            label="Группа"
-          >
-            <MenuItem value="">Все группы</MenuItem>
-            {groups.filter(g => g.isActive).map((group) => (
-              <MenuItem key={group.id} value={group.id}>
-                {group.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        {(filterBranchId || filterGroupId) && (
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setFilterBranchId('');
-              setFilterGroupId('');
-            }}
-          >
-            Сбросить фильтры
-          </Button>
-        )}
-      </Box>
-
-      <Card>
-        <CardContent>
-          <TableContainer component={Paper} data-onboarding="clients-table">
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>
-                    <TableSortLabel
-                      active={sortBy === 'firstName'}
-                      direction={sortBy === 'firstName' ? sortOrder : 'asc'}
-                      onClick={() => {
-                        if (sortBy === 'firstName') {
-                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                        } else {
-                          setSortBy('firstName');
-                          setSortOrder('asc');
-                        }
-                      }}
-                    >
-                      Имя
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={sortBy === 'email'}
-                      direction={sortBy === 'email' ? sortOrder : 'asc'}
-                      onClick={() => {
-                        if (sortBy === 'email') {
-                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                        } else {
-                          setSortBy('email');
-                          setSortOrder('asc');
-                        }
-                      }}
-                    >
-                      Email
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={sortBy === 'phone'}
-                      direction={sortBy === 'phone' ? sortOrder : 'asc'}
-                      onClick={() => {
-                        if (sortBy === 'phone') {
-                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                        } else {
-                          setSortBy('phone');
-                          setSortOrder('asc');
-                        }
-                      }}
-                    >
-                      Телефон
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>Группы</TableCell>
-                  <TableCell>Тарифы</TableCell>
-                  <TableCell>Баланс</TableCell>
-                  <TableCell>Задолженность</TableCell>
-                  {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
-                    <TableCell>Членский взнос</TableCell>
-                  )}
-                  {(user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER') && (
-                    <TableCell>Аккаунт</TableCell>
-                  )}
-                  <TableCell>Статус</TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={sortBy === 'createdAt'}
-                      direction={sortBy === 'createdAt' ? sortOrder : 'desc'}
-                      onClick={() => {
-                        if (sortBy === 'createdAt') {
-                          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                        } else {
-                          setSortBy('createdAt');
-                          setSortOrder('desc');
-                        }
-                      }}
-                    >
-                      Дата создания
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredAndSortedClients.map((client: Client) => (
-                  <TableRow key={client.id}>
-                    <TableCell>
-                      <Typography
-                        sx={{
-                          cursor: 'pointer',
-                          color: 'primary.main',
-                          fontWeight: 'medium',
-                          '&:hover': {
-                            textDecoration: 'underline',
-                            color: 'primary.dark',
-                          }
-                        }}
-                        onClick={() => handleEditClient(client)}
-                      >
-                        {[client.lastName, client.firstName, client.middleName].filter(Boolean).join(' ') || `${client.firstName} ${client.lastName}`}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{client.email || '-'}</TableCell>
-                    <TableCell>
-                      {editingPhoneClientId === client.id ? (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <TextField
-                            size="small"
-                            value={editingPhoneValue}
-                            onChange={(e) => setEditingPhoneValue(e.target.value)}
-                            placeholder="+1234567890"
-                            autoFocus
-                            sx={{ width: 150 }}
-                          />
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={async () => {
-                              try {
-                                await apiService.updateClient(client.id, { phone: editingPhoneValue });
-                                await fetchClients();
-                                setEditingPhoneClientId(null);
-                                setEditingPhoneValue('');
-                              } catch (err: any) {
-                                setError(err.response?.data?.error || 'Ошибка обновления телефона');
-                              }
-                            }}
-                          >
-                            <Check />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => {
-                              setEditingPhoneClientId(null);
-                              setEditingPhoneValue('');
-                            }}
-                          >
-                            <Close />
-                          </IconButton>
-                        </Box>
-                      ) : (
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            cursor: 'pointer',
-                            '&:hover': {
-                              color: 'primary.main',
-                              textDecoration: 'underline'
-                            }
-                          }}
-                          onClick={() => {
-                            setEditingPhoneClientId(client.id);
-                            setEditingPhoneValue(client.phone || '');
-                          }}
-                        >
-                          <Phone sx={{ fontSize: 16 }} />
-                          {client.phone || '-'}
-                        </Box>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {client.groupMemberships && client.groupMemberships.length > 0 ? (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {client.groupMemberships
-                            .filter((gm: any) => gm.isActive)
-                            .map((gm: any) => (
-                              <Chip
-                                key={gm.id}
-                                label={gm.group?.name || 'Группа'}
-                                size="small"
-                                onClick={() => {
-                                  setSelectedClientForGroups(client);
-                                  setGroupsDialog(true);
-                                }}
-                                sx={{
-                                  cursor: 'pointer',
-                                  '&:hover': {
-                                    backgroundColor: 'primary.dark'
-                                  }
-                                }}
-                              />
-                            ))}
-                        </Box>
-                      ) : (
-                        <Chip
-                          label="Нет групп"
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            setSelectedClientForGroups(client);
-                            setGroupsDialog(true);
-                          }}
-                          sx={{
-                            cursor: 'pointer',
-                            '&:hover': {
-                              backgroundColor: 'action.hover'
-                            }
-                          }}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {(client as any).clientMemberships && (client as any).clientMemberships.length > 0 ? (
-                        <Box>
-                          {(client as any).clientMemberships.map((cm: any) => (
-                            <Chip
-                              key={cm.id}
-                              label={
-                                cm.membership?.type === 'monthly'
-                                  ? `${cm.membership?.name} (до ${cm.endDate ? new Date(cm.endDate).toLocaleDateString('ru-RU') : '∞'})`
-                                  : `${cm.membership?.name} (${cm.visitsUsed || 0}/${cm.visitsTotal || 0})`
-                              }
-                              size="small"
-                              color="primary"
-                              sx={{ mr: 0.5, mb: 0.5 }}
-                            />
-                          ))}
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">Нет тарифов</Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontWeight: 'bold',
-                          color: client.balance !== undefined && Number(client.balance) < 0 
-                            ? 'error.main' 
-                            : Number(client.balance || 0) > 0 
-                            ? 'success.main' 
-                            : 'text.secondary'
-                        }}
-                      >
-                        {((client.balance !== undefined ? Number(client.balance) : 0).toFixed(2))} ₽
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {client.debt && client.debt > 0 ? (
-                        <Chip
-                          label={`${client.debt.toFixed(2)} ₽${client.overduePaymentsCount ? ` (${client.overduePaymentsCount})` : ''}`}
-                          color="error"
-                          size="small"
-                          sx={{ fontWeight: 'bold' }}
-                        />
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">Нет</Typography>
-                      )}
-                    </TableCell>
-                    {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Chip
-                            label={client.membershipFeePaid ? 'Оплачен' : 'Не оплачен'}
-                            color={client.membershipFeePaid ? 'success' : 'default'}
-                            size="small"
-                            icon={client.membershipFeePaid ? <Check /> : <Close />}
-                          />
-                          <IconButton
-                            size="small"
-                            color={client.membershipFeePaid ? 'error' : 'success'}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                const updated = await apiService.updateClientMembershipFeeStatus(
-                                  client.id,
-                                  !client.membershipFeePaid
-                                );
-                                // Обновляем клиента в списке
-                                setClients(clients.map(c => c.id === updated.id ? updated : c));
-                                // Обновляем editingClient, если он открыт
-                                if (editingClient && editingClient.id === updated.id) {
-                                  setEditingClient(updated);
-                                }
-                                setSnackbarMessage(
-                                  updated.membershipFeePaid 
-                                    ? 'Членский взнос отмечен как оплаченный' 
-                                    : 'Отметка о членском взносе снята'
-                                );
-                                setSnackbarOpen(true);
-                              } catch (err: any) {
-                                setError(err?.response?.data?.error || 'Не удалось обновить статус членского взноса');
-                                setSnackbarMessage(err?.response?.data?.error || 'Не удалось обновить статус членского взноса');
-                                setSnackbarOpen(true);
-                              }
-                            }}
-                            title={client.membershipFeePaid ? 'Снять отметку' : 'Отметить оплату'}
-                          >
-                            {client.membershipFeePaid ? <Close /> : <Payment />}
-                          </IconButton>
-                        </Box>
-                      </TableCell>
-                    )}
-                    {(user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER') && (
-                      <TableCell>
-                        {(client as any).password ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Chip
-                              label={(client as any).isAccountApproved ? 'Подтвержден' : 'Ожидает подтверждения'}
-                              color={(client as any).isAccountApproved ? 'success' : 'warning'}
-                              size="small"
-                            />
-                            {!(client as any).isAccountApproved && (
-                              <IconButton
-                                size="small"
-                                color="success"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  try {
-                                    const updated = await apiService.approveClientAccount(client.id);
-                                    setClients(clients.map(c => c.id === updated.id ? updated : c));
-                                    if (editingClient && editingClient.id === updated.id) {
-                                      setEditingClient(updated);
-                                    }
-                                    setSnackbarMessage('Аккаунт клиента подтвержден');
-                                    setSnackbarOpen(true);
-                                  } catch (err: any) {
-                                    setError(err?.response?.data?.error || 'Не удалось подтвердить аккаунт');
-                                    setSnackbarMessage(err?.response?.data?.error || 'Не удалось подтвердить аккаунт');
-                                    setSnackbarOpen(true);
-                                  }
-                                }}
-                                title="Подтвердить аккаунт"
-                              >
-                                <Check />
-                              </IconButton>
-                            )}
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            Не зарегистрирован
-                          </Typography>
-                        )}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <Chip
-                        label={client.isActive ? 'Активен' : 'Неактивен'}
-                        color={client.isActive ? 'success' : 'default'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {(client as any).createdAt 
-                        ? new Date((client as any).createdAt).toLocaleDateString('ru-RU')
-                        : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <IconButton 
-                        size="small" 
-                        color="primary" 
-                        title="Статистика посещаемости"
-                        onClick={async () => {
-                          setSelectedClientForStats(client);
-                          setLoadingStats(true);
-                          try {
-                            const stats = await apiService.getClientStats(client.id);
-                            setClientStats(stats);
-                            setStatsDialog(true);
-                          } catch (err: any) {
-                            setError('Не удалось загрузить статистику');
-                            console.error('Error loading stats:', err);
-                          } finally {
-                            setLoadingStats(false);
-                          }
-                        }}
-                      >
-                        <Visibility />
-                      </IconButton>
-                      <IconButton 
-                        size="small" 
-                        color="secondary" 
-                        title="Выдать тариф"
-                        onClick={() => {
-                          setSelectedClientForMembership(client);
-                          setMembershipDialog(true);
-                        }}
-                      >
-                        <LocalOffer />
-                      </IconButton>
-                      <IconButton 
-                        size="small" 
-                        color="primary" 
-                        title="Нормативы"
-                        onClick={async () => {
-                          setSelectedClientForStandards(client);
-                          await handleOpenStandardsDialog(client);
-                        }}
-                      >
-                        <Assignment />
-                      </IconButton>
-                      <IconButton 
-                        size="small" 
-                        color="primary" 
-                        title="Редактировать"
-                        onClick={() => handleEditClient(client)}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton 
-                        size="small" 
-                        color="error" 
-                        title="Удалить"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Delete button clicked for client:', client.id);
-                          handleDeleteClient(client.id);
-                        }}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
+  return (
+    <Box>
+      <ClientsList
+        clients={filteredAndSortedClients}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        sortBy={sortBy}
+        onSort={handleClientsSort}
+        onEdit={handleEditClient}
+        onMemberships={(client) => {
+          setSelectedClientForMembership(client);
+          setMembershipDialog(true);
+        }}
+        onDelete={handleDeleteClient}
+        onGroupClick={(client) => {
+          setSelectedClientForGroups(client);
+          setGroupsDialog(true);
+        }}
+        toolbarActions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownload />}
+              sx={{ textTransform: 'none', borderRadius: '19px' }}
+              onClick={handleExportClients}
+            >
+              Экспорт в Excel
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<FileUpload />}
+              sx={{ textTransform: 'none', borderRadius: '19px' }}
+              onClick={() => {
+                setImportDialog(true);
+                setImportResult(null);
+              }}
+            >
+              Импорт из Excel
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: '#4880FF' }}
+              onClick={openAddClientDialog}
+              data-onboarding="add-client-button"
+            >
+              Добавить клиента
+            </Button>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Филиал</InputLabel>
+              <Select
+                value={filterBranchId}
+                onChange={(e) => setFilterBranchId(e.target.value)}
+                label="Филиал"
+              >
+                <MenuItem value="">Все филиалы</MenuItem>
+                {branches.map((branch) => (
+                  <MenuItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </MenuItem>
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Группа</InputLabel>
+              <Select
+                value={filterGroupId}
+                onChange={(e) => setFilterGroupId(e.target.value)}
+                label="Группа"
+              >
+                <MenuItem value="">Все группы</MenuItem>
+                {groups.filter(g => g.isActive).map((group) => (
+                  <MenuItem key={group.id} value={group.id}>
+                    {group.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </>
+        }
+      />
 
       {/* Диалог добавления клиента */}
       <Dialog 

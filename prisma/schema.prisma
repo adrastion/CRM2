@@ -45,6 +45,8 @@ model Tenant {
   trainers                Trainer[]
   trainings               Training[]
   transactions            Transaction[]
+  financeOperations       FinanceOperation[]
+  financeOperationTypes   FinanceOperationType[]
   users                   User[]
   supportTickets          SupportTicket[]
 
@@ -105,6 +107,7 @@ model Branch {
   payments    Payment[]
   trainers    TrainerBranch[]
   trainings   Training[]
+  financeOperations FinanceOperation[]
 
   @@index([tenantId, isActive])
   @@map("branches")
@@ -179,6 +182,7 @@ model Client {
   promoCodeUsages          PromoCodeUsage[]
   referralClicks           ReferralClick[]
   transactions             Transaction[]
+  financeOperations        FinanceOperation[]
   supportTickets           SupportTicket[] @relation("ClientSupportTickets")
 
   @@index([tenantId, isActive])
@@ -299,6 +303,7 @@ model Trainer {
   trainings            Training[]                   @relation("TrainingTrainer")
   substituteTrainings  Training[]                   @relation("TrainingSubstitute")
   transactions         Transaction[]
+  financeOperations    FinanceOperation[]
   notificationSettings TrainerNotificationSettings?
 
   @@index([tenantId, isActive])
@@ -372,6 +377,7 @@ model Group {
   trainer                   Trainer           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   trainings                 Training[]
   payments                  Payment[]
+  financeOperations         FinanceOperation[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, branchId])
@@ -458,6 +464,7 @@ model Payment {
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   promoCodeUsage   PromoCodeUsage?
   transactions     Transaction[]
+  financeOperations FinanceOperation[]
 
   @@index([tenantId, status])
   @@index([tenantId, clientId])
@@ -554,6 +561,63 @@ model Transaction {
   @@index([tenantId, clientId])
   @@index([tenantId, trainerId])
   @@map("transactions")
+}
+
+/// Тип финансовой операции (системный или кастомный для тенанта).
+model FinanceOperationType {
+  id                String   @id @default(cuid())
+  /// null — системный тип, доступен всем школам
+  tenantId          String?
+  code              String
+  name              String
+  /// 'income' | 'expense'
+  defaultDirection  String
+  isSystem          Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("finance_operation_types")
+}
+
+/// Единая история поступлений и расходов школы (раздел «Финансы»).
+model FinanceOperation {
+  id          String    @id @default(cuid())
+  tenantId    String
+  /// 'income' | 'expense'
+  direction   String
+  typeCode    String
+  title       String
+  amount      Decimal
+  occurredAt  DateTime  @default(now())
+  notes       String?
+  clientId    String?
+  trainerId   String?
+  groupId     String?
+  branchId    String?
+  /// Идемпотентная связь с Payment при авто-создании из оплаты
+  paymentId   String?   @unique
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  trainer     Trainer?  @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  group       Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, typeCode])
+  @@index([tenantId, direction])
+  @@index([tenantId, clientId])
+  @@index([tenantId, trainerId])
+  @@index([tenantId, groupId])
+  @@index([tenantId, branchId])
+  @@map("finance_operations")
 }
 
 model TrainerBranch {
@@ -694,10 +758,68 @@ model Subscription {
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
   nextPlanType String?
+  // Тариф выдан супер-админом вручную, а не оплачен клиентом.
+  // Такие подписки исключаются из финансовых метрик (MRR/ARR/прогноз/конверсия).
+  isGranted    Boolean               @default(false)
+  grantedAt    DateTime?
+  grantedBy    String? // id супер-админа, выдавшего тариф
   payments     SubscriptionPayment[]
+  grantLogs    SubscriptionGrantLog[]
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
+}
+
+/// Каталог тарифов. `code` неизменяем и используется во всех связях,
+/// поэтому переименование тарифа не затрагивает историю подписок и платежей.
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  code          String   @unique // FREE, STARTER, ... — не меняется после создания
+  name          String // Отображаемое название, редактируется супер-админом
+  description   String?
+  /// null означает «Цена договорная» (тариф ENTERPRISE и подобные)
+  price         Decimal?
+  /// null в лимитах означает «Безлимит»
+  maxTrainers   Int?
+  maxClients    Int?
+  maxGroups     Int?
+  maxBranches   Int?
+  maxTrainings  Int?
+  /// false — индивидуальный тариф: не отображается на странице /pricing,
+  /// выдаётся только вручную из панели супер-админа
+  isPublic      Boolean  @default(true)
+  /// Soft-delete: архивный тариф нельзя выдать, но история по нему сохраняется
+  isActive      Boolean  @default(true)
+  /// Порядок тарифа в иерархии. Сравнение «выше/ниже» идёт по нему, а не по цене,
+  /// т.к. у ENTERPRISE цена договорная и не сопоставима численно.
+  sortOrder     Int      @default(0)
+  supportLevel  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive, isPublic])
+  @@map("subscription_plans")
+}
+
+/// История выдачи и продления тарифов супер-админом: кто, когда и что изменил.
+model SubscriptionGrantLog {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  tenantId       String
+  superAdminId   String?
+  /// 'grant' — выдача тарифа, 'extend' — изменение срока, 'revoke' — снятие
+  action         String
+  planCode       String
+  oldPlanCode    String?
+  oldEndDate     DateTime?
+  newEndDate     DateTime?
+  comment        String?
+  createdAt      DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  superAdmin     SuperAdmin?  @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("subscription_grant_logs")
 }
 
 model SubscriptionPayment {
@@ -713,6 +835,11 @@ model SubscriptionPayment {
   expiresAt          DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
+  /// Снимок тарифа на момент оплаты. Нужен, чтобы последующее изменение цены
+  /// в каталоге не переписывало историю выручки.
+  planCode           String?
+  listPrice          Decimal? // цена тарифа до скидки на момент оплаты
+  discountAmount     Decimal? // размер скидки по промокоду
   promoCodeUsage     PromoCodeUsage?
   subscription       Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
@@ -736,6 +863,9 @@ model SuperAdminSettings {
   id                String        @id @default(cuid())
   reservePercentage Decimal?
   reserveAmount     Decimal?
+  /// Абсолютный путь к файлу ошибок сервера.
+  /// По умолчанию — logs/err.log в корне проекта (см. logFileService).
+  errorLogPath      String?
   budgetLimits      BudgetLimit[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
@@ -789,6 +919,7 @@ model SuperAdmin {
   auditLogs        AdminAuditLog[]
   dashboardPresets DashboardPreset[]
   supportMessages  SupportTicketMessage[]
+  grantLogs        SubscriptionGrantLog[]
 
   @@map("super_admins")
 }

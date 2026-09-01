@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -31,7 +30,6 @@ import {
   RadioGroup,
   FormControlLabel,
   Checkbox,
-  Link,
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
@@ -58,6 +56,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import ClientNameLink from '../components/ClientNameLink';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -104,7 +103,6 @@ interface TrainingFormData {
 }
 
 const Schedule: React.FC = () => {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -1976,7 +1974,7 @@ const Schedule: React.FC = () => {
                           const substituteTrainer = training.substituteTrainerId ? trainers.find(t => t.id === training.substituteTrainerId) : null;
                           const hall = halls.find(h => h.id === training.hallId);
                           const branch = branches.find(b => b.id === training.branchId);
-                          const groupColor = group?.color || '#1976d2';
+                          const groupColor = group?.color || '#4880FF';
                           const isLightColor = isColorLight(groupColor);
                           const style = getTrainingBlockStyle(training, day, timeTrainings);
                           const startTime = format(new Date(training.startTime), 'HH:mm');
@@ -2113,7 +2111,7 @@ const Schedule: React.FC = () => {
                     <List dense>
                       {dayTrainings.map((training) => {
                         const group = groups.find(g => g.id === training.groupId);
-                        const groupColor = group?.color || '#1976d2';
+                        const groupColor = group?.color || '#4880FF';
                         const isLightColor = isColorLight(groupColor);
                         
                         return (
@@ -3648,23 +3646,7 @@ const Schedule: React.FC = () => {
                       return (
                         <TableRow key={item.client.id}>
                           <TableCell>
-                            <Link
-                              component="button"
-                              variant="body2"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/clients?clientId=${item.client.id}`);
-                              }}
-                              sx={{
-                                cursor: 'pointer',
-                                textDecoration: 'none',
-                                '&:hover': {
-                                  textDecoration: 'underline',
-                                },
-                              }}
-                            >
-                            {[item.client.lastName, item.client.firstName, item.client.middleName].filter(Boolean).join(' ') || `${item.client.firstName} ${item.client.lastName}`}
-                            </Link>
+                            <ClientNameLink clientId={item.client.id} client={item.client} />
                           </TableCell>
                           <TableCell>{item.client.phone || '-'}</TableCell>
                           <TableCell align="center">

@@ -14,21 +14,6 @@ import {
   Divider,
   Alert,
 } from '@mui/material';
-import {
-  PeopleAltOutlined,
-  CheckCircleOutline,
-  BadgeOutlined,
-  GroupsOutlined,
-  BusinessOutlined,
-  PaymentsOutlined,
-  TrendingUpOutlined,
-  CalendarMonthOutlined,
-  CardMembership,
-  PersonAddAlt1Outlined,
-  EventAvailableOutlined,
-  ReceiptLongOutlined,
-  AssignmentOutlined,
-} from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,6 +21,8 @@ import { apiService } from '../services/api';
 import { DashboardStats } from '../types';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
+import DesignIcon from '../components/common/DesignIcon';
+import { MetricIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
 
 interface Activity {
@@ -67,9 +54,9 @@ const RUB = new Intl.NumberFormat('ru-RU', {
 const QuickAction: React.FC<{
   title: string;
   description: string;
-  icon: React.ReactNode;
+  iconName: MetricIconName;
   onClick: () => void;
-}> = ({ title, description, icon, onClick }) => (
+}> = ({ title, description, iconName, onClick }) => (
   <Box
     component="button"
     type="button"
@@ -96,15 +83,8 @@ const QuickAction: React.FC<{
       '&:focus-visible': { outline: `3px solid ${colors.primarySoft}`, outlineOffset: 3 },
     }}
   >
-    <Box
-      aria-hidden
-      sx={{
-        color: colors.primary,
-        display: 'flex',
-        '& svg': { fontSize: { xs: 38, md: 48 } },
-      }}
-    >
-      {icon}
+    <Box aria-hidden sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <DesignIcon category="metric" name={iconName} size={72} />
     </Box>
     <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, color: colors.text }}>
       {title}
@@ -190,59 +170,64 @@ const Dashboard: React.FC = () => {
   const isTrainer = user?.role === 'TRAINER';
 
   const metricCards = useMemo(() => {
-    const cards = [
+    const cards: Array<{
+      label: string;
+      value: React.ReactNode;
+      iconName: MetricIconName;
+      show: boolean;
+    }> = [
       {
         label: 'Всего клиентов',
         value: stats?.totalClients ?? 0,
-        icon: <PeopleAltOutlined />,
+        iconName: 'total-clients',
         show: true,
       },
       {
         label: 'Активные клиенты',
         value: stats?.activeClients ?? 0,
-        icon: <CheckCircleOutline />,
+        iconName: 'active-clients',
         show: true,
       },
       {
         label: 'Тренеры',
         value: stats?.totalTrainers ?? 0,
-        icon: <BadgeOutlined />,
+        iconName: 'trainers',
         show: !isTrainer,
       },
       {
         label: 'Группы',
         value: stats?.totalGroups ?? 0,
-        icon: <GroupsOutlined />,
+        iconName: 'groups',
         show: true,
       },
       {
         label: 'Филиалы',
         value: stats?.totalBranches ?? 0,
-        icon: <BusinessOutlined />,
+        iconName: 'branches',
         show: !isTrainer,
       },
       {
         label: 'Месячный доход',
         value: RUB.format(stats?.monthlyRevenue ?? 0),
-        icon: <PaymentsOutlined />,
+        iconName: 'monthly-revenue',
         show: !isTrainer,
       },
       {
         label: 'Посещаемость',
         value: `${stats?.attendanceRate ?? 0}%`,
-        icon: <TrendingUpOutlined />,
+        iconName: 'attendance',
         show: true,
       },
       {
         label: isTrainer ? 'Мои тренировки' : 'Предстоящие тренировки',
         value: stats?.upcomingTrainings ?? 0,
-        icon: <CalendarMonthOutlined />,
+        iconName: 'my-trainings',
         show: true,
       },
       {
         label: 'Заработок за месяц',
         value: RUB.format(stats?.trainerMonthlyEarnings ?? 0),
-        icon: <PaymentsOutlined />,
+        iconName: 'balance',
         show: isTrainer,
       },
     ];
@@ -290,7 +275,6 @@ const Dashboard: React.FC = () => {
         {user?.role === 'OWNER' && (
           <Button
             variant="outlined"
-            startIcon={<CardMembership />}
             onClick={handleOpenPlanUsage}
             sx={{
               borderRadius: `${radii.button}px`,
@@ -318,7 +302,13 @@ const Dashboard: React.FC = () => {
         data-onboarding="dashboard-stats"
       >
         {metricCards.map((card) => (
-          <MetricCard key={card.label} label={card.label} value={card.value} icon={card.icon} />
+          <MetricCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            icon={<DesignIcon category="metric" name={card.iconName} size={60} />}
+            designIcon
+          />
         ))}
       </Box>
 
@@ -480,27 +470,27 @@ const Dashboard: React.FC = () => {
           <QuickAction
             title="Добавить клиента"
             description="Зарегистрировать нового клиента"
-            icon={<PersonAddAlt1Outlined />}
+            iconName="add-client"
             onClick={() => navigate('/clients')}
           />
           <QuickAction
             title="Запланировать тренировку"
             description="Создать занятие в расписании"
-            icon={<EventAvailableOutlined />}
+            iconName="schedule-training"
             onClick={() => navigate('/schedule')}
           />
           {!isTrainer ? (
             <QuickAction
               title="Записать платеж"
               description="Обработать оплату клиента"
-              icon={<ReceiptLongOutlined />}
-              onClick={() => navigate('/payments')}
+              iconName="record-payment"
+              onClick={() => navigate('/finance')}
             />
           ) : (
             <QuickAction
               title="Нормативы"
               description="Внести результаты учеников"
-              icon={<AssignmentOutlined />}
+              iconName="standards"
               onClick={() => navigate('/standards')}
             />
           )}

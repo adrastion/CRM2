@@ -22,7 +22,6 @@ import ClientSupportFAB from './ClientSupportFAB';
 import { apiService } from '../services/api';
 import { useDesignerVoiceCall } from '../hooks/useDesignerVoiceCall';
 import { getSupportRequesterToken } from '../utils/supportAuthToken';
-import { isClientApproved } from '../utils/authSession';
 
 function hasClientSession(): boolean {
   return !!localStorage.getItem('clientToken');
@@ -52,10 +51,8 @@ const SupportFAB: React.FC = () => {
   const hidden = useMemo(() => {
     if (hasSuperAdminSession()) return true;
     if (isSuperAdminRoute(location.pathname)) return true;
-    // На публичных страницах (например /auth) кнопку не показываем, чтобы не было запросов без токена
+    // На публичных страницах (например /login) кнопку не показываем, чтобы не было запросов без токена
     if (!hasAnyNonSuperAdminSession()) return true;
-    // Клиенту без подтверждения школой кабинет ещё не доступен — скрываем и поддержку.
-    if (hasClientSession() && !isClientApproved()) return true;
     return false;
   }, [location.pathname]);
 

@@ -11,6 +11,11 @@ import {
   UnifiedSession,
   AccountType,
   ClientDashboardData,
+  SubscriptionPlanItem,
+  PublicPlanItem,
+  SubscriptionGrantLogItem,
+  LogFileInfoResponse,
+  LogFileContentResponse,
 } from '../types';
 import { apiCache, generateCacheKey } from '../utils/apiCache';
 
@@ -811,6 +816,102 @@ class ApiService {
     return response.data;
   }
 
+  // Finance (раздел «Финансы»)
+  async getFinanceTypes(): Promise<import('../types').FinanceOperationType[]> {
+    const response = await this.api.get<ApiResponse>('/finance/types');
+    return response.data.data || [];
+  }
+
+  async getFinanceRefs(): Promise<{
+    types: import('../types').FinanceOperationType[];
+    clients: import('../types').Client[];
+    trainers: import('../types').Trainer[];
+    groups: import('../types').Group[];
+    branches: import('../types').Branch[];
+  }> {
+    const response = await this.api.get<ApiResponse>('/finance/refs');
+    return response.data.data;
+  }
+
+  async createFinanceType(data: {
+    name: string;
+    code?: string;
+    defaultDirection?: 'income' | 'expense';
+  }): Promise<import('../types').FinanceOperationType> {
+    const response = await this.api.post<ApiResponse>('/finance/types', data);
+    return response.data.data;
+  }
+
+  async getFinanceOperations(params?: Record<string, any>): Promise<import('../types').FinanceOperationsResponse> {
+    const response = await this.api.get<ApiResponse>('/finance/operations', { params });
+    return (
+      response.data.data || {
+        items: [],
+        total: 0,
+        limit: 100,
+        offset: 0,
+      }
+    );
+  }
+
+  async createFinanceOperation(data: {
+    direction: 'income' | 'expense';
+    typeCode: string;
+    title: string;
+    amount: number;
+    occurredAt?: string;
+    notes?: string;
+    clientId?: string;
+    trainerId?: string;
+    groupId?: string;
+    branchId?: string;
+  }): Promise<import('../types').FinanceOperation> {
+    const response = await this.api.post<ApiResponse>('/finance/operations', data);
+    return response.data.data;
+  }
+
+  async getFinanceSalarySummary(params?: Record<string, any>): Promise<import('../types').FinanceSalaryRow[]> {
+    const response = await this.api.get<ApiResponse>('/finance/salary-summary', { params });
+    return response.data.data || [];
+  }
+
+  async payoutTrainerSalary(data: {
+    trainerId: string;
+    amount: number;
+    periodLabel?: string;
+    occurredAt?: string;
+    notes?: string;
+  }): Promise<import('../types').FinanceOperation> {
+    const response = await this.api.post<ApiResponse>('/finance/salary-payout', data);
+    return response.data.data;
+  }
+
+  async getFinanceMembershipSummary(
+    params?: Record<string, any>
+  ): Promise<import('../types').FinanceMembershipRow[]> {
+    const response = await this.api.get<ApiResponse>('/finance/membership-summary', { params });
+    return response.data.data || [];
+  }
+
+  async receiveMembershipPayment(data: {
+    paymentId?: string;
+    clientId?: string;
+    amount?: number;
+    notes?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/finance/membership-payments/receive', data);
+    return response.data.data;
+  }
+
+  async updateMembershipFinanceAmount(data: {
+    paymentId: string;
+    amount: number;
+    notes?: string;
+  }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/finance/membership-payments/amount', data);
+    return response.data.data;
+  }
+
   // Membership endpoints
   async getMemberships(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/memberships', { params, signal });
@@ -1170,7 +1271,12 @@ class ApiService {
     return response.data.data;
   }
 
-  async updateAdminSettings(data: { reservePercentage?: number; reserveAmount?: number }): Promise<any> {
+  async updateAdminSettings(data: {
+    reservePercentage?: number;
+    reserveAmount?: number;
+    /** Абсолютный путь к файлу ошибок сервера. */
+    errorLogPath?: string | null;
+  }): Promise<any> {
     const response = await this.api.put<ApiResponse>('/admin-dashboard/settings', data);
     return response.data.data;
   }
@@ -1294,12 +1400,84 @@ class ApiService {
     return response.data.data;
   }
 
-  async getPlanPrices(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/admin-dashboard/plans/prices');
-    return response.data.data;
+  /* ---------------- Каталог тарифов ---------------- */
+
+  /**
+   * Список тарифов для панели супер-админа (включая архивные и индивидуальные).
+   * Персоналу платформы доступен только на чтение.
+   */
+  async getPlanPrices(): Promise<SubscriptionPlanItem[]> {
+    const response = await this.api.get<ApiResponse<SubscriptionPlanItem[]>>(
+      '/admin-dashboard/plans/prices'
+    );
+    return response.data.data!;
   }
 
-  async updatePlanPrice(data: { planType: string; price?: number; limits?: any }): Promise<any> {
+  /** Создание тарифа. `isPublic: false` — индивидуальный тариф. */
+  async createPlan(data: {
+    code: string;
+    name: string;
+    description?: string | null;
+    price?: number | null;
+    limits?: Record<string, number | 'unlimited'>;
+    isPublic?: boolean;
+    sortOrder?: number;
+    supportLevel?: string | null;
+  }): Promise<SubscriptionPlanItem> {
+    const response = await this.api.post<ApiResponse<SubscriptionPlanItem>>(
+      '/admin-dashboard/plans',
+      data
+    );
+    return response.data.data!;
+  }
+
+  /** Изменение тарифа: название, цена, лимиты, публичность. Код неизменяем. */
+  async updatePlan(
+    code: string,
+    data: {
+      name?: string;
+      description?: string | null;
+      price?: number | null;
+      limits?: Record<string, number | 'unlimited'>;
+      isPublic?: boolean;
+      isActive?: boolean;
+      sortOrder?: number;
+      supportLevel?: string | null;
+    }
+  ): Promise<SubscriptionPlanItem> {
+    const response = await this.api.put<ApiResponse<SubscriptionPlanItem>>(
+      `/admin-dashboard/plans/${encodeURIComponent(code)}`,
+      data
+    );
+    return response.data.data!;
+  }
+
+  /** Архивация тарифа (мягкое удаление — история сохраняется). */
+  async archivePlan(code: string): Promise<SubscriptionPlanItem> {
+    const response = await this.api.post<ApiResponse<SubscriptionPlanItem>>(
+      `/admin-dashboard/plans/${encodeURIComponent(code)}/archive`,
+      {}
+    );
+    return response.data.data!;
+  }
+
+  /** Восстановление тарифа из архива. */
+  async restorePlan(code: string): Promise<SubscriptionPlanItem> {
+    const response = await this.api.post<ApiResponse<SubscriptionPlanItem>>(
+      `/admin-dashboard/plans/${encodeURIComponent(code)}/restore`,
+      {}
+    );
+    return response.data.data!;
+  }
+
+  /** Публичный каталог тарифов для страницы /pricing (без индивидуальных). */
+  async getPublicPlans(): Promise<PublicPlanItem[]> {
+    const response = await this.api.get<ApiResponse<PublicPlanItem[]>>('/subscriptions/plans');
+    return response.data.data!;
+  }
+
+  /** Совместимость: обновление цены и лимитов существующего тарифа. */
+  async updatePlanPrice(data: { planType: string; price?: number | null; limits?: any }): Promise<any> {
     const response = await this.api.put<ApiResponse>('/admin-dashboard/plans/prices', data);
     return response.data.data;
   }
@@ -1320,9 +1498,77 @@ class ApiService {
     return response.data;
   }
 
-  async updateTenantPlan(tenantId: string, planType: string): Promise<any> {
-    const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, { planType });
+  /**
+   * Выдача тарифа аккаунту. Применяется сразу, независимо от уровня тарифа.
+   * `endDate` — необязательный срок действия, `comment` попадает в историю.
+   */
+  async updateTenantPlan(
+    tenantId: string,
+    planType: string,
+    options?: { endDate?: string | null; comment?: string | null }
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/tenants/${tenantId}/plan`, {
+      planType,
+      ...(options?.endDate ? { endDate: options.endDate } : {}),
+      ...(options?.comment ? { comment: options.comment } : {}),
+    });
     return response.data.data;
+  }
+
+  /** Изменение срока действия тарифа аккаунта с записью в историю. */
+  async updateTenantSubscriptionEndDate(
+    tenantId: string,
+    endDate: string,
+    comment?: string | null
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/subscription/end-date`,
+      { endDate, ...(comment ? { comment } : {}) }
+    );
+    return response.data.data;
+  }
+
+  /** История выдачи и продления тарифов аккаунта. */
+  async getTenantGrantHistory(tenantId: string): Promise<SubscriptionGrantLogItem[]> {
+    const response = await this.api.get<ApiResponse<SubscriptionGrantLogItem[]>>(
+      `/admin-dashboard/tenants/${tenantId}/grant-history`
+    );
+    return response.data.data!;
+  }
+
+  /* ---------------- Файл ошибок сервера ---------------- */
+
+  /** Сведения о файле логов: путь, размер, дата изменения. */
+  async getLogFileInfo(): Promise<LogFileInfoResponse> {
+    const response = await this.api.get<ApiResponse<LogFileInfoResponse>>(
+      '/admin-dashboard/logs/error-file'
+    );
+    return response.data.data!;
+  }
+
+  /** Последние строки файла логов. */
+  async readLogFile(lines = 500): Promise<LogFileContentResponse> {
+    const response = await this.api.get<ApiResponse<LogFileContentResponse>>(
+      '/admin-dashboard/logs/error-file/content',
+      { params: { lines } }
+    );
+    return response.data.data!;
+  }
+
+  /** Выгрузка файла логов. */
+  async downloadLogFile(): Promise<Blob> {
+    const response = await this.api.get('/admin-dashboard/logs/error-file/download', {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  }
+
+  /** Очистка файла логов. */
+  async clearLogFile(): Promise<{ path: string; clearedBytes: number }> {
+    const response = await this.api.delete<ApiResponse<{ path: string; clearedBytes: number }>>(
+      '/admin-dashboard/logs/error-file'
+    );
+    return response.data.data!;
   }
 
   async payMarketer(data: { marketerId: string; amount: number; description?: string }): Promise<any> {
@@ -1422,8 +1668,10 @@ class ApiService {
   }
 
   /** Данные для панели управления клиента/родителя (учитывает подтверждение школой). */
-  async getClientDashboard(): Promise<ClientDashboardData> {
-    const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard');
+  async getClientDashboard(clientId?: string): Promise<ClientDashboardData> {
+    const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard', {
+      params: clientId ? { clientId } : undefined,
+    });
     return response.data.data!;
   }
 
