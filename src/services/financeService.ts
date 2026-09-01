@@ -1,7 +1,26 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { FinanceOperationType, Prisma, PrismaClient } from '@prisma/client';
 import { badRequest, notFound } from '../utils/httpError';
 
 const prisma = new PrismaClient();
+
+type TrainerSalarySummaryRow = Prisma.TrainerGetPayload<{
+  include: {
+    user: { select: { firstName: true; lastName: true } };
+    trainings: { select: { id: true } };
+    financeOperations: true;
+  };
+}>;
+
+type FinanceOperationListRow = Prisma.FinanceOperationGetPayload<{
+  include: {
+    client: { select: { id: true; firstName: true; lastName: true; middleName: true } };
+    trainer: {
+      select: { id: true; user: { select: { firstName: true; lastName: true } } };
+    };
+    group: { select: { id: true; name: true } };
+    branch: { select: { id: true; name: true } };
+  };
+}>;
 
 export type FinanceDirection = 'income' | 'expense';
 
@@ -182,10 +201,10 @@ export class FinanceService {
     ]);
 
     const types = await this.listTypes(tenantId);
-    const typeMap = new Map(types.map((t) => [t.code, t.name]));
+    const typeMap = new Map(types.map((t: FinanceOperationType) => [t.code, t.name]));
 
     return {
-      items: items.map((op) => ({
+      items: items.map((op: FinanceOperationListRow) => ({
         id: op.id,
         direction: op.direction,
         typeCode: op.typeCode,
@@ -549,9 +568,12 @@ export class FinanceService {
       },
     });
 
-    return trainers
+    return (trainers as TrainerSalarySummaryRow[])
       .map((t) => {
-        const paid = t.financeOperations.reduce((s, op) => s + Number(op.amount), 0);
+        const paid = t.financeOperations.reduce(
+          (s: number, op) => s + Number(op.amount),
+          0
+        );
         const accrued = Number(t.balance) + paid;
         const remaining = accrued - paid;
         return {

@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { PlanCatalogService } from '../services/planCatalogService';
@@ -8,6 +8,12 @@ import { createAuditLog, getIpAddress, getUserAgent } from '../utils/auditLogger
 import * as XLSX from 'xlsx';
 
 const prisma = new PrismaClient();
+
+type GrantLogWithAdmin = Prisma.SubscriptionGrantLogGetPayload<{
+  include: {
+    superAdmin: { select: { id: true; firstName: true; lastName: true; email: true } };
+  };
+}>;
 
 /**
  * Карта «код тарифа → цена» из каталога.
@@ -516,7 +522,7 @@ export const getTenantDetails = asyncHandler(async (req: AuthenticatedRequest, r
     data: {
       ...tenant,
       planName: plan?.name || tenant.subscription?.planType || null,
-      grantHistory: grantHistory.map((log) => ({
+      grantHistory: grantHistory.map((log: GrantLogWithAdmin) => ({
         id: log.id,
         action: log.action,
         planCode: log.planCode,
@@ -1316,7 +1322,7 @@ export const getTenantGrantHistory = asyncHandler(
 
     res.json({
       success: true,
-      data: history.map((log) => ({
+      data: history.map((log: GrantLogWithAdmin) => ({
         id: log.id,
         action: log.action,
         planCode: log.planCode,

@@ -734,7 +734,7 @@ cd client && npm install && cd ..
 # Применить новые миграции базы данных
 npx prisma migrate deploy
 
-# Пересобрать приложение
+# Пересобрать приложение (prisma generate выполняется автоматически в build:server)
 npm run build:server
 npm run build:client
 
