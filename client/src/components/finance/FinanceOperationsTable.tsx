@@ -1,12 +1,12 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { UnfoldMore } from '@mui/icons-material';
+import DesignIcon from '../common/DesignIcon';
 import { FinanceOperation } from '../../types';
 import { colors, typography } from '../../theme/tokens';
 import ClientNameLink from '../ClientNameLink';
 
 const ROW_CELL_MUTED = 'rgba(139, 140, 143, 0.56)';
-const INCOME_COLOR = '#28A694';
+const INCOME_COLOR = colors.success;
 
 export type FinanceOpSortKey = 'title' | 'typeCode' | 'amount' | 'occurredAt';
 
@@ -42,7 +42,7 @@ const SortHeader: React.FC<{
       color: colors.text,
     }}
   >
-    <UnfoldMore sx={{ fontSize: 18, color: active ? colors.primary : colors.textHint, opacity: 0.85 }} />
+    <DesignIcon category="ui" name="sort" size={18} sx={{ color: active ? colors.primary : colors.textHint, opacity: 0.85 }} />
     <Typography sx={{ fontSize: { xs: 16, md: 20, lg: 24 }, fontWeight: 500, color: colors.text }}>
       {label}
     </Typography>

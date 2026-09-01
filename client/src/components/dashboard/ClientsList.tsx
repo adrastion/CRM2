@@ -151,7 +151,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
               fontWeight: 500,
               color: colors.text,
               '& input::placeholder': {
-                color: 'rgba(25, 118, 210, 0.6)',
+                color: colors.textHint,
                 opacity: 1,
               },
             }}

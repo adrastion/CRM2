@@ -124,9 +124,7 @@ const TelegramBanner: React.FC = () => {
           left: 0,
           right: 0,
           zIndex: 1300,
-          background: theme.palette.mode === 'dark'
-            ? 'linear-gradient(135deg, #1e88e5 0%, #1565c0 100%)'
-            : 'linear-gradient(135deg, #4880FF 0%, #0D4BD7 100%)',
+          background: 'linear-gradient(135deg, #4880FF 0%, #0D4BD7 100%)',
           color: 'white',
           borderRadius: 0,
           px: { xs: 2, sm: 3 },

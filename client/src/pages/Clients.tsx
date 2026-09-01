@@ -35,12 +35,12 @@ import {
   List,
   ListItem,
 } from '@mui/material';
-import CustomModalFull from '../components/CustomModalFull';
 import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, ShowChart, PhotoCamera, CalendarToday, Payment } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client } from '../types';
 import StandardChart from '../components/StandardChart';
 import ClientsList from '../components/dashboard/ClientsList';
+import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -1333,7 +1333,7 @@ const Clients: React.FC = () => {
             <Button
               variant="contained"
               startIcon={<Add />}
-              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: '#4880FF' }}
+              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary }}
               onClick={openAddClientDialog}
               data-onboarding="add-client-button"
             >
@@ -2168,11 +2168,8 @@ const Clients: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования клиента */}
-      <CustomModalFull
+      <Dialog
         open={editDialogOpen}
-        shouldPreventCloseRef={shouldPreventCloseRef}
-        isValidatingRef={isValidatingRef}
-        isCancellingRef={isCancellingRef}
         onClose={(event, reason) => {
           console.log('onClose called', { reason, hasErrors: hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current), shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current, isCancelling: isCancellingRef.current });
           
@@ -2304,41 +2301,22 @@ const Clients: React.FC = () => {
         }}
         maxWidth="md"
         fullWidth
+        scroll="paper"
         disableEscapeKeyDown={hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current) || shouldPreventCloseRef.current || isValidatingRef.current}
-        disableBackdropClick={hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current) || shouldPreventCloseRef.current || isValidatingRef.current}
-        closeAfterTransition={false}
-        onBackdropClick={(e) => {
-          // Блокируем закрытие при клике на backdrop, если есть ошибки
-          const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-          if (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
+        PaperProps={{
+          sx: {
+            borderRadius: `${radii.panel}px`,
+            maxHeight: '90vh',
+          },
         }}
       >
-        <Paper
-          elevation={24}
+        <DialogContent
           sx={{
-            position: 'relative',
-            width: '100%',
-            maxHeight: '90vh',
+            p: 3,
             overflow: 'auto',
-            outline: 'none',
-          }}
-          onClick={(e) => {
-            // Предотвращаем закрытие при клике на содержимое
-            e.stopPropagation();
-          }}
-          onMouseDown={(e) => {
-            // Предотвращаем закрытие при mousedown на содержимое
-            e.stopPropagation();
-          }}
-          onMouseUp={(e) => {
-            // Предотвращаем закрытие при mouseup на содержимое
-            e.stopPropagation();
           }}
         >
-          <Box 
+          <Box
             component="form"
             noValidate
             onSubmit={(e) => {
@@ -3511,8 +3489,8 @@ const Clients: React.FC = () => {
           </Button>
               </Box>
             </Box>
-          </Paper>
-      </CustomModalFull>
+        </DialogContent>
+      </Dialog>
 
       {/* Import Dialog */}
       <Dialog open={importDialog} onClose={() => {

@@ -3,11 +3,11 @@ import { colors, radii, typography } from './tokens';
 
 const fontFamily = '"Montserrat", "Helvetica", "Arial", sans-serif';
 
-/** Единая MUI-тема приложения по дизайн-токенам. */
-export function createAppTheme(darkMode = false): Theme {
+/** Единая MUI-тема приложения по дизайн-токенам (только светлая). */
+export function createAppTheme(): Theme {
   return createTheme({
     palette: {
-      mode: darkMode ? 'dark' : 'light',
+      mode: 'light',
       primary: {
         main: colors.primary,
         dark: colors.primaryDark,
@@ -103,6 +103,30 @@ export function createAppTheme(darkMode = false): Theme {
         styleOverrides: {
           root: {
             fontFamily,
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            borderRadius: radii.panel,
+            backgroundColor: colors.card,
+            color: colors.text,
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: colors.card,
+            color: colors.text,
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: 'none',
           },
         },
       },

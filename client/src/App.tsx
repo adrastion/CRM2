@@ -16,7 +16,6 @@ import SupportFAB from './components/SupportFAB';
 
 // Lazy load pages for better performance
 const Auth = lazy(() => import('./pages/Auth'));
-const Login = lazy(() => import('./pages/Login')); // legacy page; routes redirect to /auth
 const Register = lazy(() => import('./pages/Register'));
 const PartnerRegister = lazy(() => import('./pages/PartnerRegister'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -49,7 +48,7 @@ const ClientRegister = lazy(() => import('./pages/ClientRegister'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
 const ParentRegister = lazy(() => import('./pages/ParentRegister'));
 
-const getTheme = (darkMode: boolean) => createAppTheme(darkMode);
+const appTheme = createAppTheme();
 
 // Loading component
 const PageLoader: React.FC = () => (
@@ -189,22 +188,12 @@ const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ 
 // Main App Component
 const AppContent: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
-  const [darkMode, setDarkMode] = React.useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved === 'true';
-  });
   const [onboardingOpen, setOnboardingOpen] = React.useState(false);
   const [onboardingLoading, setOnboardingLoading] = React.useState(true);
 
+  // Сброс устаревшей тёмной темы — новый дизайн только светлый
   React.useEffect(() => {
-    const handleThemeChange = (event: CustomEvent) => {
-      setDarkMode(event.detail.darkMode);
-    };
-
-    window.addEventListener('themeChange', handleThemeChange as EventListener);
-    return () => {
-      window.removeEventListener('themeChange', handleThemeChange as EventListener);
-    };
+    localStorage.removeItem('darkMode');
   }, []);
 
   // Check onboarding status when user is authenticated
@@ -267,10 +256,8 @@ const AppContent: React.FC = () => {
     setOnboardingOpen(false);
   };
 
-  const theme = React.useMemo(() => getTheme(darkMode), [darkMode]);
-
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={appTheme}>
       <CssBaseline />
     <Router>
       <SupportFAB />

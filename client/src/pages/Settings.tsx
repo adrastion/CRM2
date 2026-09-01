@@ -32,8 +32,6 @@ import {
   Visibility,
   VisibilityOff,
   ViewList,
-  DarkMode,
-  LightMode,
   School,
   Notifications,
 } from '@mui/icons-material';
@@ -97,12 +95,6 @@ const Settings: React.FC = () => {
   
   // Настройка вкладок
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>({});
-  
-  // Темная тема
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved === 'true';
-  });
 
   // Повторное прохождение обучения
   const [restartingOnboarding, setRestartingOnboarding] = useState(false);
@@ -359,14 +351,6 @@ const Settings: React.FC = () => {
     return () => clearInterval(interval);
   }, [user, pushSubscribed]);
 
-  // Применить темную тему
-  useEffect(() => {
-    localStorage.setItem('darkMode', darkMode.toString());
-    // Применить тему (будет обработано в App.tsx)
-    const event = new CustomEvent('themeChange', { detail: { darkMode } });
-    window.dispatchEvent(event);
-  }, [darkMode]);
-
   const handleSaveSettings = async () => {
     try {
       setSaving(true);
@@ -588,7 +572,7 @@ const Settings: React.FC = () => {
                       Управляйте тем, какую информацию видят клиенты в своем личном кабинете. Эти настройки влияют на отображение данных в расписании и профиле клиента.
                     </Typography>
                     
-                    <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'rgba(25, 118, 210, 0.02)' }}>
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'rgba(72, 128, 255, 0.04)' }}>
                       <FormControlLabel
                         control={
                           <Switch
@@ -613,7 +597,7 @@ const Settings: React.FC = () => {
                       />
                     </Paper>
 
-                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: 'rgba(25, 118, 210, 0.02)' }}>
+                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: 'rgba(72, 128, 255, 0.04)' }}>
                       <FormControlLabel
                         control={
                           <Switch
@@ -963,31 +947,6 @@ const Settings: React.FC = () => {
             </Typography>
 
             <Grid container spacing={3}>
-              {/* Темная тема */}
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    {darkMode ? <DarkMode sx={{ mr: 1, color: 'primary.main' }} /> : <LightMode sx={{ mr: 1, color: 'primary.main' }} />}
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Темная тема
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Переключите между светлой и темной темой интерфейса
-                  </Typography>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={darkMode}
-                        onChange={(e) => setDarkMode(e.target.checked)}
-                        color="primary"
-                      />
-                    }
-                    label={darkMode ? 'Темная тема включена' : 'Темная тема выключена'}
-                  />
-                </Paper>
-              </Grid>
-
               {/* Настройка вкладок */}
               <Grid item xs={12} md={6}>
                 <Paper sx={{ p: 3 }}>
