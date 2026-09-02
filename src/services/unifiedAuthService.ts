@@ -1,6 +1,6 @@
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import {
   IdentifierType,
   detectIdentifierType,
@@ -9,8 +9,6 @@ import {
   phoneTail,
 } from '../utils/identifier';
 import { HttpError, badRequest, unauthorized } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 const BCRYPT_ROUNDS = 12;
 

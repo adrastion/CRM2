@@ -1,7 +1,6 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { PlanCatalogService, PlanLimits, LimitKey } from './planCatalogService';
-
-const prisma = new PrismaClient();
 
 // YooKassa API базовый URL
 const YOOKASSA_API_URL = 'https://api.yookassa.ru/v3';

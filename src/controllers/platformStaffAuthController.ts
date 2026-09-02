@@ -1,11 +1,9 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
 
 export const platformStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;

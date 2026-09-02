@@ -1,11 +1,9 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { FinanceService, FinanceDirection } from '../services/financeService';
-import { PrismaClient } from '@prisma/client';
 import { badRequest } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 function parseList(value: unknown): string[] | undefined {
   if (!value) return undefined;

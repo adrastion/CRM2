@@ -1,10 +1,8 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
 import { AuthService } from '../services/authService';
 import bcrypt from 'bcrypt';
-
-const prisma = new PrismaClient();
 
 export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
   try {

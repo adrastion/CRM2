@@ -1,10 +1,8 @@
+import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
 import { badRequest, notFound } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 /**
  * Путь к файлу логов по умолчанию.

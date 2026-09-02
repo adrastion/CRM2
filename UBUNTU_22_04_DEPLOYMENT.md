@@ -792,6 +792,30 @@ sudo tail -f /var/log/postgresql/postgresql-15-main.log
 sudo -u postgres psql -c "\du crm_user"
 ```
 
+### Проблема: `Too many database connections` / Prisma P2037
+
+Приложение должно использовать **один** Prisma Client (`src/lib/prisma.ts`).  
+Если слоты всё равно заняты после старых деплоев:
+
+```bash
+# Сколько соединений сейчас
+sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity;"
+sudo -u postgres psql -c "SELECT usename, application_name, state, count(*) FROM pg_stat_activity GROUP BY 1,2,3 ORDER BY 4 DESC;"
+
+# Перезапуск приложения (закрывает пулы)
+pm2 restart martial-arts-crm
+
+# При необходимости — сбросить idle-сессии приложения (осторожно на prod)
+sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'martial_arts_crm' AND pid <> pg_backend_pid() AND state = 'idle';"
+
+# PM2: не запускать много инстансов без PgBouncer
+pm2 describe martial-arts-crm | grep -E 'instances|exec mode'
+```
+
+В `DATABASE_URL` можно явно ограничить пул:  
+`...?schema=public&connection_limit=10&pool_timeout=20`  
+(если параметр не задан, backend добавляет `connection_limit=10` сам).
+
 ### Проблема: Nginx возвращает 502 Bad Gateway
 
 ```bash

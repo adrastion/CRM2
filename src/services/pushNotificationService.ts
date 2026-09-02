@@ -1,7 +1,5 @@
+import { prisma } from '../lib/prisma';
 import webpush from 'web-push';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 // Инициализация VAPID ключей (должны быть в .env)
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;

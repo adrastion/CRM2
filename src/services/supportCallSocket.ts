@@ -1,10 +1,8 @@
+import { prisma } from '../lib/prisma';
 import { Server } from 'socket.io';
 import type { Server as HttpServer } from 'http';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import { designerCanAccessTicket, DESIGNER_SUPERADMIN_CHANNEL } from '../controllers/supportTicketController';
-
-const prisma = new PrismaClient();
 
 type JoinRole = 'designer' | 'requester' | 'client';
 

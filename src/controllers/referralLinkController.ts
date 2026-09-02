@@ -1,10 +1,8 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { randomBytes } from 'crypto';
-
-const prisma = new PrismaClient();
 
 /**
  * Generate unique referral code

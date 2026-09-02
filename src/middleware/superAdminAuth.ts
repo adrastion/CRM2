@@ -1,10 +1,8 @@
+import { prisma } from '../lib/prisma';
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
-
-const prisma = new PrismaClient();
 
 /**
  * Доступ к панели платформы: супер-админ или персонал платформы.

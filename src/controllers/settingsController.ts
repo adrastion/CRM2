@@ -1,9 +1,7 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
 
 /**
  * Get tenant settings

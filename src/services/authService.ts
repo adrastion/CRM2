@@ -1,10 +1,9 @@
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { PrismaClient, User } from '@prisma/client';
+import { User } from '@prisma/client';
 import { JWTPayload, CreateClientData } from '../types';
 import { emailService } from './emailService';
-
-const prisma = new PrismaClient();
 
 export class AuthService {
   /**

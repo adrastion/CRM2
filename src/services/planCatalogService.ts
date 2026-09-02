@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { badRequest, notFound } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 /** Ключи лимитов, которыми оперирует система. */
 export type LimitKey = 'trainers' | 'clients' | 'groups' | 'branches' | 'trainings';

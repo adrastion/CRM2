@@ -1,9 +1,7 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
 import { FinanceService } from '../services/financeService';
-
-const prisma = new PrismaClient();
 
 /**
  * Helper function to create ClientMembership from payment

@@ -1,13 +1,12 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { PlanCatalogService } from '../services/planCatalogService';
 import { breakdownPayment, sumPayments, calculateMrr } from '../utils/revenue';
 import { createAuditLog, getIpAddress, getUserAgent } from '../utils/auditLogger';
 import * as XLSX from 'xlsx';
-
-const prisma = new PrismaClient();
 
 type GrantLogWithAdmin = Prisma.SubscriptionGrantLogGetPayload<{
   include: {

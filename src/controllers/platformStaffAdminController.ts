@@ -1,11 +1,9 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
 
 function generateOneTimePassword(): string {
   // 12 chars base64url without ambiguous symbols is overkill; keep readable but random

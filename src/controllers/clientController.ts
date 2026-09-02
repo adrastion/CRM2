@@ -1,5 +1,5 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest, ApiResponse, SearchQuery, CreateClientData, UpdateClientData } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validate, validateQuery } from '../middleware/validation';
@@ -7,8 +7,6 @@ import { clientSchemas, commonSchemas } from '../middleware/validation';
 import Joi from 'joi';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
-
-const prisma = new PrismaClient();
 
 /**
  * Approve parent account registration

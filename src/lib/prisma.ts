@@ -1,26 +1,48 @@
 import { PrismaClient } from '@prisma/client';
 
-// Prevent multiple instances of Prisma Client in development
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+/**
+ * Единый Prisma Client на весь процесс.
+ * Без синглтона каждый контроллер/сервис открывает свой пул —
+ * PostgreSQL быстро упирается в max_connections (ошибка P2037).
+ */
+const globalForPrisma = globalThis as unknown as { __crmPrisma?: PrismaClient };
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-    // Connection pool settings for PostgreSQL
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL
-      }
-    }
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+function buildDatasourceUrl(): string | undefined {
+  const url = process.env.DATABASE_URL;
+  if (!url) return undefined;
+  // Ограничиваем пул на один процесс, если явно не задано.
+  if (/[?&]connection_limit=/.test(url)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}connection_limit=10&pool_timeout=20`;
 }
 
-// Graceful shutdown
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-});
+export const prisma =
+  globalForPrisma.__crmPrisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    datasources: {
+      db: {
+        url: buildDatasourceUrl(),
+      },
+    },
+  });
 
+globalForPrisma.__crmPrisma = prisma;
+
+const disconnect = async () => {
+  try {
+    await prisma.$disconnect();
+  } catch {
+    // ignore
+  }
+};
+
+process.once('beforeExit', disconnect);
+process.once('SIGINT', async () => {
+  await disconnect();
+  process.exit(0);
+});
+process.once('SIGTERM', async () => {
+  await disconnect();
+  process.exit(0);
+});

@@ -1,8 +1,6 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
-
-const prisma = new PrismaClient();
 
 /**
  * Get client memberships

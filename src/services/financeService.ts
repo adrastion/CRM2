@@ -1,7 +1,6 @@
-import { FinanceOperationType, Prisma, PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { FinanceOperationType, Prisma } from '@prisma/client';
 import { badRequest, notFound } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 type TrainerSalarySummaryRow = Prisma.TrainerGetPayload<{
   include: {

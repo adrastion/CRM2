@@ -1,13 +1,11 @@
+import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types';
 import {
   deductFromClientBalance,
   calculateTrainerEarningsForAttendance,
   addToTrainerBalance
 } from '../utils/finance';
-
-const prisma = new PrismaClient();
 
 export const getAttendances = async (req: AuthenticatedRequest, res: Response) => {
   try {

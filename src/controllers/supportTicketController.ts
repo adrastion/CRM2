@@ -1,12 +1,10 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
-
-const prisma = new PrismaClient();
 
 /** Клиенты / родители: техподдержка или дизайн (горячая линия). */
 const CLIENT_TICKET_CHANNELS = ['SUPPORT', 'DESIGNER'] as const;

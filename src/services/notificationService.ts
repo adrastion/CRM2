@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { format, addMinutes, isToday, startOfDay, addDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { sendPushNotification } from './pushNotificationService';
-
-const prisma = new PrismaClient();
 
 /**
  * Получить текущее время в указанном часовом поясе

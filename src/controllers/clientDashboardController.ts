@@ -1,11 +1,9 @@
+import { prisma } from '../lib/prisma';
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
 import { unauthorized } from '../utils/httpError';
-
-const prisma = new PrismaClient();
 
 /** Начало недели (понедельник) для переданной даты. */
 function startOfWeek(date: Date): Date {
