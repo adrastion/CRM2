@@ -1623,6 +1623,65 @@ class ApiService {
     await this.api.delete(`/admin-dashboard/dashboard/presets/${id}`);
   }
 
+  // Server metrics (super-admin)
+  async getServerMetricsLive(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/live');
+    return response.data.data;
+  }
+
+  async getServerMetricsHistory(range: '1h' | '6h' | '24h' | '7d' | '30d' = '1h'): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/history', {
+      params: { range },
+    });
+    return response.data.data;
+  }
+
+  async getServerAlertSettings(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/alert-settings');
+    return response.data.data;
+  }
+
+  async updateServerAlertSettings(data: {
+    alertsEnabled?: boolean;
+    alertCpuPercent?: number;
+    alertMemoryPercent?: number;
+    alertDiskPercent?: number;
+    alertLoadPerCore?: number;
+    alertCooldownMinutes?: number;
+  }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/server-metrics/alert-settings', data);
+    return response.data.data;
+  }
+
+  async getServerMetricsVapidKey(): Promise<string | null> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/vapid-key');
+    return response.data.data?.publicKey || null;
+  }
+
+  async subscribeSuperAdminPush(subscription: any, userAgent?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/server-metrics/push/subscribe', {
+      subscription,
+      userAgent,
+    });
+    return response.data;
+  }
+
+  async unsubscribeSuperAdminPush(endpoint: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/server-metrics/push/unsubscribe', {
+      endpoint,
+    });
+    return response.data;
+  }
+
+  async getSuperAdminPushStatus(): Promise<{
+    subscribed: boolean;
+    count: number;
+    vapidConfigured: boolean;
+  }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/push/status');
+    return response.data.data;
+  }
+
   // Client auth endpoints
   async findClientsForRegistration(phone?: string, email?: string): Promise<any> {
     const response = await this.api.post<ApiResponse>('/client-auth/find', { phone, email });

@@ -56,6 +56,7 @@ import {
   Visibility,
   VisibilityOff,
   Bookmark,
+  Memory as MemoryIcon,
 } from '@mui/icons-material';
 import type {
   SubscriptionPlanItem,
@@ -100,6 +101,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
+import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -1429,6 +1431,7 @@ const AdminDashboard: React.FC = () => {
           <Tab icon={<Security />} label="Логи аудита" />
           <Tab icon={<AttachMoney />} label="Управление тарифами" />
           <Tab icon={<People />} label="Маркетологи" />
+          <Tab icon={<MemoryIcon />} label="Нагрузка сервера" />
         </Tabs>
       </Paper>
 
@@ -3002,6 +3005,9 @@ const AdminDashboard: React.FC = () => {
           )}
         </Box>
       )}
+
+      {/* Вкладка: Нагрузка сервера */}
+      {tabValue === 8 && <ServerLoadMonitoringTab />}
 
       {/* Диалог создания расхода */}
       <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>

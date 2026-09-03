@@ -45,6 +45,11 @@ import { attachSupportCallSocket } from './services/supportCallSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
+import {
+  collectAndStoreSample,
+  cleanupOldMetricSamples,
+} from './services/serverMetricsService';
+import { checkCriticalThresholds } from './services/serverAlertService';
 
 // Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
 const rootEnv = path.join(__dirname, '..', '.env');
@@ -231,6 +236,32 @@ httpServer.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow',
   });
   console.log('⏰ Designer call recordings cleanup scheduled (daily 03:15)');
+
+  // Мониторинг нагрузки сервера: сэмпл каждые 30 секунд + проверка критических порогов
+  cron.schedule('*/30 * * * * *', async () => {
+    try {
+      const snapshot = await collectAndStoreSample();
+      await checkCriticalThresholds(snapshot);
+    } catch (error) {
+      console.error('[Cron] Error collecting server metrics:', error);
+    }
+  });
+  console.log('⏰ Server metrics collection scheduled (every 30s)');
+
+  // Retention: удаление сэмплов старше 30 дней (ежедневно в 03:30)
+  cron.schedule('30 3 * * *', async () => {
+    try {
+      const removed = await cleanupOldMetricSamples();
+      if (removed > 0) {
+        console.log(`[Cron] Removed ${removed} old server metric sample(s)`);
+      }
+    } catch (error) {
+      console.error('[Cron] Error cleaning old server metrics:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Server metrics retention cleanup scheduled (daily 03:30)');
 });
 
 export default app;

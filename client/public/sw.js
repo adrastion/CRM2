@@ -36,6 +36,8 @@ self.addEventListener('notificationclick', function(event) {
     url = '/schedule';
   } else if (data && data.type === 'training_reminder') {
     url = '/schedule';
+  } else if (data && data.type === 'server_load_critical') {
+    url = data.url || '/admin/dashboard';
   }
 
   event.waitUntil(

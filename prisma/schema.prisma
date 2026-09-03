@@ -860,17 +860,62 @@ model TenantMarketer {
 }
 
 model SuperAdminSettings {
-  id                String        @id @default(cuid())
-  reservePercentage Decimal?
-  reserveAmount     Decimal?
+  id                  String        @id @default(cuid())
+  reservePercentage   Decimal?
+  reserveAmount       Decimal?
   /// Абсолютный путь к файлу ошибок сервера.
   /// По умолчанию — logs/err.log в корне проекта (см. logFileService).
-  errorLogPath      String?
-  budgetLimits      BudgetLimit[]
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  errorLogPath        String?
+  /// Алерты критической нагрузки сервера
+  alertsEnabled       Boolean       @default(true)
+  alertCpuPercent     Float         @default(90)
+  alertMemoryPercent  Float         @default(90)
+  alertDiskPercent    Float         @default(90)
+  /// Порог load1 = alertLoadPerCore * число ядер CPU
+  alertLoadPerCore    Float         @default(1)
+  alertCooldownMinutes Int          @default(15)
+  lastAlertAt         DateTime?
+  budgetLimits        BudgetLimit[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   @@map("super_admin_settings")
+}
+
+/// Сэмплы метрик нагрузки сервера (сбор каждые ~30 с)
+model ServerMetricSample {
+  id             String   @id @default(cuid())
+  timestamp      DateTime @default(now())
+  cpuPercent     Float
+  memoryPercent  Float
+  memoryUsedMb   Float
+  memoryTotalMb  Float
+  load1          Float
+  load5          Float
+  load15         Float
+  diskPercent    Float
+  diskUsedGb     Float
+  diskTotalGb    Float
+  cpuCores       Int
+
+  @@index([timestamp])
+  @@map("server_metric_samples")
+}
+
+/// Web Push подписки супер-админов (критические алерты нагрузки)
+model SuperAdminPushSubscription {
+  id           String     @id @default(cuid())
+  superAdminId String
+  endpoint     String
+  p256dh       String
+  auth         String
+  userAgent    String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@unique([superAdminId, endpoint])
+  @@map("super_admin_push_subscriptions")
 }
 
 model BudgetLimit {
@@ -906,20 +951,21 @@ model AdminAuditLog {
 }
 
 model SuperAdmin {
-  id               String             @id @default(cuid())
-  email            String             @unique
-  password         String
-  firstName        String
-  lastName         String
-  isActive         Boolean            @default(true)
-  lastLogin        DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  transactions     AdminTransaction[]
-  auditLogs        AdminAuditLog[]
-  dashboardPresets DashboardPreset[]
-  supportMessages  SupportTicketMessage[]
-  grantLogs        SubscriptionGrantLog[]
+  id                 String                       @id @default(cuid())
+  email              String                       @unique
+  password           String
+  firstName          String
+  lastName           String
+  isActive           Boolean                      @default(true)
+  lastLogin          DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  transactions       AdminTransaction[]
+  auditLogs          AdminAuditLog[]
+  dashboardPresets   DashboardPreset[]
+  supportMessages    SupportTicketMessage[]
+  grantLogs          SubscriptionGrantLog[]
+  pushSubscriptions  SuperAdminPushSubscription[]
 
   @@map("super_admins")
 }
