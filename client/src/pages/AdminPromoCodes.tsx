@@ -410,7 +410,7 @@ const AdminPromoCodes: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
           Управление промокодами и реферальными ссылками
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

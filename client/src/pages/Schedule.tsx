@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -34,6 +35,8 @@ import {
   ToggleButtonGroup,
   CircularProgress,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import { 
@@ -57,6 +60,7 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'da
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
+import CompetitionsPanel from '../components/competitions/CompetitionsPanel';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -104,6 +108,15 @@ interface TrainingFormData {
 
 const Schedule: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionTab = searchParams.get('tab') === 'competitions' ? 'competitions' : 'schedule';
+  const setSectionTab = (tab: 'schedule' | 'competitions') => {
+    if (tab === 'competitions') {
+      setSearchParams({ tab: 'competitions' });
+    } else {
+      setSearchParams({});
+    }
+  };
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -1711,12 +1724,14 @@ const Schedule: React.FC = () => {
       adapterLocale={ru}
     >
       <Box data-onboarding="schedule-page">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-            Расписание тренировок
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="h6" component="h1" sx={{ fontWeight: 700, fontSize: { xs: 18, md: 20 } }}>
+            Календарный план
           </Typography>
+          {sectionTab === 'schedule' && (
           <Button
             variant="contained"
+            size="small"
             startIcon={<Add />}
             sx={{ textTransform: 'none' }}
             onClick={() => {
@@ -1727,12 +1742,32 @@ const Schedule: React.FC = () => {
           >
             Добавить тренировку
           </Button>
+          )}
         </Box>
 
+        <Tabs
+          value={sectionTab}
+          onChange={(_, v) => setSectionTab(v)}
+          sx={{
+            mb: 1,
+            minHeight: 40,
+            borderBottom: 1,
+            borderColor: 'divider',
+            '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: 14 },
+          }}
+        >
+          <Tab value="schedule" label="Расписание" icon={<CalendarToday sx={{ fontSize: 18 }} />} iconPosition="start" />
+          <Tab value="competitions" label="Соревнования" icon={<EmojiEvents sx={{ fontSize: 18 }} />} iconPosition="start" />
+        </Tabs>
+
+        {sectionTab === 'competitions' ? (
+          <CompetitionsPanel embedded />
+        ) : (
+        <>
         {/* Filters and View Toggle */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl sx={{ minWidth: 180 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Филиал</InputLabel>
             <Select
                 value={filterBranchId}
@@ -1747,7 +1782,7 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-            <FormControl sx={{ minWidth: 180 }}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Зал</InputLabel>
             <Select
                 value={filterHallId}
@@ -1762,7 +1797,7 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-            <FormControl sx={{ minWidth: 180 }}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Тренер</InputLabel>
             <Select
               value={filterTrainerId}
@@ -1783,6 +1818,7 @@ const Schedule: React.FC = () => {
           <ToggleButtonGroup
             value={viewMode}
             exclusive
+            size="small"
             onChange={(e, newMode) => {
               if (newMode !== null) setViewMode(newMode);
               }}
@@ -1798,14 +1834,14 @@ const Schedule: React.FC = () => {
         </Box>
 
         {/* Week Navigation */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <IconButton
             onClick={() => setSelectedDate(new Date(selectedDate.getTime() - 7 * 24 * 60 * 60 * 1000))}
             size="small"
           >
             <ChevronLeft />
           </IconButton>
-          <Typography variant="h6" sx={{ fontWeight: 'medium' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: { xs: 14, md: 16 } }}>
             {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'EEE', { locale: ru })} - {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'EEE', { locale: ru })}
           </Typography>
           <IconButton
@@ -1818,7 +1854,7 @@ const Schedule: React.FC = () => {
 
         {/* Calendar Grid - Week View */}
         {viewMode === 'week' ? (
-          <Paper sx={{ overflow: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
+          <Paper sx={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
             <Box sx={{ display: 'flex', borderBottom: 1, borderColor: 'divider' }}>
               {/* Time column */}
               <Box sx={{ width: 80, flexShrink: 0, borderRight: 1, borderColor: 'divider' }}>
@@ -4028,6 +4064,8 @@ const Schedule: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+        </>
+        )}
       </Box>
     </LocalizationProvider>
   );

@@ -184,8 +184,8 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
             sx={{
               bgcolor: colors.surface,
               borderRadius: `${radii.card}px`,
-              px: { xs: 2.5, md: 5 },
-              py: { xs: 4, md: 6 },
+              px: { xs: 2, md: 3 },
+              py: { xs: 2.5, md: 3.5 },
             }}
           >
             <SelectColumn
@@ -199,8 +199,8 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
             sx={{
               bgcolor: colors.surface,
               borderRadius: `${radii.card}px`,
-              px: { xs: 2.5, md: 5 },
-              py: { xs: 4, md: 6 },
+              px: { xs: 2, md: 3 },
+              py: { xs: 2.5, md: 3.5 },
             }}
           >
             <SelectColumn

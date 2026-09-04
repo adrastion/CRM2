@@ -236,8 +236,20 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       return sum + Number(payment.amount);
     }, 0);
 
+    const { password, ...clientSafe } = client as typeof client & { password?: string | null };
+    const parentsSafe = (client.parents || []).map((p: any) => {
+      const { password: parentPassword, ...parentRest } = p;
+      return {
+        ...parentRest,
+        hasPassword: Boolean(parentPassword),
+      };
+    });
+
     return {
-      ...client,
+      ...clientSafe,
+      parents: parentsSafe,
+      hasPassword: Boolean(password),
+      password: undefined,
       debt: totalDebt,
       overduePaymentsCount: overduePayments.length
     };
@@ -313,9 +325,20 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
     return;
   }
 
+  const { password, ...clientSafe } = client as typeof client & { password?: string | null };
+  const parentsSafe = (client.parents || []).map((p: any) => {
+    const { password: parentPassword, ...parentRest } = p;
+    return { ...parentRest, hasPassword: Boolean(parentPassword) };
+  });
+
   res.json({
     success: true,
-    data: client
+    data: {
+      ...clientSafe,
+      parents: parentsSafe,
+      hasPassword: Boolean(password),
+      password: undefined,
+    }
   });
 });
 
@@ -507,6 +530,68 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
     success: true,
     data: updatedClient,
     message: 'Client account approved successfully'
+  });
+});
+
+/**
+ * Reject client account registration: clear password so they can register again.
+ */
+export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { id } = req.params;
+
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN' && req.user?.role !== 'TRAINER') {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец, администратор или тренер могут отклонять аккаунты клиентов'
+    });
+    return;
+  }
+
+  const existingClient = await prisma.client.findFirst({
+    where: { id, tenantId }
+  });
+
+  if (!existingClient) {
+    res.status(404).json({
+      success: false,
+      error: 'Client not found'
+    });
+    return;
+  }
+
+  if (!existingClient.password) {
+    res.status(400).json({
+      success: false,
+      error: 'Client has not registered yet'
+    });
+    return;
+  }
+
+  if (existingClient.isAccountApproved) {
+    res.status(400).json({
+      success: false,
+      error: 'Cannot reject an already approved account'
+    });
+    return;
+  }
+
+  const updatedClient = await prisma.client.update({
+    where: { id },
+    data: {
+      password: null,
+      isAccountApproved: false,
+      accountApprovedAt: null,
+      accountApprovedBy: null,
+    }
+  });
+
+  const { password: _pw, ...safe } = updatedClient as typeof updatedClient & { password?: string | null };
+
+  res.json({
+    success: true,
+    data: { ...safe, hasPassword: false, password: undefined },
+    message: 'Client registration rejected'
   });
 });
 

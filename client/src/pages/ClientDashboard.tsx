@@ -348,15 +348,15 @@ const ClientDashboard: React.FC = () => {
               pointerEvents: 'auto',
             }}
           >
-            <HourglassEmpty sx={{ fontSize: 72, color: colors.text, mb: 3 }} />
+            <HourglassEmpty sx={{ fontSize: 48, color: colors.text, mb: 2 }} />
             <Box
               sx={{
-                maxWidth: 900,
+                maxWidth: 720,
                 bgcolor: colors.textMuted,
                 color: colors.white,
                 borderRadius: `${radii.card}px`,
-                px: { xs: 3, md: 6 },
-                py: { xs: 4, md: 6 },
+                px: { xs: 2.5, md: 4 },
+                py: { xs: 2, md: 2.5 },
                 textAlign: 'center',
               }}
             >

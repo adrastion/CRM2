@@ -88,7 +88,9 @@ export interface CreateTrainerData {
   qualification?: string;
   experience?: number;
   specialization?: string;
-  salaryType: 'fixed' | 'percentage';
+  salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
+  salaryRate?: number;
+  salaryType?: 'fixed' | 'percentage' | 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
   salaryAmount?: number;
 }
 

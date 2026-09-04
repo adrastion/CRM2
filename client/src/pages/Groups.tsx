@@ -1009,7 +1009,7 @@ const Groups: React.FC = () => {
   return (
     <Box data-onboarding="groups-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
           Группы
         </Typography>
         <Button

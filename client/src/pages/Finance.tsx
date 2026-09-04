@@ -152,13 +152,21 @@ const Finance: React.FC = () => {
   const [membershipFiltersOpen, setMembershipFiltersOpen] = useState(false);
 
   const [salaryTrainerId, setSalaryTrainerId] = useState('');
-  const [salaryDate, setSalaryDate] = useState<Date | null>(new Date());
+  const [salaryDateFrom, setSalaryDateFrom] = useState<Date | null>(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+  const [salaryDateTo, setSalaryDateTo] = useState<Date | null>(() => new Date());
   const [salaryAmountFrom, setSalaryAmountFrom] = useState('');
   const [salaryAmountTo, setSalaryAmountTo] = useState('');
+  const [salaryTrainingsMode, setSalaryTrainingsMode] = useState<'all' | 'conducted'>('all');
   const [draftSalaryTrainerId, setDraftSalaryTrainerId] = useState('');
-  const [draftSalaryDate, setDraftSalaryDate] = useState<Date | null>(new Date());
+  const [draftSalaryDateFrom, setDraftSalaryDateFrom] = useState<Date | null>(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+  const [draftSalaryDateTo, setDraftSalaryDateTo] = useState<Date | null>(() => new Date());
   const [draftSalaryAmountFrom, setDraftSalaryAmountFrom] = useState('');
   const [draftSalaryAmountTo, setDraftSalaryAmountTo] = useState('');
+  const [draftSalaryTrainingsMode, setDraftSalaryTrainingsMode] = useState<'all' | 'conducted'>('all');
 
   const [memClientId, setMemClientId] = useState('');
   const [memTrainerId, setMemTrainerId] = useState('');
@@ -227,12 +235,17 @@ const Finance: React.FC = () => {
       const t = trainers.find((tr) => tr.id === salaryTrainerId);
       chips.push(t?.user ? `${t.user.lastName} ${t.user.firstName}` : salaryTrainerId);
     }
-    if (salaryDate) chips.push(format(salaryDate, 'dd.MM.yyyy', { locale: ru }));
+    if (salaryDateFrom || salaryDateTo) {
+      const from = salaryDateFrom ? format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru }) : '…';
+      const to = salaryDateTo ? format(salaryDateTo, 'dd.MM.yyyy', { locale: ru }) : '…';
+      chips.push(`${from} — ${to}`);
+    }
+    chips.push(salaryTrainingsMode === 'conducted' ? 'Проведённые' : 'Все тренировки');
     if (salaryAmountFrom || salaryAmountTo) {
       chips.push(`${salaryAmountFrom || '0'} ₽ - ${salaryAmountTo || '∞'} ₽`);
     }
     return chips;
-  }, [salaryTrainerId, salaryDate, salaryAmountFrom, salaryAmountTo, trainers]);
+  }, [salaryTrainerId, salaryDateFrom, salaryDateTo, salaryTrainingsMode, salaryAmountFrom, salaryAmountTo, trainers]);
 
   const membershipFilterChips = useMemo(() => {
     const chips: string[] = [];
@@ -292,17 +305,22 @@ const Finance: React.FC = () => {
   const loadSalary = useCallback(async () => {
     const params: Record<string, any> = {};
     if (salaryTrainerId) params.trainerIds = salaryTrainerId;
-    if (salaryDate) {
-      const from = new Date(salaryDate.getFullYear(), salaryDate.getMonth(), 1);
-      const to = new Date(salaryDate.getFullYear(), salaryDate.getMonth() + 1, 0, 23, 59, 59);
+    if (salaryDateFrom) {
+      const from = new Date(salaryDateFrom);
+      from.setHours(0, 0, 0, 0);
       params.dateFrom = from.toISOString();
+    }
+    if (salaryDateTo) {
+      const to = new Date(salaryDateTo);
+      to.setHours(23, 59, 59, 999);
       params.dateTo = to.toISOString();
     }
     if (salaryAmountFrom) params.amountFrom = salaryAmountFrom;
     if (salaryAmountTo) params.amountTo = salaryAmountTo;
+    params.trainingsMode = salaryTrainingsMode;
     const rows = await withRetry(() => apiService.getFinanceSalarySummary(params));
     setSalaryRows(rows);
-  }, [salaryTrainerId, salaryDate, salaryAmountFrom, salaryAmountTo]);
+  }, [salaryTrainerId, salaryDateFrom, salaryDateTo, salaryAmountFrom, salaryAmountTo, salaryTrainingsMode]);
 
   const loadMemberships = useCallback(async () => {
     const params: Record<string, any> = {};
@@ -423,7 +441,14 @@ const Finance: React.FC = () => {
       await apiService.payoutTrainerSalary({
         trainerId: selectedSalary.trainerId,
         amount: increment,
-        periodLabel: salaryDate ? format(salaryDate, 'LLLL yyyy', { locale: ru }) : undefined,
+        periodLabel:
+          salaryDateFrom && salaryDateTo
+            ? `${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })} — ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
+            : salaryDateFrom
+              ? `с ${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })}`
+              : salaryDateTo
+                ? `по ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
+                : undefined,
       });
       setPayoutOpen(false);
       setPayoutAmount('');
@@ -507,9 +532,14 @@ const Finance: React.FC = () => {
       salaryRows.map((row) => ({
         id: row.trainerId,
         name: row.trainerName,
-        period: salaryDate
-          ? format(salaryDate, 'dd.MM.yyyy', { locale: ru })
-          : format(new Date(row.periodStart), 'dd.MM.yyyy', { locale: ru }),
+        period:
+          salaryDateFrom && salaryDateTo
+            ? `${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })} — ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
+            : salaryDateFrom
+              ? `с ${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })}`
+              : salaryDateTo
+                ? `по ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
+                : `${format(new Date(row.periodStart), 'dd.MM.yyyy', { locale: ru })} — ${format(new Date(row.periodEnd), 'dd.MM.yyyy', { locale: ru })}`,
         count: row.trainingsCount,
         accrued: row.accrued,
         paid: row.paid,
@@ -520,7 +550,7 @@ const Finance: React.FC = () => {
           setPayoutOpen(true);
         },
       })),
-    [salaryRows, salaryDate]
+    [salaryRows, salaryDateFrom, salaryDateTo]
   );
 
   const membershipTableRows: FinanceSummaryRow[] = useMemo(
@@ -554,14 +584,14 @@ const Finance: React.FC = () => {
 
   const tabSx = (active: boolean) => ({
     textTransform: 'none' as const,
-    fontSize: { xs: 18, md: 24, lg: 32 },
+    fontSize: typography.label,
     fontWeight: active ? 600 : 500,
-    minHeight: 87,
+    minHeight: 40,
     flex: { xs: '1 1 auto', md: '0 1 auto' },
-    minWidth: { md: 280 },
-    borderRadius: '26px 26px 0 0',
+    minWidth: { md: 160 },
+    borderRadius: '12px 12px 0 0',
     mx: 0,
-    px: 3,
+    px: 2,
     color: colors.text,
     bgcolor: active ? colors.card : colors.divider,
     alignSelf: 'flex-end',
@@ -575,15 +605,15 @@ const Finance: React.FC = () => {
     bgcolor: colors.primary,
     color: colors.white,
     fontWeight: 600,
-    fontSize: 16,
-    borderRadius: '19px',
-    height: 36,
+    fontSize: typography.hint,
+    borderRadius: '12px',
+    height: 28,
     '& .MuiChip-deleteIcon': {
       color: colors.white,
       bgcolor: '#EC7C94',
       borderRadius: '50%',
-      width: 22,
-      height: 22,
+      width: 18,
+      height: 18,
       m: 0.5,
       '&:hover': { color: colors.white, bgcolor: '#EC7C94' },
     },
@@ -591,14 +621,14 @@ const Finance: React.FC = () => {
 
   const filterSectionTitleSx = {
     fontWeight: 600,
-    fontSize: { xs: 20, md: 24 },
+    fontSize: typography.panelTitle,
     color: colors.text,
-    mb: 1.5,
+    mb: 1,
   };
 
   const filterSelectSx = {
-    borderRadius: '19px',
-    fontSize: { xs: 16, md: 20 },
+    borderRadius: '12px',
+    fontSize: typography.field,
     '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
   };
 
@@ -607,19 +637,20 @@ const Finance: React.FC = () => {
     chips: string[],
     onClearFilters: () => void
   ) => (
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems="center">
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }} alignItems="center">
       <Button
         variant="contained"
-        startIcon={<Add sx={{ fontSize: 22 }} />}
+        size="small"
+        startIcon={<Add sx={{ fontSize: 18 }} />}
         onClick={() => setAddOpen(true)}
         sx={{
           bgcolor: colors.primary,
-          borderRadius: '19px',
-          px: 3,
-          py: 1.5,
+          borderRadius: '12px',
+          px: 2,
+          py: 0.75,
           textTransform: 'none',
-          fontSize: { xs: 16, md: 20, lg: 24 },
-          fontWeight: 500,
+          fontSize: typography.button,
+          fontWeight: 600,
           boxShadow: 'none',
           '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
         }}
@@ -628,20 +659,21 @@ const Finance: React.FC = () => {
       </Button>
       <Button
         variant="contained"
+        size="small"
         onClick={onOpenFilters}
         sx={{
           bgcolor: colors.primarySoft,
           color: colors.text,
-          borderRadius: '19px',
-          px: 3,
-          py: 1.5,
+          borderRadius: '12px',
+          px: 2,
+          py: 0.75,
           textTransform: 'none',
-          fontSize: { xs: 16, md: 20, lg: 24 },
-          fontWeight: 500,
+          fontSize: typography.button,
+          fontWeight: 600,
           boxShadow: 'none',
           '&:hover': { bgcolor: colors.primarySoft, filter: 'brightness(0.97)' },
         }}
-        startIcon={<Tune sx={{ fontSize: 22, color: colors.text }} />}
+        startIcon={<Tune sx={{ fontSize: 18, color: colors.text }} />}
       >
         Все фильтры
         {chips.length > 0 ? ` • ${chips.length}` : ''}
@@ -653,7 +685,7 @@ const Finance: React.FC = () => {
             label={chip}
             onDelete={onClearFilters}
             sx={filterChipSx}
-            deleteIcon={<Close sx={{ fontSize: 14 }} />}
+            deleteIcon={<Close sx={{ fontSize: 12 }} />}
           />
         ))}
       </Stack>
@@ -680,7 +712,7 @@ const Finance: React.FC = () => {
           onChange={(_, v) => setTab(v)}
           sx={{
             mb: 0,
-            minHeight: 87,
+            minHeight: 48,
             alignItems: 'flex-end',
             '& .MuiTabs-indicator': { display: 'none' },
             '& .MuiTabs-flexContainer': { gap: 0.5, flexWrap: 'wrap', alignItems: 'flex-end' },
@@ -695,8 +727,8 @@ const Finance: React.FC = () => {
           sx={{
             bgcolor: colors.card,
             borderRadius: `0 ${radii.panel * 2}px ${radii.panel * 2}px ${radii.panel * 2}px`,
-            p: { xs: 2, md: 3 },
-            boxShadow: '0 4px 18px rgba(32, 34, 36, 0.05)',
+            p: { xs: 1.5, md: 2 },
+            boxShadow: '0 2px 8px rgba(32, 34, 36, 0.04)',
           }}
         >
 
@@ -708,64 +740,18 @@ const Finance: React.FC = () => {
 
         {tab === 'operations' && (
           <>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems="center">
-              <Button
-                variant="contained"
-                startIcon={<Add sx={{ fontSize: 22 }} />}
-                onClick={() => setAddOpen(true)}
-                sx={{
-                  bgcolor: colors.primary,
-                  borderRadius: '19px',
-                  px: 3,
-                  py: 1.5,
-                  textTransform: 'none',
-                  fontSize: { xs: 16, md: 20, lg: 24 },
-                  fontWeight: 500,
-                  boxShadow: 'none',
-                  '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
-                }}
-              >
-                Добавить операцию
-              </Button>
-              <Button
-                variant="contained"
-                onClick={() => {
-                  setOpFilters(appliedOpFilters);
-                  setFiltersOpen(true);
-                }}
-                sx={{
-                  bgcolor: colors.primarySoft,
-                  color: colors.text,
-                  borderRadius: '19px',
-                  px: 3,
-                  py: 1.5,
-                  textTransform: 'none',
-                  fontSize: { xs: 16, md: 20, lg: 24 },
-                  fontWeight: 500,
-                  boxShadow: 'none',
-                  '&:hover': { bgcolor: colors.primarySoft, filter: 'brightness(0.97)' },
-                }}
-                startIcon={<Tune sx={{ fontSize: 22, color: colors.text }} />}
-              >
-                Все фильтры
-                {activeFilterChips.length > 0 ? ` • ${activeFilterChips.length}` : ''}
-              </Button>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {activeFilterChips.map((chip) => (
-                  <Chip
-                    key={chip}
-                    label={chip}
-                    onDelete={() => {
-                      const next = emptyOpFilters();
-                      setAppliedOpFilters(next);
-                      setOpFilters(next);
-                    }}
-                    sx={filterChipSx}
-                    deleteIcon={<Close sx={{ fontSize: 14 }} />}
-                  />
-                ))}
-              </Stack>
-            </Stack>
+            {renderFinanceToolbar(
+              () => {
+                setOpFilters(appliedOpFilters);
+                setFiltersOpen(true);
+              },
+              activeFilterChips,
+              () => {
+                const next = emptyOpFilters();
+                setAppliedOpFilters(next);
+                setOpFilters(next);
+              }
+            )}
 
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -789,17 +775,23 @@ const Finance: React.FC = () => {
             {renderFinanceToolbar(
               () => {
                 setDraftSalaryTrainerId(salaryTrainerId);
-                setDraftSalaryDate(salaryDate);
+                setDraftSalaryDateFrom(salaryDateFrom);
+                setDraftSalaryDateTo(salaryDateTo);
                 setDraftSalaryAmountFrom(salaryAmountFrom);
                 setDraftSalaryAmountTo(salaryAmountTo);
+                setDraftSalaryTrainingsMode(salaryTrainingsMode);
                 setSalaryFiltersOpen(true);
               },
               salaryFilterChips,
               () => {
+                const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+                const today = new Date();
                 setSalaryTrainerId('');
-                setSalaryDate(new Date());
+                setSalaryDateFrom(monthStart);
+                setSalaryDateTo(today);
                 setSalaryAmountFrom('');
                 setSalaryAmountTo('');
+                setSalaryTrainingsMode('all');
               }
             )}
 
@@ -810,6 +802,9 @@ const Finance: React.FC = () => {
             ) : (
               <FinanceSummaryTable
                 nameColumnLabel="Тренер"
+                countColumnLabel={
+                  salaryTrainingsMode === 'conducted' ? 'Проведённые' : 'Все занятия'
+                }
                 rows={sortedSalaryRows}
                 sortBy={salarySortBy}
                 onSort={(key) => handleSummarySort(key, salarySortBy, setSalarySortBy, setSalarySortDir)}
@@ -1039,7 +1034,7 @@ const Finance: React.FC = () => {
           PaperProps={{ sx: { width: { xs: '100%', sm: 520 }, p: 3 } }}
         >
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: { xs: 22, md: 28 } }}>Фильтры</Typography>
+            <Typography sx={{ fontWeight: 600, fontSize: typography.panelTitle }}>Фильтры</Typography>
             <IconButton onClick={() => setSalaryFiltersOpen(false)}>
               <Close />
             </IconButton>
@@ -1063,16 +1058,45 @@ const Finance: React.FC = () => {
           </FormControl>
 
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
-          <DatePicker
-            value={draftSalaryDate}
-            onChange={setDraftSalaryDate}
-            slotProps={{
-              textField: {
-                fullWidth: true,
-                sx: { mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
-              },
-            }}
-          />
+          <Stack direction="row" spacing={1.5} sx={{ mb: 3 }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
+              <DatePicker
+                value={draftSalaryDateFrom}
+                onChange={setDraftSalaryDateFrom}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    sx: { '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
+                  },
+                }}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
+              <DatePicker
+                value={draftSalaryDateTo}
+                onChange={setDraftSalaryDateTo}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    sx: { '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
+                  },
+                }}
+              />
+            </Box>
+          </Stack>
+
+          <Typography sx={filterSectionTitleSx}>Кол-во тренировок</Typography>
+          <RadioGroup
+            row
+            value={draftSalaryTrainingsMode}
+            onChange={(e) => setDraftSalaryTrainingsMode(e.target.value as 'all' | 'conducted')}
+            sx={{ mb: 3 }}
+          >
+            <FormControlLabel value="all" control={<Radio />} label="Все" />
+            <FormControlLabel value="conducted" control={<Radio />} label="Проведённые" />
+          </RadioGroup>
 
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
           <Stack direction="row" spacing={1.5} sx={{ mb: 4 }}>
@@ -1109,14 +1133,20 @@ const Finance: React.FC = () => {
               '&:hover': { bgcolor: colors.danger, filter: 'brightness(0.95)' },
             }}
             onClick={() => {
+              const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+              const today = new Date();
               setDraftSalaryTrainerId('');
-              setDraftSalaryDate(new Date());
+              setDraftSalaryDateFrom(monthStart);
+              setDraftSalaryDateTo(today);
               setDraftSalaryAmountFrom('');
               setDraftSalaryAmountTo('');
+              setDraftSalaryTrainingsMode('all');
               setSalaryTrainerId('');
-              setSalaryDate(new Date());
+              setSalaryDateFrom(monthStart);
+              setSalaryDateTo(today);
               setSalaryAmountFrom('');
               setSalaryAmountTo('');
+              setSalaryTrainingsMode('all');
               setSalaryFiltersOpen(false);
             }}
           >
@@ -1125,12 +1155,14 @@ const Finance: React.FC = () => {
           <Button
             fullWidth
             variant="contained"
-            sx={{ textTransform: 'none', borderRadius: '19px', py: 1.5, mt: 2, bgcolor: colors.primary }}
+            sx={{ textTransform: 'none', borderRadius: '12px', py: 1, mt: 2, bgcolor: colors.primary }}
             onClick={() => {
               setSalaryTrainerId(draftSalaryTrainerId);
-              setSalaryDate(draftSalaryDate);
+              setSalaryDateFrom(draftSalaryDateFrom);
+              setSalaryDateTo(draftSalaryDateTo);
               setSalaryAmountFrom(draftSalaryAmountFrom);
               setSalaryAmountTo(draftSalaryAmountTo);
+              setSalaryTrainingsMode(draftSalaryTrainingsMode);
               setSalaryFiltersOpen(false);
             }}
           >
@@ -1146,7 +1178,7 @@ const Finance: React.FC = () => {
           PaperProps={{ sx: { width: { xs: '100%', sm: 560 }, p: 3 } }}
         >
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: { xs: 22, md: 28 } }}>Фильтры</Typography>
+            <Typography sx={{ fontWeight: 600, fontSize: typography.panelTitle }}>Фильтры</Typography>
             <IconButton onClick={() => setMembershipFiltersOpen(false)}>
               <Close />
             </IconButton>
@@ -1320,7 +1352,7 @@ const Finance: React.FC = () => {
           <Button
             fullWidth
             variant="contained"
-            sx={{ textTransform: 'none', borderRadius: '19px', py: 1.5, mt: 2, bgcolor: colors.primary }}
+            sx={{ textTransform: 'none', borderRadius: '12px', py: 1, mt: 2, bgcolor: colors.primary }}
             onClick={() => {
               setMemClientId(draftMemClientId);
               setMemTrainerId(draftMemTrainerId);

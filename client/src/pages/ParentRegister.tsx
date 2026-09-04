@@ -131,7 +131,7 @@ const ParentRegister: React.FC = () => {
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f5f5f5' }}>
       <Container maxWidth="sm" sx={{ flex: 1, py: 4 }}>
         <Paper elevation={3} sx={{ p: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center" sx={{ mb: 3 }}>
+          <Typography variant="h5" component="h1" gutterBottom align="center" sx={{ mb: 3 }}>
             Регистрация родителя
           </Typography>
 

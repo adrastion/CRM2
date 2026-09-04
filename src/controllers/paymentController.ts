@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { FinanceService } from '../services/financeService';
+import { accrueForPayment } from '../services/trainerSalaryService';
 
 /**
  * Helper function to create ClientMembership from payment
@@ -197,9 +198,18 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       });
     }
 
-    // Если платеж создан как оплаченный и это ежемесячный платеж группы, проверяем нужно ли начислить зарплату тренеру
-    if (payment.status === 'paid' && payment.isMonthlyPayment && payment.groupId && req.tenant?.id) {
-      await checkAndCalculateTrainerMonthlySalary(payment.groupId, req.tenant.id);
+    // Если платеж создан как оплаченный — начисляем зарплату по схемам V2/V3
+    if (payment.status === 'paid' && req.tenant?.id) {
+      await accrueForPayment({
+        tenantId: req.tenant.id,
+        paymentId: payment.id,
+        clientId: payment.clientId,
+        amount: Number(payment.amount),
+        groupId: payment.groupId,
+        isMonthlyPayment: payment.isMonthlyPayment,
+        paymentType: payment.type,
+        paidAt: payment.paidAt,
+      }).catch((err) => console.error('Trainer salary accrue on payment create failed:', err));
     }
 
     res.status(201).json({
@@ -269,9 +279,18 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
       });
     }
 
-    // Если платеж стал оплаченным и это ежемесячный платеж группы, проверяем нужно ли начислить зарплату тренеру
-    if (statusChangedToPaid && updatedPayment.isMonthlyPayment && updatedPayment.groupId && req.tenant?.id) {
-      await checkAndCalculateTrainerMonthlySalary(updatedPayment.groupId, req.tenant.id);
+    // Если платеж стал оплаченным — начисляем зарплату по схемам V2/V3
+    if (statusChangedToPaid && req.tenant?.id) {
+      await accrueForPayment({
+        tenantId: req.tenant.id,
+        paymentId: updatedPayment.id,
+        clientId: updatedPayment.clientId,
+        amount: Number(updatedPayment.amount),
+        groupId: updatedPayment.groupId,
+        isMonthlyPayment: updatedPayment.isMonthlyPayment,
+        paymentType: updatedPayment.type,
+        paidAt: updatedPayment.paidAt,
+      }).catch((err) => console.error('Trainer salary accrue on payment update failed:', err));
     }
 
     res.json({

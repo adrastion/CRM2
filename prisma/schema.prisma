@@ -49,6 +49,7 @@ model Tenant {
   financeOperationTypes   FinanceOperationType[]
   users                   User[]
   supportTickets          SupportTicket[]
+  trainerSalaryLedgers    TrainerSalaryLedger[]
 
   @@map("tenants")
 }
@@ -62,6 +63,8 @@ model TenantSettings {
   hasCompletedOnboarding   Boolean  @default(false)
   onboardingDeclined       Boolean  @default(false)
   membershipFeeResetDate   String?
+  // День месяца выплаты зарплаты сотрудникам (1–28)
+  salaryPayoutDay          Int      @default(25)
   // Настройки личного кабинета клиента
   clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
@@ -286,8 +289,13 @@ model Trainer {
   qualification        String?
   experience           Int?
   specialization       String?
+  /// Legacy: синхронизируется с salaryScheme при записи
   salaryType           String
   salaryAmount         Decimal?
+  /// per_training_person | fixed_per_student_month | percent_month | fixed_monthly
+  salaryScheme         String                       @default("per_training_person")
+  /// ₽ для схем 1/2/4; процент для percent_month
+  salaryRate           Decimal?
   isActive             Boolean                      @default(true)
   tenantId             String
   createdAt            DateTime                     @default(now())
@@ -298,6 +306,7 @@ model Trainer {
   competitionTrainers  CompetitionTrainer[]
   groups               Group[]
   branches             TrainerBranch[]
+  salaryLedgers        TrainerSalaryLedger[]
   tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                 User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   trainings            Training[]                   @relation("TrainingTrainer")
@@ -309,6 +318,37 @@ model Trainer {
   @@index([tenantId, isActive])
   @@index([tenantId, userId])
   @@map("trainers")
+}
+
+/// Построчный реестр начислений/выплат зарплаты сотрудника
+model TrainerSalaryLedger {
+  id           String   @id @default(cuid())
+  tenantId     String
+  trainerId    String
+  /// training_visit | membership_share | membership_percent | fixed_monthly | bonus | adjustment | payout
+  kind         String
+  amount       Decimal
+  occurredAt   DateTime
+  personName   String?
+  title        String
+  comment      String   @default("")
+  clientId     String?
+  trainingId   String?
+  groupId      String?
+  paymentId    String?
+  attendanceId String?
+  /// Для fixed_monthly: "YYYY-MM"; для payout/bonus может быть null
+  periodKey    String?
+  createdAt    DateTime @default(now())
+  trainer      Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, attendanceId])
+  @@unique([trainerId, paymentId, kind])
+  @@unique([trainerId, kind, periodKey])
+  @@index([tenantId, trainerId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("trainer_salary_ledgers")
 }
 
 model TrainerNotificationSettings {

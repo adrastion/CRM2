@@ -13,10 +13,10 @@ import PublicFooter from '../components/PublicFooter';
 const TermsOfService: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <Container maxWidth="lg" sx={{ py: 4, flexGrow: 1 }}>
+      <Container maxWidth="lg" sx={{ py: 3, flexGrow: 1 }}>
       <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <Description sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-        <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
+        <Description sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />
+        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
           Пользовательское соглашение
         </Typography>
         <Typography variant="h6" color="text.secondary">

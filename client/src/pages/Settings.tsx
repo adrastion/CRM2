@@ -76,6 +76,7 @@ const Settings: React.FC = () => {
   // Настройки расписания
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60);
   const [membershipFeeResetDate, setMembershipFeeResetDate] = useState<string>('');
+  const [salaryPayoutDay, setSalaryPayoutDay] = useState<number>(25);
   const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
   const [clientCanViewAllBranches, setClientCanViewAllBranches] = useState<boolean>(false);
   
@@ -147,6 +148,7 @@ const Settings: React.FC = () => {
         if (response.data) {
           setDefaultTrainingDuration(response.data.defaultTrainingDuration || 60);
           setMembershipFeeResetDate(response.data.membershipFeeResetDate || '12-01');
+          setSalaryPayoutDay(response.data.salaryPayoutDay || 25);
           setClientCanViewAllTrainers(response.data.clientCanViewAllTrainers || false);
           setClientCanViewAllBranches(response.data.clientCanViewAllBranches || false);
         }
@@ -360,6 +362,7 @@ const Settings: React.FC = () => {
       await apiService.updateSettings({
         defaultTrainingDuration,
         membershipFeeResetDate: membershipFeeResetDate || '12-01',
+        salaryPayoutDay,
         clientCanViewAllTrainers,
         clientCanViewAllBranches
       });
@@ -480,7 +483,7 @@ const Settings: React.FC = () => {
   return (
     <Box data-onboarding="settings-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
           Настройки
         </Typography>
       </Box>
@@ -536,6 +539,29 @@ const Settings: React.FC = () => {
                   helperText="Минимум: 15 минут, максимум: 480 минут (8 часов)"
                   sx={{ mb: 2 }}
                 />
+                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                      День выплаты зарплаты
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      День месяца (1–28), когда выплачивается зарплата. Напоминание OWNER/ADMIN появится за 5 дней.
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="День месяца"
+                      value={salaryPayoutDay}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10);
+                        if (value >= 1 && value <= 28) setSalaryPayoutDay(value);
+                      }}
+                      inputProps={{ min: 1, max: 28 }}
+                      helperText="По умолчанию: 25"
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                )}
                 {/* Настройка даты сброса членского взноса */}
                 {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                   <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>

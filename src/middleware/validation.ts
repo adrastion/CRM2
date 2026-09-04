@@ -176,14 +176,48 @@ export const trainerSchemas = {
     qualification: Joi.string().max(200).optional(),
     experience: Joi.number().integer().min(0).max(50).optional(),
     specialization: Joi.string().max(200).optional(),
-    salaryType: Joi.string().valid('fixed', 'percentage').required(),
+    salaryScheme: Joi.string().valid(
+      'per_training_person',
+      'fixed_per_student_month',
+      'percent_month',
+      'fixed_monthly'
+    ).optional(),
+    salaryRate: Joi.number().min(0).optional(),
+    salaryType: Joi.string().valid(
+      'fixed',
+      'percentage',
+      'per_student',
+      'per_training',
+      'individual',
+      'per_training_person',
+      'fixed_per_student_month',
+      'percent_month',
+      'fixed_monthly'
+    ).optional(),
     salaryAmount: Joi.number().min(0).optional()
   }),
   update: Joi.object({
     qualification: Joi.string().max(200).optional(),
     experience: Joi.number().integer().min(0).max(50).optional(),
     specialization: Joi.string().max(200).optional(),
-    salaryType: Joi.string().valid('fixed', 'percentage').optional(),
+    salaryScheme: Joi.string().valid(
+      'per_training_person',
+      'fixed_per_student_month',
+      'percent_month',
+      'fixed_monthly'
+    ).optional(),
+    salaryRate: Joi.number().min(0).optional(),
+    salaryType: Joi.string().valid(
+      'fixed',
+      'percentage',
+      'per_student',
+      'per_training',
+      'individual',
+      'per_training_person',
+      'fixed_per_student_month',
+      'percent_month',
+      'fixed_monthly'
+    ).optional(),
     salaryAmount: Joi.number().min(0).optional(),
     isActive: Joi.boolean().optional()
   })

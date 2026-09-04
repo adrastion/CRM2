@@ -281,6 +281,7 @@ export interface Parent {
   createdAt: string;
   updatedAt: string;
   // Поля для регистрации
+  hasPassword?: boolean;
   password?: string;
   isAccountApproved?: boolean;
   accountApprovedAt?: string;
@@ -323,6 +324,11 @@ export interface Client {
   debt?: number;
   overduePaymentsCount?: number;
   isActive: boolean;
+  /** Есть ли установленный пароль ЛК (без самого хеша). */
+  hasPassword?: boolean;
+  isAccountApproved?: boolean;
+  accountApprovedAt?: string;
+  accountApprovedBy?: string;
   createdAt: string;
   updatedAt: string;
   achievements?: Achievement[];
@@ -380,8 +386,11 @@ export interface Trainer {
   qualification?: string;
   experience?: number;
   specialization?: string;
-  salaryType: 'percentage' | 'per_student' | 'fixed' | 'per_training' | 'individual';
+  salaryType: 'percentage' | 'per_student' | 'fixed' | 'per_training' | 'individual'
+    | 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
   salaryAmount?: number;
+  salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
+  salaryRate?: number;
   salaryPercentage?: number; // Для individual типа (процент от индивидуального занятия)
   balance?: number;
   canViewAllGroups?: boolean;
@@ -553,6 +562,7 @@ export interface FinanceSalaryRow {
   periodStart: string;
   periodEnd: string;
   trainingsCount: number;
+  trainingsMode?: 'all' | 'conducted';
   accrued: number;
   paid: number;
   remaining: number;

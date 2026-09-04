@@ -220,75 +220,16 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
     // Calculate trainer monthly earnings if user is a trainer
     let trainerMonthlyEarnings = 0;
     if (trainer) {
-      const trainings = await prisma.training.findMany({
+      const ledgerAgg = await prisma.trainerSalaryLedger.aggregate({
         where: {
           trainerId: trainer.id,
           tenantId,
-          isCancelled: false,
-          startTime: {
-            gte: startOfMonth,
-            lte: endOfMonth
-          }
+          kind: { not: 'payout' },
+          occurredAt: { gte: startOfMonth, lte: endOfMonth },
         },
-        include: {
-          group: true,
-          trainer: {
-            include: {
-              user: true
-            }
-          },
-          substituteTrainer: {
-            include: {
-              user: true
-            }
-          },
-          attendances: {
-            where: { status: 'PRESENT' },
-            include: { client: true }
-          }
-        }
+        _sum: { amount: true },
       });
-
-      trainerMonthlyEarnings = trainings.reduce((total, training) => {
-        const presentCount = training.attendances.length;
-        const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
-        const totalRevenue = presentCount * trainingPrice;
-
-        let earnings = 0;
-
-        switch (trainer.salaryType) {
-          case 'percentage':
-            if (trainer.salaryAmount) {
-              const percentage = Number(trainer.salaryAmount);
-              earnings = (totalRevenue * percentage) / 100;
-            }
-            break;
-          case 'per_student':
-            if (trainer.salaryAmount) {
-              const pricePerStudent = Number(trainer.salaryAmount);
-              earnings = presentCount * pricePerStudent;
-            }
-            break;
-          case 'fixed':
-            if (trainer.salaryAmount) {
-              earnings = Number(trainer.salaryAmount);
-            }
-            break;
-          case 'per_training':
-            if (trainer.salaryAmount) {
-              earnings = Number(trainer.salaryAmount);
-            }
-            break;
-          case 'individual':
-            if (presentCount === 1 && trainer.salaryAmount && trainer.salaryPercentage) {
-              const trainerPercentage = Number(trainer.salaryPercentage);
-              earnings = (trainingPrice * trainerPercentage) / 100;
-            }
-            break;
-        }
-
-        return total + earnings;
-      }, 0);
+      trainerMonthlyEarnings = Number(ledgerAgg._sum.amount || 0);
     }
 
     res.json({

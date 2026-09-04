@@ -321,6 +321,18 @@ export class FinanceService {
           where: { id: input.trainerId! },
           data: { balance: { increment: amount } },
         });
+        await tx.trainerSalaryLedger.create({
+          data: {
+            tenantId,
+            trainerId: input.trainerId!,
+            kind: 'bonus',
+            amount,
+            occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+            personName: null,
+            title: title || 'Премия',
+            comment: input.notes?.trim() || 'премия',
+          },
+        });
       }
 
       if (isClientCharge) {
@@ -427,6 +439,19 @@ export class FinanceService {
       await tx.trainer.update({
         where: { id: trainer.id },
         data: { balance: { decrement: amount } },
+      });
+
+      await tx.trainerSalaryLedger.create({
+        data: {
+          tenantId,
+          trainerId: trainer.id,
+          kind: 'payout',
+          amount: -amount,
+          occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+          personName: null,
+          title: 'Выплата зарплаты',
+          comment: input.notes?.trim() || input.periodLabel || 'выплата',
+        },
       });
 
       return op;
@@ -538,10 +563,25 @@ export class FinanceService {
       dateTo?: Date;
       amountFrom?: number;
       amountTo?: number;
+      /** all — все тренировки в периоде; conducted — только проведённые (не отменены, уже закончились) */
+      trainingsMode?: 'all' | 'conducted';
     } = {}
   ) {
     const dateFrom = filters.dateFrom || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const dateTo = filters.dateTo || new Date();
+    const trainingsMode = filters.trainingsMode === 'conducted' ? 'conducted' : 'all';
+    const now = new Date();
+
+    const trainingsWhere =
+      trainingsMode === 'conducted'
+        ? {
+            startTime: { gte: dateFrom, lte: dateTo },
+            isCancelled: false,
+            endTime: { lte: now },
+          }
+        : {
+            startTime: { gte: dateFrom, lte: dateTo },
+          };
 
     const trainers = await prisma.trainer.findMany({
       where: {
@@ -552,9 +592,7 @@ export class FinanceService {
       include: {
         user: { select: { firstName: true, lastName: true } },
         trainings: {
-          where: {
-            startTime: { gte: dateFrom, lte: dateTo },
-          },
+          where: trainingsWhere,
           select: { id: true },
         },
         financeOperations: {
@@ -581,6 +619,7 @@ export class FinanceService {
           periodStart: dateFrom,
           periodEnd: dateTo,
           trainingsCount: t.trainings.length,
+          trainingsMode,
           accrued,
           paid,
           remaining,

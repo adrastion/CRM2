@@ -1251,7 +1251,7 @@ const AdminDashboard: React.FC = () => {
 
   if (error && !data) {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4 }}>
+      <Container maxWidth="lg" sx={{ mt: 2 }}>
         <Alert severity="error">{error}</Alert>
       </Container>
     );
@@ -1266,10 +1266,10 @@ const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+    <Container maxWidth="xl" sx={{ py: 2.5 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2.5}>
         <Box>
-          <Typography variant="h4" component="h1" fontWeight="bold">
+          <Typography variant="h5" component="h1" fontWeight="bold">
             Панель управления
           </Typography>
           <Button component={RouterLink} to="/admin/support-hub" size="small" sx={{ mt: 1 }}>
@@ -1448,11 +1448,11 @@ const AdminDashboard: React.FC = () => {
                   <Typography color="text.secondary" gutterBottom>
                     Общая выручка
                   </Typography>
-                  <Typography variant="h4" fontWeight="bold" color="primary">
+                  <Typography variant="h5" fontWeight="bold" color="primary">
                     {formatCurrency(data.revenue.total)}
                   </Typography>
                 </Box>
-                <TrendingUp sx={{ fontSize: 48, color: 'primary.main', opacity: 0.3 }} />
+                <TrendingUp sx={{ fontSize: 32, color: 'primary.main', opacity: 0.3 }} />
               </Box>
             </CardContent>
           </Card>
@@ -1466,11 +1466,11 @@ const AdminDashboard: React.FC = () => {
                   <Typography color="text.secondary" gutterBottom>
                     Резерв
                   </Typography>
-                  <Typography variant="h4" fontWeight="bold" color="info.main">
+                  <Typography variant="h5" fontWeight="bold" color="info.main">
                     {formatCurrency(data.budget.reserveAmount)}
                   </Typography>
                 </Box>
-                <AccountBalance sx={{ fontSize: 48, color: 'info.main', opacity: 0.3 }} />
+                <AccountBalance sx={{ fontSize: 32, color: 'info.main', opacity: 0.3 }} />
               </Box>
             </CardContent>
           </Card>
@@ -1490,7 +1490,7 @@ const AdminDashboard: React.FC = () => {
                     Доступный бюджет
                   </Typography>
                   <Typography
-                    variant="h4"
+                    variant="h5"
                     fontWeight="bold"
                     color={data.budget.hasInsufficientFunds ? 'error.main' : 'success.main'}
                   >
@@ -1508,7 +1508,7 @@ const AdminDashboard: React.FC = () => {
                 </Box>
                 <AccountBalance
                   sx={{
-                    fontSize: 48,
+                    fontSize: 32,
                     color: data.budget.hasInsufficientFunds ? 'error.main' : 'success.main',
                     opacity: 0.3,
                   }}
@@ -1690,7 +1690,7 @@ const AdminDashboard: React.FC = () => {
               <Typography color="text.secondary" gutterBottom>
                 Всего аккаунтов
               </Typography>
-              <Typography variant="h3" fontWeight="bold">
+              <Typography variant="h5" fontWeight="bold">
                 {data.tenants.total}
               </Typography>
             </CardContent>
@@ -1703,7 +1703,7 @@ const AdminDashboard: React.FC = () => {
               <Typography color="text.secondary" gutterBottom>
                 Активных
               </Typography>
-              <Typography variant="h3" fontWeight="bold" color="success.main">
+              <Typography variant="h5" fontWeight="bold" color="success.main">
                 {data.tenants.active}
               </Typography>
             </CardContent>
@@ -1716,7 +1716,7 @@ const AdminDashboard: React.FC = () => {
               <Typography color="text.secondary" gutterBottom>
                 Истекают в течение 7 дней
               </Typography>
-              <Typography variant="h3" fontWeight="bold" color="warning.main">
+              <Typography variant="h5" fontWeight="bold" color="warning.main">
                 {data.tenants.soonExpiring}
               </Typography>
             </CardContent>
@@ -1729,7 +1729,7 @@ const AdminDashboard: React.FC = () => {
               <Typography color="text.secondary" gutterBottom>
                 Истекших
               </Typography>
-              <Typography variant="h3" fontWeight="bold" color="error.main">
+              <Typography variant="h5" fontWeight="bold" color="error.main">
                 {data.tenants.expired}
               </Typography>
             </CardContent>
@@ -2048,7 +2048,7 @@ const AdminDashboard: React.FC = () => {
                     {transactions.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} align="center">
-                          <Typography color="text.secondary" sx={{ py: 4 }}>
+                          <Typography color="text.secondary" sx={{ py: 2.5 }}>
                             Нет транзакций
                           </Typography>
                         </TableCell>
@@ -2254,7 +2254,7 @@ const AdminDashboard: React.FC = () => {
                     {allTenants.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={11} align="center">
-                          <Typography color="text.secondary" sx={{ py: 4 }}>
+                          <Typography color="text.secondary" sx={{ py: 2.5 }}>
                             Нет аккаунтов
                           </Typography>
                         </TableCell>
@@ -2386,7 +2386,7 @@ const AdminDashboard: React.FC = () => {
                       <Typography color="text.secondary" gutterBottom>
                         Общий доход
                       </Typography>
-                      <Typography variant="h4" fontWeight="bold" color="success.main">
+                      <Typography variant="h5" fontWeight="bold" color="success.main">
                         {formatCurrency(analyticsData.summary.totalIncome)}
                       </Typography>
                     </CardContent>
@@ -2398,7 +2398,7 @@ const AdminDashboard: React.FC = () => {
                       <Typography color="text.secondary" gutterBottom>
                         Общие расходы
                       </Typography>
-                      <Typography variant="h4" fontWeight="bold" color="error.main">
+                      <Typography variant="h5" fontWeight="bold" color="error.main">
                         {formatCurrency(analyticsData.summary.totalExpenses)}
                       </Typography>
                     </CardContent>
@@ -2410,7 +2410,7 @@ const AdminDashboard: React.FC = () => {
                       <Typography color="text.secondary" gutterBottom>
                         Выплаты маркетологам
                       </Typography>
-                      <Typography variant="h4" fontWeight="bold" color="warning.main">
+                      <Typography variant="h5" fontWeight="bold" color="warning.main">
                         {formatCurrency(analyticsData.summary.totalMarketerPayments)}
                       </Typography>
                     </CardContent>
@@ -2423,7 +2423,7 @@ const AdminDashboard: React.FC = () => {
                         Прибыль
                       </Typography>
                       <Typography
-                        variant="h4"
+                        variant="h5"
                         fontWeight="bold"
                         color={analyticsData.summary.totalProfit >= 0 ? 'success.main' : 'error.main'}
                       >
@@ -2598,7 +2598,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>MRR</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="primary">
+                    <Typography variant="h5" fontWeight="bold" color="primary">
                       {formatCurrency(kpiData.mrr)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2611,7 +2611,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>ARR</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="primary">
+                    <Typography variant="h5" fontWeight="bold" color="primary">
                       {formatCurrency(kpiData.arr)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2624,7 +2624,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>Churn Rate</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="error.main">
+                    <Typography variant="h5" fontWeight="bold" color="error.main">
                       {kpiData.churnRate}%
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2637,7 +2637,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>LTV</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="success.main">
+                    <Typography variant="h5" fontWeight="bold" color="success.main">
                       {formatCurrency(kpiData.avgLTV)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2650,7 +2650,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>CAC</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="warning.main">
+                    <Typography variant="h5" fontWeight="bold" color="warning.main">
                       {formatCurrency(kpiData.cac)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2663,7 +2663,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>Conversion Rate</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="info.main">
+                    <Typography variant="h5" fontWeight="bold" color="info.main">
                       {kpiData.conversionRate}%
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
@@ -2676,7 +2676,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>Доход за период</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="success.main">
+                    <Typography variant="h5" fontWeight="bold" color="success.main">
                       {formatCurrency(kpiData.revenueInPeriod)}
                     </Typography>
                   </CardContent>
@@ -2686,7 +2686,7 @@ const AdminDashboard: React.FC = () => {
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>Новых аккаунтов</Typography>
-                    <Typography variant="h4" fontWeight="bold">
+                    <Typography variant="h5" fontWeight="bold">
                       {kpiData.newTenants}
                     </Typography>
                   </CardContent>
@@ -2855,7 +2855,7 @@ const AdminDashboard: React.FC = () => {
                           variant="outlined"
                         />
                       </Box>
-                      <Typography variant="h4" fontWeight="bold" color="primary" gutterBottom>
+                      <Typography variant="h5" fontWeight="bold" color="primary" gutterBottom>
                         {formatPlanPrice(plan)}
                       </Typography>
                       {plan.description && (
@@ -2925,7 +2925,7 @@ const AdminDashboard: React.FC = () => {
                         <Typography color="text.secondary" gutterBottom>
                           Всего маркетологов
                         </Typography>
-                        <Typography variant="h4" fontWeight="bold">
+                        <Typography variant="h5" fontWeight="bold">
                           {marketerStats.summary.totalMarketers}
                         </Typography>
                       </CardContent>
@@ -2937,7 +2937,7 @@ const AdminDashboard: React.FC = () => {
                         <Typography color="text.secondary" gutterBottom>
                           Привлечено аккаунтов
                         </Typography>
-                        <Typography variant="h4" fontWeight="bold" color="success.main">
+                        <Typography variant="h5" fontWeight="bold" color="success.main">
                           {marketerStats.summary.totalReferredTenants}
                         </Typography>
                       </CardContent>
@@ -2949,7 +2949,7 @@ const AdminDashboard: React.FC = () => {
                         <Typography color="text.secondary" gutterBottom>
                           Общий доход
                         </Typography>
-                        <Typography variant="h4" fontWeight="bold" color="primary">
+                        <Typography variant="h5" fontWeight="bold" color="primary">
                           {formatCurrency(marketerStats.summary.totalRevenue)}
                         </Typography>
                       </CardContent>
@@ -2961,7 +2961,7 @@ const AdminDashboard: React.FC = () => {
                         <Typography color="text.secondary" gutterBottom>
                           Невыплачено
                         </Typography>
-                        <Typography variant="h4" fontWeight="bold" color="warning.main">
+                        <Typography variant="h5" fontWeight="bold" color="warning.main">
                           {formatCurrency(marketerStats.summary.totalUnpaid)}
                         </Typography>
                       </CardContent>

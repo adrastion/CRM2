@@ -123,6 +123,7 @@ export const getSalarySummary = asyncHandler(async (req: AuthenticatedRequest, r
     dateTo: parseDate(req.query.dateTo),
     amountFrom: req.query.amountFrom != null ? Number(req.query.amountFrom) : undefined,
     amountTo: req.query.amountTo != null ? Number(req.query.amountTo) : undefined,
+    trainingsMode: req.query.trainingsMode === 'conducted' ? 'conducted' : 'all',
   });
 
   res.json({ success: true, data });

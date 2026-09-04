@@ -178,6 +178,12 @@ const CustomModal: React.FC<CustomModalProps> = ({
               xs: '90%',
               sm: maxWidth === 'xs' ? 444 : maxWidth === 'sm' ? 600 : maxWidth === 'md' ? 900 : maxWidth === 'lg' ? 1200 : 1536,
             },
+            bgcolor: 'background.paper',
+            borderRadius: 1.5,
+            boxShadow: '0 8px 32px rgba(32, 34, 36, 0.12)',
+            p: { xs: 2, sm: 2.5 },
+            maxHeight: '90vh',
+            overflow: 'auto',
           }}
         >
           {children}

@@ -70,7 +70,7 @@ const QuickAction: React.FC<{
       borderRadius: `${radii.panel}px`,
       boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
       px: { xs: 2.5, md: 4 },
-      py: { xs: 3, md: 4 },
+      py: { xs: 2, md: 2.5 },
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',

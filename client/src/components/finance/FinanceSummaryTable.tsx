@@ -18,6 +18,7 @@ export interface FinanceSummaryRow {
 
 interface FinanceSummaryTableProps {
   nameColumnLabel: string;
+  countColumnLabel?: string;
   rows: FinanceSummaryRow[];
   sortBy: FinanceSummarySortKey;
   onSort: (key: FinanceSummarySortKey) => void;
@@ -49,7 +50,7 @@ const SortHeader: React.FC<{
     }}
   >
     <DesignIcon category="ui" name="sort" size={18} muted={!active} sx={{ opacity: active ? 1 : 0.85 }} />
-    <Typography sx={{ fontSize: { xs: 16, md: 20, lg: 24 }, fontWeight: 500, color: colors.text }}>
+    <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
       {label}
     </Typography>
   </Box>
@@ -58,6 +59,7 @@ const SortHeader: React.FC<{
 /** Таблица «Зарплата тренеров» / «Оплата абонементов» по макету Figma 268:893 / 290:1556. */
 const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
   nameColumnLabel,
+  countColumnLabel = 'Кол-во занятий',
   rows,
   sortBy,
   onSort,
@@ -87,7 +89,7 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
         >
           <SortHeader label={nameColumnLabel} active={sortBy === 'name'} onClick={() => onSort('name')} />
           <SortHeader label="Период" active={sortBy === 'period'} onClick={() => onSort('period')} />
-          <SortHeader label="Кол-во занятий" active={sortBy === 'count'} onClick={() => onSort('count')} />
+          <SortHeader label={countColumnLabel} active={sortBy === 'count'} onClick={() => onSort('count')} />
           <SortHeader label="Начислено" active={sortBy === 'accrued'} onClick={() => onSort('accrued')} />
           <SortHeader label="Выплачено" active={sortBy === 'paid'} onClick={() => onSort('paid')} />
           <SortHeader label="Остаток" active={sortBy === 'remaining'} onClick={() => onSort('remaining')} />
@@ -106,8 +108,8 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
               borderBottomLeftRadius: colIndex === 0 && index === rows.length - 1 ? '16px' : 0,
               borderTopRightRadius: isLastCol ? '16px' : 0,
               borderBottomRightRadius: isLastCol && index === rows.length - 1 ? '16px' : 0,
-              px: 2.5,
-              py: 1.75,
+              px: 1.5,
+              py: 1,
               display: 'flex',
               alignItems: 'center',
               minWidth: 0,
@@ -120,13 +122,13 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                   display: 'grid',
                   gridTemplateColumns: COLS,
                   gap: 0,
-                  minHeight: 61,
+                  minHeight: 36,
                   alignItems: 'stretch',
                 }}
               >
                 <Box sx={cellSx(0, false)}>
                   {typeof row.name === 'string' ? (
-                    <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                    <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                       {row.name}
                     </Typography>
                   ) : (
@@ -134,17 +136,17 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                   )}
                 </Box>
                 <Box sx={cellSx(1, false)}>
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                     {row.period}
                   </Typography>
                 </Box>
                 <Box sx={cellSx(2, false)}>
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                     {row.count}
                   </Typography>
                 </Box>
                 <Box sx={cellSx(3, false)}>
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                     {formatMoney(row.accrued)}
                   </Typography>
                 </Box>
@@ -168,7 +170,7 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                     <Typography
                       component="span"
                       sx={{
-                        fontSize: { xs: 14, md: 18, lg: 22 },
+                        fontSize: typography.label,
                         fontWeight: 600,
                         color: 'inherit',
                       }}
@@ -178,7 +180,7 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                   </Box>
                 </Box>
                 <Box sx={cellSx(5, true)}>
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 600, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
                     {formatMoney(row.remaining)}
                   </Typography>
                 </Box>

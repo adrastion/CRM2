@@ -12,13 +12,22 @@ import {
   getTrainerEarnings,
   getAllTrainersEarnings,
   getTrainerNotificationSettings,
-  updateTrainerNotificationSettings
+  updateTrainerNotificationSettings,
+  getTrainerSalaryLedger,
+  postTrainerSalaryLedger,
+  getSalaryPayoutReminder,
+  accrueFixedMonthlySalaries,
 } from '../controllers/trainerController';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// Static paths before /:id
+router.get('/earnings/all', getAllTrainersEarnings); // Only admin/owner
+router.get('/salary-payout-reminder', getSalaryPayoutReminder);
+router.post('/accrue-fixed-monthly', accrueFixedMonthlySalaries);
 
 // Trainer management routes
 router.get('/', getTrainers);
@@ -31,9 +40,10 @@ router.delete('/:id', requireOwnerAdminOrTrainer, deleteTrainer);
 router.post('/:id/branches', requireOwnerAdminOrTrainer, addBranchToTrainer);
 router.delete('/:id/branches/:branchId', requireOwnerAdminOrTrainer, removeBranchFromTrainer);
 
-// Trainer earnings routes
-router.get('/:id/earnings', getTrainerEarnings); // Trainer can see own earnings, admin/owner can see any
-router.get('/earnings/all', getAllTrainersEarnings); // Only admin/owner
+// Trainer earnings / salary ledger
+router.get('/:id/earnings', getTrainerEarnings);
+router.get('/:id/salary-ledger', getTrainerSalaryLedger);
+router.post('/:id/salary-ledger', postTrainerSalaryLedger);
 
 // Trainer notification settings routes
 router.get('/:id/notifications', getTrainerNotificationSettings);

@@ -127,7 +127,7 @@ const MetricCard: React.FC<{
         </Typography>
         <Box color={`${color}.main`}>{icon}</Box>
       </Box>
-      <Typography variant="h4" fontWeight="bold" color={`${color}.main`}>
+      <Typography variant="h6" fontWeight="bold" color={`${color}.main`}>
         {value}
       </Typography>
       {subtitle && (
@@ -315,7 +315,7 @@ const ServerLoadMonitoringTab: React.FC = () => {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={1}>
-        <Typography variant="h5" fontWeight="bold">
+        <Typography variant="h6" fontWeight="bold">
           Нагрузка сервера
         </Typography>
         <Chip

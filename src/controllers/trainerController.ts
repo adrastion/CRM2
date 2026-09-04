@@ -3,6 +3,42 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { AuthService } from '../services/authService';
 import bcrypt from 'bcrypt';
+import {
+  SALARY_SCHEMES,
+  SalaryScheme,
+  schemeToLegacyType,
+  resolveScheme,
+  resolveRate,
+  getTrainerLedger,
+  getSalaryLedgerSummary,
+  addManualLedgerEntry,
+  getPayoutReminder,
+  accrueFixedMonthlyForTenant,
+  SCHEME_LABELS,
+} from '../services/trainerSalaryService';
+
+function parseSalaryFields(body: any): {
+  salaryScheme: SalaryScheme;
+  salaryRate: number | undefined;
+  salaryType: string;
+  salaryAmount: number | undefined;
+} {
+  const rawScheme = body.salaryScheme || body.salaryType;
+  const scheme = (SALARY_SCHEMES as readonly string[]).includes(rawScheme)
+    ? (rawScheme as SalaryScheme)
+    : resolveScheme({ salaryScheme: body.salaryScheme, salaryType: body.salaryType });
+  const rateRaw = body.salaryRate ?? body.salaryAmount;
+  const salaryRate =
+    rateRaw !== undefined && rateRaw !== null && rateRaw !== ''
+      ? parseFloat(String(rateRaw))
+      : undefined;
+  return {
+    salaryScheme: scheme,
+    salaryRate,
+    salaryType: schemeToLegacyType(scheme),
+    salaryAmount: salaryRate,
+  };
+}
 
 export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -165,7 +201,8 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
+    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, canViewAllGroups } = req.body;
+    const salary = parseSalaryFields(req.body);
 
     // Создаем пользователя напрямую
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -190,9 +227,10 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         qualification,
         experience: experience ? parseInt(experience) : undefined,
         specialization,
-        salaryType,
-        salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
-        salaryPercentage: salaryPercentage ? parseFloat(salaryPercentage) : undefined,
+        salaryType: salary.salaryType,
+        salaryAmount: salary.salaryAmount,
+        salaryScheme: salary.salaryScheme,
+        salaryRate: salary.salaryRate,
         canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
         tenantId: req.tenant.id
       },
@@ -220,7 +258,13 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 export const updateTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, middleName, email, phone, password, qualification, experience, specialization, salaryType, salaryAmount, salaryPercentage, canViewAllGroups } = req.body;
+    const { firstName, lastName, middleName, email, phone, password, qualification, experience, specialization, canViewAllGroups } = req.body;
+    const hasSalaryUpdate =
+      req.body.salaryScheme !== undefined ||
+      req.body.salaryType !== undefined ||
+      req.body.salaryRate !== undefined ||
+      req.body.salaryAmount !== undefined;
+    const salary = hasSalaryUpdate ? parseSalaryFields(req.body) : null;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
@@ -264,11 +308,15 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       qualification,
       experience: experience ? parseInt(experience) : undefined,
       specialization,
-      salaryType,
-      salaryAmount: salaryAmount ? parseFloat(salaryAmount) : undefined,
-      salaryPercentage: salaryPercentage !== undefined ? (salaryPercentage ? parseFloat(salaryPercentage) : null) : undefined,
       canViewAllGroups: canViewAllGroups !== undefined ? (canViewAllGroups === true || canViewAllGroups === 'true') : undefined
     };
+
+    if (salary) {
+      trainerUpdateData.salaryScheme = salary.salaryScheme;
+      trainerUpdateData.salaryRate = salary.salaryRate;
+      trainerUpdateData.salaryType = salary.salaryType;
+      trainerUpdateData.salaryAmount = salary.salaryAmount;
+    }
 
     // Удаляем undefined значения
     Object.keys(trainerUpdateData).forEach(key => {
@@ -499,7 +547,7 @@ export const removeBranchFromTrainer = async (req: AuthenticatedRequest, res: Re
 };
 
 /**
- * Get trainer earnings based on attendance
+ * Get trainer earnings from salary ledger
  */
 export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -534,75 +582,11 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    // Build date filter
-    const dateFilter: any = {};
-    if (startDate) {
-      dateFilter.gte = new Date(startDate as string);
-    }
-    if (endDate) {
-      dateFilter.lte = new Date(endDate as string);
-    }
-
-    // Get all trainings for this trainer
-    const trainings = await prisma.training.findMany({
-      where: {
-        trainerId: id,
-        tenantId: req.tenant?.id,
-        isCancelled: false,
-        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter })
-      },
-      include: {
-        group: {
-          include: {
-            branch: true
-          }
-        },
-        attendances: {
-          where: {
-            status: 'PRESENT'
-          },
-          include: {
-            client: true
-          }
-        }
-      },
-      orderBy: {
-        startTime: 'desc'
-      }
-    });
-
-    // Calculate earnings for each training
-    let totalEarnings = 0;
-    const trainingEarnings = trainings.map(training => {
-      const presentCount = training.attendances.length;
-      const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
-      const totalRevenue = presentCount * trainingPrice;
-
-      let earnings = 0;
-      if (trainer.salaryType === 'percentage' && trainer.salaryAmount) {
-        // Percentage-based salary
-        const percentage = Number(trainer.salaryAmount);
-        earnings = (totalRevenue * percentage) / 100;
-      } else if (trainer.salaryType === 'fixed' && trainer.salaryAmount) {
-        // Fixed salary per present client
-        const fixedAmount = Number(trainer.salaryAmount);
-        earnings = presentCount * fixedAmount;
-      }
-
-      totalEarnings += earnings;
-
-      return {
-        trainingId: training.id,
-        trainingTitle: training.title,
-        trainingDate: training.startTime,
-        groupName: training.group?.name || 'Индивидуальная тренировка',
-        branchName: training.group?.branch?.name || (training as any).branch?.name || '',
-        presentCount,
-        trainingPrice,
-        totalRevenue,
-        earnings
-      };
-    });
+    const from = startDate ? new Date(startDate as string) : undefined;
+    const to = endDate ? new Date(endDate as string) : undefined;
+    const ledger = await getTrainerLedger(req.tenant!.id, id, from, to);
+    const scheme = resolveScheme(trainer);
+    const rate = resolveRate(trainer);
 
     res.json({
       success: true,
@@ -610,16 +594,37 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
         trainer: {
           id: trainer.id,
           name: `${trainer.user?.firstName} ${trainer.user?.lastName}`,
-          salaryType: trainer.salaryType,
-          salaryAmount: trainer.salaryAmount ? Number(trainer.salaryAmount) : null
+          salaryScheme: scheme,
+          salarySchemeLabel: SCHEME_LABELS[scheme],
+          salaryRate: rate,
+          salaryType: scheme,
+          salaryAmount: rate,
+          balance: Number(trainer.balance || 0),
         },
         period: {
           startDate: startDate || null,
           endDate: endDate || null
         },
-        totalEarnings,
-        trainingCount: trainings.length,
-        trainingEarnings
+        totalEarnings: ledger.totalEarnings,
+        trainingCount: ledger.items.filter((i) => i.kind === 'training_visit').length,
+        entryCount: ledger.entryCount,
+        ledger: ledger.items,
+        // legacy shape for older UI — map ledger to table rows
+        trainingEarnings: ledger.items
+          .filter((i) => i.kind !== 'payout')
+          .map((i) => ({
+            trainingId: i.trainingId,
+            trainingTitle: i.title,
+            trainingDate: i.occurredAt,
+            groupName: i.personName || i.title,
+            branchName: '',
+            presentCount: 1,
+            trainingPrice: null,
+            totalRevenue: null,
+            earnings: i.amount,
+            comment: i.comment,
+            kind: i.kind,
+          })),
       }
     });
   } catch (error) {
@@ -628,6 +633,84 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
       success: false,
       error: 'Failed to retrieve trainer earnings'
     });
+  }
+};
+
+export const getTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { from, to, startDate, endDate } = req.query;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+    });
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    if (req.user?.role === 'TRAINER' && trainer.userId !== req.user.id) {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+    const fromDate = from || startDate ? new Date((from || startDate) as string) : undefined;
+    const toDate = to || endDate ? new Date((to || endDate) as string) : undefined;
+    const ledger = await getTrainerLedger(req.tenant!.id, id, fromDate, toDate);
+    res.json({ success: true, data: ledger });
+  } catch (error) {
+    console.error('Get salary ledger error:', error);
+    res.status(500).json({ success: false, error: 'Failed to retrieve salary ledger' });
+  }
+};
+
+export const postTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+    const { id } = req.params;
+    const { amount, title, comment, kind, occurredAt, personName } = req.body;
+    const result = await addManualLedgerEntry({
+      tenantId: req.tenant!.id,
+      trainerId: id,
+      amount: Number(amount),
+      title,
+      comment,
+      kind: kind === 'adjustment' ? 'adjustment' : 'bonus',
+      occurredAt: occurredAt ? new Date(occurredAt) : undefined,
+      personName: personName ?? null,
+    });
+    res.status(201).json({ success: true, data: result, message: 'Ledger entry created' });
+  } catch (error: any) {
+    console.error('Post salary ledger error:', error);
+    res.status(400).json({ success: false, error: error?.message || 'Failed to create ledger entry' });
+  }
+};
+
+export const getSalaryPayoutReminder = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.json({ success: true, data: { show: false } });
+      return;
+    }
+    const reminder = await getPayoutReminder(req.tenant!.id);
+    res.json({ success: true, data: reminder });
+  } catch (error) {
+    console.error('Payout reminder error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get payout reminder' });
+  }
+};
+
+export const accrueFixedMonthlySalaries = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+    const count = await accrueFixedMonthlyForTenant(req.tenant!.id, new Date());
+    res.json({ success: true, data: { accruedCount: count }, message: `Начислено: ${count}` });
+  } catch (error) {
+    console.error('Accrue fixed monthly error:', error);
+    res.status(500).json({ success: false, error: 'Failed to accrue fixed monthly salaries' });
   }
 };
 
@@ -822,72 +905,9 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
     }
 
     const { startDate, endDate } = req.query;
-
-    // Build date filter
-    const dateFilter: any = {};
-    if (startDate) {
-      dateFilter.gte = new Date(startDate as string);
-    }
-    if (endDate) {
-      dateFilter.lte = new Date(endDate as string);
-    }
-
-    // Get all trainers
-    const trainers = await prisma.trainer.findMany({
-      where: {
-        tenantId: req.tenant?.id,
-        isActive: true
-      },
-      include: {
-        user: true
-      }
-    });
-
-    const trainersEarnings = await Promise.all(
-      trainers.map(async (trainer) => {
-        // Get all trainings for this trainer
-        const trainings = await prisma.training.findMany({
-          where: {
-            trainerId: trainer.id,
-            tenantId: req.tenant?.id,
-            isCancelled: false,
-            ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter })
-          },
-          include: {
-            group: true,
-            attendances: {
-              where: {
-                status: 'PRESENT'
-              }
-            }
-          }
-        });
-
-        let totalEarnings = 0;
-        trainings.forEach(training => {
-          const presentCount = training.attendances.length;
-          const trainingPrice = training.group?.trainingPrice ? Number(training.group.trainingPrice) : 0;
-          const totalRevenue = presentCount * trainingPrice;
-
-          if (trainer.salaryType === 'percentage' && trainer.salaryAmount) {
-            const percentage = Number(trainer.salaryAmount);
-            totalEarnings += (totalRevenue * percentage) / 100;
-          } else if (trainer.salaryType === 'fixed' && trainer.salaryAmount) {
-            const fixedAmount = Number(trainer.salaryAmount);
-            totalEarnings += presentCount * fixedAmount;
-          }
-        });
-
-        return {
-          trainerId: trainer.id,
-          trainerName: `${trainer.user?.lastName} ${trainer.user?.firstName} ${trainer.user?.middleName || ''}`.trim(),
-          salaryType: trainer.salaryType,
-          salaryAmount: trainer.salaryAmount ? Number(trainer.salaryAmount) : null,
-          trainingCount: trainings.length,
-          totalEarnings
-        };
-      })
-    );
+    const from = startDate ? new Date(startDate as string) : undefined;
+    const to = endDate ? new Date(endDate as string) : undefined;
+    const summary = await getSalaryLedgerSummary(req.tenant!.id, from, to);
 
     res.json({
       success: true,
@@ -896,8 +916,8 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
           startDate: startDate || null,
           endDate: endDate || null
         },
-        trainers: trainersEarnings,
-        totalEarnings: trainersEarnings.reduce((sum, t) => sum + t.totalEarnings, 0)
+        trainers: summary.trainers,
+        totalEarnings: summary.totalEarnings
       }
     });
   } catch (error) {

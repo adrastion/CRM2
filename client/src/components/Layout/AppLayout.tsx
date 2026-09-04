@@ -1,11 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import DashboardShell, { ShellNavItem } from '../dashboard/DashboardShell';
+import DashboardShell, {
+  ShellNavItem,
+  GlobalSearchResults,
+  GlobalSearchResultItem,
+} from '../dashboard/DashboardShell';
 import TelegramBanner from '../TelegramBanner';
+import SalaryPayoutBanner from '../SalaryPayoutBanner';
 import { clearAllAuthStorage } from '../../utils/authSession';
 import { NavIconName } from '../../assets/icons/registry';
+import { apiService } from '../../services/api';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -31,7 +37,6 @@ const navigationItems: Array<{
   { label: 'Группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
   { label: 'Филиалы', path: '/branches', iconName: 'branches', roles: ['OWNER', 'ADMIN'], tabKey: 'branches', onboarding: 'branches-nav' },
   { label: 'Календарный план', path: '/schedule', iconName: 'schedule', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'schedule', onboarding: 'schedule-nav' },
-  { label: 'Соревнования', path: '/competitions', iconName: 'competitions', roles: ['OWNER', 'ADMIN', 'TRAINER'] },
   { label: 'Финансы', path: '/finance', iconName: 'finance', roles: ['OWNER', 'ADMIN'], tabKey: 'finance', onboarding: 'payments-nav' },
   { label: 'Тарифы', path: '/memberships', iconName: 'tariffs', roles: ['OWNER', 'ADMIN'], tabKey: 'memberships', onboarding: 'memberships-nav' },
   { label: 'Настройки', path: '/settings', iconName: 'settings', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'settings', onboarding: 'settings-nav' },
@@ -59,16 +64,57 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [searchValue, setSearchValue] = useState('');
+  const [searchResults, setSearchResults] = useState<GlobalSearchResults | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const handler = (event: CustomEvent) => setVisibleTabs(event.detail.visibleTabs);
     window.addEventListener('tabsVisibilityChange', handler as EventListener);
     return () => window.removeEventListener('tabsVisibilityChange', handler as EventListener);
   }, []);
 
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = searchValue.trim();
+    if (q.length < 2) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const data = await apiService.globalSearch(q);
+        setSearchResults(data);
+      } catch {
+        setSearchResults({ clients: [], trainers: [], groups: [] });
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, [searchValue]);
+
   const handleLogout = () => {
     logout();
     clearAllAuthStorage();
     navigate('/auth', { replace: true });
+  };
+
+  const handleSearchResultClick = (item: GlobalSearchResultItem) => {
+    setSearchValue('');
+    setSearchResults(null);
+    if (item.type === 'client') {
+      navigate(`/clients?clientId=${encodeURIComponent(item.id)}`);
+    } else if (item.type === 'trainer') {
+      navigate(`/trainers?trainerId=${encodeURIComponent(item.id)}`);
+    } else {
+      navigate(`/groups?groupId=${encodeURIComponent(item.id)}`);
+    }
   };
 
   const navItems: ShellNavItem[] = navigationItems
@@ -89,16 +135,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
     : '';
 
+  const activeKey = location.pathname.startsWith('/schedule')
+    ? '/schedule'
+    : location.pathname;
+
   return (
     <Box>
       <TelegramBanner />
+      <SalaryPayoutBanner />
       <DashboardShell
         pageTitle={pageTitle}
         navItems={navItems}
-        activeKey={location.pathname}
+        activeKey={activeKey}
         userName={userName || tenant?.name || 'Профиль'}
         userRole={ROLE_LABELS[user?.role || ''] || tenant?.name || ''}
         onLogout={handleLogout}
+        searchValue={searchValue}
+        onSearchChange={setSearchValue}
+        searchResults={searchResults}
+        searchLoading={searchLoading}
+        onSearchResultClick={handleSearchResultClick}
       >
         {children}
       </DashboardShell>

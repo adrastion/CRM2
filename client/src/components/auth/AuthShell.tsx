@@ -38,7 +38,7 @@ const AuthShell: React.FC<AuthShellProps> = ({
   const theme = useTheme();
   const isCompact = useMediaQuery(theme.breakpoints.down('lg'));
 
-  const brand = <BrandLogo size={{ xs: 72, md: 112 }} wordmarkSize={{ xs: 20, md: 28 }} />;
+  const brand = <BrandLogo size={{ xs: 56, md: 80 }} wordmarkSize={{ xs: 16, md: 20 }} />;
 
   return (
     <Box
@@ -47,8 +47,8 @@ const AuthShell: React.FC<AuthShellProps> = ({
         bgcolor: colors.white,
         display: 'flex',
         flexDirection: 'column',
-        px: { xs: 2, sm: 4, lg: 6 },
-        py: { xs: 3, md: 5 },
+        px: { xs: 2, sm: 3, lg: 4 },
+        py: { xs: 2, md: 3 },
       }}
     >
       <Box
@@ -100,8 +100,8 @@ const AuthShell: React.FC<AuthShellProps> = ({
                 width: '100%',
                 bgcolor: colors.surface,
                 borderRadius: `${radii.card}px`,
-                px: { xs: 2.5, sm: 4, md: 6 },
-                py: { xs: 4, md: 6 },
+                px: { xs: 2, sm: 3, md: 4 },
+                py: { xs: 2.5, md: 3.5 },
               }}
             >
               {children}
@@ -114,7 +114,7 @@ const AuthShell: React.FC<AuthShellProps> = ({
         </Box>
       </Box>
 
-      <Box sx={{ textAlign: 'center', pt: { xs: 3, md: 4 } }}>
+      <Box sx={{ textAlign: 'center', pt: { xs: 2, md: 3 } }}>
         <Typography
           component="button"
           type="button"

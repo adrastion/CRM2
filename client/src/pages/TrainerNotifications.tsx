@@ -134,7 +134,7 @@ const TrainerNotifications: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box>
-        <Typography variant="h4" gutterBottom>
+        <Typography variant="h5" gutterBottom>
           Настройки уведомлений
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>

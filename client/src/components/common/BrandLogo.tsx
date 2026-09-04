@@ -20,10 +20,10 @@ interface BrandLogoProps {
  * подложка не нужна.
  */
 const BrandLogo: React.FC<BrandLogoProps> = ({
-  size = { xs: 64, md: 96 },
+  size = { xs: 48, md: 64 },
   withWordmark = true,
   layout = 'vertical',
-  wordmarkSize = { xs: 20, md: 28 },
+  wordmarkSize = { xs: 16, md: 18 },
 }) => (
   <Box
     sx={{

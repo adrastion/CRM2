@@ -202,6 +202,16 @@ const Clients: React.FC = () => {
             aValue = a.isActive ? 1 : 0;
             bValue = b.isActive ? 1 : 0;
             break;
+          case 'accountStatus': {
+            const rank = (c: Client) => {
+              if (!c.hasPassword) return 0;
+              if (!c.isAccountApproved) return 1;
+              return 2;
+            };
+            aValue = rank(a);
+            bValue = rank(b);
+            break;
+          }
           case 'group': {
             const groupName = (c: Client) => {
               const active = (c.groupMemberships || []).filter((gm: any) => gm.isActive);
@@ -1225,6 +1235,49 @@ const Clients: React.FC = () => {
     }
   };
 
+  const handleApproveAccount = async (client: Client) => {
+    try {
+      await apiService.approveClientAccount(client.id);
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === client.id
+            ? { ...c, isAccountApproved: true, hasPassword: true }
+            : c
+        )
+      );
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка подтверждения аккаунта');
+    }
+  };
+
+  const handleRejectAccount = async (client: Client) => {
+    if (
+      !window.confirm(
+        'Отклонить регистрацию? Пароль будет сброшен, клиент сможет зарегистрироваться заново.'
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiService.rejectClientAccount(client.id);
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === client.id
+            ? {
+                ...c,
+                hasPassword: false,
+                isAccountApproved: false,
+                accountApprovedAt: undefined,
+                accountApprovedBy: undefined,
+              }
+            : c
+        )
+      );
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка отклонения регистрации');
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -1305,6 +1358,8 @@ const Clients: React.FC = () => {
           setMembershipDialog(true);
         }}
         onDelete={handleDeleteClient}
+        onApproveAccount={handleApproveAccount}
+        onRejectAccount={handleRejectAccount}
         onGroupClick={(client) => {
           setSelectedClientForGroups(client);
           setGroupsDialog(true);
@@ -3615,7 +3670,7 @@ const Clients: React.FC = () => {
             >
               {importFile ? (
                 <Box>
-                  <FileUpload sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                  <FileUpload sx={{ fontSize: 36, color: 'primary.main', mb: 1 }} />
                   <Typography variant="h6" gutterBottom>
                     {importFile.name}
                   </Typography>
@@ -3625,7 +3680,7 @@ const Clients: React.FC = () => {
                 </Box>
               ) : (
                 <Box>
-                  <FileUpload sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                  <FileUpload sx={{ fontSize: 36, color: 'text.secondary', mb: 1 }} />
                   <Typography variant="h6" gutterBottom>
                     Перетащите файл сюда
                   </Typography>
@@ -3681,7 +3736,7 @@ const Clients: React.FC = () => {
             <Grid container spacing={3} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="h4" color="primary" fontWeight="bold">
+                  <Typography variant="h5" color="primary" fontWeight="bold">
                     {clientStats.totalTrainings || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -3691,7 +3746,7 @@ const Clients: React.FC = () => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="h4" color="success.main" fontWeight="bold">
+                  <Typography variant="h5" color="success.main" fontWeight="bold">
                     {clientStats.presentCount || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -3701,7 +3756,7 @@ const Clients: React.FC = () => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="h4" color="info.main" fontWeight="bold">
+                  <Typography variant="h5" color="info.main" fontWeight="bold">
                     {clientStats.attendanceRate?.toFixed(1) || 0}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -3711,7 +3766,7 @@ const Clients: React.FC = () => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="h4" color="warning.main" fontWeight="bold">
+                  <Typography variant="h5" color="warning.main" fontWeight="bold">
                     {clientStats.achievementsCount || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

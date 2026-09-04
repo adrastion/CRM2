@@ -27,7 +27,6 @@ const AllTrainersEarnings = lazy(() => import('./pages/AllTrainersEarnings'));
 const Groups = lazy(() => import('./pages/Groups'));
 const Branches = lazy(() => import('./pages/Branches'));
 const Schedule = lazy(() => import('./pages/Schedule'));
-const Competitions = lazy(() => import('./pages/Competitions'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Memberships = lazy(() => import('./pages/Memberships'));
 const ClientMemberships = lazy(() => import('./pages/ClientMemberships'));
@@ -410,13 +409,7 @@ const AppContent: React.FC = () => {
         />
         <Route
           path="/competitions"
-          element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Competitions />
-              </AppLayout>
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/schedule?tab=competitions" replace />}
         />
         <Route
           path="/finance"

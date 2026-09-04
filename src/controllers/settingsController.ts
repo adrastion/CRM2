@@ -43,7 +43,7 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
  */
 export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
-  const { defaultTrainingDuration, membershipFeeResetDate, clientCanViewAllTrainers, clientCanViewAllBranches } = req.body;
+  const { defaultTrainingDuration, membershipFeeResetDate, clientCanViewAllTrainers, clientCanViewAllBranches, salaryPayoutDay } = req.body;
 
   if (!tenantId) {
     res.status(400).json({
@@ -59,6 +59,17 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       res.status(400).json({
         success: false,
         error: 'Default training duration must be between 15 and 480 minutes'
+      });
+      return;
+    }
+  }
+
+  if (salaryPayoutDay !== undefined && salaryPayoutDay !== null) {
+    const day = Number(salaryPayoutDay);
+    if (!Number.isInteger(day) || day < 1 || day > 28) {
+      res.status(400).json({
+        success: false,
+        error: 'Salary payout day must be an integer between 1 and 28'
       });
       return;
     }
@@ -83,14 +94,16 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       defaultTrainingDuration: defaultTrainingDuration !== undefined ? defaultTrainingDuration : undefined,
       membershipFeeResetDate: membershipFeeResetDate !== undefined ? membershipFeeResetDate : undefined,
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : undefined,
-      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : undefined
+      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : undefined,
+      salaryPayoutDay: salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
     },
     create: {
       tenantId,
       defaultTrainingDuration: defaultTrainingDuration || 60,
       membershipFeeResetDate: membershipFeeResetDate || null,
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : false,
-      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false
+      clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false,
+      salaryPayoutDay: salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
     }
   });
 

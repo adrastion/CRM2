@@ -45,11 +45,11 @@ const MetricCard: React.FC<MetricCardProps> = ({
         bgcolor: colors.card,
         borderRadius: `${radii.panel}px`,
         boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
-        p: { xs: 2.5, md: 3 },
+        p: { xs: 2, md: 2.5 },
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        gap: 1.5,
+        gap: 1,
         opacity: placeholder ? 0.55 : 1,
         userSelect: placeholder ? 'none' : 'auto',
       }}

@@ -41,6 +41,7 @@ import platformStaffAuthRoutes from './routes/platformStaffAuthRoutes';
 import platformStaffRoutes from './routes/platformStaffRoutes';
 import superAdminSupportRoutes from './routes/superAdminSupportRoutes';
 import supportRequesterRoutes from './routes/supportRequesterRoutes';
+import searchRoutes from './routes/search';
 import { attachSupportCallSocket } from './services/supportCallSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
@@ -50,6 +51,7 @@ import {
   cleanupOldMetricSamples,
 } from './services/serverMetricsService';
 import { checkCriticalThresholds } from './services/serverAlertService';
+import { accrueFixedMonthlyForAllTenants } from './services/trainerSalaryService';
 
 // Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
 const rootEnv = path.join(__dirname, '..', '.env');
@@ -139,6 +141,7 @@ app.use('/api/halls', hallRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/trainers', trainerRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/search', searchRoutes);
 app.use('/api/memberships', membershipRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/finance', financeRoutes);
@@ -196,6 +199,18 @@ httpServer.listen(PORT, () => {
   });
 
   console.log(`⏰ Monthly payments cron job scheduled: ${cronSchedule}`);
+
+  // Начисление фикс. месячной зарплаты (схема fixed_monthly) в день выплаты
+  cron.schedule(cronSchedule, async () => {
+    console.log('[Cron] Scheduled task: Accruing fixed monthly trainer salaries...');
+    try {
+      await accrueFixedMonthlyForAllTenants(new Date());
+    } catch (error) {
+      console.error('[Cron] Error accruing fixed monthly salaries:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
 
   // Настройка уведомлений о тренировках
   // Проверка каждую минуту для напоминаний

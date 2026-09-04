@@ -506,7 +506,9 @@ export class AuthService {
           userId: user.id,
           tenantId: data.tenantId,
           salaryType: 'fixed',
-          salaryAmount: 0
+          salaryAmount: 0,
+          salaryScheme: 'fixed_monthly',
+          salaryRate: 0,
         }
       });
     }
@@ -853,7 +855,9 @@ export class AuthService {
             userId: userId,
             tenantId: tenantId,
             salaryType: 'fixed',
-            salaryAmount: 0
+            salaryAmount: 0,
+            salaryScheme: 'fixed_monthly',
+            salaryRate: 0,
           }
         });
       }

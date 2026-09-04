@@ -13,7 +13,7 @@ interface AuthButtonProps {
   fullWidth?: boolean;
 }
 
-/** Кнопка из макета: 186x80, радиус 11, шрифт 35.9pt. */
+/** Кнопка входа/регистрации: компактная высота из sizes. */
 const AuthButton: React.FC<AuthButtonProps> = ({
   children,
   onClick,
@@ -42,10 +42,10 @@ const AuthButton: React.FC<AuthButtonProps> = ({
         bgcolor: bg,
         opacity: isDisabled ? 0.6 : 1,
         borderRadius: `${radii.button}px`,
-        minWidth: fullWidth ? '100%' : { xs: 140, md: sizes.buttonMinWidth },
+        minWidth: fullWidth ? '100%' : { xs: 120, md: sizes.buttonMinWidth },
         width: fullWidth ? '100%' : 'auto',
         height: { xs: sizes.buttonHeightSm, md: sizes.buttonHeight },
-        px: { xs: 3, md: 4 },
+        px: { xs: 2.5, md: 3 },
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -59,7 +59,7 @@ const AuthButton: React.FC<AuthButtonProps> = ({
         },
       }}
     >
-      {loading ? <CircularProgress size={26} sx={{ color: colors.white }} /> : children}
+      {loading ? <CircularProgress size={20} sx={{ color: colors.white }} /> : children}
     </Box>
   );
 };

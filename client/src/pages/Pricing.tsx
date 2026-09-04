@@ -268,13 +268,13 @@ const Pricing: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <Container maxWidth="xl" sx={{ py: 4, flexGrow: 1 }}>
-      <Box sx={{ mb: 6, textAlign: 'center' }}>
-        <AttachMoney sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-        <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
+      <Container maxWidth="xl" sx={{ py: 3, flexGrow: 1 }}>
+      <Box sx={{ mb: 4, textAlign: 'center' }}>
+        <AttachMoney sx={{ fontSize: 40, color: 'primary.main', mb: 1.5 }} />
+        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
           Тарифные планы
         </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 1.5 }}>
           Выберите подходящий тариф для вашей спортивной школы
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -347,7 +347,7 @@ const Pricing: React.FC = () => {
               )}
 
               <Box sx={{ mb: 3 }}>
-                <Typography variant="h4" component="h2" gutterBottom fontWeight="bold">
+                <Typography variant="h5" component="h2" gutterBottom fontWeight="bold">
                   {plan.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -355,7 +355,7 @@ const Pricing: React.FC = () => {
                 </Typography>
                 
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                  <Typography variant="h3" component="div" fontWeight="bold" color="primary.main">
+                  <Typography variant="h4" component="div" fontWeight="bold" color="primary.main">
                     {plan.priceLabel}
                   </Typography>
                   {!isNegotiable && (

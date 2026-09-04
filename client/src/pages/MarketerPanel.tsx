@@ -98,7 +98,7 @@ const MarketerPanel: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
           Панель маркетолога
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -139,7 +139,7 @@ const MarketerPanel: React.FC = () => {
                   <Typography color="textSecondary" gutterBottom variant="body2">
                     Промокодов
                   </Typography>
-                  <Typography variant="h4">
+                  <Typography variant="h5">
                     {stats.promoCodes?.total || 0}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
@@ -160,7 +160,7 @@ const MarketerPanel: React.FC = () => {
                   <Typography color="textSecondary" gutterBottom variant="body2">
                     Использований промокодов
                   </Typography>
-                  <Typography variant="h4">
+                  <Typography variant="h5">
                     {stats.promoCodes?.totalUsages || 0}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
@@ -181,7 +181,7 @@ const MarketerPanel: React.FC = () => {
                   <Typography color="textSecondary" gutterBottom variant="body2">
                     Реферальных ссылок
                   </Typography>
-                  <Typography variant="h4">
+                  <Typography variant="h5">
                     {stats.referralLinks?.total || 0}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
@@ -202,7 +202,7 @@ const MarketerPanel: React.FC = () => {
                   <Typography color="textSecondary" gutterBottom variant="body2">
                     Конверсия
                   </Typography>
-                  <Typography variant="h4">
+                  <Typography variant="h5">
                     {stats.referralLinks?.conversionRate?.toFixed(1) || 0}%
                   </Typography>
                   <Typography variant="body2" color="textSecondary">

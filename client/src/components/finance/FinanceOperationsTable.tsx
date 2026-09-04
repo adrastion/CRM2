@@ -43,7 +43,7 @@ const SortHeader: React.FC<{
     }}
   >
     <DesignIcon category="ui" name="sort" size={18} sx={{ color: active ? colors.primary : colors.textHint, opacity: 0.85 }} />
-    <Typography sx={{ fontSize: { xs: 16, md: 20, lg: 24 }, fontWeight: 500, color: colors.text }}>
+    <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
       {label}
     </Typography>
   </Box>
@@ -110,7 +110,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                   client={op.client}
                   name={op.title}
                   sx={{
-                    fontSize: { xs: 14, md: 18, lg: 22 },
+                    fontSize: typography.label,
                     fontWeight: 500,
                     color: colors.text,
                     '&:hover': { color: colors.primary },
@@ -119,7 +119,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
               ) : (
                 <Typography
                   component="span"
-                  sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}
+                  sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}
                 >
                   {op.title}
                 </Typography>
@@ -132,7 +132,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                   display: 'grid',
                   gridTemplateColumns: COLS,
                   gap: 0,
-                  minHeight: 61,
+                  minHeight: 44,
                   alignItems: 'stretch',
                 }}
               >
@@ -143,8 +143,8 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
                     borderTopLeftRadius: '16px',
                     borderBottomLeftRadius: index === operations.length - 1 ? '16px' : 0,
-                    px: 2.5,
-                    py: 1.75,
+                    px: 1.5,
+                    py: 1,
                     display: 'flex',
                     alignItems: 'center',
                     minWidth: 0,
@@ -157,13 +157,13 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     bgcolor: col2Bg,
                     borderTop: `1px solid ${colors.textMuted}`,
                     borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
-                    px: 2.5,
-                    py: 1.75,
+                    px: 1.5,
+                    py: 1,
                     display: 'flex',
                     alignItems: 'center',
                   }}
                 >
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                     {op.typeName || op.typeCode}
                   </Typography>
                 </Box>
@@ -172,15 +172,15 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     bgcolor: col3Bg,
                     borderTop: `1px solid ${colors.textMuted}`,
                     borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
-                    px: 2,
-                    py: 1.75,
+                    px: 1.5,
+                    py: 1,
                     display: 'flex',
                     alignItems: 'center',
                   }}
                 >
                   <Typography
                     sx={{
-                      fontSize: { xs: 14, md: 18, lg: 22 },
+                      fontSize: typography.label,
                       fontWeight: 600,
                       color: isIncome ? INCOME_COLOR : colors.text,
                     }}
@@ -195,18 +195,18 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
                     borderTopRightRadius: '16px',
                     borderBottomRightRadius: index === operations.length - 1 ? '16px' : 0,
-                    px: 2,
-                    py: 1.75,
+                    px: 1.5,
+                    py: 1,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1,
                     flexWrap: 'wrap',
                   }}
                 >
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.text }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
                     {formatDateTime(op.occurredAt).split(' ')[0]}
                   </Typography>
-                  <Typography sx={{ fontSize: { xs: 14, md: 18, lg: 22 }, fontWeight: 500, color: colors.textMuted }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.textMuted }}>
                     {formatDateTime(op.occurredAt).split(' ')[1] || ''}
                   </Typography>
                 </Box>

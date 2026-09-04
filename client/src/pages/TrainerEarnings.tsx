@@ -16,6 +16,7 @@ import {
   Alert,
   Chip,
   Button,
+  Collapse,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -24,12 +25,14 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { salarySchemeLabel } from '../utils/salarySchemes';
 
 const TrainerEarnings: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [earnings, setEarnings] = useState<any>(null);
+  const [showReport, setShowReport] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [endDate, setEndDate] = useState<Date | null>(new Date());
 
@@ -42,11 +45,10 @@ const TrainerEarnings: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Получаем ID тренера из текущего пользователя
+
       const trainersRes = await apiService.getTrainers();
       const currentTrainer = trainersRes.data.find((t: any) => t.userId === user?.id);
-      
+
       if (!currentTrainer) {
         setError('Тренер не найден');
         setLoading(false);
@@ -54,15 +56,11 @@ const TrainerEarnings: React.FC = () => {
       }
 
       const params: any = {};
-      if (startDate) {
-        params.startDate = startDate.toISOString();
-      }
-      if (endDate) {
-        params.endDate = endDate.toISOString();
-      }
+      if (startDate) params.startDate = startDate.toISOString();
+      if (endDate) params.endDate = endDate.toISOString();
 
       const earningsRes = await apiService.getTrainerEarnings(currentTrainer.id, params);
-      setEarnings(earningsRes.data);
+      setEarnings(earningsRes.data ?? earningsRes);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки данных о заработке');
       console.error('Error fetching earnings:', err);
@@ -87,16 +85,22 @@ const TrainerEarnings: React.FC = () => {
     );
   }
 
+  const reportRows = (earnings?.ledger || earnings?.trainingEarnings || []).filter(
+    (r: any) => r.kind !== 'payout'
+  );
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
             Мой заработок
           </Typography>
+          <Button variant="contained" onClick={() => setShowReport((v) => !v)}>
+            {showReport ? 'Скрыть отчёт' : 'Отчёт'}
+          </Button>
         </Box>
 
-        {/* Фильтры по дате */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Grid container spacing={2} alignItems="center">
@@ -105,11 +109,7 @@ const TrainerEarnings: React.FC = () => {
                   label="Дата начала"
                   value={startDate}
                   onChange={(newValue) => setStartDate(newValue)}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true
-                    }
-                  }}
+                  slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -117,11 +117,7 @@ const TrainerEarnings: React.FC = () => {
                   label="Дата окончания"
                   value={endDate}
                   onChange={(newValue) => setEndDate(newValue)}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true
-                    }
-                  }}
+                  slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -143,16 +139,15 @@ const TrainerEarnings: React.FC = () => {
 
         {earnings && (
           <>
-            {/* Общая статистика */}
             <Grid container spacing={3} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={4}>
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
-                      Всего тренировок
+                      Записей начислений
                     </Typography>
                     <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                      {earnings.trainingCount || 0}
+                      {earnings.entryCount ?? reportRows.length}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -179,15 +174,16 @@ const TrainerEarnings: React.FC = () => {
                       Тип зарплаты
                     </Typography>
                     <Chip
-                      label={earnings.trainer?.salaryType === 'percentage' ? 'Процентная' : 'Фиксированная'}
-                      color={earnings.trainer?.salaryType === 'percentage' ? 'secondary' : 'primary'}
+                      label={salarySchemeLabel(earnings.trainer?.salaryScheme || earnings.trainer?.salaryType)}
+                      color="primary"
                       sx={{ mt: 1 }}
                     />
-                    {earnings.trainer?.salaryAmount && (
+                    {earnings.trainer?.salaryRate != null && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        {earnings.trainer.salaryType === 'percentage' 
-                          ? `${earnings.trainer.salaryAmount}%`
-                          : `${earnings.trainer.salaryAmount} ₽ за посещение`}
+                        {earnings.trainer.salaryScheme === 'percent_month' ||
+                        earnings.trainer.salaryType === 'percent_month'
+                          ? `${earnings.trainer.salaryRate}%`
+                          : `${earnings.trainer.salaryRate} ₽`}
                       </Typography>
                     )}
                   </CardContent>
@@ -195,71 +191,56 @@ const TrainerEarnings: React.FC = () => {
               </Grid>
             </Grid>
 
-            {/* Детализация по тренировкам */}
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                  Детализация по тренировкам
-                </Typography>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Дата</TableCell>
-                        <TableCell>Тренировка</TableCell>
-                        <TableCell>Группа</TableCell>
-                        <TableCell>Филиал</TableCell>
-                        <TableCell>Присутствовало</TableCell>
-                        <TableCell>Стоимость тренировки</TableCell>
-                        <TableCell>Выручка</TableCell>
-                        <TableCell>Заработок</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {earnings.trainingEarnings && earnings.trainingEarnings.length > 0 ? (
-                        earnings.trainingEarnings.map((training: any, index: number) => (
-                          <TableRow key={index}>
-                            <TableCell>
-                              {format(new Date(training.trainingDate), 'dd.MM.yyyy HH:mm', { locale: ru })}
-                            </TableCell>
-                            <TableCell>{training.trainingTitle}</TableCell>
-                            <TableCell>{training.groupName}</TableCell>
-                            <TableCell>{training.branchName}</TableCell>
-                            <TableCell align="center">{training.presentCount}</TableCell>
-                            <TableCell>
-                              {training.trainingPrice?.toLocaleString('ru-RU', {
-                                style: 'currency',
-                                currency: 'RUB',
-                              }) || '-'}
-                            </TableCell>
-                            <TableCell>
-                              {training.totalRevenue?.toLocaleString('ru-RU', {
-                                style: 'currency',
-                                currency: 'RUB',
-                              }) || '-'}
-                            </TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>
-                              {training.earnings?.toLocaleString('ru-RU', {
-                                style: 'currency',
-                                currency: 'RUB',
-                              }) || '-'}
+            <Collapse in={showReport}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                    Отчёт по начислениям
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Название</TableCell>
+                          <TableCell align="right">Сумма</TableCell>
+                          <TableCell>Дата</TableCell>
+                          <TableCell>Комментарий</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {reportRows.length > 0 ? (
+                          reportRows.map((row: any, index: number) => (
+                            <TableRow key={row.id || index}>
+                              <TableCell>{row.title || row.trainingTitle || row.personName}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                                {Number(row.amount ?? row.earnings).toLocaleString('ru-RU', {
+                                  style: 'currency',
+                                  currency: 'RUB',
+                                })}
+                              </TableCell>
+                              <TableCell>
+                                {format(new Date(row.occurredAt || row.trainingDate), 'dd.MM.yyyy', {
+                                  locale: ru,
+                                })}
+                              </TableCell>
+                              <TableCell>{row.comment || '-'}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={4} align="center">
+                              <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+                                Нет данных за выбранный период
+                              </Typography>
                             </TableCell>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={8} align="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
-                              Нет данных за выбранный период
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Collapse>
           </>
         )}
       </Box>
@@ -268,4 +249,3 @@ const TrainerEarnings: React.FC = () => {
 };
 
 export default TrainerEarnings;
-

@@ -316,7 +316,7 @@ const Branches: React.FC = () => {
   return (
     <Box data-onboarding="branches-page">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
           Филиалы
         </Typography>
         <Button

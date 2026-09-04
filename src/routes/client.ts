@@ -17,6 +17,7 @@ import {
   upload,
   updateMembershipFeeStatus,
   approveClientAccount,
+  rejectClientAccount,
   approveParentAccount
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
@@ -49,8 +50,9 @@ router.get('/:id/stats', getClientStats);
 // Membership fee status (only OWNER or ADMIN)
 router.put('/:id/membership-fee', requireOwnerOrAdmin, updateMembershipFeeStatus);
 
-// Approve client account (OWNER, ADMIN, or TRAINER)
+// Approve / reject client account (OWNER, ADMIN, or TRAINER)
 router.put('/:id/approve-account', requireOwnerAdminOrTrainer, approveClientAccount);
+router.put('/:id/reject-account', requireOwnerAdminOrTrainer, rejectClientAccount);
 
 // Approve parent account (OWNER or ADMIN)
 router.put('/parents/:parentId/approve', requireOwnerOrAdmin, approveParentAccount);

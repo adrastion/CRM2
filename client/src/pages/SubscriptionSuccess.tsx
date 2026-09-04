@@ -67,7 +67,7 @@ const SubscriptionSuccess: React.FC = () => {
   if (loading) {
     return (
       <AppLayout>
-        <Container maxWidth="md" sx={{ py: 4 }}>
+        <Container maxWidth="md" sx={{ py: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
             <CircularProgress />
           </Box>
@@ -78,12 +78,12 @@ const SubscriptionSuccess: React.FC = () => {
 
   return (
     <AppLayout>
-      <Container maxWidth="md" sx={{ py: 4 }}>
+      <Container maxWidth="md" sx={{ py: 3 }}>
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           {error ? (
             <>
-              <ErrorIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
-              <Typography variant="h4" gutterBottom>
+              <ErrorIcon sx={{ fontSize: 40, color: 'error.main', mb: 2 }} />
+              <Typography variant="h5" gutterBottom>
                 Ошибка
               </Typography>
               <Alert severity="error" sx={{ mt: 2 }}>
@@ -99,8 +99,8 @@ const SubscriptionSuccess: React.FC = () => {
             </>
           ) : error ? (
             <>
-              <ErrorIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
-              <Typography variant="h4" gutterBottom>
+              <ErrorIcon sx={{ fontSize: 40, color: 'error.main', mb: 2 }} />
+              <Typography variant="h5" gutterBottom>
                 Что-то пошло не так
               </Typography>
               <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
@@ -127,8 +127,8 @@ const SubscriptionSuccess: React.FC = () => {
             </>
           ) : subscription?.status === 'active' ? (
             <>
-              <CheckCircle sx={{ fontSize: 60, color: 'success.main', mb: 2 }} />
-              <Typography variant="h4" gutterBottom>
+              <CheckCircle sx={{ fontSize: 40, color: 'success.main', mb: 2 }} />
+              <Typography variant="h5" gutterBottom>
                 Подписка успешно активирована!
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>

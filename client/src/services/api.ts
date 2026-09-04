@@ -419,6 +419,26 @@ class ApiService {
     return response.data.data;
   }
 
+  async getTrainerSalaryLedger(trainerId: string, params?: any): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/trainers/${trainerId}/salary-ledger`, { params });
+    return response.data.data;
+  }
+
+  async postTrainerSalaryLedger(trainerId: string, data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/trainers/${trainerId}/salary-ledger`, data);
+    return response.data.data;
+  }
+
+  async getSalaryPayoutReminder(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/trainers/salary-payout-reminder');
+    return response.data.data;
+  }
+
+  async accrueFixedMonthlySalaries(): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/trainers/accrue-fixed-monthly');
+    return response.data.data;
+  }
+
   async getTrainerNotificationSettings(trainerId: string): Promise<any> {
     const response = await this.api.get<ApiResponse>(`/trainers/${trainerId}/notifications`);
     return response.data.data;
@@ -1737,6 +1757,20 @@ class ApiService {
   async approveClientAccount(clientId: string): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/clients/${clientId}/approve-account`);
     return response.data.data;
+  }
+
+  async rejectClientAccount(clientId: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/clients/${clientId}/reject-account`);
+    return response.data.data;
+  }
+
+  async globalSearch(q: string): Promise<{
+    clients: Array<{ id: string; type: 'client'; title: string; subtitle?: string }>;
+    trainers: Array<{ id: string; type: 'trainer'; title: string; subtitle?: string }>;
+    groups: Array<{ id: string; type: 'group'; title: string; subtitle?: string }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/search', { params: { q } });
+    return response.data.data || { clients: [], trainers: [], groups: [] };
   }
 
   async getClientTrainings(startDate?: string, endDate?: string): Promise<any> {

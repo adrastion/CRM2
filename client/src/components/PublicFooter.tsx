@@ -10,8 +10,8 @@ const PublicFooter: React.FC = () => {
       component="footer"
       sx={{
         mt: 'auto',
-        pt: 4,
-        pb: 3,
+        pt: 2.5,
+        pb: 2,
         borderTop: 1,
         borderColor: 'divider',
         backgroundColor: 'background.paper',
