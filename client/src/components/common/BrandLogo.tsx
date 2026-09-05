@@ -6,7 +6,7 @@ import { colors } from '../../theme/tokens';
 interface BrandLogoProps {
   /** Высота знака в px (адаптивные значения задаются в вызывающем коде). */
   size?: number | Record<string, number>;
-  /** Показывать текстовую часть PROFSPORTCRM под знаком. */
+  /** Показывать текстовую часть ПРОФСПОРТСРМ под знаком. */
   withWordmark?: boolean;
   /** Расположение текста: под знаком или справа от него. */
   layout?: 'vertical' | 'horizontal';
@@ -16,7 +16,7 @@ interface BrandLogoProps {
 
 /**
  * Фирменный блок: графический знак из logo-ProfSportCRM.png и надпись
- * PROFSPORTCRM. Знак — квадратный PNG с прозрачным фоном, поэтому
+ * ПРОФСПОРТСРМ. Знак — квадратный PNG с прозрачным фоном, поэтому
  * подложка не нужна.
  */
 const BrandLogo: React.FC<BrandLogoProps> = ({
@@ -37,7 +37,7 @@ const BrandLogo: React.FC<BrandLogoProps> = ({
     <Box
       component="img"
       src={logo}
-      alt="ПрофСпортСРМ"
+      alt="ПРОФСПОРТСРМ"
       sx={{
         width: size,
         height: size,
@@ -58,10 +58,10 @@ const BrandLogo: React.FC<BrandLogoProps> = ({
         }}
       >
         <Box component="span" sx={{ color: colors.primary }}>
-          PROF
+          ПРОФ
         </Box>
         <Box component="span" sx={{ color: colors.text }}>
-          SPORTCRM
+          СПОРТСРМ
         </Box>
       </Typography>
     )}

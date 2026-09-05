@@ -279,40 +279,17 @@ const onboardingSteps: OnboardingStep[] = [
     highlight: true,
   },
   {
-    id: 'standards-nav',
-    title: 'Раздел "Нормативы"',
-    description: 'Переход к управлению нормативами',
+    id: 'standards-in-card',
+    title: 'Нормативы в карточке спортсмена',
+    description: 'Фиксация результатов ученика',
     content: [
-      'Нормативы позволяют отслеживать прогресс клиентов.',
-      'Создавайте нормативы (например, "Подтягивания", "Бег 100м").',
-      'Для каждого норматива указывайте единицу измерения и целевое значение.',
-      'Давайте перейдем к нормативам.',
+      'Нормативы фиксируются прямо в карточке спортсмена (раздел «Клиенты»).',
+      'Откройте карточку → «Добавить информацию» → Норматив или кнопку «Добавить» в блоке нормативов.',
+      'Укажите название норматива, норму (цель), фактический результат и дату.',
     ],
-    targetSelector: '[data-onboarding="standards-nav"]',
+    targetSelector: '[data-onboarding="clients-nav"]',
     position: 'right',
     highlight: true,
-    action: {
-      type: 'click',
-      selector: '[data-onboarding="standards-nav"]',
-    },
-  },
-  {
-    id: 'standards-page',
-    title: 'Управление нормативами',
-    description: 'Создание первого норматива',
-    content: [
-      'Нормативы позволяют отслеживать прогресс клиентов.',
-      'Давайте создадим ваш первый норматив!',
-      'Кликните на кнопку "Создать норматив" справа вверху.',
-      'Укажите название (например, "Подтягивания"), единицу измерения и целевое значение.',
-    ],
-    targetSelector: '[data-onboarding="add-standard-button"]',
-    position: 'bottom',
-    highlight: true,
-    action: {
-      type: 'click',
-      selector: '[data-onboarding="add-standard-button"]',
-    },
   },
   {
     id: 'trainers-nav',
@@ -877,7 +854,6 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
                         currentStep.targetSelector.includes('groups') ? '/groups' :
                         currentStep.targetSelector.includes('schedule') ? '/schedule' :
                         currentStep.targetSelector.includes('dashboard') ? '/dashboard' :
-                        currentStep.targetSelector.includes('standards') ? '/standards' :
                         currentStep.targetSelector.includes('trainers') ? '/trainers' :
                         currentStep.targetSelector.includes('branches') ? '/branches' :
                         currentStep.targetSelector.includes('memberships') ? '/memberships' :

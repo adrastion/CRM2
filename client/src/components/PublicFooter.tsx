@@ -95,7 +95,7 @@ const PublicFooter: React.FC = () => {
           </Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" align="center">
-          © {new Date().getFullYear()} ПрофСпортСРМ. Все права защищены.
+          © {new Date().getFullYear()} ПРОФСПОРТСРМ. Все права защищены.
         </Typography>
       </Container>
     </Box>

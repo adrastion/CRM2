@@ -3,7 +3,7 @@
 
 cd /home/bes/CRM2
 
-echo "🚀 Запуск ПрофСпортСРМ"
+echo "🚀 Запуск ПРОФСПОРТСРМ"
 echo "======================"
 echo ""
 echo "Frontend: http://localhost:3000"

@@ -277,6 +277,8 @@ export interface Parent {
   email?: string;
   workplace?: string;
   workplaceContact?: string;
+  relationType?: 'mother' | 'father' | 'guardian' | 'other' | string;
+  isPrimaryContact?: boolean;
   clientId: string;
   createdAt: string;
   updatedAt: string;
@@ -309,6 +311,9 @@ export interface Client {
   medicalNotes?: string;
   photo?: string;
   weight?: number;
+  discipline?: string;
+  weightCategory?: string;
+  athleteStatus?: 'active' | 'pause' | 'injury' | 'left' | string;
   // Паспорт РФ
   passportSeries?: string;
   passportNumber?: string;

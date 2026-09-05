@@ -6,7 +6,10 @@ import {
   getClientProfile,
   getClientTrainings,
   findParentsForRegistration,
-  registerParent
+  registerParent,
+  getAthleteCard,
+  getClientCalendarPlan,
+  getClientPayments,
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
 import { getClientDashboard } from '../controllers/clientDashboardController';
@@ -29,6 +32,9 @@ router.post('/parent/register', registerParent);
 // Защищенные маршруты
 router.get('/profile', authenticateClient, getClientProfile);
 router.get('/trainings', authenticateClient, getClientTrainings);
+router.get('/athlete-card', authenticateClient, getAthleteCard);
+router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
+router.get('/payments', authenticateClient, getClientPayments);
 // Данные для новой панели управления клиента (учитывает статус подтверждения)
 router.get('/dashboard', authenticateClient, getClientDashboard);
 

@@ -284,10 +284,10 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             }}
           >
             <Box component="span" sx={{ color: colors.primary }}>
-              PROF
+              ПРОФ
             </Box>
             <Box component="span" sx={{ color: colors.text }}>
-              SPORTCRM
+              СПОРТСРМ
             </Box>
           </Typography>
         </Box>
@@ -598,7 +598,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               ))}
             </Box>
             <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-              © {new Date().getFullYear()} ПрофСпортСРМ. Все права защищены.
+              © {new Date().getFullYear()} ПРОФСПОРТСРМ. Все права защищены.
             </Typography>
           </Box>
         </Box>

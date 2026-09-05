@@ -5,6 +5,71 @@ import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 
+function normalizePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length > 0 ? digits : null;
+}
+
+/** Разрешённые clientId для portal-токена (сам клиент / linked / дети родителя). */
+async function resolvePortalClientId(req: Request): Promise<{
+  clientId: string;
+  tenantId: string;
+  userType?: string;
+} | null> {
+  const authClientId = (req as any).client?.id as string | undefined;
+  const authParentId = (req as any).parent?.id as string | undefined;
+  const userType = (req as any).userType as string | undefined;
+  const tenantId = ((req as any).client?.tenantId || (req as any).parent?.tenantId) as string | undefined;
+  if (!tenantId || (!authClientId && !authParentId)) return null;
+
+  const requestedId = (req.query.clientId as string | undefined) || authClientId;
+  const allowedIds = new Set<string>();
+
+  if (userType === 'client' && authClientId) {
+    allowedIds.add(authClientId);
+    const self = await prisma.client.findUnique({
+      where: { id: authClientId },
+      select: { phone: true, email: true },
+    });
+    const phone = normalizePhone(self?.phone);
+    const email = self?.email?.toLowerCase().trim() || null;
+    const or: Array<Record<string, unknown>> = [];
+    if (phone) or.push({ phone: { contains: phone } });
+    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    if (or.length) {
+      const siblings = await prisma.client.findMany({
+        where: { tenantId, isActive: true, OR: or },
+        select: { id: true },
+      });
+      siblings.forEach((c) => allowedIds.add(c.id));
+    }
+  } else if (userType === 'parent' && authParentId) {
+    const parent = await prisma.parent.findUnique({
+      where: { id: authParentId },
+      select: { phone: true, email: true, clientId: true },
+    });
+    if (parent?.clientId) allowedIds.add(parent.clientId);
+    const phone = normalizePhone(parent?.phone);
+    const email = parent?.email?.toLowerCase().trim() || null;
+    const or: Array<Record<string, unknown>> = [];
+    if (phone) or.push({ phone: { contains: phone } });
+    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    if (or.length) {
+      const parents = await prisma.parent.findMany({
+        where: { tenantId, OR: or },
+        select: { clientId: true },
+      });
+      parents.forEach((p) => allowedIds.add(p.clientId));
+    }
+  }
+
+  const clientId =
+    requestedId && allowedIds.has(requestedId) ? requestedId : [...allowedIds][0];
+  if (!clientId) return null;
+  return { clientId, tenantId, userType };
+}
+
 /**
  * Поиск клиентов по телефону или email для регистрации
  */
@@ -945,5 +1010,334 @@ export const registerParent = asyncHandler(async (req: Request, res: Response<Ap
       error: 'Failed to register parent'
     });
   }
+});
+
+/**
+ * Карточка спортсмена для ЛК: только свой профиль / linked athlete родителя.
+ * GET /api/client-auth/athlete-card?clientId=
+ */
+export const getAthleteCard = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const authClientId = (req as any).client?.id as string | undefined;
+  const authParentId = (req as any).parent?.id as string | undefined;
+  const userType = (req as any).userType as string | undefined;
+  const tenantId = (req as any).client?.tenantId || (req as any).parent?.tenantId;
+  const requestedId = (req.query.clientId as string | undefined) || authClientId;
+
+  if (!tenantId || (!authClientId && !authParentId)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const normalizePhone = (phone: string | null | undefined) => {
+    if (!phone) return null;
+    const digits = phone.replace(/\D/g, '');
+    return digits.length > 0 ? digits : null;
+  };
+
+  const allowedIds = new Set<string>();
+  if (userType === 'client' && authClientId) {
+    allowedIds.add(authClientId);
+    const self = await prisma.client.findUnique({
+      where: { id: authClientId },
+      select: { phone: true, email: true },
+    });
+    const phone = normalizePhone(self?.phone);
+    const email = self?.email?.toLowerCase().trim() || null;
+    const or: Array<Record<string, unknown>> = [];
+    if (phone) or.push({ phone: { contains: phone } });
+    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    if (or.length) {
+      const siblings = await prisma.client.findMany({
+        where: { tenantId, isActive: true, OR: or },
+        select: { id: true },
+      });
+      siblings.forEach((c) => allowedIds.add(c.id));
+    }
+  } else if (userType === 'parent' && authParentId) {
+    const parent = await prisma.parent.findUnique({
+      where: { id: authParentId },
+      select: { phone: true, email: true, clientId: true },
+    });
+    if (parent?.clientId) allowedIds.add(parent.clientId);
+    const phone = normalizePhone(parent?.phone);
+    const email = parent?.email?.toLowerCase().trim() || null;
+    const or: Array<Record<string, unknown>> = [];
+    if (phone) or.push({ phone: { contains: phone } });
+    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    if (or.length) {
+      const parents = await prisma.parent.findMany({
+        where: { tenantId, OR: or },
+        select: { clientId: true },
+      });
+      parents.forEach((p) => allowedIds.add(p.clientId));
+    }
+  }
+
+  const clientId =
+    requestedId && allowedIds.has(requestedId) ? requestedId : [...allowedIds][0];
+
+  if (!clientId) {
+    return res.status(404).json({ success: false, error: 'Athlete not found' });
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId },
+    include: {
+      parents: true,
+      groupMemberships: {
+        where: { isActive: true },
+        include: {
+          group: {
+            include: {
+              trainer: { include: { user: true } },
+              branch: true,
+            },
+          },
+        },
+      },
+      clientStandards: {
+        include: { standard: true },
+        orderBy: { completedAt: 'desc' },
+      },
+      competitionParticipants: {
+        include: {
+          competition: true,
+          results: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  });
+
+  if (!client) {
+    return res.status(404).json({ success: false, error: 'Client not found' });
+  }
+
+  const groupIds = client.groupMemberships.map((gm) => gm.groupId).filter(Boolean) as string[];
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 14);
+
+  const [trainings, competitions] = await Promise.all([
+    groupIds.length
+      ? prisma.training.findMany({
+          where: {
+            tenantId,
+            groupId: { in: groupIds },
+            isCancelled: false,
+            startTime: { gte: weekStart, lt: weekEnd },
+          },
+          include: { group: true, branch: true, hall: true },
+          orderBy: { startTime: 'asc' },
+          take: 50,
+        })
+      : Promise.resolve([]),
+    prisma.competition.findMany({
+      where: {
+        tenantId,
+        participants: { some: { clientId } },
+        startDate: { gte: weekStart },
+      },
+      orderBy: { startDate: 'asc' },
+      take: 20,
+    }),
+  ]);
+
+  const { password, ...safe } = client as typeof client & { password?: string | null };
+  const parentsSafe = (client.parents || []).map((p: any) => {
+    const { password: pp, ...rest } = p;
+    return { ...rest, hasPassword: Boolean(pp) };
+  });
+
+  const competitionResults = client.competitionParticipants
+    .flatMap((p) =>
+      (p.results || []).map((r) => ({
+        ...r,
+        competition: p.competition,
+      }))
+    )
+    .sort((a, b) => {
+      const da = new Date((a.competition as any)?.startDate || (a.competition as any)?.date || 0).getTime();
+      const db = new Date((b.competition as any)?.startDate || (b.competition as any)?.date || 0).getTime();
+      return db - da;
+    });
+
+  return res.json({
+    success: true,
+    data: {
+      ...safe,
+      parents: parentsSafe,
+      password: undefined,
+      standards: client.clientStandards,
+      competitionResults,
+      calendar: { trainings, competitions },
+      userType,
+    },
+  });
+});
+
+/**
+ * Календарный план ЛК: только тренировки клиента и соревнования, где он участник.
+ * GET /api/client-auth/calendar-plan?clientId=&from=&to=
+ */
+export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  const { clientId, tenantId } = resolved;
+
+  const from = req.query.from
+    ? new Date(String(req.query.from))
+    : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const to = req.query.to
+    ? new Date(String(req.query.to))
+    : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+
+  const memberships = await prisma.groupMembership.findMany({
+    where: { clientId, isActive: true },
+    select: { groupId: true },
+  });
+  const groupIds = memberships.map((m) => m.groupId);
+
+  const individualAttendances = await prisma.attendance.findMany({
+    where: {
+      clientId,
+      training: { groupId: null, tenantId, isCancelled: false },
+    },
+    select: { trainingId: true },
+  });
+  const individualIds = individualAttendances.map((a) => a.trainingId);
+
+  const trainingWhere: any =
+    groupIds.length > 0 || individualIds.length > 0
+      ? {
+          tenantId,
+          isCancelled: false,
+          startTime: { gte: from, lt: to },
+          OR: [
+            ...(groupIds.length ? [{ groupId: { in: groupIds } }] : []),
+            ...(individualIds.length ? [{ id: { in: individualIds } }] : []),
+          ],
+        }
+      : null;
+
+  const [trainings, competitions] = await Promise.all([
+    trainingWhere
+      ? prisma.training.findMany({
+          where: trainingWhere,
+          include: {
+            group: { select: { id: true, name: true, color: true } },
+            trainer: {
+              include: {
+                user: { select: { firstName: true, lastName: true, middleName: true } },
+              },
+            },
+            branch: { select: { name: true } },
+            hall: { select: { name: true } },
+          },
+          orderBy: { startTime: 'asc' },
+          take: 500,
+        })
+      : Promise.resolve([]),
+    prisma.competition.findMany({
+      where: {
+        tenantId,
+        participants: { some: { clientId } },
+        OR: [
+          { startDate: { gte: from, lt: to } },
+          { endDate: { gte: from, lt: to } },
+          { AND: [{ startDate: { lte: from } }, { endDate: { gte: to } }] },
+        ],
+      },
+      include: {
+        participants: { where: { clientId }, include: { results: true } },
+      },
+      orderBy: { startDate: 'asc' },
+      take: 200,
+    }),
+  ]);
+
+  const fullName = (parts: Array<string | null | undefined>) =>
+    parts.filter(Boolean).join(' ').trim();
+
+  return res.json({
+    success: true,
+    data: {
+      clientId,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      trainings: trainings.map((t: any) => ({
+        id: t.id,
+        title: t.title || t.group?.name || 'Тренировка',
+        startTime: t.startTime,
+        endTime: t.endTime,
+        groupName: t.group?.name || null,
+        color: t.group?.color || null,
+        branchName: t.branch?.name || null,
+        hallName: t.hall?.name || null,
+        trainerName: t.trainer?.user
+          ? fullName([t.trainer.user.lastName, t.trainer.user.firstName, t.trainer.user.middleName])
+          : null,
+        type: 'training' as const,
+      })),
+      competitions: competitions.map((c) => ({
+        id: c.id,
+        name: c.name,
+        location: c.location,
+        startDate: c.startDate,
+        endDate: c.endDate,
+        registrationDate: c.registrationDate,
+        results: c.participants[0]?.results || [],
+        type: 'competition' as const,
+      })),
+    },
+  });
+});
+
+/**
+ * Платежи ЛК: только выставленные выбранному спортсмену.
+ * GET /api/client-auth/payments?clientId=
+ */
+export const getClientPayments = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  const { clientId, tenantId } = resolved;
+
+  const payments = await prisma.payment.findMany({
+    where: { clientId, tenantId },
+    include: {
+      group: { select: { id: true, name: true } },
+      branch: { select: { id: true, name: true } },
+      membership: { select: { id: true, name: true } },
+    },
+    orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
+    take: 200,
+  });
+
+  return res.json({
+    success: true,
+    data: payments.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      originalAmount: p.originalAmount != null ? Number(p.originalAmount) : null,
+      type: p.type,
+      status: p.status,
+      paymentMethod: p.paymentMethod,
+      notes: p.notes,
+      dueDate: p.dueDate,
+      paidAt: p.paidAt,
+      isMonthlyPayment: p.isMonthlyPayment,
+      createdAt: p.createdAt,
+      groupName: p.group?.name || null,
+      branchName: p.branch?.name || null,
+      membershipName: p.membership?.name || null,
+    })),
+  });
 });
 

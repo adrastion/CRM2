@@ -347,7 +347,7 @@ const Register: React.FC = () => {
 
         <Box sx={{ mt: 4, textAlign: 'center', maxWidth: 600 }}>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 'medium' }}>
-            Что вы получаете с ПрофСпортСРМ:
+            Что вы получаете с ПРОФСПОРТСРМ:
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>

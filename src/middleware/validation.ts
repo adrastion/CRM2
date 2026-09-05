@@ -105,6 +105,9 @@ export const clientSchemas = {
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
+    discipline: Joi.string().max(100).optional().allow('', null),
+    weightCategory: Joi.string().max(100).optional().allow('', null),
+    athleteStatus: Joi.string().valid('active', 'pause', 'injury', 'left').optional(),
     // Паспорт РФ
     passportSeries: Joi.string().pattern(/^\d{4}$/).optional().allow('', null),
     passportNumber: Joi.string().pattern(/^\d{6}$/).optional().allow('', null),
@@ -121,7 +124,9 @@ export const clientSchemas = {
         phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
         email: Joi.string().email().optional().allow('', null),
         workplace: Joi.string().max(200).optional().allow('', null),
-        workplaceContact: Joi.string().max(200).optional().allow('', null)
+        workplaceContact: Joi.string().max(200).optional().allow('', null),
+        relationType: Joi.string().valid('mother', 'father', 'guardian', 'other').optional().allow('', null),
+        isPrimaryContact: Joi.boolean().optional(),
       })
     ).optional()
   }),
@@ -144,6 +149,9 @@ export const clientSchemas = {
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
+    discipline: Joi.string().max(100).optional().allow('', null),
+    weightCategory: Joi.string().max(100).optional().allow('', null),
+    athleteStatus: Joi.string().valid('active', 'pause', 'injury', 'left').optional(),
     // Паспорт РФ
     passportSeries: Joi.string().pattern(/^\d{4}$/).optional().allow('', null),
     passportNumber: Joi.string().pattern(/^\d{6}$/).optional().allow('', null),
@@ -160,7 +168,9 @@ export const clientSchemas = {
         phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
         email: Joi.string().email().optional().allow('', null),
         workplace: Joi.string().max(200).optional().allow('', null),
-        workplaceContact: Joi.string().max(200).optional().allow('', null)
+        workplaceContact: Joi.string().max(200).optional().allow('', null),
+        relationType: Joi.string().valid('mother', 'father', 'guardian', 'other').optional().allow('', null),
+        isPrimaryContact: Joi.boolean().optional(),
       })
     ).optional(),
     isActive: Joi.boolean().optional()

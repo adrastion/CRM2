@@ -158,6 +158,12 @@ model Client {
   birthCertificate         String?
   medicalCertificate       String?
   weight                   Decimal?
+  /// Спортивная дисциплина (вид спорта)
+  discipline               String?
+  /// Весовая категория профиля
+  weightCategory           String?
+  /// Статус спортсмена: active | pause | injury | left
+  athleteStatus            String                   @default("active")
   membershipFeePaid        Boolean                  @default(false)
   membershipFeePaidAt      DateTime?
   membershipFeePaidBy      String?
@@ -203,6 +209,9 @@ model Parent {
   email            String?
   workplace        String?
   workplaceContact String?
+  /// mother | father | guardian | other
+  relationType     String?
+  isPrimaryContact Boolean  @default(false)
   clientId         String
   tenantId         String
   createdAt        DateTime @default(now())

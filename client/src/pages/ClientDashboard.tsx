@@ -5,6 +5,9 @@ import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { ClientDashboardData, ClientDashboardEvent } from '../types';
 import { clearAllAuthStorage, extractApiError, CLIENT_APPROVED_KEY } from '../utils/authSession';
+import AthleteCard from '../components/athlete/AthleteCard';
+import ClientCalendarPlan from '../components/client/ClientCalendarPlan';
+import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
@@ -16,17 +19,12 @@ import DesignIcon from '../components/common/DesignIcon';
 import { NavIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
 
-/** Пункты меню личного кабинета клиента (по макету). */
+/** Пункты меню личного кабинета клиента. */
 const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
   { key: 'dashboard', label: 'Панель управления', iconName: 'dashboard' },
   { key: 'card', label: 'Карточка спортсмена', iconName: 'clients' },
-  { key: 'standards', label: 'Нормативы', iconName: 'standards' },
-  { key: 'staff', label: 'Персонал', iconName: 'staff' },
-  { key: 'groups', label: 'Группы', iconName: 'groups' },
   { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
   { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
-  { key: 'faq', label: 'FAQ', iconName: 'faq' },
-  { key: 'knowledge', label: 'База знаний для клиентов', iconName: 'knowledge-base' },
 ];
 
 const RUB = new Intl.NumberFormat('ru-RU', {
@@ -69,6 +67,7 @@ const ClientDashboard: React.FC = () => {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
   const [switchClientId, setSwitchClientId] = React.useState<string | undefined>();
+  const [activeKey, setActiveKey] = React.useState('dashboard');
 
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
@@ -177,8 +176,8 @@ const ClientDashboard: React.FC = () => {
     disabled: pending,
     onClick: pending
       ? undefined
-      : item.key === 'faq'
-        ? () => navigate('/faq')
+      : ['dashboard', 'card', 'plan', 'payments'].includes(item.key)
+        ? () => setActiveKey(item.key)
         : undefined,
   }));
 
@@ -310,12 +309,37 @@ const ClientDashboard: React.FC = () => {
     </Box>
   );
 
+  const pageTitle =
+    activeKey === 'card'
+      ? 'Карточка спортсмена'
+      : activeKey === 'plan'
+        ? 'Календарный план'
+        : activeKey === 'payments'
+          ? 'Платежи'
+          : 'Панель управления';
+
+  const cardContent = (
+    <AthleteCard mode="client" clientId={currentAthleteId || undefined} />
+  );
+
+  const planContent = <ClientCalendarPlan clientId={currentAthleteId || undefined} />;
+  const paymentsContent = <ClientPaymentsPanel clientId={currentAthleteId || undefined} />;
+
+  const mainContent =
+    activeKey === 'card'
+      ? cardContent
+      : activeKey === 'plan'
+        ? planContent
+        : activeKey === 'payments'
+          ? paymentsContent
+          : content;
+
   return (
     <DashboardShell
-      pageTitle="Панель управления"
+      pageTitle={pageTitle}
       pageAction={athleteSwitcher}
       navItems={navItems}
-      activeKey="dashboard"
+      activeKey={activeKey}
       userName={data.viewerName}
       userRole={data.userType === 'parent' ? 'Родитель' : 'Ученик'}
       onLogout={handleLogout}
@@ -330,7 +354,7 @@ const ClientDashboard: React.FC = () => {
               filter: 'grayscale(0.35)',
             }}
           >
-            {content}
+            {mainContent}
           </Box>
 
           <Box
@@ -348,36 +372,17 @@ const ClientDashboard: React.FC = () => {
               pointerEvents: 'auto',
             }}
           >
-            <HourglassEmpty sx={{ fontSize: 48, color: colors.text, mb: 2 }} />
-            <Box
-              sx={{
-                maxWidth: 720,
-                bgcolor: colors.textMuted,
-                color: colors.white,
-                borderRadius: `${radii.card}px`,
-                px: { xs: 2.5, md: 4 },
-                py: { xs: 2, md: 2.5 },
-                textAlign: 'center',
-              }}
-            >
-              <Typography
-                sx={{
-                  fontSize: typography.sectionTitle,
-                  fontWeight: 600,
-                  lineHeight: 1.25,
-                }}
-              >
-                Ожидайте подтверждения от администратора организации
-              </Typography>
-              <Typography sx={{ mt: 2, fontSize: typography.label, opacity: 0.85 }}>
-                Как только школа подтвердит ваш аккаунт, здесь появятся баланс, посещаемость,
-                расписание и контакты тренеров.
-              </Typography>
-            </Box>
+            <HourglassEmpty sx={{ fontSize: 48, color: colors.primary, mb: 1 }} />
+            <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, textAlign: 'center' }}>
+              Аккаунт ожидает подтверждения школой
+            </Typography>
+            <Typography sx={{ fontSize: typography.label, color: colors.textMuted, textAlign: 'center', mt: 1, maxWidth: 420 }}>
+              После одобрения администратором откроется полный доступ к карточке и расписанию.
+            </Typography>
           </Box>
         </Box>
       ) : (
-        content
+        mainContent
       )}
     </DashboardShell>
   );

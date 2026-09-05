@@ -488,10 +488,10 @@ const Dashboard: React.FC = () => {
             />
           ) : (
             <QuickAction
-              title="Нормативы"
-              description="Внести результаты учеников"
-              iconName="standards"
-              onClick={() => navigate('/standards')}
+              title="Клиенты"
+              description="Открыть список и карточку спортсмена"
+              iconName="add-client"
+              onClick={() => navigate('/clients')}
             />
           )}
         </Box>

@@ -1746,6 +1746,38 @@ class ApiService {
     return response.data.data;
   }
 
+  /** Карточка спортсмена в ЛК (только свой / linked athlete). */
+  async getAthleteCard(clientId?: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/client-auth/athlete-card', {
+      params: clientId ? { clientId } : undefined,
+    });
+    return response.data.data;
+  }
+
+  /** Календарь ЛК: свои тренировки + соревнования, где клиент участник. */
+  async getClientCalendarPlan(params?: {
+    clientId?: string;
+    from?: string;
+    to?: string;
+  }): Promise<{
+    clientId: string;
+    from: string;
+    to: string;
+    trainings: any[];
+    competitions: any[];
+  }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/calendar-plan', { params });
+    return response.data.data!;
+  }
+
+  /** Платежи ЛК: только выставленные выбранному спортсмену. */
+  async getClientPayments(clientId?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/client-auth/payments', {
+      params: clientId ? { clientId } : undefined,
+    });
+    return (response.data.data as any[]) || [];
+  }
+
   /** Данные для панели управления клиента/родителя (учитывает подтверждение школой). */
   async getClientDashboard(clientId?: string): Promise<ClientDashboardData> {
     const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard', {

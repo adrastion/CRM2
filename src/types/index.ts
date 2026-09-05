@@ -53,6 +53,8 @@ export interface CreateParentData {
   email?: string;
   workplace?: string;
   workplaceContact?: string;
+  relationType?: 'mother' | 'father' | 'guardian' | 'other' | string | null;
+  isPrimaryContact?: boolean;
 }
 
 export interface CreateClientData {
@@ -67,6 +69,10 @@ export interface CreateClientData {
   birthCertificateNumber?: string;
   medicalCertificateNumber?: string;
   schoolOrKindergarten?: string;
+  weight?: number | null;
+  discipline?: string | null;
+  weightCategory?: string | null;
+  athleteStatus?: 'active' | 'pause' | 'injury' | 'left' | string;
   // Паспорт РФ
   passportSeries?: string | null;
   passportNumber?: string | null;
