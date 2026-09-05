@@ -4,6 +4,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { User } from '@prisma/client';
 import { JWTPayload, CreateClientData } from '../types';
 import { emailService } from './emailService';
+import { HttpError } from '../utils/httpError';
 
 export class AuthService {
   /**
@@ -836,11 +837,24 @@ export class AuthService {
 
     // Handle role change
     if (data.role && data.role !== currentUser.role) {
+      if (data.role !== 'ADMIN' && data.role !== 'TRAINER') {
+        throw new HttpError(400, 'Роль может быть только ADMIN или TRAINER');
+      }
+
       updateData.role = data.role;
 
       // If changing from TRAINER to ADMIN, delete trainer record
       if (currentUser.role === 'TRAINER' && data.role === 'ADMIN') {
         if (currentUser.trainer) {
+          const groupCount = await prisma.group.count({
+            where: { trainerId: currentUser.trainer.id }
+          });
+          if (groupCount > 0) {
+            throw new HttpError(
+              400,
+              'Сначала переназначьте группы другому тренеру, затем смените роль на администратора'
+            );
+          }
           await prisma.trainer.delete({
             where: { id: currentUser.trainer.id }
           });
@@ -850,16 +864,18 @@ export class AuthService {
       // If changing from ADMIN to TRAINER, create trainer record
       if (currentUser.role === 'ADMIN' && data.role === 'TRAINER') {
         const tenantId = data.tenantId || currentUser.tenantId;
-        await prisma.trainer.create({
-          data: {
-            userId: userId,
-            tenantId: tenantId,
-            salaryType: 'fixed',
-            salaryAmount: 0,
-            salaryScheme: 'fixed_monthly',
-            salaryRate: 0,
-          }
-        });
+        if (!currentUser.trainer) {
+          await prisma.trainer.create({
+            data: {
+              userId: userId,
+              tenantId: tenantId,
+              salaryType: 'fixed',
+              salaryAmount: 0,
+              salaryScheme: 'fixed_monthly',
+              salaryRate: 0,
+            }
+          });
+        }
       }
     }
 

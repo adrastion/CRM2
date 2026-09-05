@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, IconButton, InputBase, Typography, Menu, MenuItem, ListItemIcon } from '@mui/material';
-import { KeyboardArrowDown, Logout, MenuOutlined, NotificationsNone } from '@mui/icons-material';
+import { KeyboardArrowDown, Logout, MenuOutlined, NotificationsNone, Search as SearchIcon, Close } from '@mui/icons-material';
 import { colors, radii, sizes, typography } from '../../theme/tokens';
 import DesignIcon from '../common/DesignIcon';
 import { NavIconName } from '../../assets/icons/registry';
@@ -82,7 +82,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false);
   const searchWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const mobileSearchRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -135,6 +137,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             onClick={() => {
               onSearchResultClick?.(item);
               setSearchOpen(false);
+              setMobileSearchOpen(false);
             }}
             sx={{
               display: 'block',
@@ -298,7 +301,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             position: 'relative',
             justifySelf: 'center',
             width: '100%',
-            maxWidth: { xs: 220, sm: 420, md: 540 },
+            maxWidth: { xs: '100%', sm: 420, md: 540 },
             display: { xs: 'none', sm: 'block' },
           }}
         >
@@ -376,11 +379,24 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: 1,
+            gap: 0.5,
             justifySelf: 'end',
             flexShrink: 0,
           }}
         >
+          <IconButton
+            aria-label="Поиск"
+            size="small"
+            disabled={searchDisabled}
+            onClick={() => {
+              setMobileSearchOpen(true);
+              setSearchOpen(true);
+            }}
+            sx={{ display: { xs: 'inline-flex', sm: 'none' }, color: colors.textMuted }}
+          >
+            <SearchIcon sx={{ fontSize: 22 }} />
+          </IconButton>
+
           <Box sx={{ position: 'relative' }}>
             <IconButton aria-label="Уведомления" size="small" sx={{ color: colors.textMuted }}>
               <NotificationsNone sx={{ fontSize: 22 }} />
@@ -486,6 +502,95 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         </Box>
       </Box>
 
+      {mobileSearchOpen && (
+        <Box
+          ref={mobileSearchRef}
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            position: 'sticky',
+            top: 56,
+            zIndex: 28,
+            bgcolor: colors.card,
+            borderBottom: `1px solid ${colors.surface}`,
+            px: 2,
+            py: 1.5,
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              height: 40,
+              px: 1.5,
+              borderRadius: `${radii.pill}px`,
+              bgcolor: colors.surface,
+              border: `1px solid ${colors.borderDisabled}`,
+            }}
+          >
+            <DesignIcon category="ui" name="search" size={18} />
+            <InputBase
+              autoFocus
+              placeholder="Поиск клиентов, сотрудников, групп"
+              value={searchValue}
+              disabled={searchDisabled}
+              onChange={(e) => {
+                onSearchChange?.(e.target.value);
+                setSearchOpen(true);
+              }}
+              inputProps={{ 'aria-label': 'Глобальный поиск' }}
+              sx={{
+                flex: 1,
+                fontSize: typography.label,
+                color: colors.text,
+                '& input::placeholder': { color: colors.textHint, opacity: 1 },
+              }}
+            />
+            <IconButton
+              size="small"
+              aria-label="Закрыть поиск"
+              onClick={() => {
+                setMobileSearchOpen(false);
+                setSearchOpen(false);
+              }}
+            >
+              <Close fontSize="small" />
+            </IconButton>
+          </Box>
+          {showSearchDropdown && (
+            <Box
+              sx={{
+                mt: 1,
+                bgcolor: colors.card,
+                borderRadius: `${radii.panel}px`,
+                border: `1px solid ${colors.divider}`,
+                maxHeight: 320,
+                overflowY: 'auto',
+                py: 0.5,
+              }}
+            >
+              {searchLoading && (
+                <Typography sx={{ px: 1.5, py: 1.5, fontSize: 13, color: colors.textHint }}>
+                  Поиск…
+                </Typography>
+              )}
+              {!searchLoading && searchResults && !hasSearchHits && (
+                <Typography sx={{ px: 1.5, py: 1.5, fontSize: 13, color: colors.textHint }}>
+                  Ничего не найдено
+                </Typography>
+              )}
+              {!searchLoading && searchResults && (
+                <>
+                  {renderSearchSection('Клиенты', searchResults.clients)}
+                  {renderSearchSection('Сотрудники', searchResults.trainers)}
+                  {renderSearchSection('Группы', searchResults.groups)}
+                </>
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
+
       {/* Меню + контент */}
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Box
@@ -541,7 +646,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               <Typography
                 component="h1"
                 sx={{
-                  fontSize: typography.pageTitle,
+                  fontSize: { xs: 20, md: typography.pageTitle },
                   fontWeight: 700,
                   color: colors.text,
                   lineHeight: 1.2,
@@ -550,7 +655,11 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                 {pageTitle}
               </Typography>
             )}
-            {pageAction}
+            {pageAction && (
+              <Box sx={{ width: { xs: '100%', sm: 'auto' }, '& > *': { width: { xs: '100%', sm: 'auto' } } }}>
+                {pageAction}
+              </Box>
+            )}
           </Box>
 
           <Box sx={{ flex: 1 }}>{children}</Box>

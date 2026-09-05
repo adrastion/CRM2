@@ -26,12 +26,19 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  useMediaQuery,
+  useTheme,
+  Divider,
+  Stack,
 } from '@mui/material';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Membership } from '../types';
 
 const Memberships: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,14 +196,23 @@ const Memberships: React.FC = () => {
 
   return (
     <Box data-onboarding="memberships-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
           Тарифы (Абонементы)
         </Typography>
         <Button
           variant="contained"
           startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
+          sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => setOpenDialog(true)}
           data-onboarding="add-membership-button"
         >
@@ -210,6 +226,86 @@ const Memberships: React.FC = () => {
         </Alert>
       )}
 
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {memberships.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+              Тарифы не найдены
+            </Typography>
+          ) : (
+            memberships.map((membership) => (
+              <Card key={membership.id} variant="outlined">
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 600 }}>
+                        {membership.name}
+                      </Typography>
+                      {membership.description && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                        >
+                          {membership.description}
+                        </Typography>
+                      )}
+                    </Box>
+                    <Chip
+                      label={membership.isActive ? 'Активен' : 'Неактивен'}
+                      color={membership.isActive ? 'success' : 'default'}
+                      size="small"
+                    />
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+                    <Chip
+                      label={membership.type === 'monthly' ? 'Месячный' : 'На посещения'}
+                      color={membership.type === 'monthly' ? 'primary' : 'secondary'}
+                      size="small"
+                    />
+                    <Chip
+                      label={membership.price.toLocaleString('ru-RU', {
+                        style: 'currency',
+                        currency: 'RUB',
+                      })}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={
+                        membership.type === 'monthly'
+                          ? `${membership.duration} дней`
+                          : `${membership.visits} посещений`
+                      }
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Box>
+                  <Divider sx={{ mb: 1 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      title="Редактировать"
+                      onClick={() => handleEditMembership(membership)}
+                    >
+                      <Edit />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title="Удалить"
+                      onClick={() => handleDeleteMembership(membership.id)}
+                    >
+                      <Delete />
+                    </IconButton>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </Stack>
+      ) : (
       <Card>
         <CardContent>
           <TableContainer component={Paper}>
@@ -292,9 +388,10 @@ const Memberships: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+      )}
 
       {/* Диалог создания тарифа */}
-      <Dialog open={openDialog} onClose={() => { setOpenDialog(false); resetForm(); }} maxWidth="sm" fullWidth>
+      <Dialog open={openDialog} onClose={() => { setOpenDialog(false); resetForm(); }} maxWidth="sm" fullWidth fullScreen={isNarrow}>
         <DialogTitle>Создать тариф</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -387,7 +484,7 @@ const Memberships: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования тарифа */}
-      <Dialog open={editDialog} onClose={() => { setEditDialog(false); resetForm(); }} maxWidth="sm" fullWidth>
+      <Dialog open={editDialog} onClose={() => { setEditDialog(false); resetForm(); }} maxWidth="sm" fullWidth fullScreen={isNarrow}>
         <DialogTitle>Редактировать тариф</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>

@@ -31,6 +31,9 @@ import {
   Snackbar,
   Divider,
   FormControlLabel,
+  useMediaQuery,
+  useTheme,
+  Stack,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import { Add, Edit, Delete, People, CalendarToday } from '@mui/icons-material';
@@ -46,6 +49,9 @@ import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../u
 
 const Groups: React.FC = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const [groups, setGroups] = useState<Group[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -1008,14 +1014,23 @@ const Groups: React.FC = () => {
 
   return (
     <Box data-onboarding="groups-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
           Группы
         </Typography>
         <Button
           variant="contained"
           startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
+          sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => {
             setOpenDialog(true);
             setFormErrors({});
@@ -1055,6 +1070,111 @@ const Groups: React.FC = () => {
         </Alert>
       )}
 
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {groups.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+              Группы не найдены
+            </Typography>
+          ) : (
+            groups.map((group) => {
+              const trainerName = group.trainer?.user
+                ? `${group.trainer.user.lastName} ${group.trainer.user.firstName} ${group.trainer.user.middleName || ''}`.trim()
+                : null;
+              const ageLabel = group.ageMin && group.ageMax
+                ? `${group.ageMin}-${group.ageMax}`
+                : group.ageMin
+                ? `от ${group.ageMin}`
+                : group.ageMax
+                ? `до ${group.ageMax}`
+                : null;
+              const memberCount = group.memberships?.filter(m => m.isActive).length || 0;
+              return (
+                <Card key={group.id} variant="outlined">
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            color: 'primary.main',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                          onClick={() => handleEditGroup(group)}
+                        >
+                          {group.name}
+                        </Typography>
+                        {group.description && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                          >
+                            {group.description}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        label={group.isActive ? 'Активна' : 'Неактивна'}
+                        color={group.isActive ? 'success' : 'default'}
+                        size="small"
+                      />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {[group.branch?.name, trainerName].filter(Boolean).join(' · ') || 'Филиал/тренер не указаны'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+                      <Chip label={`Участников: ${memberCount}`} size="small" variant="outlined" />
+                      {group.maxMembers != null && (
+                        <Chip label={`Макс: ${group.maxMembers}`} size="small" variant="outlined" />
+                      )}
+                      {ageLabel && (
+                        <Chip label={`Возраст: ${ageLabel}`} size="small" variant="outlined" />
+                      )}
+                    </Box>
+                    <Divider sx={{ mb: 1 }} />
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        title="Создать тренировку для группы"
+                        onClick={() => handleOpenTrainingDialog(group)}
+                      >
+                        <CalendarToday />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        title="Управление участниками"
+                        onClick={() => handleOpenMembersDialog(group)}
+                      >
+                        <People />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        title="Редактировать"
+                        onClick={() => handleEditGroup(group)}
+                      >
+                        <Edit />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        title="Удалить"
+                        onClick={() => handleDeleteGroup(group.id)}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Box>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </Stack>
+      ) : (
       <Card>
         <CardContent>
           <TableContainer component={Paper}>
@@ -1209,6 +1329,7 @@ const Groups: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+      )}
 
       {/* Диалог добавления группы */}
       <Dialog 
@@ -1231,6 +1352,7 @@ const Groups: React.FC = () => {
         }} 
         maxWidth="md" 
         fullWidth 
+        fullScreen={isNarrow}
         data-onboarding="group-form-dialog"
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
@@ -1715,6 +1837,7 @@ const Groups: React.FC = () => {
         }} 
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
         <DialogTitle>Редактировать группу</DialogTitle>
@@ -2089,7 +2212,7 @@ const Groups: React.FC = () => {
         setMembersDialog(false);
         setSelectedClientId('');
         setSelectedClientIds([]);
-      }} maxWidth="md" fullWidth>
+      }} maxWidth="md" fullWidth fullScreen={isNarrow}>
         <DialogTitle>
           Участники группы: {selectedGroup?.name}
           {selectedGroup?.maxMembers && (
@@ -2295,6 +2418,7 @@ const Groups: React.FC = () => {
         }} 
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>Создать тренировку для группы</DialogTitle>
         <DialogContent>
@@ -2696,6 +2820,7 @@ const Groups: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>Создать нового тренера</DialogTitle>
         <DialogContent>
@@ -2870,6 +2995,7 @@ const Groups: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>Создать новый филиал</DialogTitle>
         <DialogContent>

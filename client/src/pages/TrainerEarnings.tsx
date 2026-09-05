@@ -92,17 +92,30 @@ const TrainerEarnings: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1.5,
+            mb: 3,
+          }}
+        >
+          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
             Мой заработок
           </Typography>
-          <Button variant="contained" onClick={() => setShowReport((v) => !v)}>
+          <Button
+            variant="contained"
+            onClick={() => setShowReport((v) => !v)}
+            sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
+          >
             {showReport ? 'Скрыть отчёт' : 'Отчёт'}
           </Button>
         </Box>
 
         <Card sx={{ mb: 3 }}>
-          <CardContent>
+          <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={4}>
                 <DatePicker
@@ -129,6 +142,7 @@ const TrainerEarnings: React.FC = () => {
                     setStartDate(new Date(now.getFullYear(), now.getMonth(), 1));
                     setEndDate(now);
                   }}
+                  sx={{ textTransform: 'none' }}
                 >
                   Текущий месяц
                 </Button>
@@ -139,14 +153,14 @@ const TrainerEarnings: React.FC = () => {
 
         {earnings && (
           <>
-            <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={4}>
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
                       Записей начислений
                     </Typography>
-                    <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 'bold', fontSize: { xs: 24, md: 34 } }}>
                       {earnings.entryCount ?? reportRows.length}
                     </Typography>
                   </CardContent>
@@ -158,7 +172,7 @@ const TrainerEarnings: React.FC = () => {
                     <Typography color="text.secondary" gutterBottom>
                       Общий заработок
                     </Typography>
-                    <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'success.main', fontSize: { xs: 22, md: 34 } }}>
                       {earnings.totalEarnings?.toLocaleString('ru-RU', {
                         style: 'currency',
                         currency: 'RUB',
@@ -193,12 +207,16 @@ const TrainerEarnings: React.FC = () => {
 
             <Collapse in={showReport}>
               <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                <CardContent sx={{ px: { xs: 1.5, sm: 2 } }}>
+                  <Typography variant="h6" gutterBottom sx={{ mb: 2, fontSize: { xs: 16, md: 20 } }}>
                     Отчёт по начислениям
                   </Typography>
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table>
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+                  >
+                    <Table sx={{ minWidth: 560 }}>
                       <TableHead>
                         <TableRow>
                           <TableCell>Название</TableCell>
@@ -211,19 +229,23 @@ const TrainerEarnings: React.FC = () => {
                         {reportRows.length > 0 ? (
                           reportRows.map((row: any, index: number) => (
                             <TableRow key={row.id || index}>
-                              <TableCell>{row.title || row.trainingTitle || row.personName}</TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                              <TableCell sx={{ maxWidth: 200, overflowWrap: 'anywhere' }}>
+                                {row.title || row.trainingTitle || row.personName}
+                              </TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                                 {Number(row.amount ?? row.earnings).toLocaleString('ru-RU', {
                                   style: 'currency',
                                   currency: 'RUB',
                                 })}
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 {format(new Date(row.occurredAt || row.trainingDate), 'dd.MM.yyyy', {
                                   locale: ru,
                                 })}
                               </TableCell>
-                              <TableCell>{row.comment || '-'}</TableCell>
+                              <TableCell sx={{ maxWidth: 180, overflowWrap: 'anywhere' }}>
+                                {row.comment || '-'}
+                              </TableCell>
                             </TableRow>
                           ))
                         ) : (

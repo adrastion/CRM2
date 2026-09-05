@@ -23,12 +23,19 @@ import {
   DialogActions,
   TextField,
   Grid,
+  useMediaQuery,
+  useTheme,
+  Divider,
+  Stack,
 } from '@mui/material';
 import { Add, Edit, Delete, MeetingRoom } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Branch, Hall } from '../types';
 
 const Branches: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -315,14 +322,23 @@ const Branches: React.FC = () => {
 
   return (
     <Box data-onboarding="branches-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
           Филиалы
         </Typography>
         <Button
           variant="contained"
           startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
+          sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => {
             setOpenDialog(true);
             setFormErrors({});
@@ -340,6 +356,78 @@ const Branches: React.FC = () => {
         </Alert>
       )}
 
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {branches.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+              Филиалы не найдены
+            </Typography>
+          ) : (
+            branches.map((branch) => (
+              <Card key={branch.id} variant="outlined">
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 600 }}>
+                        {branch.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {branch.address}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={branch.isActive ? 'Активен' : 'Неактивен'}
+                      color={branch.isActive ? 'success' : 'default'}
+                      size="small"
+                    />
+                  </Box>
+                  {(branch.phone || branch.email) && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1, wordBreak: 'break-all' }}>
+                      {[branch.phone, branch.email].filter(Boolean).join(' · ')}
+                    </Typography>
+                  )}
+                  {branch.description && (
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mb: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                    >
+                      {branch.description}
+                    </Typography>
+                  )}
+                  <Divider sx={{ mb: 1 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      title="Залы"
+                      onClick={() => handleOpenHallsDialog(branch)}
+                    >
+                      <MeetingRoom />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      title="Редактировать"
+                      onClick={() => handleEditBranch(branch)}
+                    >
+                      <Edit />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title="Удалить"
+                      onClick={() => handleDeleteBranch(branch.id)}
+                    >
+                      <Delete />
+                    </IconButton>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </Stack>
+      ) : (
       <Card>
         <CardContent>
           <TableContainer component={Paper}>
@@ -419,6 +507,7 @@ const Branches: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+      )}
 
       {/* Диалог добавления филиала */}
       <Dialog 
@@ -434,6 +523,7 @@ const Branches: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
         data-onboarding="branch-form-dialog"
       >
         <DialogTitle>Добавить новый филиал</DialogTitle>
@@ -541,6 +631,7 @@ const Branches: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>Редактировать филиал</DialogTitle>
         <DialogContent>
@@ -645,6 +736,7 @@ const Branches: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>
           Залы филиала: {selectedBranch?.name}
@@ -750,6 +842,7 @@ const Branches: React.FC = () => {
         }}
         maxWidth="sm" 
         fullWidth
+        fullScreen={isNarrow}
       >
         <DialogTitle>
           {editingHall ? 'Редактировать зал' : 'Добавить зал'}

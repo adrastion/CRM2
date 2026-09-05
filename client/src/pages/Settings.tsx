@@ -480,8 +480,17 @@ const Settings: React.FC = () => {
 
   return (
     <Box data-onboarding="settings-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 1.5,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
           Настройки
         </Typography>
       </Box>
@@ -499,12 +508,21 @@ const Settings: React.FC = () => {
       )}
 
       <Card>
-        <CardContent>
-          <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} sx={{ mb: 3 }}>
-            <Tab label="Расписание" />
-            <Tab label="Аккаунт" />
-            {user?.role === 'TRAINER' && <Tab label="Уведомления" />}
-            <Tab label="Интерфейс" />
+        <CardContent sx={{ px: { xs: 1.5, sm: 2, md: 3 }, py: { xs: 2, md: 3 } }}>
+          <Tabs
+            value={tabValue}
+            onChange={(e, newValue) => setTabValue(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{ mb: 3 }}
+          >
+            <Tab label="Расписание" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
+            <Tab label="Аккаунт" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
+            {user?.role === 'TRAINER' && (
+              <Tab label="Уведомления" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
+            )}
+            <Tab label="Интерфейс" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
           </Tabs>
 
           {/* Настройки расписания */}
@@ -515,7 +533,7 @@ const Settings: React.FC = () => {
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
-              <Paper sx={{ p: 3 }}>
+              <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                 <Typography variant="subtitle1" gutterBottom fontWeight="medium">
                   Длительность тренировки по умолчанию
                 </Typography>
@@ -647,12 +665,13 @@ const Settings: React.FC = () => {
                     </Paper>
                   </Box>
                 )}
-                <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 3 }}>
                   <Button
                     variant="contained"
                     startIcon={<Save />}
                       onClick={handleSaveSettings}
                     disabled={saving}
+                    sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                   >
                     {saving ? 'Сохранение...' : 'Сохранить настройки'}
                   </Button>
@@ -671,20 +690,20 @@ const Settings: React.FC = () => {
             <Grid container spacing={3}>
               {/* Смена email */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 3 }}>
+                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <Email sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" fontWeight="medium">
                       Смена email
                     </Typography>
                   </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2, overflowWrap: 'anywhere' }}>
                     Текущий email: <strong>{user?.email}</strong>
                   </Typography>
                   <Button
                     variant="outlined"
                     onClick={() => setEmailDialogOpen(true)}
-                    sx={{ mt: 2 }}
+                    sx={{ mt: 2, width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                   >
                     Изменить email
                   </Button>
@@ -693,7 +712,7 @@ const Settings: React.FC = () => {
 
               {/* Смена пароля */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 3 }}>
+                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <Lock sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" fontWeight="medium">
@@ -764,7 +783,7 @@ const Settings: React.FC = () => {
                     variant="contained"
                     onClick={handleChangePassword}
                     disabled={saving || !currentPassword || !newPassword || !confirmPassword}
-                    sx={{ mt: 1 }}
+                    sx={{ mt: 1, width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                   >
                     {saving ? 'Сохранение...' : 'Изменить пароль'}
                   </Button>
@@ -786,9 +805,18 @@ const Settings: React.FC = () => {
 
                 {/* Подписка на push уведомления - показываем только если нужно */}
                 {showPushBanner && (
-                  <Paper sx={{ p: 3, mb: 3, backgroundColor: pushSubscribed ? 'warning.light' : 'info.light' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                      <Box>
+                  <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3, backgroundColor: pushSubscribed ? 'warning.light' : 'info.light' }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'stretch', sm: 'center' },
+                        justifyContent: 'space-between',
+                        gap: 2,
+                        mb: 2,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
                         <Typography variant="subtitle1" fontWeight="medium">
                           Push уведомления на устройство
                         </Typography>
@@ -805,6 +833,7 @@ const Settings: React.FC = () => {
                         color={pushSubscribed ? "error" : "primary"}
                         onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
                         disabled={subscribing || checkNotificationPermission() === 'denied'}
+                        sx={{ width: { xs: '100%', sm: 'auto' }, flexShrink: 0, textTransform: 'none' }}
                       >
                         {subscribing ? 'Обработка...' : pushSubscribed ? 'Отписаться' : 'Подписаться'}
                       </Button>
@@ -814,7 +843,7 @@ const Settings: React.FC = () => {
 
                 <Grid container spacing={3}>
                   <Grid item xs={12}>
-                    <Paper sx={{ p: 3 }}>
+                    <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                         <Notifications sx={{ mr: 1, color: 'primary.main' }} />
                         <Typography variant="subtitle1" fontWeight="medium">
@@ -903,7 +932,7 @@ const Settings: React.FC = () => {
                   </Grid>
 
                   <Grid item xs={12}>
-                    <Paper sx={{ p: 3 }}>
+                    <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                         <Notifications sx={{ mr: 1, color: 'primary.main' }} />
                         <Typography variant="subtitle1" fontWeight="medium">
@@ -948,12 +977,13 @@ const Settings: React.FC = () => {
                   </Grid>
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
                       <Button
                         variant="contained"
                         startIcon={<Save />}
                         onClick={handleSaveNotificationSettings}
                         disabled={saving || loadingNotifications}
+                        sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                       >
                         {saving ? 'Сохранение...' : 'Сохранить настройки уведомлений'}
                       </Button>
@@ -973,7 +1003,7 @@ const Settings: React.FC = () => {
             <Grid container spacing={3}>
               {/* Настройка вкладок */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 3 }}>
+                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <ViewList sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" fontWeight="medium">
@@ -1005,7 +1035,7 @@ const Settings: React.FC = () => {
               {/* Повторное прохождение обучения */}
               {user?.role === 'OWNER' && (
                 <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 3 }}>
+                  <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <School sx={{ mr: 1, color: 'primary.main' }} />
                       <Typography variant="subtitle1" fontWeight="medium">
@@ -1021,6 +1051,7 @@ const Settings: React.FC = () => {
                       onClick={handleRestartOnboarding}
                       disabled={restartingOnboarding}
                       fullWidth
+                      sx={{ textTransform: 'none' }}
                     >
                       {restartingOnboarding ? 'Запуск обучения...' : 'Повторить обучение'}
                     </Button>

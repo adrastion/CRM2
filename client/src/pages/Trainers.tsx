@@ -28,6 +28,10 @@ import {
   Select,
   MenuItem,
   Snackbar,
+  useMediaQuery,
+  useTheme,
+  Divider,
+  Stack,
 } from '@mui/material';
 import { Add, Edit, Delete, Business, AttachMoney, Person, AdminPanelSettings } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -46,8 +50,32 @@ import {
   salarySchemeHint,
 } from '../utils/salarySchemes';
 
+const isEmployeeAdmin = (employee: any): boolean =>
+  employee?.employeeType === 'admin' ||
+  employee?.user?.role === 'ADMIN' ||
+  employee?.role === 'ADMIN';
+
+const emptyFormData = {
+  email: '',
+  password: '',
+  firstName: '',
+  lastName: '',
+  middleName: '',
+  phone: '',
+  role: 'TRAINER',
+  qualification: '',
+  experience: '',
+  specialization: '',
+  salaryScheme: 'per_training_person',
+  salaryRate: '',
+  canViewAllGroups: false,
+};
+
 const Trainers: React.FC = () => {
   const { user } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const isOwner = user?.role === 'OWNER';
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -56,6 +84,8 @@ const Trainers: React.FC = () => {
   const [roleSelectionDialog, setRoleSelectionDialog] = useState(false); // Диалог выбора роли
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
+  const [roleConfirmDialog, setRoleConfirmDialog] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState<string | null>(null);
   const [branchesDialog, setBranchesDialog] = useState(false);
   const [earningsDialog, setEarningsDialog] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
@@ -68,21 +98,7 @@ const Trainers: React.FC = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    firstName: '',
-    lastName: '',
-    middleName: '',
-    phone: '',
-    role: 'TRAINER', // 'TRAINER' или 'ADMIN'
-    qualification: '',
-    experience: '',
-    specialization: '',
-    salaryScheme: 'per_training_person',
-    salaryRate: '',
-    canViewAllGroups: false,
-  });
+  const [formData, setFormData] = useState({ ...emptyFormData });
 
   useEffect(() => {
     let isMounted = true;
@@ -248,12 +264,12 @@ const Trainers: React.FC = () => {
     setError('');
     setFormData({
       email: trainer.user?.email || '',
-      password: '', // Не показываем пароль при редактировании
+      password: '',
       firstName: trainer.user?.firstName || '',
       lastName: trainer.user?.lastName || '',
       middleName: trainer.user?.middleName || '',
       phone: trainer.user?.phone || '',
-      role: trainer.user?.role || 'TRAINER', // Сохраняем текущую роль
+      role: trainer.user?.role || 'TRAINER',
       qualification: trainer.qualification || '',
       experience: trainer.experience?.toString() || '',
       specialization: trainer.specialization || '',
@@ -268,48 +284,95 @@ const Trainers: React.FC = () => {
     setEditingTrainer(admin);
     setFormErrors({});
     setError('');
-    const user = admin.user || admin;
+    const adminUser = admin.user || admin;
     setFormData({
-      email: user.email || '',
-      password: '',
-      firstName: user.firstName || '',
-      lastName: user.lastName || '',
-      middleName: user.middleName || '',
-      phone: user.phone || '',
-      role: user.role || 'ADMIN', // Сохраняем текущую роль
-      qualification: '',
-      experience: '',
-      specialization: '',
-      salaryScheme: 'per_training_person',
-      salaryRate: '',
-      canViewAllGroups: false,
+      ...emptyFormData,
+      email: adminUser.email || '',
+      firstName: adminUser.firstName || '',
+      lastName: adminUser.lastName || '',
+      middleName: adminUser.middleName || '',
+      phone: adminUser.phone || '',
+      role: adminUser.role || 'ADMIN',
     });
     setEditDialog(true);
   };
 
-  const handleUpdateTrainer = async () => {
+  const openEmployeeEdit = (employee: any) => {
+    if (isEmployeeAdmin(employee)) {
+      handleEditAdmin(employee);
+    } else {
+      handleEditTrainer(employee);
+    }
+  };
+
+  const getCurrentEmployeeRole = (): string => {
+    if (!editingTrainer) return formData.role;
+    return (
+      (editingTrainer as any).user?.role ||
+      (editingTrainer as any).role ||
+      ((editingTrainer as any).employeeType === 'admin' ? 'ADMIN' : 'TRAINER')
+    );
+  };
+
+  const resetEditForm = () => {
+    setEditDialog(false);
+    setFormErrors({});
+    setError('');
+    setEditingTrainer(null);
+    setFormData({ ...emptyFormData });
+    setRoleConfirmDialog(false);
+    setPendingRoleChange(null);
+  };
+
+  const performSaveEmployee = async () => {
     if (!editingTrainer) return;
-    
+
     const userId = (editingTrainer as any).user?.id || (editingTrainer as any).id;
-    const currentRole = (editingTrainer as any).user?.role || (editingTrainer as any).role || 'TRAINER';
-    const isEditingAdmin = currentRole === 'ADMIN' || (editingTrainer as any).employeeType === 'admin' || !(editingTrainer as any).qualification;
-    
-    // Если редактируем администратора
-    if (isEditingAdmin) {
-      const adminErrors: Record<string, string> = {};
-      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
-      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
-      if (!formData.email) adminErrors.email = 'Email обязателен';
-      
-      setFormErrors(adminErrors);
-      if (Object.keys(adminErrors).length > 0) {
-        setError('Пожалуйста, исправьте ошибки в форме');
-        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-        setSnackbarOpen(true);
-        return;
-      }
-      
-      try {
+    const currentRole = getCurrentEmployeeRole();
+    const newRole = formData.role;
+    const roleChanged = newRole !== currentRole;
+
+    try {
+      if (roleChanged) {
+        const updateData: any = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          middleName: formData.middleName,
+          phone: formData.phone,
+          email: formData.email,
+          role: newRole,
+        };
+        if (formData.password) {
+          updateData.password = formData.password;
+        }
+        await apiService.updateUser(userId, updateData);
+
+        // After ADMIN → TRAINER, update trainer profile fields if provided
+        if (newRole === 'TRAINER') {
+          await fetchTrainers();
+          const refreshed = await apiService.getTrainers({ includeAdmins: 'true', limit: 1000 });
+          const created = refreshed.data.find(
+            (e: any) => (e.user?.id || e.id) === userId && e.employeeType !== 'admin'
+          );
+          if (created?.id) {
+            await apiService.updateTrainer(created.id, {
+              qualification: formData.qualification,
+              experience: formData.experience,
+              specialization: formData.specialization,
+              salaryScheme: formData.salaryScheme,
+              salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+              salaryType: formData.salaryScheme,
+              salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+              canViewAllGroups: formData.canViewAllGroups,
+              firstName: formData.firstName,
+              lastName: formData.lastName,
+              middleName: formData.middleName,
+              phone: formData.phone,
+              email: formData.email,
+            });
+          }
+        }
+      } else if (newRole === 'ADMIN') {
         const updateData: any = {
           firstName: formData.firstName,
           lastName: formData.lastName,
@@ -321,75 +384,64 @@ const Trainers: React.FC = () => {
           updateData.password = formData.password;
         }
         await apiService.updateUser(userId, updateData);
-        await fetchTrainers();
-        setEditDialog(false);
-        setFormErrors({});
-        setError('');
-        setEditingTrainer(null);
-        setFormData({
-          email: '',
-          password: '',
-          firstName: '',
-          lastName: '',
-          middleName: '',
-          phone: '',
-          role: 'TRAINER',
-          qualification: '',
-          experience: '',
-          specialization: '',
-          salaryScheme: 'per_training_person',
-          salaryRate: '',
-          canViewAllGroups: false,
+      } else {
+        await apiService.updateTrainer(editingTrainer.id, {
+          ...formData,
+          salaryScheme: formData.salaryScheme,
+          salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+          salaryType: formData.salaryScheme,
+          salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
         });
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Ошибка обновления администратора');
-        console.error('Error updating admin:', err);
       }
-      return;
-    }
-    
-    // Валидация для тренера уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
-    const errors = validateTrainerForm(formData);
-    
-    if (Object.keys(errors).length > 0) {
-      setError('Пожалуйста, исправьте ошибки в форме');
-      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-      setSnackbarOpen(true);
-      return;
-    }
-    
-    try {
-      await apiService.updateTrainer(editingTrainer.id, {
-        ...formData,
-        salaryScheme: formData.salaryScheme,
-        salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
-        salaryType: formData.salaryScheme,
-        salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
-      });
+
       await fetchTrainers();
-      setEditDialog(false);
-      setFormErrors({});
-      setError('');
-      setEditingTrainer(null);
-      setFormData({
-        email: '',
-        password: '',
-        firstName: '',
-        lastName: '',
-        middleName: '',
-        phone: '',
-        role: 'TRAINER',
-        qualification: '',
-        experience: '',
-        specialization: '',
-        salaryScheme: 'per_training_person',
-        salaryRate: '',
-        canViewAllGroups: false,
-      });
+      resetEditForm();
+      setSnackbarMessage('Изменения сохранены');
+      setSnackbarOpen(true);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка обновления тренера');
-      console.error('Error updating trainer:', err);
+      setError(err.response?.data?.error || 'Ошибка обновления сотрудника');
+      console.error('Error updating employee:', err);
     }
+  };
+
+  const handleUpdateTrainer = async () => {
+    if (!editingTrainer) return;
+
+    const currentRole = getCurrentEmployeeRole();
+    const newRole = formData.role;
+    const roleChanged = newRole !== currentRole;
+    const targetIsAdmin = newRole === 'ADMIN';
+
+    if (targetIsAdmin) {
+      const adminErrors: Record<string, string> = {};
+      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
+      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
+      if (!formData.email) adminErrors.email = 'Email обязателен';
+      setFormErrors(adminErrors);
+      if (Object.keys(adminErrors).length > 0) {
+        setError('Пожалуйста, исправьте ошибки в форме');
+        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+        setSnackbarOpen(true);
+        return;
+      }
+    } else {
+      const errors = validateTrainerForm(formData);
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        setError('Пожалуйста, исправьте ошибки в форме');
+        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+        setSnackbarOpen(true);
+        return;
+      }
+    }
+
+    if (roleChanged && isOwner) {
+      setPendingRoleChange(newRole);
+      setRoleConfirmDialog(true);
+      return;
+    }
+
+    await performSaveEmployee();
   };
 
   const handleOpenBranchesDialog = async (trainer: Trainer) => {
@@ -498,38 +550,31 @@ const Trainers: React.FC = () => {
 
   return (
     <Box data-onboarding="trainers-page">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
           Сотрудники ({trainers.length})
         </Typography>
         <Button
           variant="contained"
           startIcon={<Add />}
-          sx={{ textTransform: 'none' }}
+          sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => {
             if (isOwner) {
-              // Для владельца показываем диалог выбора роли
               setRoleSelectionDialog(true);
             } else {
-              // Для администратора сразу открываем форму создания тренера
               setOpenDialog(true);
               setFormErrors({});
               setError('');
-              setFormData({
-                email: '',
-                password: '',
-                firstName: '',
-                lastName: '',
-                middleName: '',
-                phone: '',
-                role: 'TRAINER',
-                qualification: '',
-                experience: '',
-                specialization: '',
-                salaryScheme: 'per_training_person',
-                salaryRate: '',
-                canViewAllGroups: false,
-              });
+              setFormData({ ...emptyFormData, role: 'TRAINER' });
             }
           }}
           data-onboarding="add-trainer-button"
@@ -538,6 +583,100 @@ const Trainers: React.FC = () => {
         </Button>
       </Box>
 
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {trainers.filter(Boolean).map((employee: any) => {
+            const isAdmin = isEmployeeAdmin(employee);
+            const empUser = employee.user || employee;
+            const displayName = `${empUser.lastName || ''} ${empUser.firstName || ''} ${empUser.middleName || ''}`.trim();
+            return (
+              <Card key={employee.id || empUser.id} variant="outlined">
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        sx={{
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          color: 'primary.main',
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                        onClick={() => openEmployeeEdit(employee)}
+                      >
+                        {displayName}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                        {empUser.email}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={isAdmin ? 'Администратор' : 'Тренер'}
+                      color={isAdmin ? 'primary' : 'secondary'}
+                      size="small"
+                    />
+                  </Box>
+                  {!isAdmin && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {employee.qualification || 'Квалификация не указана'}
+                      {employee.experience ? ` · ${employee.experience} лет` : ''}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+                    <Chip
+                      label={employee.isActive !== false ? 'Активен' : 'Неактивен'}
+                      color={employee.isActive !== false ? 'success' : 'default'}
+                      size="small"
+                    />
+                    {!isAdmin && (employee.salaryType || employee.salaryScheme) && (
+                      <Chip
+                        label={salarySchemeLabel(employee.salaryScheme || employee.salaryType)}
+                        size="small"
+                        variant="outlined"
+                      />
+                    )}
+                    {!isAdmin && employee.balance !== undefined && (
+                      <Chip label={`${Number(employee.balance).toFixed(0)} ₽`} size="small" variant="outlined" />
+                    )}
+                  </Box>
+                  <Divider sx={{ mb: 1 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                    {!isAdmin && (
+                      <>
+                        <IconButton size="small" color="primary" title="Филиалы" onClick={() => handleOpenBranchesDialog(employee)}>
+                          <Business />
+                        </IconButton>
+                        <IconButton size="small" color="primary" title="Зарплата" onClick={() => handleOpenEarningsDialog(employee)}>
+                          <AttachMoney />
+                        </IconButton>
+                      </>
+                    )}
+                    {(isOwner || !isAdmin) && (
+                      <IconButton size="small" color="primary" onClick={() => openEmployeeEdit(employee)}>
+                        <Edit />
+                      </IconButton>
+                    )}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => {
+                        if (isAdmin) {
+                          if (window.confirm('Вы уверены, что хотите удалить этого администратора?')) {
+                            handleDeleteAdmin(empUser.id);
+                          }
+                        } else {
+                          handleDeleteTrainer(employee.id);
+                        }
+                      }}
+                    >
+                      <Delete />
+                    </IconButton>
+                  </Box>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Stack>
+      ) : (
       <Card>
         <CardContent>
           <TableContainer component={Paper}>
@@ -558,47 +697,25 @@ const Trainers: React.FC = () => {
               </TableHead>
               <TableBody>
                 {trainers.filter(employee => employee).map((employee: any) => {
-                  const isAdmin = employee.employeeType === 'admin' || !employee.qualification;
-                  const user = employee.user || employee;
-                  const displayName = `${user.lastName || ''} ${user.firstName || ''} ${user.middleName || ''}`.trim();
+                  const isAdmin = isEmployeeAdmin(employee);
+                  const empUser = employee.user || employee;
+                  const displayName = `${empUser.lastName || ''} ${empUser.firstName || ''} ${empUser.middleName || ''}`.trim();
                   
                   return (
-                    <TableRow key={employee.id || user.id}>
+                    <TableRow key={employee.id || empUser.id}>
                       <TableCell>
                         <Typography
                           sx={{
-                            cursor: isAdmin ? 'default' : 'pointer',
-                            color: isAdmin ? 'text.primary' : 'primary.main',
-                            '&:hover': {
-                              textDecoration: isAdmin ? 'none' : 'underline'
-                            }
+                            cursor: 'pointer',
+                            color: 'primary.main',
+                            '&:hover': { textDecoration: 'underline' },
                           }}
-                          onClick={() => {
-                            if (!isAdmin) {
-                              setEditingTrainer(employee);
-                              setFormData({
-                                email: user.email || '',
-                                password: '',
-                                firstName: user.firstName || '',
-                                lastName: user.lastName || '',
-                                middleName: user.middleName || '',
-                                phone: user.phone || '',
-                                role: 'TRAINER',
-                                qualification: employee.qualification || '',
-                                experience: employee.experience?.toString() || '',
-                                specialization: employee.specialization || '',
-                                salaryScheme: normalizeSalaryScheme((employee as any).salaryScheme || employee.salaryType),
-                                salaryRate: String((employee as any).salaryRate ?? employee.salaryAmount ?? ''),
-                                canViewAllGroups: (employee as any).canViewAllGroups || false,
-                              });
-                              setEditDialog(true);
-                            }
-                          }}
+                          onClick={() => openEmployeeEdit(employee)}
                         >
                           {displayName}
                         </Typography>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{empUser.email}</TableCell>
                       <TableCell>
                         <Chip 
                           label={isAdmin ? 'Администратор' : 'Тренер'} 
@@ -706,7 +823,7 @@ const Trainers: React.FC = () => {
                             e.stopPropagation();
                             if (isAdmin) {
                               if (window.confirm('Вы уверены, что хотите удалить этого администратора?')) {
-                                handleDeleteAdmin(user.id);
+                                handleDeleteAdmin(empUser.id);
                               }
                             } else {
                               handleDeleteTrainer(employee.id);
@@ -728,10 +845,11 @@ const Trainers: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+      )}
 
       {/* Диалог выбора роли (только для владельца) */}
       {isOwner && (
-        <Dialog open={roleSelectionDialog} onClose={() => setRoleSelectionDialog(false)} maxWidth="sm" fullWidth>
+        <Dialog open={roleSelectionDialog} onClose={() => setRoleSelectionDialog(false)} maxWidth="sm" fullWidth fullScreen={isNarrow}>
           <DialogTitle>
             Кого вы хотите добавить?
           </DialogTitle>
@@ -838,6 +956,7 @@ const Trainers: React.FC = () => {
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
         <DialogTitle>Добавить нового сотрудника</DialogTitle>
@@ -1070,23 +1189,17 @@ const Trainers: React.FC = () => {
       <Dialog 
         open={editDialog} 
         onClose={(event, reason) => {
-          // Всегда проверяем ошибки перед закрытием
           const hasErrors = Object.keys(formErrors).length > 0;
-          
-          // Если есть ошибки, не закрываем диалог
           if (hasErrors || error) {
             setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
             setSnackbarOpen(true);
             return;
           }
-          
-          // Разрешаем закрытие только если нет ошибок
-          setEditDialog(false);
-          setFormErrors({});
-          setError('');
+          resetEditForm();
         }}
         maxWidth="md" 
         fullWidth
+        fullScreen={isNarrow}
         disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
         <DialogTitle>Редактировать сотрудника</DialogTitle>
@@ -1102,7 +1215,22 @@ const Trainers: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={4}>
+            {isOwner && (
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Роль</InputLabel>
+                  <Select
+                    value={formData.role}
+                    label="Роль"
+                    onChange={(e) => handleInputChange('role', e.target.value)}
+                  >
+                    <MenuItem value="TRAINER">Тренер</MenuItem>
+                    <MenuItem value="ADMIN">Администратор</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Фамилия"
@@ -1113,7 +1241,7 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.lastName}
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Имя"
@@ -1124,7 +1252,7 @@ const Trainers: React.FC = () => {
                 helperText={formErrors.firstName}
               />
             </Grid>
-            <Grid item xs={4}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Отчество"
@@ -1260,12 +1388,7 @@ const Trainers: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              
-              // Отмена всегда закрывает форму без применения изменений
-              setEditDialog(false);
-              setEditingTrainer(null);
-              setFormErrors({});
-              setError('');
+              resetEditForm();
             }}
             type="button"
           >
@@ -1276,42 +1399,35 @@ const Trainers: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
-              
-              // Если редактируем администратора, используем упрощенную валидацию
-              const isEditingAdmin = formData.role === 'ADMIN' || !editingTrainer || !(editingTrainer as any).qualification;
-              
-              if (isEditingAdmin) {
-                const adminErrors: Record<string, string> = {};
-                if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
-                if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
-                if (!formData.email) adminErrors.email = 'Email обязателен';
-                
-                setFormErrors(adminErrors);
-                if (Object.keys(adminErrors).length > 0) {
-                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                  setSnackbarOpen(true);
-                  return;
-                }
-              } else {
-                // Выполняем валидацию синхронно для тренера
-                const validationErrors = validateTrainerForm(formData);
-                setFormErrors(validationErrors);
-                
-                // Если есть ошибки, показываем их и оставляем диалог открытым
-                if (Object.keys(validationErrors).length > 0) {
-                  setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                  setSnackbarOpen(true);
-                  return; // Не сохраняем, если есть ошибки
-                }
-              }
-              
-              // Если нет ошибок, вызываем handleUpdateTrainer для сохранения
               handleUpdateTrainer();
             }} 
             variant="contained"
             type="button"
           >
             Сохранить изменения
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={roleConfirmDialog} onClose={() => { setRoleConfirmDialog(false); setPendingRoleChange(null); }} fullScreen={isNarrow}>
+        <DialogTitle>Сменить роль сотрудника?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {pendingRoleChange === 'ADMIN'
+              ? 'Тренер станет администратором. Запись тренера и привязки к филиалам будут удалены. Если у сотрудника есть группы — смена роли будет отклонена.'
+              : 'Администратор станет тренером. Будет создан профиль тренера — заполните квалификацию и зарплату при необходимости.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setRoleConfirmDialog(false); setPendingRoleChange(null); }}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              setRoleConfirmDialog(false);
+              await performSaveEmployee();
+            }}
+          >
+            Подтвердить
           </Button>
         </DialogActions>
       </Dialog>

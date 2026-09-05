@@ -755,9 +755,16 @@ const KnowledgeBase: React.FC = () => {
   const selectedSectionData = knowledgeSections.find(s => s.id === selectedSection);
 
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }} data-onboarding="knowledge-base-page">
+    <Container
+      maxWidth="lg"
+      sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 }, overflowX: 'hidden' }}
+      data-onboarding="knowledge-base-page"
+    >
       {/* Breadcrumbs */}
-      <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 3 }}>
+      <Breadcrumbs
+        separator={<NavigateNext fontSize="small" />}
+        sx={{ mb: 3, '& .MuiBreadcrumbs-ol': { flexWrap: 'wrap' } }}
+      >
         <Link
           color="inherit"
           href="#"
@@ -777,21 +784,21 @@ const KnowledgeBase: React.FC = () => {
       </Breadcrumbs>
 
       {/* Header */}
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <MenuBook sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />
-        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
+      <Box sx={{ mb: { xs: 2.5, md: 4 }, textAlign: 'center' }}>
+        <MenuBook sx={{ fontSize: { xs: 28, md: 36 }, color: 'primary.main', mb: 1.5 }} />
+        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold" sx={{ fontSize: { xs: 20, md: 24 } }}>
           База знаний
         </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 2, fontSize: { xs: 14, md: 16 } }}>
           Подробное руководство по использованию системы для новых пользователей
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: 13, md: 14 } }}>
           Изучите все возможности системы и начните эффективно управлять вашей спортивной школой
         </Typography>
       </Box>
 
       {/* Sections Grid */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: 4 }}>
         {knowledgeSections.map((section) => (
           <Grid item xs={12} sm={6} md={4} key={section.id}>
             <Card
@@ -808,16 +815,16 @@ const KnowledgeBase: React.FC = () => {
               }}
               onClick={() => handleSectionClick(section.id)}
             >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Box sx={{ color: 'primary.main', mr: 2, fontSize: 40 }}>
+              <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
+                  <Box sx={{ color: 'primary.main', mr: 2, fontSize: { xs: 28, sm: 40 }, flexShrink: 0 }}>
                     {section.icon}
                   </Box>
-                  <Typography variant="h6" component="h2" fontWeight="bold">
+                  <Typography variant="h6" component="h2" fontWeight="bold" sx={{ fontSize: { xs: 15, sm: 18 }, overflowWrap: 'anywhere' }}>
                     {section.title}
                   </Typography>
                 </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: 13, sm: 14 } }}>
                   {section.description}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', color: 'primary.main' }}>
@@ -839,36 +846,47 @@ const KnowledgeBase: React.FC = () => {
 
       {/* Selected Section Details */}
       {selectedSectionData && (
-        <Paper sx={{ p: 4, mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <Box sx={{ color: 'primary.main', mr: 2, fontSize: 40 }}>
+        <Paper sx={{ p: { xs: 2, sm: 3, md: 4 }, mb: 4, overflowX: 'hidden' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, minWidth: 0, gap: 1 }}>
+            <Box sx={{ color: 'primary.main', mr: { xs: 1, sm: 2 }, fontSize: { xs: 28, sm: 40 }, flexShrink: 0 }}>
               {selectedSectionData.icon}
             </Box>
-            <Typography variant="h5" component="h2" fontWeight="bold">
+            <Typography variant="h5" component="h2" fontWeight="bold" sx={{ fontSize: { xs: 18, md: 24 }, overflowWrap: 'anywhere' }}>
               {selectedSectionData.title}
             </Typography>
           </Box>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 4, fontSize: { xs: 14, md: 16 } }}>
             {selectedSectionData.description}
           </Typography>
           <Divider sx={{ mb: 4 }} />
 
           {selectedSectionData.content.map((contentBlock, index) => (
             <Box key={index} sx={{ mb: 4 }}>
-              <Typography variant="h6" component="h3" gutterBottom fontWeight="bold" sx={{ mb: 2, color: 'primary.main' }}>
+              <Typography
+                variant="h6"
+                component="h3"
+                gutterBottom
+                fontWeight="bold"
+                sx={{ mb: 2, color: 'primary.main', fontSize: { xs: 15, md: 18 } }}
+              >
                 {contentBlock.title}
               </Typography>
               <List>
                 {contentBlock.items.map((item, itemIndex) => (
-                  <ListItem key={itemIndex} sx={{ pl: 0, py: 1 }}>
-                    <ListItemIcon sx={{ minWidth: 36 }}>
+                  <ListItem key={itemIndex} sx={{ pl: 0, py: 1, alignItems: 'flex-start' }}>
+                    <ListItemIcon sx={{ minWidth: 36, mt: 0.5 }}>
                       <CheckCircle color="primary" fontSize="small" />
                     </ListItemIcon>
                     <ListItemText
                       primary={item}
                       primaryTypographyProps={{
                         variant: 'body1',
-                        sx: { lineHeight: 1.8 },
+                        sx: {
+                          lineHeight: 1.8,
+                          fontSize: { xs: 14, md: 16 },
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word',
+                        },
                       }}
                     />
                   </ListItem>
@@ -881,11 +899,11 @@ const KnowledgeBase: React.FC = () => {
       )}
 
       {/* Quick Links */}
-      <Paper sx={{ p: 4, backgroundColor: 'primary.light', color: 'white' }}>
-        <Typography variant="h5" gutterBottom fontWeight="bold">
+      <Paper sx={{ p: { xs: 2.5, md: 4 }, backgroundColor: 'primary.light', color: 'white' }}>
+        <Typography variant="h5" gutterBottom fontWeight="bold" sx={{ fontSize: { xs: 18, md: 24 } }}>
           Нужна помощь?
         </Typography>
-        <Typography variant="body1" sx={{ mb: 3 }}>
+        <Typography variant="body1" sx={{ mb: 3, fontSize: { xs: 14, md: 16 } }}>
           Если вы не нашли ответ на свой вопрос в базе знаний, обратитесь к разделу FAQ или свяжитесь с нашей службой поддержки.
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>

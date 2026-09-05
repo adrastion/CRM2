@@ -571,27 +571,27 @@ const FAQ: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }} data-onboarding="faq-page">
-      <Container maxWidth="lg" sx={{ py: 3, flexGrow: 1 }}>
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <HelpOutline sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />
-        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', overflowX: 'hidden' }} data-onboarding="faq-page">
+      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 }, flexGrow: 1, width: '100%' }}>
+      <Box sx={{ mb: { xs: 2.5, md: 4 }, textAlign: 'center' }}>
+        <HelpOutline sx={{ fontSize: { xs: 28, md: 36 }, color: 'primary.main', mb: 1.5 }} />
+        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold" sx={{ fontSize: { xs: 20, md: 24 } }}>
           Часто задаваемые вопросы
         </Typography>
-        <Typography variant="h6" color="text.secondary">
+        <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: 14, md: 16 }, px: { xs: 1, sm: 0 } }}>
           Найдите ответы на популярные вопросы о нашей CRM системе
         </Typography>
       </Box>
 
       {/* Категории */}
-      <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+      <Box sx={{ mb: { xs: 2.5, md: 4 }, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
         {categories.map((category) => (
           <Paper
             key={category}
             onClick={() => setSelectedCategory(category)}
             sx={{
-              px: 3,
-              py: 1.5,
+              px: { xs: 1.5, sm: 3 },
+              py: { xs: 1, sm: 1.5 },
               cursor: 'pointer',
               backgroundColor: selectedCategory === category ? 'primary.main' : 'background.paper',
               color: selectedCategory === category ? 'white' : 'text.primary',
@@ -603,7 +603,7 @@ const FAQ: React.FC = () => {
               transition: 'all 0.2s',
             }}
           >
-            <Typography variant="body1" fontWeight={selectedCategory === category ? 'bold' : 'normal'}>
+            <Typography variant="body2" fontWeight={selectedCategory === category ? 'bold' : 'normal'} sx={{ fontSize: { xs: 13, sm: 14 } }}>
               {category}
             </Typography>
           </Paper>
@@ -620,6 +620,8 @@ const FAQ: React.FC = () => {
                 expanded={expanded === panelId}
                 onChange={handleChange(panelId)}
                 sx={{
+                  width: '100%',
+                  maxWidth: '100%',
                   '&:before': {
                     display: 'none',
                   },
@@ -635,27 +637,51 @@ const FAQ: React.FC = () => {
                   sx={{
                     backgroundColor: expanded === panelId ? 'action.selected' : 'background.paper',
                     borderRadius: expanded === panelId ? '8px 8px 0 0' : '8px',
-                    px: 3,
-                    py: 2,
+                    px: { xs: 1.5, sm: 3 },
+                    py: { xs: 1.25, sm: 2 },
+                    minWidth: 0,
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1, sm: 2 }, width: '100%', minWidth: 0, pr: 1 }}>
                     <Box
                       sx={{
                         color: 'primary.main',
-                        display: 'flex',
+                        display: { xs: 'none', sm: 'flex' },
                         alignItems: 'center',
+                        flexShrink: 0,
+                        mt: 0.25,
                       }}
                     >
                       {item.icon}
                     </Box>
-                    <Typography variant="h6" component="div" sx={{ flex: 1, fontWeight: 'medium' }}>
+                    <Typography
+                      variant="subtitle1"
+                      component="div"
+                      sx={{
+                        flex: 1,
+                        fontWeight: 'medium',
+                        fontSize: { xs: 14, sm: 16 },
+                        lineHeight: 1.35,
+                        overflowWrap: 'anywhere',
+                        minWidth: 0,
+                      }}
+                    >
                       {item.question}
                     </Typography>
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails sx={{ px: 3, py: 3, backgroundColor: 'background.default' }}>
-                  <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8 }}>
+                <AccordionDetails sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 3 }, backgroundColor: 'background.default' }}>
+                  <Typography
+                    variant="body1"
+                    color="text.secondary"
+                    sx={{
+                      lineHeight: 1.8,
+                      fontSize: { xs: 14, md: 16 },
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                      wordBreak: 'break-word',
+                    }}
+                  >
                     {item.answer}
                   </Typography>
                 </AccordionDetails>
@@ -666,11 +692,11 @@ const FAQ: React.FC = () => {
       </Grid>
 
       {/* Дополнительная помощь */}
-      <Box sx={{ mt: 6, textAlign: 'center', p: 4, backgroundColor: 'primary.light', borderRadius: 2 }}>
-        <Typography variant="h5" gutterBottom fontWeight="bold" color="white">
+      <Box sx={{ mt: { xs: 4, md: 6 }, textAlign: 'center', p: { xs: 2.5, md: 4 }, backgroundColor: 'primary.light', borderRadius: 2 }}>
+        <Typography variant="h5" gutterBottom fontWeight="bold" color="white" sx={{ fontSize: { xs: 18, md: 24 } }}>
           Не нашли ответ на свой вопрос?
         </Typography>
-        <Typography variant="body1" color="white" sx={{ mb: 2 }}>
+        <Typography variant="body1" color="white" sx={{ mb: 2, fontSize: { xs: 14, md: 16 } }}>
           Свяжитесь с нашей службой поддержки, и мы обязательно поможем вам!
         </Typography>
         <Typography variant="body2" color="white">

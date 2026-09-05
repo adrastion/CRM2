@@ -37,6 +37,9 @@ import {
   Alert,
   Tabs,
   Tab,
+  useMediaQuery,
+  useTheme,
+  Stack,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import { 
@@ -56,7 +59,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
@@ -108,6 +111,9 @@ interface TrainingFormData {
 
 const Schedule: React.FC = () => {
   const { user } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionTab = searchParams.get('tab') === 'competitions' ? 'competitions' : 'schedule';
   const setSectionTab = (tab: 'schedule' | 'competitions') => {
@@ -152,6 +158,12 @@ const Schedule: React.FC = () => {
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterHallId, setFilterHallId] = useState<string>('');
   const [filterTrainerId, setFilterTrainerId] = useState<string>('');
+
+  useEffect(() => {
+    if (isMobile) {
+      setViewMode('day');
+    }
+  }, [isMobile]);
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60); // Длительность тренировки в минутах по умолчанию
   const [isSubmitting, setIsSubmitting] = useState(false); // Защита от двойного нажатия при создании тренировки
   const [isUpdating, setIsUpdating] = useState(false); // Индикатор обновления тренировки
@@ -1724,7 +1736,7 @@ const Schedule: React.FC = () => {
       adapterLocale={ru}
     >
       <Box data-onboarding="schedule-page">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, mb: 1, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6" component="h1" sx={{ fontWeight: 700, fontSize: { xs: 18, md: 20 } }}>
             Календарный план
           </Typography>
@@ -1733,7 +1745,7 @@ const Schedule: React.FC = () => {
             variant="contained"
             size="small"
             startIcon={<Add />}
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
             onClick={() => {
               setSelectedDayForTraining(null);
               setFormData({ ...formData, date: new Date() });
@@ -1748,12 +1760,13 @@ const Schedule: React.FC = () => {
         <Tabs
           value={sectionTab}
           onChange={(_, v) => setSectionTab(v)}
+          variant={isNarrow ? 'fullWidth' : 'standard'}
           sx={{
             mb: 1,
             minHeight: 40,
             borderBottom: 1,
             borderColor: 'divider',
-            '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: 14 },
+            '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: { xs: 13, md: 14 } },
           }}
         >
           <Tab value="schedule" label="Расписание" icon={<CalendarToday sx={{ fontSize: 18 }} />} iconPosition="start" />
@@ -1766,8 +1779,8 @@ const Schedule: React.FC = () => {
         <>
         {/* Filters and View Toggle */}
         <Box sx={{ display: 'flex', gap: 1.5, mb: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', width: { xs: '100%', md: 'auto' } }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
               <InputLabel>Филиал</InputLabel>
             <Select
                 value={filterBranchId}
@@ -1778,11 +1791,11 @@ const Schedule: React.FC = () => {
                 {branches.filter(b => b.isActive).map((branch) => (
                   <MenuItem key={branch.id} value={branch.id}>
                     {branch.name}
-                </MenuItem>
-              ))}
+                  </MenuItem>
+                ))}
             </Select>
-          </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
               <InputLabel>Зал</InputLabel>
             <Select
                 value={filterHallId}
@@ -1797,7 +1810,7 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
               <InputLabel>Тренер</InputLabel>
             <Select
               value={filterTrainerId}
@@ -1823,37 +1836,142 @@ const Schedule: React.FC = () => {
               if (newMode !== null) setViewMode(newMode);
               }}
             aria-label="view mode"
+            sx={{ width: { xs: '100%', sm: 'auto' }, '& .MuiToggleButton-root': { flex: { xs: 1, sm: 'none' } } }}
           >
             <ToggleButton value="day" aria-label="day view">
               День
             </ToggleButton>
-            <ToggleButton value="week" aria-label="week view">
+            <ToggleButton value="week" aria-label="week view" sx={{ display: { xs: 'none', md: 'inline-flex' } }}>
               Неделя
             </ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
-        {/* Week Navigation */}
+        {/* Week / Day Navigation */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <IconButton
-            onClick={() => setSelectedDate(new Date(selectedDate.getTime() - 7 * 24 * 60 * 60 * 1000))}
+            onClick={() =>
+              setSelectedDate(
+                viewMode === 'day' || isMobile
+                  ? subDays(selectedDate, 1)
+                  : new Date(selectedDate.getTime() - 7 * 24 * 60 * 60 * 1000)
+              )
+            }
             size="small"
           >
             <ChevronLeft />
           </IconButton>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: { xs: 14, md: 16 } }}>
-            {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'EEE', { locale: ru })} - {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} {format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'EEE', { locale: ru })}
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: { xs: 14, md: 16 }, textAlign: 'center' }}>
+            {viewMode === 'day' || isMobile
+              ? format(selectedDate, 'd MMMM yyyy, EEE', { locale: ru })
+              : `${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} — ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })}`}
           </Typography>
           <IconButton
-            onClick={() => setSelectedDate(new Date(selectedDate.getTime() + 7 * 24 * 60 * 60 * 1000))}
+            onClick={() =>
+              setSelectedDate(
+                viewMode === 'day' || isMobile
+                  ? addDays(selectedDate, 1)
+                  : new Date(selectedDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+              )
+            }
             size="small"
           >
             <ChevronRight />
           </IconButton>
         </Box>
 
-        {/* Calendar Grid - Week View */}
-        {viewMode === 'week' ? (
+        {/* Calendar Grid - Week View (desktop) / Day list (mobile) */}
+        {isMobile || viewMode === 'day' ? (
+          (() => {
+            const day = selectedDate;
+            const dayTrainings = getTrainingsForDate(day).slice().sort(
+              (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            );
+            const dayCompetitions = getCompetitionsForDate(day);
+            const isToday = isSameDay(day, new Date());
+            return (
+              <Stack spacing={1.5}>
+                <Card variant="outlined" sx={{ bgcolor: isToday ? 'action.selected' : undefined }}>
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: dayCompetitions.length ? 1 : 0 }}>
+                      <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
+                        {format(day, 'EEEE, d MMMM', { locale: ru })}
+                      </Typography>
+                      <Button
+                        size="small"
+                        startIcon={<Add />}
+                        onClick={() => {
+                          setSelectedDayForTraining(day);
+                          setFormData({ ...formData, date: day });
+                          setTrainingTypeDialog(true);
+                        }}
+                      >
+                        Добавить
+                      </Button>
+                    </Box>
+                    {dayCompetitions.map((competition) => (
+                      <Chip
+                        key={competition.id}
+                        icon={<EmojiEvents sx={{ fontSize: 14 }} />}
+                        label={competition.name}
+                        size="small"
+                        color="warning"
+                        sx={{ mr: 0.5, mb: 0.5 }}
+                        onClick={() => {
+                          setSelectedCompetition(competition);
+                          setCompetitionDialog(true);
+                        }}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+                {dayTrainings.length === 0 ? (
+                  <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography color="text.secondary">Нет тренировок на этот день</Typography>
+                  </Paper>
+                ) : (
+                  dayTrainings.map((training) => {
+                    const group = groups.find((g) => g.id === training.groupId);
+                    const trainer = trainers.find((t) => t.id === training.trainerId);
+                    const hall = halls.find((h) => h.id === training.hallId);
+                    const groupColor = group?.color || '#4880FF';
+                    const isLightColor = isColorLight(groupColor);
+                    return (
+                      <Paper
+                        key={training.id}
+                        sx={{
+                          p: 1.5,
+                          bgcolor: groupColor,
+                          color: isLightColor ? '#000' : '#fff',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => handleOpenAttendanceDialog(training)}
+                      >
+                        <Typography sx={{ fontWeight: 700 }}>{training.title || group?.name || 'Тренировка'}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                          <AccessTime sx={{ fontSize: 14 }} />
+                          <Typography variant="body2">
+                            {format(new Date(training.startTime), 'HH:mm')} – {format(new Date(training.endTime), 'HH:mm')}
+                          </Typography>
+                        </Box>
+                        {trainer?.user && (
+                          <Typography variant="body2" sx={{ mt: 0.25, opacity: 0.9 }}>
+                            {trainer.user.lastName} {trainer.user.firstName}
+                          </Typography>
+                        )}
+                        {hall && (
+                          <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                            Зал: {hall.name}
+                          </Typography>
+                        )}
+                      </Paper>
+                    );
+                  })
+                )}
+              </Stack>
+            );
+          })()
+        ) : viewMode === 'week' ? (
           <Paper sx={{ overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
             <Box sx={{ display: 'flex', borderBottom: 1, borderColor: 'divider' }}>
               {/* Time column */}
@@ -2106,94 +2224,10 @@ const Schedule: React.FC = () => {
               })}
             </Box>
           </Paper>
-        ) : (
-          /* Day View - пока оставляем старый вид */
-        <Grid container spacing={1}>
-          {weekDays.map((day, index) => {
-            const dayTrainings = getTrainingsForDate(day);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for day view competitions display
-            const dayCompetitions = getCompetitionsForDate(day);
-            const isToday = isSameDay(day, new Date());
-            
-            return (
-              <Grid item xs={12} sm={6} md={12/7} key={index}>
-                <Card 
-                  sx={{ 
-                    height: '100%', 
-                    minHeight: 200,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      boxShadow: 3,
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                  onClick={() => {
-                    setSelectedDayForTraining(day);
-                    setFormData({ ...formData, date: day });
-                    setTrainingTypeDialog(true);
-                  }}
-                >
-                  <CardContent sx={{ p: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <CalendarToday sx={{ fontSize: 16, mr: 1 }} />
-                      <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal' }}>
-                        {format(day, 'EEE', { locale: ru })}
-                      </Typography>
-                    </Box>
-                    <Typography variant="h6" sx={{ mb: 1, fontWeight: isToday ? 'bold' : 'normal' }}>
-                      {format(day, 'd')}
-                    </Typography>
-                    
-                    <List dense>
-                      {dayTrainings.map((training) => {
-                        const group = groups.find(g => g.id === training.groupId);
-                        const groupColor = group?.color || '#4880FF';
-                        const isLightColor = isColorLight(groupColor);
-                        
-                        return (
-                        <ListItem key={training.id} sx={{ p: 0, mb: 0.5 }}>
-                          <Paper 
-                            sx={{ 
-                              p: 1, 
-                              width: '100%', 
-                              bgcolor: groupColor,
-                              color: isLightColor ? '#000' : '#fff',
-                              cursor: 'pointer',
-                              '&:hover': {
-                                opacity: 0.9,
-                                transform: 'scale(1.02)',
-                                transition: 'all 0.2s'
-                              }
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenAttendanceDialog(training);
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                              {training.title}
-                            </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                              <AccessTime sx={{ fontSize: 12, mr: 0.5 }} />
-                              <Typography variant="caption">
-                                {format(new Date(training.startTime), 'HH:mm')} - {format(new Date(training.endTime), 'HH:mm')}
-                              </Typography>
-                            </Box>
-                          </Paper>
-                        </ListItem>
-                      );
-                      })}
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
-        )}
+        ) : null}
 
         {/* Training Type Selection Dialog */}
-        <Dialog open={trainingTypeDialog} onClose={() => setTrainingTypeDialog(false)} maxWidth="sm" fullWidth>
+        <Dialog open={trainingTypeDialog} onClose={() => setTrainingTypeDialog(false)} maxWidth="sm" fullWidth fullScreen={isNarrow}>
           <DialogTitle>
             Какое занятие вы хотите добавить?
           </DialogTitle>

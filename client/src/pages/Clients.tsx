@@ -1245,11 +1245,19 @@ const Clients: React.FC = () => {
           setGroupsDialog(true);
         }}
         toolbarActions={
-          <>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              flexWrap: 'wrap',
+              gap: 1,
+              width: '100%',
+            }}
+          >
             <Button
               variant="outlined"
               startIcon={<FileDownload />}
-              sx={{ textTransform: 'none', borderRadius: '19px' }}
+              sx={{ textTransform: 'none', borderRadius: '19px', width: { xs: '100%', sm: 'auto' } }}
               onClick={handleExportClients}
             >
               Экспорт в Excel
@@ -1257,7 +1265,7 @@ const Clients: React.FC = () => {
             <Button
               variant="outlined"
               startIcon={<FileUpload />}
-              sx={{ textTransform: 'none', borderRadius: '19px' }}
+              sx={{ textTransform: 'none', borderRadius: '19px', width: { xs: '100%', sm: 'auto' } }}
               onClick={() => {
                 setImportDialog(true);
                 setImportResult(null);
@@ -1268,13 +1276,13 @@ const Clients: React.FC = () => {
             <Button
               variant="contained"
               startIcon={<Add />}
-              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary }}
+              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary, width: { xs: '100%', sm: 'auto' } }}
               onClick={openAddClientDialog}
               data-onboarding="add-client-button"
             >
               Добавить клиента
             </Button>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
               <InputLabel>Филиал</InputLabel>
               <Select
                 value={filterBranchId}
@@ -1289,7 +1297,7 @@ const Clients: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
               <InputLabel>Группа</InputLabel>
               <Select
                 value={filterGroupId}
@@ -1304,7 +1312,7 @@ const Clients: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-          </>
+          </Box>
         }
       />
 

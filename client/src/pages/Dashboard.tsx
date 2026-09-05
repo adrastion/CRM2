@@ -243,18 +243,19 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }} data-onboarding="dashboard-page">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3, md: 4 } }} data-onboarding="dashboard-page">
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'flex-end',
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'flex-end' },
           justifyContent: 'space-between',
-          gap: 2,
+          gap: { xs: 1.5, sm: 2 },
           flexWrap: 'wrap',
         }}
         data-onboarding="dashboard"
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography
             component="h1"
             sx={{
@@ -266,7 +267,7 @@ const Dashboard: React.FC = () => {
           >
             Панель управления
           </Typography>
-          <Typography sx={{ mt: 1, fontSize: typography.label, color: colors.textMuted }}>
+          <Typography sx={{ mt: 1, fontSize: typography.label, color: colors.textMuted, overflowWrap: 'anywhere' }}>
             {tenant?.name}
             {user?.firstName ? ` · Добро пожаловать, ${user.firstName}!` : ''}
           </Typography>
@@ -283,6 +284,7 @@ const Dashboard: React.FC = () => {
               textTransform: 'none',
               px: 3,
               py: 1.25,
+              width: { xs: '100%', sm: 'auto' },
             }}
           >
             Мой тариф
@@ -297,7 +299,7 @@ const Dashboard: React.FC = () => {
         sx={{
           display: 'grid',
           gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
-          gap: { xs: 2, md: 3 },
+          gap: { xs: 1.5, sm: 2, md: 3 },
         }}
         data-onboarding="dashboard-stats"
       >
@@ -317,7 +319,7 @@ const Dashboard: React.FC = () => {
         sx={{
           display: 'grid',
           gridTemplateColumns: { xs: '1fr', lg: isTrainer ? '1fr' : '1fr 1fr' },
-          gap: { xs: 2, md: 3 },
+          gap: { xs: 1.5, sm: 2, md: 3 },
         }}
       >
         {!isTrainer && (
@@ -464,7 +466,7 @@ const Dashboard: React.FC = () => {
           sx={{
             display: 'grid',
             gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' },
-            gap: { xs: 2, md: 3 },
+            gap: { xs: 1.5, sm: 2, md: 3 },
           }}
         >
           <QuickAction

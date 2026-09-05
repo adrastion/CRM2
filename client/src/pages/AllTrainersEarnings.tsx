@@ -105,14 +105,23 @@ const AllTrainersEarnings: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1.5,
+            mb: 3,
+          }}
+        >
+          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
             Заработок тренеров
           </Typography>
         </Box>
 
         <Card sx={{ mb: 3 }}>
-          <CardContent>
+          <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={4}>
                 <DatePicker
@@ -139,6 +148,7 @@ const AllTrainersEarnings: React.FC = () => {
                     setStartDate(new Date(now.getFullYear(), now.getMonth(), 1));
                     setEndDate(now);
                   }}
+                  sx={{ textTransform: 'none' }}
                 >
                   Текущий месяц
                 </Button>
@@ -150,8 +160,8 @@ const AllTrainersEarnings: React.FC = () => {
         {earnings && (
           <>
             <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
+              <CardContent sx={{ px: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: 16, md: 20 } }}>
                   Общая статистика
                 </Typography>
                 <Grid container spacing={2}>
@@ -161,7 +171,7 @@ const AllTrainersEarnings: React.FC = () => {
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'success.main', fontSize: { xs: 18, md: 24 } }}>
                       Общий заработок:{' '}
                       {earnings.totalEarnings?.toLocaleString('ru-RU', {
                         style: 'currency',
@@ -174,12 +184,16 @@ const AllTrainersEarnings: React.FC = () => {
             </Card>
 
             <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+              <CardContent sx={{ px: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="h6" gutterBottom sx={{ mb: 2, fontSize: { xs: 16, md: 20 } }}>
                   Заработок по тренерам
                 </Typography>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table>
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+                >
+                  <Table sx={{ minWidth: 720 }}>
                     <TableHead>
                       <TableRow>
                         <TableCell>Тренер</TableCell>
@@ -195,7 +209,9 @@ const AllTrainersEarnings: React.FC = () => {
                         earnings.trainers.map((trainer: any) => (
                           <React.Fragment key={trainer.trainerId}>
                             <TableRow>
-                              <TableCell sx={{ fontWeight: 'medium' }}>{trainer.trainerName}</TableCell>
+                              <TableCell sx={{ fontWeight: 'medium', maxWidth: 160, overflowWrap: 'anywhere' }}>
+                                {trainer.trainerName}
+                              </TableCell>
                               <TableCell>
                                 <Chip
                                   label={
@@ -206,7 +222,7 @@ const AllTrainersEarnings: React.FC = () => {
                                   size="small"
                                 />
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 {trainer.salaryRate != null || trainer.salaryAmount != null
                                   ? trainer.salaryScheme === 'percent_month' ||
                                     trainer.salaryType === 'percent_month'
@@ -217,7 +233,7 @@ const AllTrainersEarnings: React.FC = () => {
                               <TableCell align="center">
                                 {trainer.entryCount ?? trainer.trainingCount ?? 0}
                               </TableCell>
-                              <TableCell sx={{ fontWeight: 'bold' }}>
+                              <TableCell sx={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                                 {trainer.totalEarnings?.toLocaleString('ru-RU', {
                                   style: 'currency',
                                   currency: 'RUB',
@@ -232,11 +248,11 @@ const AllTrainersEarnings: React.FC = () => {
                             <TableRow>
                               <TableCell colSpan={6} sx={{ py: 0, border: 0 }}>
                                 <Collapse in={expandedId === trainer.trainerId} unmountOnExit>
-                                  <Box sx={{ py: 2 }}>
+                                  <Box sx={{ py: 2, overflowX: 'auto' }}>
                                     {ledgerLoading && !ledgerByTrainer[trainer.trainerId] ? (
                                       <CircularProgress size={24} />
                                     ) : (
-                                      <Table size="small">
+                                      <Table size="small" sx={{ minWidth: 480 }}>
                                         <TableHead>
                                           <TableRow>
                                             <TableCell>Название</TableCell>
@@ -249,19 +265,23 @@ const AllTrainersEarnings: React.FC = () => {
                                           {(ledgerByTrainer[trainer.trainerId] || []).length > 0 ? (
                                             ledgerByTrainer[trainer.trainerId].map((row: any) => (
                                               <TableRow key={row.id}>
-                                                <TableCell>{row.title}</TableCell>
-                                                <TableCell align="right">
+                                                <TableCell sx={{ maxWidth: 160, overflowWrap: 'anywhere' }}>
+                                                  {row.title}
+                                                </TableCell>
+                                                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                                   {Number(row.amount).toLocaleString('ru-RU', {
                                                     style: 'currency',
                                                     currency: 'RUB',
                                                   })}
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                                   {format(new Date(row.occurredAt), 'dd.MM.yyyy', {
                                                     locale: ru,
                                                   })}
                                                 </TableCell>
-                                                <TableCell>{row.comment || '-'}</TableCell>
+                                                <TableCell sx={{ maxWidth: 160, overflowWrap: 'anywhere' }}>
+                                                  {row.comment || '-'}
+                                                </TableCell>
                                               </TableRow>
                                             ))
                                           ) : (

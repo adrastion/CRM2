@@ -637,7 +637,13 @@ const Finance: React.FC = () => {
     chips: string[],
     onClearFilters: () => void
   ) => (
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }} alignItems="center">
+    <Stack
+      direction={{ xs: 'column', sm: 'row' }}
+      spacing={1.5}
+      sx={{ mb: 1.5, flexWrap: 'wrap' }}
+      alignItems={{ xs: 'stretch', sm: 'center' }}
+      useFlexGap
+    >
       <Button
         variant="contained"
         size="small"
@@ -652,6 +658,7 @@ const Finance: React.FC = () => {
           fontSize: typography.button,
           fontWeight: 600,
           boxShadow: 'none',
+          width: { xs: '100%', sm: 'auto' },
           '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
         }}
       >
@@ -671,6 +678,7 @@ const Finance: React.FC = () => {
           fontSize: typography.button,
           fontWeight: 600,
           boxShadow: 'none',
+          width: { xs: '100%', sm: 'auto' },
           '&:hover': { bgcolor: colors.primarySoft, filter: 'brightness(0.97)' },
         }}
         startIcon={<Tune sx={{ fontSize: 18, color: colors.text }} />}
@@ -678,7 +686,7 @@ const Finance: React.FC = () => {
         Все фильтры
         {chips.length > 0 ? ` • ${chips.length}` : ''}
       </Button>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ width: { xs: '100%', sm: 'auto' } }}>
         {chips.map((chip) => (
           <Chip
             key={chip}
@@ -701,7 +709,7 @@ const Finance: React.FC = () => {
             fontWeight: 600,
             fontSize: typography.pageTitle,
             color: colors.text,
-            mb: 2,
+            mb: { xs: 1.5, md: 2 },
           }}
         >
           Финансы
@@ -710,12 +718,15 @@ const Finance: React.FC = () => {
         <Tabs
           value={tab}
           onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{
             mb: 0,
             minHeight: 48,
             alignItems: 'flex-end',
             '& .MuiTabs-indicator': { display: 'none' },
-            '& .MuiTabs-flexContainer': { gap: 0.5, flexWrap: 'wrap', alignItems: 'flex-end' },
+            '& .MuiTabs-flexContainer': { gap: 0.5, flexWrap: { xs: 'nowrap', md: 'wrap' }, alignItems: 'flex-end' },
           }}
         >
           <Tab value="operations" label="Все операции" sx={tabSx(tab === 'operations')} />
@@ -884,7 +895,7 @@ const Finance: React.FC = () => {
               />
             ))}
           </Stack>
-          <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
             <DatePicker
               label="Дата начала"
               value={opFilters.dateFrom}
@@ -910,9 +921,10 @@ const Finance: React.FC = () => {
           />
 
           <Typography sx={{ mb: 1, fontWeight: 600 }}>По сумме</Typography>
-          <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
             <TextField
               size="small"
+              fullWidth
               label="От"
               value={opFilters.amountFrom}
               onChange={(e) => setOpFilters((f) => ({ ...f, amountFrom: e.target.value }))}
@@ -920,6 +932,7 @@ const Finance: React.FC = () => {
             />
             <TextField
               size="small"
+              fullWidth
               label="До"
               value={opFilters.amountTo}
               onChange={(e) => setOpFilters((f) => ({ ...f, amountTo: e.target.value }))}
@@ -998,7 +1011,7 @@ const Finance: React.FC = () => {
             })}
           </Stack>
 
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <Button
               fullWidth
               variant="outlined"
@@ -1058,8 +1071,8 @@ const Finance: React.FC = () => {
           </FormControl>
 
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
-          <Stack direction="row" spacing={1.5} sx={{ mb: 3 }}>
-            <Box sx={{ flex: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
               <DatePicker
                 value={draftSalaryDateFrom}
@@ -1072,7 +1085,7 @@ const Finance: React.FC = () => {
                 }}
               />
             </Box>
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
               <DatePicker
                 value={draftSalaryDateTo}
@@ -1099,8 +1112,8 @@ const Finance: React.FC = () => {
           </RadioGroup>
 
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
-          <Stack direction="row" spacing={1.5} sx={{ mb: 4 }}>
-            <Box sx={{ flex: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 4 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
               <TextField
                 fullWidth
@@ -1110,7 +1123,7 @@ const Finance: React.FC = () => {
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
               />
             </Box>
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
               <TextField
                 fullWidth
@@ -1296,8 +1309,8 @@ const Finance: React.FC = () => {
           </Stack>
 
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
-          <Stack direction="row" spacing={1.5} sx={{ mb: 4 }}>
-            <Box sx={{ flex: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 4 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
               <TextField
                 fullWidth
@@ -1307,7 +1320,7 @@ const Finance: React.FC = () => {
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
               />
             </Box>
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
               <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
               <TextField
                 fullWidth
@@ -1453,7 +1466,7 @@ const Finance: React.FC = () => {
                   </Collapse>
                 </Box>
               ) : null}
-              <Stack direction="row" spacing={1}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <TextField
                   fullWidth
                   size="small"
@@ -1461,7 +1474,10 @@ const Finance: React.FC = () => {
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
                 />
-                <Button onClick={handleCreateType} sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}>
+                <Button
+                  onClick={handleCreateType}
+                  sx={{ textTransform: 'none', whiteSpace: 'nowrap', width: { xs: '100%', sm: 'auto' } }}
+                >
                   Создать тип
                 </Button>
               </Stack>
