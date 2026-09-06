@@ -396,74 +396,6 @@ const onboardingSteps: OnboardingStep[] = [
     },
   },
   {
-    id: 'memberships-nav',
-    title: 'Раздел "Тарифы"',
-    description: 'Переход к управлению тарифами',
-    content: [
-      'Тарифы - это типы абонементов для клиентов.',
-      'Создавайте тарифы с разной стоимостью и сроком действия.',
-      'Настраивайте количество занятий и условия использования.',
-      'Давайте перейдем к тарифам.',
-    ],
-    targetSelector: '[data-onboarding="memberships-nav"]',
-    position: 'right',
-    highlight: true,
-    action: {
-      type: 'click',
-      selector: '[data-onboarding="memberships-nav"]',
-    },
-  },
-  {
-    id: 'memberships-page',
-    title: 'Управление тарифами',
-    description: 'Создание первого тарифа',
-    content: [
-      'Тарифы - это типы абонементов для клиентов.',
-      'Давайте создадим ваш первый тариф!',
-      'Кликните на кнопку "Создать тариф" справа вверху.',
-      'Укажите название, стоимость, срок действия и количество занятий.',
-    ],
-    targetSelector: '[data-onboarding="add-membership-button"]',
-    position: 'bottom',
-    highlight: true,
-    action: {
-      type: 'click',
-      selector: '[data-onboarding="add-membership-button"]',
-    },
-  },
-  {
-    id: 'client-memberships-nav',
-    title: 'Раздел "Выданные тарифы"',
-    description: 'Переход к выданным тарифам',
-    content: [
-      'Здесь вы видите все выданные клиентам тарифы.',
-      'Отслеживайте срок действия и остаток занятий.',
-      'Продлевайте тарифы и управляйте их статусом.',
-      'Давайте перейдем к выданным тарифам.',
-    ],
-    targetSelector: '[data-onboarding="client-memberships-nav"]',
-    position: 'right',
-    highlight: true,
-    action: {
-      type: 'click',
-      selector: '[data-onboarding="client-memberships-nav"]',
-    },
-  },
-  {
-    id: 'client-memberships-page',
-    title: 'Выданные тарифы',
-    description: 'Управление выданными тарифами',
-    content: [
-      'Здесь отображаются все тарифы, выданные клиентам.',
-      'Вы можете видеть срок действия, остаток занятий, статус тарифа.',
-      'Продлевайте тарифы, изменяйте их статус.',
-      'Фильтруйте тарифы по клиенту, филиалу или статусу.',
-    ],
-    targetSelector: '[data-onboarding="client-memberships-page"]',
-    position: 'bottom',
-    highlight: true,
-  },
-  {
     id: 'payments-nav',
     title: 'Раздел "Платежи"',
     description: 'Переход к управлению платежами',
@@ -856,8 +788,6 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
                         currentStep.targetSelector.includes('dashboard') ? '/dashboard' :
                         currentStep.targetSelector.includes('trainers') ? '/trainers' :
                         currentStep.targetSelector.includes('branches') ? '/branches' :
-                        currentStep.targetSelector.includes('memberships') ? '/memberships' :
-                        currentStep.targetSelector.includes('client-memberships') ? '/client-memberships' :
                         currentStep.targetSelector.includes('payments') || currentStep.targetSelector.includes('finance') ? '/finance' :
                         currentStep.targetSelector.includes('settings') ? '/settings' :
                         currentStep.targetSelector.includes('faq') ? '/faq' :

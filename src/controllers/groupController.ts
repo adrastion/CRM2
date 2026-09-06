@@ -346,19 +346,19 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
       }
     }
 
-    // Обработка полей зарплаты тренера
+    // Обработка полей зарплаты тренера — null явно обнуляет (схема берётся из карточки сотрудника)
     if (updateData.trainerSalaryType !== undefined) {
       if (updateData.trainerSalaryType === '' || updateData.trainerSalaryType === null) {
-        delete updateData.trainerSalaryType;
+        updateData.trainerSalaryType = null;
       }
     }
     if (updateData.trainerMonthlyPercentage !== undefined) {
       if (updateData.trainerMonthlyPercentage === '' || updateData.trainerMonthlyPercentage === null) {
-        delete updateData.trainerMonthlyPercentage;
+        updateData.trainerMonthlyPercentage = null;
       } else if (typeof updateData.trainerMonthlyPercentage === 'string') {
         const percentage = parseFloat(updateData.trainerMonthlyPercentage);
         if (isNaN(percentage)) {
-          delete updateData.trainerMonthlyPercentage;
+          updateData.trainerMonthlyPercentage = null;
         } else {
           updateData.trainerMonthlyPercentage = percentage;
         }
@@ -366,11 +366,11 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
     }
     if (updateData.trainerPerVisitPercentage !== undefined) {
       if (updateData.trainerPerVisitPercentage === '' || updateData.trainerPerVisitPercentage === null) {
-        delete updateData.trainerPerVisitPercentage;
+        updateData.trainerPerVisitPercentage = null;
       } else if (typeof updateData.trainerPerVisitPercentage === 'string') {
         const percentage = parseFloat(updateData.trainerPerVisitPercentage);
         if (isNaN(percentage)) {
-          delete updateData.trainerPerVisitPercentage;
+          updateData.trainerPerVisitPercentage = null;
         } else {
           updateData.trainerPerVisitPercentage = percentage;
         }
@@ -378,11 +378,11 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
     }
     if (updateData.trainerPerVisitAmount !== undefined) {
       if (updateData.trainerPerVisitAmount === '' || updateData.trainerPerVisitAmount === null) {
-        delete updateData.trainerPerVisitAmount;
+        updateData.trainerPerVisitAmount = null;
       } else if (typeof updateData.trainerPerVisitAmount === 'string') {
         const amount = parseFloat(updateData.trainerPerVisitAmount);
         if (isNaN(amount)) {
-          delete updateData.trainerPerVisitAmount;
+          updateData.trainerPerVisitAmount = null;
         } else {
           updateData.trainerPerVisitAmount = amount;
         }

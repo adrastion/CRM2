@@ -116,28 +116,34 @@ const Groups: React.FC = () => {
     recurrenceMode: 'days' as 'days' | 'dates',
     daySchedules: [] as Array<{ dayOfWeek: number; startTime: Date | null; endTime: Date | null }>,
   });
-  const [formData, setFormData] = useState({
+  const LAST_GROUP_COLOR_KEY = 'crm2.lastGroupColor';
+  const DEFAULT_GROUP_COLOR = '#4880FF';
+
+  const getLastGroupColor = () => {
+    try {
+      return localStorage.getItem(LAST_GROUP_COLOR_KEY) || DEFAULT_GROUP_COLOR;
+    } catch {
+      return DEFAULT_GROUP_COLOR;
+    }
+  };
+
+  const emptyGroupForm = () => ({
     name: '',
     description: '',
     maxMembers: '',
     ageMin: '',
     ageMax: '',
-    color: '#4880FF', // Цвет по умолчанию
-    trainingPrice: '',
+    color: getLastGroupColor(),
     branchId: '',
     trainerId: '',
     schedule: [] as GroupScheduleItem[],
-    // Ежемесячная оплата
     isMonthlyPayment: false,
     monthlyPaymentAmount: '',
     paymentDueDay: '',
-    createPaymentsImmediately: false, // Создать платежи сразу после создания графика
-    // Настройки зарплаты тренера
-    trainerSalaryType: '' as 'monthly_percentage' | 'per_visit_percentage' | 'per_visit_amount' | '',
-    trainerMonthlyPercentage: '',
-    trainerPerVisitPercentage: '',
-    trainerPerVisitAmount: '',
+    createPaymentsImmediately: false,
   });
+
+  const [formData, setFormData] = useState(emptyGroupForm);
 
   const fetchData = async () => {
     try {
@@ -217,19 +223,23 @@ const Groups: React.FC = () => {
         maxMembers: formData.maxMembers ? parseInt(formData.maxMembers) : undefined,
         ageMin: formData.ageMin ? parseInt(formData.ageMin) : undefined,
         ageMax: formData.ageMax ? parseInt(formData.ageMax) : undefined,
-        trainingPrice: formData.trainingPrice ? parseFloat(formData.trainingPrice) : undefined,
         schedule: formData.schedule.length > 0 ? formData.schedule : undefined,
-        // Ежемесячная оплата
         isMonthlyPayment: formData.isMonthlyPayment,
         monthlyPaymentAmount: formData.monthlyPaymentAmount ? parseFloat(formData.monthlyPaymentAmount) : undefined,
         paymentDueDay: formData.paymentDueDay ? parseInt(formData.paymentDueDay) : undefined,
-        // Настройки зарплаты тренера
-        trainerSalaryType: formData.trainerSalaryType || undefined,
-        trainerMonthlyPercentage: formData.trainerMonthlyPercentage ? parseFloat(formData.trainerMonthlyPercentage) : undefined,
-        trainerPerVisitPercentage: formData.trainerPerVisitPercentage ? parseFloat(formData.trainerPerVisitPercentage) : undefined,
-        trainerPerVisitAmount: formData.trainerPerVisitAmount ? parseFloat(formData.trainerPerVisitAmount) : undefined,
+        // Обнуляем legacy-поля зарплаты на группе — схема берётся из карточки сотрудника
+        trainerSalaryType: null,
+        trainerMonthlyPercentage: null,
+        trainerPerVisitPercentage: null,
+        trainerPerVisitAmount: null,
       };
       const createdGroup = await apiService.createGroup(groupData);
+
+      try {
+        localStorage.setItem(LAST_GROUP_COLOR_KEY, formData.color || DEFAULT_GROUP_COLOR);
+      } catch {
+        /* ignore */
+      }
       
       // Добавляем выбранных участников в группу
       if (selectedClientIds && selectedClientIds.length > 0 && createdGroup && createdGroup.id) {
@@ -283,28 +293,7 @@ const Groups: React.FC = () => {
         }
       }
       
-      setFormData({
-        name: '',
-        description: '',
-        maxMembers: '',
-        ageMin: '',
-        ageMax: '',
-        color: '#4880FF',
-        trainingPrice: '',
-        branchId: '',
-        trainerId: '',
-        schedule: [],
-        // Ежемесячная оплата
-        isMonthlyPayment: false,
-        monthlyPaymentAmount: '',
-        paymentDueDay: '',
-        createPaymentsImmediately: false,
-        // Настройки зарплаты тренера
-        trainerSalaryType: '',
-        trainerMonthlyPercentage: '',
-        trainerPerVisitPercentage: '',
-        trainerPerVisitAmount: '',
-      });
+      setFormData(emptyGroupForm());
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания группы';
       setError(errorMessage);
@@ -455,21 +444,14 @@ const Groups: React.FC = () => {
       maxMembers: group.maxMembers?.toString() || '',
       ageMin: group.ageMin?.toString() || '',
       ageMax: group.ageMax?.toString() || '',
-      color: group.color || '#4880FF',
-      trainingPrice: (group as any).trainingPrice?.toString() || '',
+      color: group.color || DEFAULT_GROUP_COLOR,
       branchId: group.branchId || '',
       trainerId: group.trainerId || '',
       schedule: schedule,
-      // Ежемесячная оплата
       isMonthlyPayment: group.isMonthlyPayment || false,
       monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
       paymentDueDay: group.paymentDueDay?.toString() || '',
-      createPaymentsImmediately: false, // При редактировании всегда false
-      // Настройки зарплаты тренера
-      trainerSalaryType: group.trainerSalaryType || '',
-      trainerMonthlyPercentage: group.trainerMonthlyPercentage?.toString() || '',
-      trainerPerVisitPercentage: group.trainerPerVisitPercentage?.toString() || '',
-      trainerPerVisitAmount: group.trainerPerVisitAmount?.toString() || '',
+      createPaymentsImmediately: false,
     });
     setEditDialog(true);
   };
@@ -483,17 +465,14 @@ const Groups: React.FC = () => {
         maxMembers: formData.maxMembers ? parseInt(formData.maxMembers) : undefined,
         ageMin: formData.ageMin ? parseInt(formData.ageMin) : undefined,
         ageMax: formData.ageMax ? parseInt(formData.ageMax) : undefined,
-        trainingPrice: formData.trainingPrice ? parseFloat(formData.trainingPrice) : undefined,
         schedule: formData.schedule.length > 0 ? formData.schedule : undefined,
-        // Ежемесячная оплата
         isMonthlyPayment: formData.isMonthlyPayment,
         monthlyPaymentAmount: formData.monthlyPaymentAmount ? parseFloat(formData.monthlyPaymentAmount) : undefined,
         paymentDueDay: formData.paymentDueDay ? parseInt(formData.paymentDueDay) : undefined,
-        // Настройки зарплаты тренера
-        trainerSalaryType: formData.trainerSalaryType || undefined,
-        trainerMonthlyPercentage: formData.trainerMonthlyPercentage ? parseFloat(formData.trainerMonthlyPercentage) : undefined,
-        trainerPerVisitPercentage: formData.trainerPerVisitPercentage ? parseFloat(formData.trainerPerVisitPercentage) : undefined,
-        trainerPerVisitAmount: formData.trainerPerVisitAmount ? parseFloat(formData.trainerPerVisitAmount) : undefined,
+        trainerSalaryType: null,
+        trainerMonthlyPercentage: null,
+        trainerPerVisitPercentage: null,
+        trainerPerVisitAmount: null,
       };
       await apiService.updateGroup(editingGroup.id, groupData);
       await fetchData();
@@ -1035,28 +1014,7 @@ const Groups: React.FC = () => {
             setOpenDialog(true);
             setFormErrors({});
             setError(null);
-            setFormData({
-              name: '',
-              description: '',
-              maxMembers: '',
-              ageMin: '',
-              ageMax: '',
-              color: '#4880FF',
-              trainingPrice: '',
-              branchId: '',
-              trainerId: '',
-              schedule: [],
-              // Ежемесячная оплата
-              isMonthlyPayment: false,
-              monthlyPaymentAmount: '',
-              paymentDueDay: '',
-              createPaymentsImmediately: false,
-              // Настройки зарплаты тренера
-              trainerSalaryType: '',
-              trainerMonthlyPercentage: '',
-              trainerPerVisitPercentage: '',
-              trainerPerVisitAmount: '',
-            });
+            setFormData(emptyGroupForm());
           }}
           data-onboarding="add-group-button"
         >
@@ -1234,21 +1192,14 @@ const Groups: React.FC = () => {
                               maxMembers: group.maxMembers?.toString() || '',
                               ageMin: group.ageMin?.toString() || '',
                               ageMax: group.ageMax?.toString() || '',
-                              color: group.color || '#4880FF',
-                              trainingPrice: group.trainingPrice?.toString() || '',
+                              color: group.color || DEFAULT_GROUP_COLOR,
                               branchId: group.branchId,
                               trainerId: group.trainerId,
                               schedule: schedule,
-                              // Ежемесячная оплата
                               isMonthlyPayment: group.isMonthlyPayment || false,
                               monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
                               paymentDueDay: group.paymentDueDay?.toString() || '',
                               createPaymentsImmediately: false,
-                              // Настройки зарплаты тренера
-                              trainerSalaryType: group.trainerSalaryType || '',
-                              trainerMonthlyPercentage: group.trainerMonthlyPercentage?.toString() || '',
-                              trainerPerVisitPercentage: group.trainerPerVisitPercentage?.toString() || '',
-                              trainerPerVisitAmount: group.trainerPerVisitAmount?.toString() || '',
                             });
                             setEditDialog(true);
                           }}
@@ -1443,6 +1394,9 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Зарплата берётся из настроек сотрудника
+              </Typography>
               <Button
                 size="small"
                 variant="outlined"
@@ -1510,17 +1464,6 @@ const Groups: React.FC = () => {
                 />
               </Box>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Стоимость тренировки (руб.)"
-                type="number"
-                value={formData.trainingPrice}
-                onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
-                inputProps={{ min: 0, step: 0.01 }}
-                helperText="Стоимость одной тренировки в этой группе для одного клиента"
-              />
-            </Grid>
             
             {/* Ежемесячная оплата */}
             <Grid item xs={12}>
@@ -1582,102 +1525,6 @@ const Groups: React.FC = () => {
               </>
             )}
             
-            {/* Настройки зарплаты тренера */}
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>Настройки зарплаты тренера</Typography>
-            </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Тип заработка тренера</InputLabel>
-                <Select
-                  value={formData.trainerSalaryType}
-                  onChange={(e) => handleInputChange('trainerSalaryType', e.target.value)}
-                  label="Тип заработка тренера"
-                >
-                  <MenuItem value="">Не выбрано</MenuItem>
-                  <MenuItem value="monthly_percentage">Ежемесячный процент</MenuItem>
-                  <MenuItem value="per_visit_percentage">Процент за посещение</MenuItem>
-                  <MenuItem value="per_visit_amount">Фиксированная сумма за посещение</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            {formData.trainerSalaryType === 'monthly_percentage' && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Процент от ежемесячной суммы (%)"
-                    type="number"
-                    value={formData.trainerMonthlyPercentage}
-                    onChange={(e) => handleInputChange('trainerMonthlyPercentage', e.target.value)}
-                    inputProps={{ min: 0, max: 100, step: 0.01 }}
-                    required={formData.trainerSalaryType === 'monthly_percentage'}
-                    helperText="Процент от суммы, оплаченной клиентами за месяц"
-                  />
-                </Grid>
-                {formData.isMonthlyPayment && formData.monthlyPaymentAmount && formData.trainerMonthlyPercentage && (
-                  <Grid item xs={12} sm={6}>
-                    <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Предварительная зарплата тренера (при полной оплате всеми клиентами):
-                      </Typography>
-                      <Typography variant="h6" color="primary">
-                        {(() => {
-                          const monthlyAmount = parseFloat(formData.monthlyPaymentAmount || '0');
-                          const percentage = parseFloat(formData.trainerMonthlyPercentage || '0');
-                          // При редактировании используем количество активных клиентов, при создании - maxMembers
-                          const clientCount = editingGroup?.memberships?.filter((m: any) => m.isActive && !m.leftAt).length || 
-                                            (formData.maxMembers ? parseFloat(formData.maxMembers) : 1);
-                          const totalAmount = monthlyAmount * clientCount;
-                          const trainerSalary = (totalAmount * percentage) / 100;
-                          return trainerSalary.toFixed(2);
-                        })()} руб.
-                      </Typography>
-                      {editingGroup && editingGroup.memberships && (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          (Расчет на основе {editingGroup.memberships.filter((m: any) => m.isActive && !m.leftAt).length} активных клиентов)
-                        </Typography>
-                      )}
-                      {!editingGroup && formData.maxMembers && (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          (Расчет на основе максимума {formData.maxMembers} участников)
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-                )}
-              </>
-            )}
-            {formData.trainerSalaryType === 'per_visit_percentage' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Процент за посещение (%)"
-                  type="number"
-                  value={formData.trainerPerVisitPercentage}
-                  onChange={(e) => handleInputChange('trainerPerVisitPercentage', e.target.value)}
-                  inputProps={{ min: 0, max: 100, step: 0.01 }}
-                  required={formData.trainerSalaryType === 'per_visit_percentage'}
-                  helperText="Процент от стоимости тренировки за каждое посещение клиента"
-                />
-              </Grid>
-            )}
-            {formData.trainerSalaryType === 'per_visit_amount' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Сумма за посещение (руб.)"
-                  type="number"
-                  value={formData.trainerPerVisitAmount}
-                  onChange={(e) => handleInputChange('trainerPerVisitAmount', e.target.value)}
-                  inputProps={{ min: 0, step: 0.01 }}
-                  required={formData.trainerSalaryType === 'per_visit_amount'}
-                  helperText="Фиксированная сумма за каждое посещение клиента"
-                />
-              </Grid>
-            )}
-            
             {/* Выбор участников группы */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
@@ -1734,28 +1581,7 @@ const Groups: React.FC = () => {
               setOpenDialog(false);
               setFormErrors({});
               setError(null);
-              setFormData({
-                name: '',
-                description: '',
-                maxMembers: '',
-                ageMin: '',
-                ageMax: '',
-                color: '#4880FF',
-                trainingPrice: '',
-                branchId: '',
-                trainerId: '',
-                schedule: [],
-                // Ежемесячная оплата
-                isMonthlyPayment: false,
-                monthlyPaymentAmount: '',
-                paymentDueDay: '',
-                createPaymentsImmediately: false,
-                // Настройки зарплаты тренера
-                trainerSalaryType: '',
-                trainerMonthlyPercentage: '',
-                trainerPerVisitPercentage: '',
-                trainerPerVisitAmount: '',
-              });
+              setFormData(emptyGroupForm());
               setSelectedClientIds([]); // Очищаем выбранных клиентов при отмене
             }}
             type="button"
@@ -1927,6 +1753,9 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Зарплата берётся из настроек сотрудника
+              </Typography>
               <Button
                 size="small"
                 variant="outlined"
@@ -1994,17 +1823,6 @@ const Groups: React.FC = () => {
                 />
               </Box>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Стоимость тренировки (руб.)"
-                type="number"
-                value={formData.trainingPrice}
-                onChange={(e) => handleInputChange('trainingPrice', e.target.value)}
-                inputProps={{ min: 0, step: 0.01 }}
-                helperText="Стоимость одной тренировки в этой группе для одного клиента"
-              />
-            </Grid>
             
             {/* Ежемесячная оплата */}
             <Grid item xs={12}>
@@ -2064,102 +1882,6 @@ const Groups: React.FC = () => {
                   </Grid>
                 )}
               </>
-            )}
-            
-            {/* Настройки зарплаты тренера */}
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>Настройки зарплаты тренера</Typography>
-            </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Тип заработка тренера</InputLabel>
-                <Select
-                  value={formData.trainerSalaryType}
-                  onChange={(e) => handleInputChange('trainerSalaryType', e.target.value)}
-                  label="Тип заработка тренера"
-                >
-                  <MenuItem value="">Не выбрано</MenuItem>
-                  <MenuItem value="monthly_percentage">Ежемесячный процент</MenuItem>
-                  <MenuItem value="per_visit_percentage">Процент за посещение</MenuItem>
-                  <MenuItem value="per_visit_amount">Фиксированная сумма за посещение</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            {formData.trainerSalaryType === 'monthly_percentage' && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Процент от ежемесячной суммы (%)"
-                    type="number"
-                    value={formData.trainerMonthlyPercentage}
-                    onChange={(e) => handleInputChange('trainerMonthlyPercentage', e.target.value)}
-                    inputProps={{ min: 0, max: 100, step: 0.01 }}
-                    required={formData.trainerSalaryType === 'monthly_percentage'}
-                    helperText="Процент от суммы, оплаченной клиентами за месяц"
-                  />
-                </Grid>
-                {formData.isMonthlyPayment && formData.monthlyPaymentAmount && formData.trainerMonthlyPercentage && (
-                  <Grid item xs={12} sm={6}>
-                    <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Предварительная зарплата тренера (при полной оплате всеми клиентами):
-                      </Typography>
-                      <Typography variant="h6" color="primary">
-                        {(() => {
-                          const monthlyAmount = parseFloat(formData.monthlyPaymentAmount || '0');
-                          const percentage = parseFloat(formData.trainerMonthlyPercentage || '0');
-                          // При редактировании используем количество активных клиентов, при создании - maxMembers
-                          const clientCount = editingGroup?.memberships?.filter((m: any) => m.isActive && !m.leftAt).length || 
-                                            (formData.maxMembers ? parseFloat(formData.maxMembers) : 1);
-                          const totalAmount = monthlyAmount * clientCount;
-                          const trainerSalary = (totalAmount * percentage) / 100;
-                          return trainerSalary.toFixed(2);
-                        })()} руб.
-                      </Typography>
-                      {editingGroup && editingGroup.memberships && (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          (Расчет на основе {editingGroup.memberships.filter((m: any) => m.isActive && !m.leftAt).length} активных клиентов)
-                        </Typography>
-                      )}
-                      {!editingGroup && formData.maxMembers && (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          (Расчет на основе максимума {formData.maxMembers} участников)
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-                )}
-              </>
-            )}
-            {formData.trainerSalaryType === 'per_visit_percentage' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Процент за посещение (%)"
-                  type="number"
-                  value={formData.trainerPerVisitPercentage}
-                  onChange={(e) => handleInputChange('trainerPerVisitPercentage', e.target.value)}
-                  inputProps={{ min: 0, max: 100, step: 0.01 }}
-                  required={formData.trainerSalaryType === 'per_visit_percentage'}
-                  helperText="Процент от стоимости тренировки за каждое посещение клиента"
-                />
-              </Grid>
-            )}
-            {formData.trainerSalaryType === 'per_visit_amount' && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Сумма за посещение (руб.)"
-                  type="number"
-                  value={formData.trainerPerVisitAmount}
-                  onChange={(e) => handleInputChange('trainerPerVisitAmount', e.target.value)}
-                  inputProps={{ min: 0, step: 0.01 }}
-                  required={formData.trainerSalaryType === 'per_visit_amount'}
-                  helperText="Фиксированная сумма за каждое посещение клиента"
-                />
-              </Grid>
             )}
           </Grid>
         </DialogContent>

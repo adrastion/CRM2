@@ -125,6 +125,7 @@ const Schedule: React.FC = () => {
   };
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [schoolEvents, setSchoolEvents] = useState<any[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -138,6 +139,21 @@ const Schedule: React.FC = () => {
   const [editDialog, setEditDialog] = useState(false);
   const [attendanceDialog, setAttendanceDialog] = useState(false);
   const [competitionDialog, setCompetitionDialog] = useState(false);
+  const [eventDialog, setEventDialog] = useState(false);
+  const [eventDetailDialog, setEventDetailDialog] = useState(false);
+  const [selectedSchoolEvent, setSelectedSchoolEvent] = useState<any | null>(null);
+  const [eventFormData, setEventFormData] = useState({
+    title: '',
+    description: '',
+    type: 'parent_meeting' as 'parent_meeting' | 'other',
+    date: new Date() as Date | null,
+    startTime: null as Date | null,
+    endTime: null as Date | null,
+    location: '',
+    branchId: '',
+    groupId: '',
+  });
+  const [eventSaving, setEventSaving] = useState(false);
   const [createClientDialog, setCreateClientDialog] = useState(false);
   const [addClientDialog, setAddClientDialog] = useState(false); // Диалог добавления существующего клиента
   const [selectedClientsToAdd, setSelectedClientsToAdd] = useState<Client[]>([]); // Выбранные клиенты для добавления
@@ -198,12 +214,13 @@ const Schedule: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes] = await Promise.all([
+      const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes, eventsRes] = await Promise.all([
         apiService.getTrainings({ limit: 1000, page: 1 }),
         apiService.getGroups({ limit: 1000, page: 1 }),
         apiService.getTrainers({ limit: 1000, page: 1 }),
         apiService.getBranches({ limit: 1000, page: 1 }),
-        apiService.getClients({ limit: 1000, page: 1 })
+        apiService.getClients({ limit: 1000, page: 1 }),
+        apiService.getSchoolEvents().catch(() => []),
       ]);
       
       // Логируем для отладки
@@ -224,6 +241,7 @@ const Schedule: React.FC = () => {
       setTrainers(trainersRes.data);
       setBranches(branchesRes.data);
       setClients(clientsRes.data || []); // Сохраняем клиентов
+      setSchoolEvents(eventsRes || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -253,7 +271,7 @@ const Schedule: React.FC = () => {
         
         if (!isMounted || abortController.signal.aborted) return;
         
-        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes] = await Promise.all([
+        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes, eventsRes] = await Promise.all([
           apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
@@ -261,7 +279,8 @@ const Schedule: React.FC = () => {
           apiService.getBranches({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getHalls({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [], pagination: {} })),
           apiService.getSettings().catch(() => null), // Загружаем настройки, игнорируем ошибки если нет настроек
-          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })) // Загружаем клиентов для индивидуальных тренировок
+          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })), // Загружаем клиентов для индивидуальных тренировок
+          apiService.getSchoolEvents(undefined, abortController.signal).catch(() => []),
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
@@ -272,6 +291,7 @@ const Schedule: React.FC = () => {
         setBranches(branchesRes.data);
         setHalls(hallsRes.data || []);
         setClients(clientsRes?.data || []);
+        setSchoolEvents(eventsRes || []);
         
         // Устанавливаем длительность тренировки по умолчанию из настроек
         if (settingsRes?.data?.defaultTrainingDuration) {
@@ -1405,6 +1425,119 @@ const Schedule: React.FC = () => {
     });
   };
 
+  const getSchoolEventsForDate = (date: Date) => {
+    return schoolEvents.filter((event) => isSameDay(new Date(event.startTime), date));
+  };
+
+  const openCreateEventDialog = (day?: Date | null) => {
+    const base = day || selectedDate || new Date();
+    const start = new Date(base);
+    start.setHours(18, 0, 0, 0);
+    const end = new Date(base);
+    end.setHours(19, 0, 0, 0);
+    setSelectedSchoolEvent(null);
+    setEventFormData({
+      title: '',
+      description: '',
+      type: 'parent_meeting',
+      date: base,
+      startTime: start,
+      endTime: end,
+      location: '',
+      branchId: '',
+      groupId: '',
+    });
+    setEventDialog(true);
+  };
+
+  const openEditEventDialog = (event: any) => {
+    const start = new Date(event.startTime);
+    const end = new Date(event.endTime);
+    setSelectedSchoolEvent(event);
+    setEventFormData({
+      title: event.title || '',
+      description: event.description || '',
+      type: event.type === 'parent_meeting' ? 'parent_meeting' : 'other',
+      date: start,
+      startTime: start,
+      endTime: end,
+      location: event.location || '',
+      branchId: event.branchId || '',
+      groupId: event.groupId || '',
+    });
+    setEventDetailDialog(false);
+    setEventDialog(true);
+  };
+
+  const combineEventDateTime = (date: Date | null, time: Date | null) => {
+    if (!date || !time) return null;
+    const result = new Date(date);
+    result.setHours(time.getHours(), time.getMinutes(), 0, 0);
+    return result;
+  };
+
+  const handleSaveSchoolEvent = async () => {
+    const startTime = combineEventDateTime(eventFormData.date, eventFormData.startTime);
+    const endTime = combineEventDateTime(eventFormData.date, eventFormData.endTime);
+    if (!eventFormData.title.trim()) {
+      alert('Укажите название события');
+      return;
+    }
+    if (!startTime || !endTime) {
+      alert('Укажите дату и время');
+      return;
+    }
+    if (endTime <= startTime) {
+      alert('Время окончания должно быть позже начала');
+      return;
+    }
+
+    try {
+      setEventSaving(true);
+      const payload = {
+        title: eventFormData.title.trim(),
+        description: eventFormData.description.trim() || null,
+        type: eventFormData.type,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        location: eventFormData.location.trim() || null,
+        branchId: eventFormData.branchId || null,
+        groupId: eventFormData.groupId || null,
+      };
+      if (selectedSchoolEvent?.id) {
+        await apiService.updateSchoolEvent(selectedSchoolEvent.id, payload);
+      } else {
+        await apiService.createSchoolEvent(payload);
+      }
+      setEventDialog(false);
+      setSelectedSchoolEvent(null);
+      const events = await apiService.getSchoolEvents().catch(() => []);
+      setSchoolEvents(events || []);
+    } catch (err: any) {
+      console.error('Error saving school event:', err);
+      alert(err.response?.data?.error || 'Не удалось сохранить событие');
+    } finally {
+      setEventSaving(false);
+    }
+  };
+
+  const handleDeleteSchoolEvent = async () => {
+    if (!selectedSchoolEvent?.id) return;
+    if (!window.confirm('Удалить это событие?')) return;
+    try {
+      await apiService.deleteSchoolEvent(selectedSchoolEvent.id);
+      setEventDetailDialog(false);
+      setSelectedSchoolEvent(null);
+      setSchoolEvents((prev) => prev.filter((e) => e.id !== selectedSchoolEvent.id));
+    } catch (err: any) {
+      console.error('Error deleting school event:', err);
+      alert(err.response?.data?.error || 'Не удалось удалить событие');
+    }
+  };
+
+  const schoolEventTypeLabel = (type: string) =>
+    type === 'parent_meeting' ? 'Родительское собрание' : 'Мероприятие';
+
   const getTrainingsForDate = (date: Date) => {
     let filtered = trainings.filter(training => 
       !training.isCancelled && isSameDay(new Date(training.startTime), date)
@@ -1741,19 +1874,30 @@ const Schedule: React.FC = () => {
             Календарный план
           </Typography>
           {sectionTab === 'schedule' && (
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<Add />}
-            sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
-            onClick={() => {
-              setSelectedDayForTraining(null);
-              setFormData({ ...formData, date: new Date() });
-              setTrainingTypeDialog(true);
-            }}
-          >
-            Добавить тренировку
-          </Button>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Add />}
+              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+              onClick={() => {
+                setSelectedDayForTraining(null);
+                setFormData({ ...formData, date: new Date() });
+                setTrainingTypeDialog(true);
+              }}
+            >
+              Добавить тренировку
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<Add />}
+              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+              onClick={() => openCreateEventDialog(selectedDate)}
+            >
+              Добавить событие
+            </Button>
+          </Stack>
           )}
         </Box>
 
@@ -1888,26 +2032,36 @@ const Schedule: React.FC = () => {
               (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
             );
             const dayCompetitions = getCompetitionsForDate(day);
+            const dayEvents = getSchoolEventsForDate(day);
             const isToday = isSameDay(day, new Date());
             return (
               <Stack spacing={1.5}>
                 <Card variant="outlined" sx={{ bgcolor: isToday ? 'action.selected' : undefined }}>
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: dayCompetitions.length ? 1 : 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: (dayCompetitions.length || dayEvents.length) ? 1 : 0 }}>
                       <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
                         {format(day, 'EEEE, d MMMM', { locale: ru })}
                       </Typography>
-                      <Button
-                        size="small"
-                        startIcon={<Add />}
-                        onClick={() => {
-                          setSelectedDayForTraining(day);
-                          setFormData({ ...formData, date: day });
-                          setTrainingTypeDialog(true);
-                        }}
-                      >
-                        Добавить
-                      </Button>
+                      <Stack direction="row" spacing={0.5}>
+                        <Button
+                          size="small"
+                          startIcon={<Add />}
+                          onClick={() => {
+                            setSelectedDayForTraining(day);
+                            setFormData({ ...formData, date: day });
+                            setTrainingTypeDialog(true);
+                          }}
+                        >
+                          Тренировка
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<Add />}
+                          onClick={() => openCreateEventDialog(day)}
+                        >
+                          Событие
+                        </Button>
+                      </Stack>
                     </Box>
                     {dayCompetitions.map((competition) => (
                       <Chip
@@ -1923,8 +2077,53 @@ const Schedule: React.FC = () => {
                         }}
                       />
                     ))}
+                    {dayEvents.map((event) => (
+                      <Chip
+                        key={event.id}
+                        icon={<CalendarToday sx={{ fontSize: 14 }} />}
+                        label={event.title}
+                        size="small"
+                        color="info"
+                        sx={{ mr: 0.5, mb: 0.5 }}
+                        onClick={() => {
+                          setSelectedSchoolEvent(event);
+                          setEventDetailDialog(true);
+                        }}
+                      />
+                    ))}
                   </CardContent>
                 </Card>
+                {dayEvents.length > 0 && dayEvents.map((event) => (
+                  <Paper
+                    key={`evt-${event.id}`}
+                    sx={{
+                      p: 1.5,
+                      bgcolor: '#E3F2FD',
+                      color: '#0D47A1',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      setSelectedSchoolEvent(event);
+                      setEventDetailDialog(true);
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700 }}>{event.title}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                      {schoolEventTypeLabel(event.type)}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                      <AccessTime sx={{ fontSize: 14 }} />
+                      <Typography variant="body2">
+                        {format(new Date(event.startTime), 'HH:mm')} – {format(new Date(event.endTime), 'HH:mm')}
+                      </Typography>
+                    </Box>
+                    {event.location && (
+                      <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                        {event.location}
+                      </Typography>
+                    )}
+                  </Paper>
+                ))}
                 {dayTrainings.length === 0 ? (
                   <Paper sx={{ p: 3, textAlign: 'center' }}>
                     <Typography color="text.secondary">Нет тренировок на этот день</Typography>
@@ -2022,6 +2221,7 @@ const Schedule: React.FC = () => {
                 const isToday = isSameDay(day, new Date());
                 const dayTrainings = getTrainingsForDate(day);
                 const dayCompetitions = getCompetitionsForDate(day);
+                const dayEvents = getSchoolEventsForDate(day);
                 const groupedTrainings = groupTrainingsByTime(dayTrainings, day);
                 
                 return (
@@ -2060,8 +2260,8 @@ const Schedule: React.FC = () => {
                         setTrainingTypeDialog(true);
                       }}
                     >
-                      {/* Competitions in header */}
-                      {dayCompetitions.length > 0 && (
+                      {/* Competitions / events in header */}
+                      {(dayCompetitions.length > 0 || dayEvents.length > 0) && (
                         <Box sx={{ position: 'absolute', top: 2, left: 2, right: 2 }}>
                           {dayCompetitions.map((competition) => (
                             <Chip
@@ -2086,9 +2286,32 @@ const Schedule: React.FC = () => {
                               }}
                             />
                           ))}
+                          {dayEvents.map((event) => (
+                            <Chip
+                              key={event.id}
+                              icon={<CalendarToday sx={{ fontSize: 12 }} />}
+                              label={event.title}
+                              size="small"
+                              sx={{
+                                height: 18,
+                                fontSize: '0.6rem',
+                                bgcolor: 'info.main',
+                                color: '#fff',
+                                mb: 0.5,
+                                '& .MuiChip-label': {
+                                  px: 0.5
+                                }
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedSchoolEvent(event);
+                                setEventDetailDialog(true);
+                              }}
+                            />
+                          ))}
                         </Box>
                       )}
-                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize', mt: dayCompetitions.length > 0 ? 2 : 0 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize', mt: (dayCompetitions.length > 0 || dayEvents.length > 0) ? 2 : 0 }}>
                         {format(day, 'EEE', { locale: ru })}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: isToday ? 'bold' : 'normal' }}>
@@ -4100,6 +4323,171 @@ const Schedule: React.FC = () => {
         </Dialog>
         </>
         )}
+
+        <Dialog open={eventDialog} onClose={() => setEventDialog(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{selectedSchoolEvent ? 'Редактировать событие' : 'Добавить событие'}</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 0.5 }}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Название"
+                  value={eventFormData.title}
+                  onChange={(e) => setEventFormData((prev) => ({ ...prev, title: e.target.value }))}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Тип</InputLabel>
+                  <Select
+                    value={eventFormData.type}
+                    label="Тип"
+                    onChange={(e) =>
+                      setEventFormData((prev) => ({
+                        ...prev,
+                        type: e.target.value as 'parent_meeting' | 'other',
+                      }))
+                    }
+                  >
+                    <MenuItem value="parent_meeting">Родительское собрание</MenuItem>
+                    <MenuItem value="other">Другое мероприятие</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <DatePicker
+                  label="Дата"
+                  value={eventFormData.date}
+                  onChange={(date) => setEventFormData((prev) => ({ ...prev, date }))}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TimePicker
+                  label="Начало"
+                  value={eventFormData.startTime}
+                  onChange={(time) => setEventFormData((prev) => ({ ...prev, startTime: time }))}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TimePicker
+                  label="Конец"
+                  value={eventFormData.endTime}
+                  onChange={(time) => setEventFormData((prev) => ({ ...prev, endTime: time }))}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Описание"
+                  multiline
+                  rows={2}
+                  value={eventFormData.description}
+                  onChange={(e) => setEventFormData((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Место"
+                  value={eventFormData.location}
+                  onChange={(e) => setEventFormData((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Филиал</InputLabel>
+                  <Select
+                    value={eventFormData.branchId}
+                    label="Филиал"
+                    onChange={(e) => setEventFormData((prev) => ({ ...prev, branchId: e.target.value }))}
+                  >
+                    <MenuItem value="">Не выбран</MenuItem>
+                    {branches.map((b) => (
+                      <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Группа</InputLabel>
+                  <Select
+                    value={eventFormData.groupId}
+                    label="Группа"
+                    onChange={(e) => setEventFormData((prev) => ({ ...prev, groupId: e.target.value }))}
+                  >
+                    <MenuItem value="">Не выбрана</MenuItem>
+                    {groups.filter((g) => g.isActive).map((g) => (
+                      <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEventDialog(false)} sx={{ textTransform: 'none' }}>
+              Отмена
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSaveSchoolEvent}
+              disabled={eventSaving}
+              sx={{ textTransform: 'none' }}
+            >
+              {eventSaving ? 'Сохранение…' : 'Сохранить'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={eventDetailDialog} onClose={() => setEventDetailDialog(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>{selectedSchoolEvent?.title || 'Событие'}</DialogTitle>
+          <DialogContent>
+            {selectedSchoolEvent && (
+              <Stack spacing={1} sx={{ mt: 0.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {schoolEventTypeLabel(selectedSchoolEvent.type)}
+                </Typography>
+                <Typography variant="body2">
+                  {format(new Date(selectedSchoolEvent.startTime), 'd MMMM yyyy, HH:mm', { locale: ru })}
+                  {' – '}
+                  {format(new Date(selectedSchoolEvent.endTime), 'HH:mm')}
+                </Typography>
+                {selectedSchoolEvent.location && (
+                  <Typography variant="body2">Место: {selectedSchoolEvent.location}</Typography>
+                )}
+                {selectedSchoolEvent.branch?.name && (
+                  <Typography variant="body2">Филиал: {selectedSchoolEvent.branch.name}</Typography>
+                )}
+                {selectedSchoolEvent.group?.name && (
+                  <Typography variant="body2">Группа: {selectedSchoolEvent.group.name}</Typography>
+                )}
+                {selectedSchoolEvent.description && (
+                  <Typography variant="body2">{selectedSchoolEvent.description}</Typography>
+                )}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button color="error" onClick={handleDeleteSchoolEvent} sx={{ textTransform: 'none' }}>
+              Удалить
+            </Button>
+            <Button onClick={() => setEventDetailDialog(false)} sx={{ textTransform: 'none' }}>
+              Закрыть
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => selectedSchoolEvent && openEditEventDialog(selectedSchoolEvent)}
+              sx={{ textTransform: 'none' }}
+            >
+              Изменить
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </LocalizationProvider>
   );

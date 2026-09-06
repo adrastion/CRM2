@@ -171,8 +171,6 @@ const Settings: React.FC = () => {
             schedule: true,
             payments: true,
             finance: true,
-            memberships: true,
-            clientMemberships: true,
             settings: true,
             faq: true,
           };
@@ -464,8 +462,6 @@ const Settings: React.FC = () => {
     schedule: 'Расписание',
     payments: 'Платежи',
     finance: 'Финансы',
-    memberships: 'Тарифы',
-    clientMemberships: 'Выданные тарифы',
     settings: 'Настройки',
     faq: 'FAQ',
   };

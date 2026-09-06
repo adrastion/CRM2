@@ -38,6 +38,7 @@ model Tenant {
   promoCodes              PromoCode[]
   referralClicks          ReferralClick[]
   referralLinks           ReferralLink[]
+  schoolEvents            SchoolEvent[]
   standards               Standard[]
   subscription            Subscription?
   referredBy              TenantMarketer?
@@ -108,6 +109,7 @@ model Branch {
   groups      Group[]
   halls       Hall[]
   payments    Payment[]
+  schoolEvents SchoolEvent[]
   trainers    TrainerBranch[]
   trainings   Training[]
   financeOperations FinanceOperation[]
@@ -427,6 +429,7 @@ model Group {
   trainings                 Training[]
   payments                  Payment[]
   financeOperations         FinanceOperation[]
+  schoolEvents              SchoolEvent[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, branchId])
@@ -1088,6 +1091,30 @@ model Competition {
   tenant                   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("competitions")
+}
+
+/// Событие календаря школы: родительские собрания и прочие мероприятия (без посещаемости/биллинга).
+model SchoolEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  /// parent_meeting | other
+  type        String    @default("other")
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  tenantId    String
+  branchId    String?
+  groupId     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  group       Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, startTime])
+  @@index([tenantId, type])
+  @@map("school_events")
 }
 
 model CompetitionParticipant {

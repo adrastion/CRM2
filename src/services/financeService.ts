@@ -7,6 +7,7 @@ type TrainerSalarySummaryRow = Prisma.TrainerGetPayload<{
     user: { select: { firstName: true; lastName: true } };
     trainings: { select: { id: true } };
     financeOperations: true;
+    salaryLedgers: true;
   };
 }>;
 
@@ -595,10 +596,18 @@ export class FinanceService {
           where: trainingsWhere,
           select: { id: true },
         },
+        // Выплачено — расходы кассы type=salary за период (логика не меняется)
         financeOperations: {
           where: {
             typeCode: 'salary',
             direction: 'expense',
+            occurredAt: { gte: dateFrom, lte: dateTo },
+          },
+        },
+        // Начислено — только строки реестра без payout; выплата их не меняет
+        salaryLedgers: {
+          where: {
+            kind: { not: 'payout' },
             occurredAt: { gte: dateFrom, lte: dateTo },
           },
         },
@@ -611,7 +620,10 @@ export class FinanceService {
           (s: number, op) => s + Number(op.amount),
           0
         );
-        const accrued = Number(t.balance) + paid;
+        const accrued = t.salaryLedgers.reduce(
+          (s: number, row) => s + Number(row.amount),
+          0
+        );
         const remaining = accrued - paid;
         return {
           trainerId: t.id,

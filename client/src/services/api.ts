@@ -733,6 +733,30 @@ class ApiService {
     await this.api.delete(`/competitions/${id}`);
   }
 
+  async getSchoolEvents(params?: { startDate?: string; endDate?: string; type?: string }, signal?: AbortSignal): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/school-events', { params, signal });
+    return response.data.data || [];
+  }
+
+  async getSchoolEvent(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/school-events/${id}`);
+    return response.data.data;
+  }
+
+  async createSchoolEvent(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/school-events', data);
+    return response.data.data;
+  }
+
+  async updateSchoolEvent(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/school-events/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteSchoolEvent(id: string): Promise<void> {
+    await this.api.delete(`/school-events/${id}`);
+  }
+
   async addCompetitionResult(competitionId: string, data: any): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/competitions/${competitionId}/results`, data);
     return response.data.data;

@@ -245,10 +245,6 @@ const Clients: React.FC = () => {
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
   const [clientStats, setClientStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
-  const [membershipDialog, setMembershipDialog] = useState(false);
-  const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
-  const [membershipTypes, setMembershipTypes] = useState<any[]>([]);
-  const [selectedMembershipId, setSelectedMembershipId] = useState<string>('');
   const [clientCalendarDialog, setClientCalendarDialog] = useState(false);
   const [selectedClientForCalendar, setSelectedClientForCalendar] = useState<Client | null>(null);
   const [clientTrainings, setClientTrainings] = useState<any[]>([]);
@@ -329,16 +325,14 @@ const Clients: React.FC = () => {
           console.log('Membership fee reset check:', resetErr?.response?.data?.message || 'Not needed');
         }
         
-        const [clientsRes, branchesRes, membershipsRes, groupsRes] = await Promise.all([
+        const [clientsRes, branchesRes, groupsRes] = await Promise.all([
           apiService.getClients({ limit: 100 }, abortController.signal),
           apiService.getBranches(undefined, abortController.signal),
-          apiService.getMemberships().catch(() => ({ data: [] })),
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [] }))
         ]);
         if (!isMounted || abortController.signal.aborted) return;
         setClients(clientsRes.data);
         setBranches(branchesRes.data);
-        setMembershipTypes(membershipsRes.data || []);
         setGroups(groupsRes.data || []);
       } catch (err: any) {
         // Ignore cancelled requests
@@ -1076,27 +1070,6 @@ const Clients: React.FC = () => {
     }
   };
 
-  const handleGiveMembership = async () => {
-    if (!selectedClientForMembership || !selectedMembershipId) {
-      alert('Пожалуйста, выберите тариф');
-      return;
-    }
-
-    try {
-      await apiService.createClientMembership({
-        clientId: selectedClientForMembership.id,
-        membershipId: selectedMembershipId
-      });
-      await fetchClients();
-      setMembershipDialog(false);
-      setSelectedClientForMembership(null);
-      setSelectedMembershipId('');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка выдачи тарифа');
-      console.error('Error giving membership:', err);
-    }
-  };
-
   const handleDeleteClient = async (clientId: string) => {
     console.log('Attempting to delete client:', clientId);
     if (window.confirm('Вы уверены, что хотите удалить этого клиента?')) {
@@ -1233,10 +1206,6 @@ const Clients: React.FC = () => {
         sortBy={sortBy}
         onSort={handleClientsSort}
         onEdit={handleEditClient}
-        onMemberships={(client) => {
-          setSelectedClientForMembership(client);
-          setMembershipDialog(true);
-        }}
         onDelete={handleDeleteClient}
         onApproveAccount={handleApproveAccount}
         onRejectAccount={handleRejectAccount}
@@ -1549,6 +1518,39 @@ const Clients: React.FC = () => {
                 inputProps={{ min: 0, max: 500, step: 0.1 }}
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Группы</InputLabel>
+                <Select
+                  multiple
+                  value={formData.groupIds}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({
+                      ...formData,
+                      groupIds: typeof value === 'string' ? value.split(',') : value as string[]
+                    });
+                  }}
+                  label="Группы"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as string[]).map((groupId) => {
+                        const group = groups.find(g => g.id === groupId);
+                        return group ? (
+                          <Chip key={groupId} label={group.name} size="small" />
+                        ) : null;
+                      })}
+                    </Box>
+                  )}
+                >
+                  {groups.filter(g => g.isActive).map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -1779,39 +1781,6 @@ const Clients: React.FC = () => {
               >
                 Паспорт спортсмена
               </Button>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Группы</InputLabel>
-                <Select
-                  multiple
-                  value={formData.groupIds}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setFormData({
-                      ...formData,
-                      groupIds: typeof value === 'string' ? value.split(',') : value as string[]
-                    });
-                  }}
-                  label="Группы"
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {(selected as string[]).map((groupId) => {
-                        const group = groups.find(g => g.id === groupId);
-                        return group ? (
-                          <Chip key={groupId} label={group.name} size="small" />
-                        ) : null;
-                      })}
-                    </Box>
-                  )}
-                >
-                  {groups.filter(g => g.isActive).map((group) => (
-                    <MenuItem key={group.id} value={group.id}>
-                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             </Grid>
             
             {/* Родители */}
@@ -2568,41 +2537,6 @@ const Clients: React.FC = () => {
             setSelectedClientForStats(null);
             setClientStats(null);
           }}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Диалог выдачи тарифа */}
-      <Dialog open={membershipDialog} onClose={() => { setMembershipDialog(false); setSelectedMembershipId(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Выдать тариф клиенту: {selectedClientForMembership ? [selectedClientForMembership.lastName, selectedClientForMembership.firstName, selectedClientForMembership.middleName].filter(Boolean).join(' ') : ''}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>Тариф</InputLabel>
-                <Select
-                  value={selectedMembershipId}
-                  onChange={(e) => setSelectedMembershipId(e.target.value)}
-                  label="Тариф"
-                >
-                  {membershipTypes.filter(m => m.isActive).map((membership) => (
-                    <MenuItem key={membership.id} value={membership.id}>
-                      {membership.name} - {membership.type === 'monthly' 
-                        ? `${membership.duration} дней`
-                        : `${membership.visits} посещений`} - {membership.price} ₽
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setMembershipDialog(false); setSelectedMembershipId(''); }}>Отмена</Button>
-          <Button onClick={handleGiveMembership} variant="contained" disabled={!selectedMembershipId}>
-            Выдать тариф
-          </Button>
         </DialogActions>
       </Dialog>
 

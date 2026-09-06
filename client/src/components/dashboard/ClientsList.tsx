@@ -14,7 +14,6 @@ export interface ClientsListProps {
   sortBy: string;
   onSort: (key: string) => void;
   onEdit: (client: Client) => void;
-  onMemberships: (client: Client) => void;
   onDelete: (clientId: string) => void;
   onGroupClick?: (client: Client) => void;
   onApproveAccount?: (client: Client) => void;
@@ -103,7 +102,6 @@ const ClientsList: React.FC<ClientsListProps> = ({
   sortBy,
   onSort,
   onEdit,
-  onMemberships,
   onDelete,
   onGroupClick,
   onApproveAccount,
@@ -458,21 +456,6 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     }}
                   >
                     Редактировать
-                  </ButtonBase>
-                  <ButtonBase
-                    onClick={() => onMemberships(client)}
-                    sx={{
-                      bgcolor: colors.primarySoft,
-                      color: colors.text,
-                      px: 1.25,
-                      py: 0.4,
-                      borderRadius: '10px',
-                      fontWeight: 600,
-                      fontSize: typography.hint,
-                      minWidth: 96,
-                    }}
-                  >
-                    Тарифы
                   </ButtonBase>
                   <ButtonBase
                     onClick={() => onDelete(client.id)}
