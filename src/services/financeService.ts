@@ -596,7 +596,7 @@ export class FinanceService {
           where: trainingsWhere,
           select: { id: true },
         },
-        // Выплачено — расходы кассы type=salary за период (логика не меняется)
+        // Выплачено — расходы кассы type=salary за период
         financeOperations: {
           where: {
             typeCode: 'salary',
@@ -604,10 +604,9 @@ export class FinanceService {
             occurredAt: { gte: dateFrom, lte: dateTo },
           },
         },
-        // Начислено — только строки реестра без payout; выплата их не меняет
+        // Начисления и выплаты в реестре за период (payout отдельно отсекаем при суммировании)
         salaryLedgers: {
           where: {
-            kind: { not: 'payout' },
             occurredAt: { gte: dateFrom, lte: dateTo },
           },
         },
@@ -620,11 +619,17 @@ export class FinanceService {
           (s: number, op) => s + Number(op.amount),
           0
         );
-        const accrued = t.salaryLedgers.reduce(
+        const accrualRows = t.salaryLedgers.filter((row) => row.kind !== 'payout');
+        const ledgerAccrued = accrualRows.reduce(
           (s: number, row) => s + Number(row.amount),
           0
         );
-        const remaining = accrued - paid;
+        // Реестр — источник истины (выплата не уменьшает «начислено»).
+        // Fallback на balance+paid, если за период ещё нет строк начисления
+        // (старые данные / баланс вёлся без ledger).
+        const accrued =
+          accrualRows.length > 0 ? ledgerAccrued : Number(t.balance) + paid;
+        const remaining = Number(t.balance);
         return {
           trainerId: t.id,
           trainerName: `${t.user.lastName} ${t.user.firstName}`.trim(),

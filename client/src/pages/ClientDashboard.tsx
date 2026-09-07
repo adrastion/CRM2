@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, TextField, Typography } from '@mui/material';
 import { HourglassEmpty, SportsMartialArtsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -68,6 +68,12 @@ const ClientDashboard: React.FC = () => {
   const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
   const [switchClientId, setSwitchClientId] = React.useState<string | undefined>();
   const [activeKey, setActiveKey] = React.useState('dashboard');
+  const [verifyCode, setVerifyCode] = React.useState('');
+  const [verifySending, setVerifySending] = React.useState(false);
+  const [verifyChecking, setVerifyChecking] = React.useState(false);
+  const [verifyNotice, setVerifyNotice] = React.useState('');
+  const [verifyError, setVerifyError] = React.useState('');
+  const [emailVerifiedLocal, setEmailVerifiedLocal] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
@@ -82,6 +88,10 @@ const ClientDashboard: React.FC = () => {
         const result = await loadDashboard(switchClientId);
         if (cancelled) return;
         setData(result);
+        setEmailVerifiedLocal(null);
+        setVerifyCode('');
+        setVerifyNotice('');
+        setVerifyError('');
       } catch (err) {
         if (cancelled) return;
         const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
@@ -109,6 +119,44 @@ const ClientDashboard: React.FC = () => {
   const handleAthleteChange = (id: string) => {
     setSelectedDay(null);
     setSwitchClientId(id);
+  };
+
+  const handleSendVerification = async () => {
+    setVerifyError('');
+    setVerifyNotice('');
+    setVerifySending(true);
+    try {
+      const result = await apiService.sendEmailVerification();
+      if (result.alreadyVerified) {
+        setEmailVerifiedLocal(true);
+        setVerifyNotice('Email уже подтверждён');
+      } else {
+        setVerifyNotice(result.message || 'Код отправлен на почту');
+      }
+    } catch (err) {
+      setVerifyError(extractApiError(err, 'Не удалось отправить код').message);
+    } finally {
+      setVerifySending(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!/^\d{6}$/.test(verifyCode.trim())) {
+      setVerifyError('Введите 6-значный код');
+      return;
+    }
+    setVerifyError('');
+    setVerifyChecking(true);
+    try {
+      const result = await apiService.verifyEmailCode(verifyCode.trim());
+      setEmailVerifiedLocal(true);
+      setVerifyCode('');
+      setVerifyNotice(result.message || 'Email подтверждён');
+    } catch (err) {
+      setVerifyError(extractApiError(err, 'Неверный код').message);
+    } finally {
+      setVerifyChecking(false);
+    }
   };
 
   if (loading && !data) {
@@ -167,6 +215,10 @@ const ClientDashboard: React.FC = () => {
   const pending = !data.isAccountApproved;
   const linkedAthletes = data.linkedAthletes || [];
   const currentAthleteId = data.activeClientId || switchClientId || linkedAthletes[0]?.id || '';
+  const viewerEmail = data.viewerEmail || data.parent?.email || data.client?.email || null;
+  const emailVerified =
+    emailVerifiedLocal ?? data.emailVerified ?? data.parent?.emailVerified ?? data.client?.emailVerified ?? false;
+  const showEmailVerify = Boolean(viewerEmail) && emailVerified === false;
 
   const navItems: ShellNavItem[] = NAV.map((item) => ({
     key: item.key,
@@ -214,6 +266,57 @@ const ClientDashboard: React.FC = () => {
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
+      {showEmailVerify && (
+        <Panel title="Подтвердите email">
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
+              На {viewerEmail} можно отправить код подтверждения. Вход без подтверждения доступен.
+            </Typography>
+            {verifyNotice && (
+              <Typography sx={{ color: colors.primary, fontSize: typography.hint }}>{verifyNotice}</Typography>
+            )}
+            {verifyError && (
+              <Typography sx={{ color: colors.danger, fontSize: typography.hint }}>{verifyError}</Typography>
+            )}
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 1.5,
+                alignItems: 'center',
+              }}
+            >
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleSendVerification}
+                disabled={verifySending}
+                sx={{ textTransform: 'none' }}
+              >
+                {verifySending ? 'Отправка…' : 'Отправить код'}
+              </Button>
+              <TextField
+                size="small"
+                placeholder="Код из письма"
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value)}
+                inputProps={{ maxLength: 6, inputMode: 'numeric' }}
+                sx={{ width: 160 }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleVerifyCode}
+                disabled={verifyChecking || verifyCode.trim().length !== 6}
+                sx={{ textTransform: 'none' }}
+              >
+                {verifyChecking ? '…' : 'Подтвердить'}
+              </Button>
+            </Box>
+          </Box>
+        </Panel>
+      )}
+
       <Box
         sx={{
           display: 'grid',

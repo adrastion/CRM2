@@ -25,9 +25,26 @@ import AccountSelect from '../components/auth/AccountSelect';
 import { colors, typography } from '../theme/tokens';
 
 /** Шаги единой авторизации. */
-type Step = 'identify' | 'setup' | 'password' | 'select';
+type Step =
+  | 'identify'
+  | 'setup'
+  | 'password'
+  | 'select'
+  | 'forgot_email'
+  | 'forgot_code'
+  | 'forgot_select'
+  | 'forgot_new_password';
 
-const STEP_ORDER: Record<Step, number> = { identify: 0, setup: 1, password: 1, select: 2 };
+const STEP_ORDER: Record<Step, number> = {
+  identify: 0,
+  setup: 1,
+  password: 1,
+  select: 2,
+  forgot_email: 3,
+  forgot_code: 4,
+  forgot_select: 5,
+  forgot_new_password: 6,
+};
 
 /** Маска телефона в формате +7 (999) 999-99-99. */
 function maskPhone(raw: string): string {
@@ -63,6 +80,13 @@ const Auth: React.FC = () => {
   const [rememberMe, setRememberMe] = React.useState(false);
 
   const [selection, setSelection] = React.useState<UnifiedSelectionRequired | null>(null);
+
+  const [forgotEmail, setForgotEmail] = React.useState('');
+  const [forgotCode, setForgotCode] = React.useState('');
+  const [resetToken, setResetToken] = React.useState('');
+  const [forgotAccounts, setForgotAccounts] = React.useState<PublicAccount[]>([]);
+  const [forgotAccount, setForgotAccount] = React.useState<PublicAccount | null>(null);
+  const [forgotNotice, setForgotNotice] = React.useState('');
 
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -226,7 +250,115 @@ const Auth: React.FC = () => {
     setAcceptTerms(false);
     setErrors({});
     setNotice('');
+    setForgotCode('');
+    setResetToken('');
+    setForgotAccounts([]);
+    setForgotAccount(null);
+    setForgotNotice('');
     goToStep('identify');
+  };
+
+  const startForgotPassword = () => {
+    setErrors({});
+    setForgotCode('');
+    setForgotNotice('');
+    setResetToken('');
+    setForgotAccounts([]);
+    setForgotAccount(null);
+    if (identifierType === 'email' && (email || identifier)) {
+      setForgotEmail(email || identifier);
+      goToStep('forgot_email');
+    } else {
+      setForgotEmail('');
+      goToStep('forgot_email');
+    }
+  };
+
+  const submitForgotRequest = async () => {
+    setErrors({});
+    setForgotNotice('');
+    const value = forgotEmail.trim();
+    if (!value || !value.includes('@')) {
+      setErrors({ email: 'Введите корректный email' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await apiService.requestPasswordReset(value);
+      setForgotNotice(
+        result?.message ||
+          'Если аккаунт с этим email существует, мы отправили код на почту'
+      );
+      goToStep('forgot_code');
+    } catch (err) {
+      handleError(err, 'email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitForgotCode = async () => {
+    setErrors({});
+    if (!/^\d{6}$/.test(forgotCode.trim())) {
+      setErrors({ code: 'Введите 6-значный код' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await apiService.verifyPasswordResetCode(forgotEmail.trim(), forgotCode.trim());
+      setResetToken(result.resetToken);
+      setForgotAccounts(result.accounts || []);
+      if ((result.accounts || []).length === 1) {
+        setForgotAccount(result.accounts[0]);
+        goToStep('forgot_new_password');
+      } else {
+        goToStep('forgot_select');
+      }
+    } catch (err) {
+      handleError(err, 'code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitForgotNewPassword = async () => {
+    setErrors({});
+    if (!forgotAccount || !resetToken) {
+      setErrors({ form: 'Сессия сброса истекла. Начните снова' });
+      return;
+    }
+    if (password.length < 6) {
+      setErrors({ password: 'Пароль должен содержать минимум 6 символов' });
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrors({ confirmPassword: 'Пароли не совпадают' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiService.confirmPasswordReset({
+        resetToken,
+        newPassword: password,
+        accountType: forgotAccount.accountType,
+        accountId: forgotAccount.id,
+      });
+      setNotice('Пароль изменён. Войдите с новым паролем');
+      setPassword('');
+      setConfirmPassword('');
+      setForgotCode('');
+      setResetToken('');
+      if (forgotEmail) {
+        setEmail(forgotEmail);
+        setIdentifierType('email');
+        setIdentifier(forgotEmail.trim().toLowerCase());
+      }
+      goToStep('password');
+    } catch (err) {
+      handleError(err, 'password');
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ------------------------------ Разметка ------------------------------- */
@@ -434,6 +566,7 @@ const Auth: React.FC = () => {
       <TermsCheckbox checked={rememberMe} onChange={setRememberMe} label="Запомнить меня" />
 
       {errorBanner}
+      {noticeBanner}
 
       <Box sx={{ display: 'flex', justifyContent: 'center', pt: { xs: 1, md: 2 } }}>
         <AuthButton onClick={submitLogin} loading={loading}>
@@ -441,7 +574,23 @@ const Auth: React.FC = () => {
         </AuthButton>
       </Box>
 
-      <Box sx={{ textAlign: 'center' }}>
+      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={startForgotPassword}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Забыли пароль?
+        </Typography>
         <Typography
           component="button"
           type="button"
@@ -458,6 +607,170 @@ const Auth: React.FC = () => {
         >
           Изменить {identifierType === 'phone' ? 'номер' : 'email'}
         </Typography>
+      </Box>
+    </Box>
+  );
+
+  const forgotEmailStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
+      <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+        Укажите email аккаунта — мы отправим код для сброса пароля
+      </Typography>
+      <PillField
+        name="forgotEmail"
+        icon={<MailOutline />}
+        placeholder="Email"
+        type="email"
+        autoComplete="email"
+        autoFocus
+        value={forgotEmail}
+        onChange={setForgotEmail}
+        error={errors.email}
+        onEnter={submitForgotRequest}
+      />
+      {errorBanner}
+      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1 }}>
+        <AuthButton onClick={submitForgotRequest} loading={loading}>
+          Отправить код
+        </AuthButton>
+      </Box>
+      <Box sx={{ textAlign: 'center' }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => goToStep('password')}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.textHint,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Назад ко входу
+        </Typography>
+      </Box>
+    </Box>
+  );
+
+  const forgotCodeStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
+      {forgotNotice && (
+        <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+          {forgotNotice}
+        </Typography>
+      )}
+      <PillField
+        name="forgotCode"
+        icon={<LockReset />}
+        placeholder="Код из письма"
+        autoComplete="one-time-code"
+        autoFocus
+        value={forgotCode}
+        onChange={setForgotCode}
+        error={errors.code}
+        onEnter={submitForgotCode}
+      />
+      {errorBanner}
+      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1 }}>
+        <AuthButton onClick={submitForgotCode} loading={loading}>
+          Подтвердить код
+        </AuthButton>
+      </Box>
+      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={submitForgotRequest}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+          }}
+        >
+          Отправить код ещё раз
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => goToStep('forgot_email')}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.textHint,
+            fontSize: typography.hint,
+          }}
+        >
+          Изменить email
+        </Typography>
+      </Box>
+    </Box>
+  );
+
+  const forgotClientAccounts = forgotAccounts.filter(
+    (a) => a.accountType === 'CLIENT' || a.accountType === 'PARENT'
+  );
+  const forgotStaffAccounts = forgotAccounts.filter((a) => a.accountType === 'TENANT_USER');
+  const forgotMixed = forgotClientAccounts.length > 0 && forgotStaffAccounts.length > 0;
+
+  const forgotSelectStep = (
+    <AccountSelect
+      clientAccounts={forgotClientAccounts}
+      staffAccounts={forgotStaffAccounts}
+      loading={loading}
+      error={errors.form}
+      onSubmit={(account) => {
+        setForgotAccount(account);
+        goToStep('forgot_new_password');
+      }}
+      onBack={() => goToStep('forgot_code')}
+    />
+  );
+
+  const forgotNewPasswordStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
+      {forgotAccount && (
+        <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+          Новый пароль для: {forgotAccount.displayName}
+          {forgotAccount.tenant?.name ? ` (${forgotAccount.tenant.name})` : ''}
+        </Typography>
+      )}
+      <PillField
+        name="newPassword"
+        icon={<LockOutlined />}
+        placeholder="Новый пароль"
+        type="password"
+        autoComplete="new-password"
+        autoFocus
+        revealable
+        value={password}
+        onChange={setPassword}
+        error={errors.password}
+      />
+      <PillField
+        name="confirmNewPassword"
+        icon={<LockOutlined />}
+        placeholder="Подтвердите пароль"
+        type="password"
+        autoComplete="new-password"
+        revealable
+        value={confirmPassword}
+        onChange={setConfirmPassword}
+        error={errors.confirmPassword}
+        onEnter={submitForgotNewPassword}
+      />
+      {errorBanner}
+      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1 }}>
+        <AuthButton onClick={submitForgotNewPassword} loading={loading}>
+          Сохранить пароль
+        </AuthButton>
       </Box>
     </Box>
   );
@@ -483,30 +796,52 @@ const Auth: React.FC = () => {
   let titleSecondLine: string | undefined;
   let width: 'auth' | 'select' | 'full' = 'auth';
 
-  if (step === 'select') {
-    if (isMixed) {
+  if (step === 'select' || step === 'forgot_select') {
+    if ((step === 'select' && isMixed) || (step === 'forgot_select' && forgotMixed)) {
       width = 'full';
     } else {
       width = 'select';
-      if (hasStaff && !hasClients) titleSecondLine = 'Сотрудника';
+      if (step === 'select' && hasStaff && !hasClients) titleSecondLine = 'Сотрудника';
     }
+  }
+
+  if (
+    step === 'forgot_email' ||
+    step === 'forgot_code' ||
+    step === 'forgot_new_password' ||
+    step === 'forgot_select'
+  ) {
+    title = 'Сброс пароля';
   }
 
   const content =
     step === 'identify'
       ? identifyStep
       : step === 'setup'
-      ? setupStep
-      : step === 'password'
-      ? passwordStep
-      : selectStep;
+        ? setupStep
+        : step === 'password'
+          ? passwordStep
+          : step === 'forgot_email'
+            ? forgotEmailStep
+            : step === 'forgot_code'
+              ? forgotCodeStep
+              : step === 'forgot_select'
+                ? forgotSelectStep
+                : step === 'forgot_new_password'
+                  ? forgotNewPasswordStep
+                  : selectStep;
 
   return (
     <AuthShell
       title={title}
       titleSecondLine={titleSecondLine}
       width={width}
-      card={step !== 'select' || !isMixed}
+      card={
+        !(
+          (step === 'select' && isMixed) ||
+          (step === 'forgot_select' && forgotMixed)
+        )
+      }
     >
       <StepTransition stepKey={step} direction={direction}>
         {content}

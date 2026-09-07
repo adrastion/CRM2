@@ -271,6 +271,7 @@ const AppContent: React.FC = () => {
         <Route path="/auth" element={<Auth />} />
         <Route path="/login" element={<Navigate to="/auth" replace />} />
         <Route path="/client/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/reset-password" element={<Navigate to="/auth" replace />} />
         <Route
           path="/register"
           element={

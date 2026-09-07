@@ -126,6 +126,14 @@ SMTP_PASS="your-app-password"
 FROM_EMAIL="noreply@martialartscrm.com"
 CORS_ORIGIN="http://localhost:3000"
 
+# Яндекс Почта (пример): создайте пароль приложения в настройках Яндекса
+# SMTP_HOST=smtp.yandex.ru
+# SMTP_PORT=587
+# # или 465 — тогда соединение идёт с secure: true автоматически
+# SMTP_USER=your@yandex.ru
+# SMTP_PASS=пароль-приложения
+# FROM_EMAIL=your@yandex.ru
+
 # Настройки cron-задач (опционально)
 CRON_SCHEDULE="0 0 * * *"  # Расписание для ежемесячных платежей (по умолчанию: каждый день в полночь)
 CRON_TIMEZONE="Europe/Moscow"  # Часовой пояс для cron-задач

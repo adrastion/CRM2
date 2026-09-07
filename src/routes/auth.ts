@@ -13,7 +13,6 @@ import {
   changePassword,
   changeEmail,
   requestPasswordReset,
-  resetPassword,
   logout,
   verifyToken,
   validateRegister,
@@ -24,7 +23,6 @@ import {
   validateChangePassword,
   validateChangeEmail,
   validateResetPassword,
-  validateNewPassword,
   validateUpdateProfile
 } from '../controllers/authController';
 import {
@@ -37,6 +35,18 @@ import {
   validateSetupPassword,
   validateSelectAccount
 } from '../controllers/unifiedAuthController';
+import {
+  requestPasswordResetCode,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
+  sendEmailVerification,
+  verifyEmailCode,
+  legacyResetPasswordUnavailable,
+  validatePasswordResetRequest,
+  validatePasswordResetVerify,
+  validatePasswordResetConfirm,
+  validateEmailVerifyCode,
+} from '../controllers/emailAuthController';
 import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 
 const router = Router();
@@ -53,11 +63,21 @@ router.post('/login', validateLogin, login);
 router.post('/unified-staff-login', validateLogin, unifiedStaffLogin);
 router.post('/marketer/login', validateMarketerLogin, marketerLogin);
 router.post('/promo-code-admin/login', validatePromoCodeAdminLogin, promoCodeAdminLogin);
+
+// Сброс пароля по коду (User / Client / Parent)
+router.post('/password-reset/request', validatePasswordResetRequest, requestPasswordResetCode);
+router.post('/password-reset/verify-code', validatePasswordResetVerify, verifyPasswordResetCode);
+router.post('/password-reset/confirm', validatePasswordResetConfirm, confirmPasswordReset);
+// Совместимость со старыми клиентами
 router.post('/request-password-reset', validateResetPassword, requestPasswordReset);
-router.post('/reset-password', validateNewPassword, resetPassword);
+router.post('/reset-password', legacyResetPasswordUnavailable);
+
+// Подтверждение email (staff JWT или client/parent token)
+router.post('/email/send-verification', sendEmailVerification);
+router.post('/email/verify', validateEmailVerifyCode, verifyEmailCode);
 
 // Protected routes
-router.use(authenticate); // All routes below require authentication
+router.use(authenticate);
 
 router.get('/profile', getProfile);
 router.put('/profile', validateUpdateProfile, updateProfile);
@@ -66,10 +86,7 @@ router.post('/change-email', validateChangeEmail, changeEmail);
 router.post('/logout', logout);
 router.get('/verify', verifyToken);
 
-// Admin/Owner only routes
 router.post('/users', requireOwnerOrAdmin, validateCreateUser, createUser);
-
-// Owner only routes
 router.put('/users/:id', requireOwner, updateUserById);
 router.delete('/users/:id', requireOwner, deleteUser);
 

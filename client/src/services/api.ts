@@ -11,6 +11,7 @@ import {
   UnifiedSession,
   AccountType,
   ClientDashboardData,
+  PublicAccount,
   SubscriptionPlanItem,
   PublicPlanItem,
   SubscriptionGrantLogItem,
@@ -262,12 +263,41 @@ class ApiService {
     await this.api.post('/auth/change-email', data);
   }
 
-  async requestPasswordReset(email: string): Promise<void> {
-    await this.api.post('/auth/request-password-reset', { email });
+  async requestPasswordReset(email: string): Promise<{ message?: string }> {
+    const response = await this.api.post<ApiResponse>('/auth/password-reset/request', { email });
+    return response.data.data || { message: response.data.message };
   }
 
-  async resetPassword(data: { token: string; newPassword: string }): Promise<void> {
-    await this.api.post('/auth/reset-password', data);
+  async verifyPasswordResetCode(email: string, code: string): Promise<{
+    resetToken: string;
+    accounts: PublicAccount[];
+  }> {
+    const response = await this.api.post<ApiResponse>('/auth/password-reset/verify-code', { email, code });
+    return response.data.data;
+  }
+
+  async confirmPasswordReset(data: {
+    resetToken: string;
+    newPassword: string;
+    accountType: string;
+    accountId: string;
+  }): Promise<void> {
+    await this.api.post('/auth/password-reset/confirm', data);
+  }
+
+  async sendEmailVerification(): Promise<{ message?: string; email?: string; alreadyVerified?: boolean }> {
+    const response = await this.api.post<ApiResponse>('/auth/email/send-verification');
+    return response.data.data || {};
+  }
+
+  async verifyEmailCode(code: string): Promise<{ emailVerified?: boolean; message?: string }> {
+    const response = await this.api.post<ApiResponse>('/auth/email/verify', { code });
+    return response.data.data || {};
+  }
+
+  /** @deprecated */
+  async resetPassword(_data: { token: string; newPassword: string }): Promise<void> {
+    await this.api.post('/auth/reset-password', _data);
   }
 
   // Client endpoints

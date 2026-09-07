@@ -5,10 +5,11 @@ class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: false, // true for 465, false for other ports
+      port,
+      secure: port === 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -43,7 +44,7 @@ class EmailService {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Password Reset</title>
+        <title>Сброс пароля</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -67,17 +68,17 @@ class EmailService {
             <h1>Martial Arts CRM</h1>
           </div>
           <div class="content">
-            <h2>Password Reset Request</h2>
-            <p>Hello ${data.firstName},</p>
-            <p>You have requested to reset your password. Click the button below to reset your password:</p>
-            <a href="${data.resetUrl}" class="button">Reset Password</a>
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <h2>Сброс пароля</h2>
+            <p>Здравствуйте${data.firstName ? `, ${data.firstName}` : ''}!</p>
+            <p>Вы запросили сброс пароля. Нажмите кнопку ниже:</p>
+            <a href="${data.resetUrl}" class="button">Сбросить пароль</a>
+            <p>Если кнопка не работает, скопируйте ссылку в браузер:</p>
             <p>${data.resetUrl}</p>
-            <p>This link will expire in 1 hour.</p>
-            <p>If you didn't request this password reset, please ignore this email.</p>
+            <p>Ссылка действительна 1 час.</p>
+            <p>Если вы не запрашивали сброс, просто проигнорируйте это письмо.</p>
           </div>
           <div class="footer">
-            <p>© 2024 Martial Arts CRM. All rights reserved.</p>
+            <p>© Martial Arts CRM</p>
           </div>
         </div>
       </body>
@@ -85,26 +86,80 @@ class EmailService {
     `;
 
     const text = `
-      Password Reset Request
+      Сброс пароля
       
-      Hello ${data.firstName},
+      Здравствуйте${data.firstName ? `, ${data.firstName}` : ''}!
       
-      You have requested to reset your password. Click the link below to reset your password:
+      Ссылка для сброса пароля: ${data.resetUrl}
       
-      ${data.resetUrl}
-      
-      This link will expire in 1 hour.
-      
-      If you didn't request this password reset, please ignore this email.
-      
-      © 2024 Martial Arts CRM. All rights reserved.
+      Ссылка действительна 1 час.
     `;
 
     await this.sendEmail({
       to: email,
-      subject: 'Password Reset Request - Martial Arts CRM',
+      subject: 'Сброс пароля — Martial Arts CRM',
       html,
       text
+    });
+  }
+
+  /** Письмо с 6-значным кодом для сброса пароля. */
+  async sendPasswordResetCodeEmail(
+    email: string,
+    data: { firstName?: string; code: string }
+  ): Promise<void> {
+    const name = data.firstName ? `, ${data.firstName}` : '';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>Код сброса пароля</title></head>
+      <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333">
+        <div style="max-width:560px;margin:0 auto;padding:24px">
+          <h2>Сброс пароля</h2>
+          <p>Здравствуйте${name}!</p>
+          <p>Ваш код для сброса пароля:</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:6px">${data.code}</p>
+          <p>Код действует 10 минут. Если вы не запрашивали сброс — проигнорируйте письмо.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    const text = `Здравствуйте${name}!\n\nКод для сброса пароля: ${data.code}\nДействует 10 минут.`;
+    await this.sendEmail({
+      to: email,
+      subject: 'Код сброса пароля — Martial Arts CRM',
+      html,
+      text,
+    });
+  }
+
+  /** Письмо с 6-значным кодом подтверждения email. */
+  async sendVerificationCodeEmail(
+    email: string,
+    data: { firstName?: string; code: string }
+  ): Promise<void> {
+    const name = data.firstName ? `, ${data.firstName}` : '';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>Подтверждение email</title></head>
+      <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333">
+        <div style="max-width:560px;margin:0 auto;padding:24px">
+          <h2>Подтверждение email</h2>
+          <p>Здравствуйте${name}!</p>
+          <p>Ваш код подтверждения:</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:6px">${data.code}</p>
+          <p>Код действует 10 минут. Подтверждение почты необязательно для входа.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    const text = `Здравствуйте${name}!\n\nКод подтверждения email: ${data.code}\nДействует 10 минут.`;
+    await this.sendEmail({
+      to: email,
+      subject: 'Подтверждение email — Martial Arts CRM',
+      html,
+      text,
     });
   }
 

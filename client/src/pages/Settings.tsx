@@ -85,6 +85,12 @@ const Settings: React.FC = () => {
   const [emailPassword, setEmailPassword] = useState('');
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+
+  // Подтверждение email
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifySending, setVerifySending] = useState(false);
+  const [verifyChecking, setVerifyChecking] = useState(false);
+  const [verifyNotice, setVerifyNotice] = useState<string | null>(null);
   
   // Смена пароля
   const [currentPassword, setCurrentPassword] = useState('');
@@ -385,10 +391,12 @@ const Settings: React.FC = () => {
         password: emailPassword
       });
 
-      // Обновить email в контексте
+      // Обновить email в контексте — после смены нужна повторная верификация
       if (updateUser && user) {
-        updateUser({ ...user, email: newEmail });
+        updateUser({ ...user, email: newEmail, emailVerified: false });
       }
+      setVerifyCode('');
+      setVerifyNotice(null);
 
       setSuccess(true);
       setEmailDialogOpen(false);
@@ -400,6 +408,48 @@ const Settings: React.FC = () => {
       console.error('Error changing email:', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendVerificationCode = async () => {
+    try {
+      setVerifySending(true);
+      setError(null);
+      setVerifyNotice(null);
+      const result = await apiService.sendEmailVerification();
+      if (result.alreadyVerified) {
+        if (updateUser && user) {
+          updateUser({ ...user, emailVerified: true });
+        }
+        setVerifyNotice('Email уже подтверждён');
+      } else {
+        setVerifyNotice(result.message || 'Код отправлен на почту');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось отправить код');
+    } finally {
+      setVerifySending(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    if (!/^\d{6}$/.test(verifyCode.trim())) {
+      setError('Введите 6-значный код');
+      return;
+    }
+    try {
+      setVerifyChecking(true);
+      setError(null);
+      const result = await apiService.verifyEmailCode(verifyCode.trim());
+      if (updateUser && user) {
+        updateUser({ ...user, emailVerified: true });
+      }
+      setVerifyCode('');
+      setVerifyNotice(result.message || 'Email подтверждён');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Неверный код');
+    } finally {
+      setVerifyChecking(false);
     }
   };
 
@@ -684,6 +734,58 @@ const Settings: React.FC = () => {
             </Typography>
 
             <Grid container spacing={3}>
+              {/* Подтверждение email */}
+              <Grid item xs={12}>
+                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Email sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      Подтверждение email
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
+                    {user?.email || 'Email не указан'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    Статус:{' '}
+                    <strong>
+                      {user?.emailVerified ? 'подтверждён' : 'не подтверждён'}
+                    </strong>
+                  </Typography>
+                  {verifyNotice && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      {verifyNotice}
+                    </Alert>
+                  )}
+                  {!user?.emailVerified && user?.email && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 420 }}>
+                      <Button
+                        variant="outlined"
+                        onClick={handleSendVerificationCode}
+                        disabled={verifySending}
+                        sx={{ textTransform: 'none', alignSelf: 'flex-start' }}
+                      >
+                        {verifySending ? 'Отправка…' : 'Отправить код'}
+                      </Button>
+                      <TextField
+                        label="Код из письма"
+                        value={verifyCode}
+                        onChange={(e) => setVerifyCode(e.target.value)}
+                        inputProps={{ maxLength: 6, inputMode: 'numeric' }}
+                      />
+                      <Button
+                        variant="contained"
+                        onClick={handleVerifyEmailCode}
+                        disabled={verifyChecking || verifyCode.trim().length !== 6}
+                        sx={{ textTransform: 'none', alignSelf: 'flex-start' }}
+                      >
+                        {verifyChecking ? 'Проверка…' : 'Подтвердить'}
+                      </Button>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+
               {/* Смена email */}
               <Grid item xs={12} md={6}>
                 <Paper sx={{ p: { xs: 2, sm: 3 } }}>

@@ -588,6 +588,7 @@ export class UnifiedAuthService {
           user: {
             id: user.id,
             email: user.email,
+            emailVerified: user.emailVerified,
             firstName: user.firstName,
             lastName: user.lastName,
             middleName: user.middleName,
@@ -617,6 +618,7 @@ export class UnifiedAuthService {
             lastName: client.lastName,
             middleName: client.middleName,
             email: client.email,
+            emailVerified: client.emailVerified,
             phone: client.phone,
             tenantId: client.tenantId,
             isAccountApproved: client.isAccountApproved,
@@ -645,6 +647,7 @@ export class UnifiedAuthService {
             id: parent.id,
             fullName: parent.fullName,
             email: parent.email,
+            emailVerified: parent.emailVerified,
             phone: parent.phone,
             tenantId: parent.tenantId,
             clientId: parent.clientId,

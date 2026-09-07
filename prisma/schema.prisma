@@ -75,21 +75,22 @@ model TenantSettings {
 }
 
 model User {
-  id         String    @id @default(cuid())
-  email      String    @unique
-  password   String
-  firstName  String
-  lastName   String
-  phone      String?
-  role       String
-  isActive   Boolean   @default(true)
-  lastLogin  DateTime?
-  tenantId   String
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  middleName String?
-  trainer    Trainer?
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          String
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  lastLogin     DateTime?
+  tenantId      String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  middleName    String?
+  trainer       Trainer?
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("users")
 }
@@ -177,6 +178,7 @@ model Client {
   passportSeries           String?
   // Поля для личного кабинета клиента
   password                 String? // Пароль для авторизации
+  emailVerified            Boolean                  @default(false)
   isAccountApproved        Boolean                  @default(false) // Подтвержден ли аккаунт администратором
   accountApprovedAt        DateTime? // Дата подтверждения
   accountApprovedBy        String? // Кто подтвердил (userId)
@@ -223,6 +225,7 @@ model Parent {
   approvedAt       DateTime? // Дата подтверждения
   // Поля для личного кабинета родителя
   password                 String? // Пароль для авторизации
+  emailVerified            Boolean                  @default(false)
   isAccountApproved        Boolean                  @default(false) // Подтвержден ли аккаунт администратором
   accountApprovedAt        DateTime? // Дата подтверждения
   accountApprovedBy        String? // Кто подтвердил (userId)
@@ -232,6 +235,25 @@ model Parent {
   supportTickets   SupportTicket[] @relation("ParentSupportTickets")
 
   @@map("parents")
+}
+
+/// Одноразовые коды для подтверждения email и сброса пароля.
+model EmailOtp {
+  id          String   @id @default(cuid())
+  email       String
+  /// verify | reset
+  purpose     String
+  codeHash    String
+  /// user | client | parent — для verify; для reset может быть null до выбора аккаунта
+  accountType String?
+  accountId   String?
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([email, purpose])
+  @@index([accountType, accountId, purpose])
+  @@map("email_otps")
 }
 
 model Achievement {

@@ -122,9 +122,16 @@ export const getClientDashboard = asyncHandler(
     let clientId: string;
     let tenantId: string;
     let isAccountApproved: boolean;
-    let viewerName: string;
-    let parentInfo: { id: string; fullName: string; phone: string | null; email: string | null } | null =
-      null;
+    let viewerName = '';
+    let viewerEmail: string | null = null;
+    let viewerEmailVerified = false;
+    let parentInfo: {
+      id: string;
+      fullName: string;
+      phone: string | null;
+      email: string | null;
+      emailVerified?: boolean;
+    } | null = null;
 
     if (userType === 'parent' && parentAuthId) {
       const parent = await prisma.parent.findUnique({
@@ -134,6 +141,7 @@ export const getClientDashboard = asyncHandler(
           fullName: true,
           phone: true,
           email: true,
+          emailVerified: true,
           clientId: true,
           tenantId: true,
           isAccountApproved: true,
@@ -145,11 +153,14 @@ export const getClientDashboard = asyncHandler(
       tenantId = parent.tenantId;
       isAccountApproved = parent.isAccountApproved;
       viewerName = parent.fullName;
+      viewerEmail = parent.email;
+      viewerEmailVerified = parent.emailVerified;
       parentInfo = {
         id: parent.id,
         fullName: parent.fullName,
         phone: parent.phone,
         email: parent.email,
+        emailVerified: parent.emailVerified,
       };
     } else {
       const client = await prisma.client.findUnique({
@@ -159,6 +170,8 @@ export const getClientDashboard = asyncHandler(
           firstName: true,
           lastName: true,
           middleName: true,
+          email: true,
+          emailVerified: true,
           tenantId: true,
           isAccountApproved: true,
         },
@@ -169,6 +182,8 @@ export const getClientDashboard = asyncHandler(
       tenantId = client.tenantId;
       isAccountApproved = client.isAccountApproved;
       viewerName = fullName([client.lastName, client.firstName, client.middleName]);
+      viewerEmail = client.email;
+      viewerEmailVerified = client.emailVerified;
     }
 
     const linkedAthletes = await findLinkedAthletes(tenantId, userType, clientAuthId, parentAuthId);
@@ -193,6 +208,8 @@ export const getClientDashboard = asyncHandler(
           isAccountApproved: false,
           userType: userType || 'client',
           viewerName,
+          viewerEmail,
+          emailVerified: viewerEmailVerified,
           parent: parentInfo,
           linkedAthletes,
           activeClientId,
@@ -225,6 +242,7 @@ export const getClientDashboard = asyncHandler(
           lastName: true,
           middleName: true,
           email: true,
+          emailVerified: true,
           phone: true,
           photo: true,
           balance: true,
@@ -420,6 +438,8 @@ export const getClientDashboard = asyncHandler(
         isAccountApproved: true,
         userType: userType || 'client',
         viewerName,
+        viewerEmail,
+        emailVerified: viewerEmailVerified,
         parent: parentInfo,
         linkedAthletes,
         activeClientId,
@@ -430,6 +450,7 @@ export const getClientDashboard = asyncHandler(
           lastName: client.lastName,
           middleName: client.middleName,
           email: client.email,
+          emailVerified: client.emailVerified,
           phone: client.phone,
           photo: client.photo,
           membershipFeePaid: client.membershipFeePaid,

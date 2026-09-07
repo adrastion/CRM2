@@ -2,6 +2,7 @@
 export interface User {
   id: string;
   email: string;
+  emailVerified?: boolean;
   firstName: string;
   lastName: string;
   middleName?: string;
@@ -245,7 +246,15 @@ export interface ClientDashboardData {
   isAccountApproved: boolean;
   userType: 'client' | 'parent';
   viewerName: string;
-  parent: { id: string; fullName: string; phone: string | null; email: string | null } | null;
+  viewerEmail?: string | null;
+  emailVerified?: boolean;
+  parent: {
+    id: string;
+    fullName: string;
+    phone: string | null;
+    email: string | null;
+    emailVerified?: boolean;
+  } | null;
   tenant: (TenantBrief & { logo?: string | null }) | null;
   client?: {
     id: string;
@@ -253,6 +262,7 @@ export interface ClientDashboardData {
     lastName: string;
     middleName?: string | null;
     email?: string | null;
+    emailVerified?: boolean;
     phone?: string | null;
     photo?: string | null;
     membershipFeePaid: boolean;
