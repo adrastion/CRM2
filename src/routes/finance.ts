@@ -5,6 +5,7 @@ import {
   createFinanceType,
   listFinanceOperations,
   createFinanceOperation,
+  deleteFinanceOperation,
   payoutTrainerSalary,
   getSalarySummary,
   getMembershipFinanceSummary,
@@ -24,6 +25,7 @@ router.get('/refs', getFinanceRefs);
 
 router.get('/operations', listFinanceOperations);
 router.post('/operations', createFinanceOperation);
+router.delete('/operations/:id', deleteFinanceOperation);
 
 router.get('/salary-summary', getSalarySummary);
 router.post('/salary-payout', payoutTrainerSalary);

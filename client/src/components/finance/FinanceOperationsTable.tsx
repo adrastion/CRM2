@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, IconButton, Typography } from '@mui/material';
+import { DeleteOutline } from '@mui/icons-material';
 import DesignIcon from '../common/DesignIcon';
 import { FinanceOperation } from '../../types';
 import { colors, typography } from '../../theme/tokens';
@@ -17,10 +18,12 @@ interface FinanceOperationsTableProps {
   onSort: (key: FinanceOpSortKey) => void;
   formatMoney: (value: number, withSign?: boolean, direction?: string) => string;
   formatDateTime: (iso: string) => string;
+  onDelete?: (op: FinanceOperation) => void;
+  deletingId?: string | null;
 }
 
 const COLS =
-  'minmax(220px, 1.5fr) minmax(160px, 1fr) minmax(120px, 0.7fr) minmax(180px, 1fr)';
+  'minmax(200px, 1.5fr) minmax(140px, 1fr) minmax(110px, 0.7fr) minmax(160px, 1fr) 56px';
 
 const SortHeader: React.FC<{
   label: string;
@@ -61,6 +64,8 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
   onSort,
   formatMoney,
   formatDateTime,
+  onDelete,
+  deletingId,
 }) => {
   if (operations.length === 0) {
     return (
@@ -98,6 +103,20 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
       </Typography>
     );
 
+  const deleteBtn = (op: FinanceOperation) =>
+    onDelete ? (
+      <IconButton
+        size="small"
+        aria-label="Отменить операцию"
+        title="Отменить операцию"
+        disabled={deletingId === op.id}
+        onClick={() => onDelete(op)}
+        sx={{ color: colors.textMuted, '&:hover': { color: '#c62828' } }}
+      >
+        <DeleteOutline fontSize="small" />
+      </IconButton>
+    ) : null;
+
   return (
     <>
       {/* Mobile card list */}
@@ -123,7 +142,10 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                 minWidth: 0,
               }}
             >
-              <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{renderTitle(op)}</Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start' }}>
+                <Box sx={{ minWidth: 0, overflowWrap: 'anywhere', flex: 1 }}>{renderTitle(op)}</Box>
+                {deleteBtn(op)}
+              </Box>
               <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
                 {op.typeName || op.typeCode}
               </Typography>
@@ -148,7 +170,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
 
       {/* Desktop / tablet table with horizontal scroll */}
       <Box sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <Box sx={{ minWidth: 720 }}>
+        <Box sx={{ minWidth: 780 }}>
           <Box
             sx={{
               display: 'grid',
@@ -163,6 +185,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
             <SortHeader label="Тип операции" active={sortBy === 'typeCode'} onClick={() => toggle('typeCode')} />
             <SortHeader label="Сумма" active={sortBy === 'amount'} onClick={() => toggle('amount')} />
             <SortHeader label="Дата и время" active={sortBy === 'occurredAt'} onClick={() => toggle('occurredAt')} />
+            <Box />
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -173,6 +196,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
               const col3Bg = isEven ? colors.divider : colors.divider;
               const col4Bg = ROW_CELL_MUTED;
               const isIncome = op.direction === 'income';
+              const isLast = index === operations.length - 1;
 
               return (
                 <Box
@@ -189,9 +213,9 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     sx={{
                       bgcolor: col1Bg,
                       borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
+                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
                       borderTopLeftRadius: '16px',
-                      borderBottomLeftRadius: index === operations.length - 1 ? '16px' : 0,
+                      borderBottomLeftRadius: isLast ? '16px' : 0,
                       px: 1.5,
                       py: 1,
                       display: 'flex',
@@ -205,7 +229,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     sx={{
                       bgcolor: col2Bg,
                       borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
+                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
                       px: 1.5,
                       py: 1,
                       display: 'flex',
@@ -220,7 +244,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     sx={{
                       bgcolor: col3Bg,
                       borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
+                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
                       px: 1.5,
                       py: 1,
                       display: 'flex',
@@ -241,9 +265,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     sx={{
                       bgcolor: col4Bg,
                       borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: index === operations.length - 1 ? `1px solid ${colors.textMuted}` : undefined,
-                      borderTopRightRadius: '16px',
-                      borderBottomRightRadius: index === operations.length - 1 ? '16px' : 0,
+                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
                       px: 1.5,
                       py: 1,
                       display: 'flex',
@@ -258,6 +280,22 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                     <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.textMuted }}>
                       {formatDateTime(op.occurredAt).split(' ')[1] || ''}
                     </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      bgcolor: col4Bg,
+                      borderTop: `1px solid ${colors.textMuted}`,
+                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
+                      borderTopRightRadius: '16px',
+                      borderBottomRightRadius: isLast ? '16px' : 0,
+                      px: 0.5,
+                      py: 0.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {deleteBtn(op)}
                   </Box>
                 </Box>
               );

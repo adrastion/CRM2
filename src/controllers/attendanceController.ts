@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { deductFromClientBalance } from '../utils/finance';
 import { accrueForAttendance } from '../services/trainerSalaryService';
+import { consumeVisitFromActivePack } from '../services/clientMembershipService';
 
 /**
  * Начисление тренеру по схеме per_training_person.
@@ -363,59 +364,9 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         }
       });
 
-      // Находим активный абонемент клиента (приоритет: абонемент на посещения)
-      const activeMembership = await prisma.clientMembership.findFirst({
-        where: {
-          clientId,
-          tenantId,
-          isActive: true,
-          OR: [
-            // Абонемент на посещения (проверка на оставшиеся посещения будет в коде)
-            {
-              visitsTotal: { not: null }
-            },
-            // Месячный абонемент, который еще не истек
-            {
-              visitsTotal: null,
-              endDate: { gte: new Date() }
-            },
-            // Месячный абонемент без даты окончания (бессрочный)
-            {
-              visitsTotal: null,
-              endDate: null
-            }
-          ]
-        },
-        orderBy: [
-          // Приоритет абонементам на посещения
-          { visitsTotal: 'desc' },
-          { createdAt: 'desc' }
-        ]
-      });
-
-      let shouldChargeClient = true; // Флаг, нужно ли списывать деньги с баланса
-
-      if (activeMembership) {
-        // Если это абонемент на посещения
-        if (activeMembership.visitsTotal) {
-          const newVisitsUsed = activeMembership.visitsUsed + 1;
-          const isExhausted = newVisitsUsed >= activeMembership.visitsTotal;
-
-          await prisma.clientMembership.update({
-            where: { id: activeMembership.id },
-            data: {
-              visitsUsed: newVisitsUsed,
-              isActive: !isExhausted
-            }
-          });
-          
-          // Если есть активный абонемент на посещения, не списываем с баланса
-          shouldChargeClient = false;
-        } else {
-          // Для месячных абонементов просто отмечаем посещение (не списываем с баланса)
-          shouldChargeClient = false;
-        }
-      }
+      // Находим / списываем активный абонемент (visit-pack может уйти в минус)
+      const { coveredByMembership } = await consumeVisitFromActivePack(clientId, tenantId);
+      let shouldChargeClient = !coveredByMembership;
 
       // Если нет активного абонемента, списываем деньги с баланса клиента
       if (shouldChargeClient && trainingWithDetails && trainingWithDetails.group) {
@@ -569,6 +520,8 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
       finalShouldCharge = false;
     }
 
+    const previousStatus = attendance.status;
+
     const updatedAttendance = await prisma.attendance.update({
       where: { id },
       data: {
@@ -583,6 +536,9 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
     });
 
     if (req.tenant?.id) {
+      if (status === 'PRESENT' && previousStatus !== 'PRESENT') {
+        await consumeVisitFromActivePack(updatedAttendance.clientId, req.tenant.id);
+      }
       await accrueTrainerForAttendanceStatus({
         tenantId: req.tenant.id,
         attendanceId: updatedAttendance.id,
@@ -722,12 +678,15 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
         }
 
         if (existing) {
-          // Update existing
+          const wasPresent = existing.status === 'PRESENT';
           const updated = await prisma.attendance.update({
             where: { id: existing.id },
             data: { status, notes, shouldCharge: finalShouldCharge },
             include: { client: true }
           });
+          if (status === 'PRESENT' && !wasPresent) {
+            await consumeVisitFromActivePack(clientId, tenantId);
+          }
           await accrueTrainerForAttendanceStatus({
             tenantId,
             attendanceId: updated.id,
@@ -752,6 +711,9 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
             include: { client: true }
           });
           console.log(`Successfully created attendance record ${created.id} for client ${created.client?.lastName} ${created.client?.firstName}`);
+          if (status === 'PRESENT') {
+            await consumeVisitFromActivePack(clientId, tenantId);
+          }
           await accrueTrainerForAttendanceStatus({
             tenantId,
             attendanceId: created.id,

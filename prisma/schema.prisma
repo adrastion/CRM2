@@ -674,6 +674,8 @@ model FinanceOperation {
   branchId    String?
   /// Идемпотентная связь с Payment при авто-создании из оплаты
   paymentId   String?   @unique
+  /// Идемпотентный ключ для прочих событий (выдача абонемента, начисление и т.д.)
+  externalKey String?
   createdById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -684,6 +686,7 @@ model FinanceOperation {
   branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, externalKey])
   @@index([tenantId, occurredAt])
   @@index([tenantId, typeCode])
   @@index([tenantId, direction])

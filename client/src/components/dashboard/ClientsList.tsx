@@ -16,6 +16,7 @@ export interface ClientsListProps {
   onEdit: (client: Client) => void;
   onDelete: (clientId: string) => void;
   onGroupClick?: (client: Client) => void;
+  onMembershipClick?: (client: Client) => void;
   onApproveAccount?: (client: Client) => void;
   onRejectAccount?: (client: Client) => void;
   /** Доп. действия (добавить / импорт / экспорт) — вне макета, но нужны в продукте. */
@@ -31,6 +32,12 @@ const primaryGroupName = (client: Client): string => {
   const active = (client.groupMemberships || []).filter((gm: any) => gm.isActive);
   if (active.length === 0) return '—';
   return active[0].group?.name || 'Группа';
+};
+
+const membershipChipLabel = (client: Client): { title: string; remaining: number | null } => {
+  const m = client.activeMembership;
+  if (!m) return { title: '—', remaining: null };
+  return { title: m.name, remaining: m.remaining };
 };
 
 const SortHeader: React.FC<{
@@ -104,6 +111,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
   onEdit,
   onDelete,
   onGroupClick,
+  onMembershipClick,
   onApproveAccount,
   onRejectAccount,
   toolbarActions,
@@ -113,7 +121,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
   };
 
   const gridTemplate =
-    'minmax(200px, 1.3fr) minmax(180px, 1.1fr) minmax(140px, 0.9fr) minmax(90px, 0.55fr) minmax(120px, 0.55fr)';
+    'minmax(180px, 1.2fr) minmax(150px, 1fr) minmax(110px, 0.8fr) minmax(130px, 0.95fr) minmax(80px, 0.5fr) minmax(110px, 0.55fr)';
 
   return (
     <Box data-onboarding="clients-page">
@@ -210,6 +218,9 @@ const ClientsList: React.FC<ClientsListProps> = ({
           />
         </Box>
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <SortHeader label="Абонемент" active={false} sortable={false} center />
+        </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <SortHeader label="Баланс" active={false} sortable={false} center />
         </Box>
         <Box />
@@ -232,6 +243,9 @@ const ClientsList: React.FC<ClientsListProps> = ({
         ) : (
           clients.map((client) => {
             const groupName = primaryGroupName(client);
+            const membership = membershipChipLabel(client);
+            const remainingNeg =
+              membership.remaining != null && membership.remaining < 0;
             return (
               <Box
                 key={client.id}
@@ -406,6 +420,65 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     >
                       {groupName}
                     </Typography>
+                  </ButtonBase>
+                </Box>
+
+                {/* Абонемент */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    px: { md: 1 },
+                    borderRight: { md: `1px solid ${colors.divider}` },
+                  }}
+                >
+                  <ButtonBase
+                    onClick={() => onMembershipClick?.(client)}
+                    disabled={!onMembershipClick}
+                    sx={{
+                      bgcolor: remainingNeg ? 'rgba(236, 124, 148, 0.2)' : colors.primarySoft,
+                      color: remainingNeg ? SOFT_DANGER : colors.primary,
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: '10px',
+                      fontWeight: 600,
+                      fontSize: typography.hint,
+                      textAlign: 'center',
+                      maxWidth: '100%',
+                      lineHeight: 1.25,
+                      flexDirection: 'column',
+                    }}
+                  >
+                    <Typography
+                      component="span"
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: 'inherit',
+                        color: 'inherit',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: 140,
+                        display: 'block',
+                      }}
+                    >
+                      {membership.title}
+                    </Typography>
+                    {membership.remaining != null && (
+                      <Typography
+                        component="span"
+                        sx={{
+                          fontWeight: 500,
+                          fontSize: 11,
+                          color: 'inherit',
+                          display: 'block',
+                        }}
+                      >
+                        {membership.remaining < 0
+                          ? `−${Math.abs(membership.remaining)}`
+                          : `осталось ${membership.remaining}`}
+                      </Typography>
+                    )}
                   </ButtonBase>
                 </Box>
 

@@ -134,6 +134,8 @@ const Finance: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState('');
+  const [deletingOpId, setDeletingOpId] = useState<string | null>(null);
+  const [cancelOp, setCancelOp] = useState<FinanceOperation | null>(null);
 
   const [operations, setOperations] = useState<FinanceOperation[]>([]);
   const [types, setTypes] = useState<FinanceOperationType[]>([]);
@@ -430,6 +432,22 @@ const Finance: React.FC = () => {
     }
   };
 
+  const handleConfirmCancelOperation = async () => {
+    if (!cancelOp) return;
+    setDeletingOpId(cancelOp.id);
+    try {
+      await apiService.deleteFinanceOperation(cancelOp.id);
+      setCancelOp(null);
+      setSnackbar('Операция отменена');
+      await loadOperations();
+      if (tab === 'salary') await loadSalary();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось отменить операцию');
+    } finally {
+      setDeletingOpId(null);
+    }
+  };
+
   const handlePayout = async () => {
     if (!selectedSalary) return;
     const increment = Number(payoutAmount);
@@ -461,9 +479,19 @@ const Finance: React.FC = () => {
 
   const handleReceive = async () => {
     if (!selectedMembership) return;
-    const increment = Number(receiveAmount);
-    if (!Number.isFinite(increment) || increment <= 0) {
-      setError('Введите сумму выплаты');
+    const normalized = String(receiveAmount)
+      .trim()
+      .replace(/−/g, '-')
+      .replace(/\s/g, '')
+      .replace(',', '.');
+    const increment = Number(normalized);
+    if (!Number.isFinite(increment) || increment === 0) {
+      setError('Введите сумму (можно со знаком минус для уменьшения)');
+      return;
+    }
+    const paidNow = selectedMembership.paidAmount ?? 0;
+    if (increment < 0 && Math.abs(increment) > paidNow) {
+      setError(`Нельзя уменьшить больше, чем выплачено (${formatMoney(paidNow)})`);
       return;
     }
     try {
@@ -474,11 +502,11 @@ const Finance: React.FC = () => {
       });
       setReceiveOpen(false);
       setReceiveAmount('');
-      setSnackbar('Оплата сохранена');
+      setSnackbar(increment < 0 ? 'Выплачено уменьшено' : 'Оплата сохранена');
       await loadMemberships();
       await loadOperations();
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось принять оплату');
+      setError(e?.response?.data?.error || 'Не удалось сохранить изменение оплаты');
     }
   };
 
@@ -776,6 +804,8 @@ const Finance: React.FC = () => {
                 onSort={handleSort}
                 formatMoney={formatMoney}
                 formatDateTime={formatDateTime}
+                deletingId={deletingOpId}
+                onDelete={(op) => setCancelOp(op)}
               />
             )}
           </>
@@ -1557,7 +1587,7 @@ const Finance: React.FC = () => {
         </Dialog>
 
         <Dialog open={receiveOpen} onClose={() => setReceiveOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 600 }}>Введите сумму выплаты</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 600 }}>Изменить выплачено</DialogTitle>
           <DialogContent>
             <Typography sx={{ mb: 1 }}>
               {selectedMembership ? (
@@ -1569,17 +1599,33 @@ const Finance: React.FC = () => {
                 />
               ) : null}
             </Typography>
-            <Typography sx={{ mb: 2, fontSize: typography.label }}>
+            <Typography sx={{ mb: 1, fontSize: typography.label }}>
               Уже выплачено: {formatMoney(selectedMembership?.paidAmount ?? 0)}
+            </Typography>
+            <Typography sx={{ mb: 2, fontSize: typography.hint, color: colors.textMuted }}>
+              Плюс увеличивает выплачено, минус уменьшает (например −3000).
             </Typography>
             <TextField
               fullWidth
               autoFocus
-              label="Сумма выплаты"
+              label="Сумма изменения"
+              placeholder="3000 или -3000"
               value={receiveAmount}
               onChange={(e) => setReceiveAmount(e.target.value)}
               InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
             />
+            {(() => {
+              const n = Number(
+                String(receiveAmount).trim().replace(/−/g, '-').replace(/\s/g, '').replace(',', '.')
+              );
+              if (!Number.isFinite(n) || n === 0 || !selectedMembership) return null;
+              const next = Math.max(0, (selectedMembership.paidAmount ?? 0) + n);
+              return (
+                <Typography sx={{ mt: 1.5, fontSize: typography.label, color: colors.textMuted }}>
+                  Станет выплачено: {formatMoney(next)}
+                </Typography>
+              );
+            })()}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setReceiveOpen(false)} sx={{ textTransform: 'none' }}>
@@ -1592,6 +1638,33 @@ const Finance: React.FC = () => {
               sx={{ textTransform: 'none', bgcolor: colors.primary }}
             >
               Подтвердить
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={Boolean(cancelOp)} onClose={() => setCancelOp(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 600 }}>Отменить операцию?</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mb: 1 }}>
+              {cancelOp?.title}
+              {cancelOp ? ` — ${formatMoney(cancelOp.amount, true, cancelOp.direction)}` : ''}
+            </Typography>
+            <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
+              Удаление отменит связанные эффекты (баланс, начисление, счёт), если они есть.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setCancelOp(null)} sx={{ textTransform: 'none' }}>
+              Закрыть
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={Boolean(deletingOpId)}
+              onClick={handleConfirmCancelOperation}
+              sx={{ textTransform: 'none' }}
+            >
+              Отменить операцию
             </Button>
           </DialogActions>
         </Dialog>

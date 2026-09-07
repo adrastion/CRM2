@@ -38,7 +38,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, PhotoCamera, CalendarToday, Payment } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import { Client } from '../types';
+import { Client, Membership } from '../types';
 import ClientsList from '../components/dashboard/ClientsList';
 import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
@@ -241,6 +241,13 @@ const Clients: React.FC = () => {
   const [editingPhoneValue, setEditingPhoneValue] = useState<string>('');
   const [groupsDialog, setGroupsDialog] = useState(false);
   const [selectedClientForGroups, setSelectedClientForGroups] = useState<Client | null>(null);
+  const [membershipDialog, setMembershipDialog] = useState(false);
+  const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
+  const [catalogMemberships, setCatalogMemberships] = useState<Membership[]>([]);
+  const [selectedMembershipId, setSelectedMembershipId] = useState('');
+  const [issuingMembership, setIssuingMembership] = useState(false);
+  const [remainingVisitsInput, setRemainingVisitsInput] = useState('');
+  const [savingRemaining, setSavingRemaining] = useState(false);
   const [statsDialog, setStatsDialog] = useState(false);
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
   const [clientStats, setClientStats] = useState<any>(null);
@@ -1212,6 +1219,24 @@ const Clients: React.FC = () => {
         onGroupClick={(client) => {
           setSelectedClientForGroups(client);
           setGroupsDialog(true);
+        }}
+        onMembershipClick={async (client) => {
+          setSelectedClientForMembership(client);
+          setSelectedMembershipId('');
+          setRemainingVisitsInput(
+            client.activeMembership?.remaining != null
+              ? String(client.activeMembership.remaining)
+              : ''
+          );
+          setMembershipDialog(true);
+          try {
+            const res = await apiService.getMemberships({ limit: 200 });
+            setCatalogMemberships((res.data || []).filter((m: Membership) => m.isActive !== false));
+          } catch (err) {
+            console.error(err);
+            setSnackbarMessage('Не удалось загрузить каталог абонементов');
+            setSnackbarOpen(true);
+          }
         }}
         toolbarActions={
           <Box
@@ -2641,7 +2666,163 @@ const Clients: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Выдача / смена абонемента */}
+      <Dialog
+        open={membershipDialog}
+        onClose={() => {
+          setMembershipDialog(false);
+          setSelectedClientForMembership(null);
+          setSelectedMembershipId('');
+          setRemainingVisitsInput('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Абонемент:{' '}
+          {selectedClientForMembership
+            ? [selectedClientForMembership.lastName, selectedClientForMembership.firstName]
+                .filter(Boolean)
+                .join(' ')
+            : ''}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1, mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {selectedClientForMembership?.activeMembership ? (
+              <Alert
+                severity={
+                  (selectedClientForMembership.activeMembership.remaining ?? 0) < 0
+                    ? 'warning'
+                    : 'info'
+                }
+              >
+                Сейчас:{' '}
+                <strong>{selectedClientForMembership.activeMembership.name}</strong>
+                {selectedClientForMembership.activeMembership.remaining != null && (
+                  <>
+                    {' '}
+                    — осталось{' '}
+                    <strong>{selectedClientForMembership.activeMembership.remaining}</strong>{' '}
+                    пос.
+                  </>
+                )}
+                {(selectedClientForMembership.activeMembership.remaining ?? 0) < 0 && (
+                  <> Долг будет вычтен из нового абонемента.</>
+                )}
+              </Alert>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Активного абонемента нет. Выберите тариф из каталога.
+              </Typography>
+            )}
 
+            {selectedClientForMembership?.activeMembership?.visitsTotal != null && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                <TextField
+                  label="Осталось посещений"
+                  type="number"
+                  value={remainingVisitsInput}
+                  onChange={(e) => setRemainingVisitsInput(e.target.value)}
+                  helperText="Можно уменьшить вручную; отрицательное значение — долг"
+                  fullWidth
+                  inputProps={{ step: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  disabled={savingRemaining || remainingVisitsInput === ''}
+                  sx={{ textTransform: 'none', whiteSpace: 'nowrap', mt: 0.5 }}
+                  onClick={async () => {
+                    const cm = selectedClientForMembership?.activeMembership;
+                    if (!cm) return;
+                    const remaining = Number(remainingVisitsInput);
+                    if (!Number.isFinite(remaining)) {
+                      setSnackbarMessage('Введите число');
+                      setSnackbarOpen(true);
+                      return;
+                    }
+                    try {
+                      setSavingRemaining(true);
+                      await apiService.updateClientMembership(cm.id, { remaining });
+                      setSnackbarMessage('Остаток обновлён');
+                      setSnackbarOpen(true);
+                      await fetchClients();
+                      const refreshed = (await apiService.getClient(selectedClientForMembership.id)) as Client;
+                      setSelectedClientForMembership(refreshed);
+                      setRemainingVisitsInput(
+                        refreshed.activeMembership?.remaining != null
+                          ? String(refreshed.activeMembership.remaining)
+                          : String(remaining)
+                      );
+                    } catch (err: any) {
+                      setSnackbarMessage(err?.response?.data?.error || 'Не удалось обновить остаток');
+                      setSnackbarOpen(true);
+                    } finally {
+                      setSavingRemaining(false);
+                    }
+                  }}
+                >
+                  {savingRemaining ? '…' : 'Сохранить'}
+                </Button>
+              </Box>
+            )}
+
+            <FormControl fullWidth>
+              <InputLabel>Выдать другой тариф</InputLabel>
+              <Select
+                label="Выдать другой тариф"
+                value={selectedMembershipId}
+                onChange={(e) => setSelectedMembershipId(String(e.target.value))}
+              >
+                {catalogMemberships.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name}
+                    {m.visits != null ? ` (${m.visits} пос.)` : ''}
+                    {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setMembershipDialog(false);
+              setSelectedClientForMembership(null);
+              setRemainingVisitsInput('');
+            }}
+          >
+            Закрыть
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!selectedMembershipId || !selectedClientForMembership || issuingMembership}
+            onClick={async () => {
+              if (!selectedClientForMembership || !selectedMembershipId) return;
+              try {
+                setIssuingMembership(true);
+                await apiService.createClientMembership({
+                  clientId: selectedClientForMembership.id,
+                  membershipId: selectedMembershipId,
+                });
+                setSnackbarMessage('Абонемент выдан');
+                setSnackbarOpen(true);
+                setMembershipDialog(false);
+                setSelectedClientForMembership(null);
+                setRemainingVisitsInput('');
+                await fetchClients();
+              } catch (err: any) {
+                setSnackbarMessage(err?.response?.data?.error || 'Не удалось выдать абонемент');
+                setSnackbarOpen(true);
+              } finally {
+                setIssuingMembership(false);
+              }
+            }}
+          >
+            {issuingMembership ? 'Выдача…' : 'Выдать новый'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Диалог личного календаря клиента */}
       <Dialog 

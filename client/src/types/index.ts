@@ -269,6 +269,18 @@ export interface ClientDashboardData {
   };
   balance: { amount: number; nextCharge: { date: string; amount: number } | null } | null;
   attendance: { present: number; total: number } | null;
+  /** Активный абонемент (visit-pack): remaining может быть отрицательным */
+  membership?: {
+    id: string;
+    membershipId: string;
+    name: string;
+    type: string;
+    visitsUsed: number;
+    visitsTotal: number | null;
+    remaining: number | null;
+    endDate: string | null;
+    isActive: boolean;
+  } | null;
   staff: ClientDashboardStaffMember[];
   groups: Array<{ id?: string; name?: string; color?: string | null; branchName: string | null }>;
   weekRange?: { start: string; end: string };
@@ -349,6 +361,25 @@ export interface Client {
   achievements?: Achievement[];
   groupMemberships?: GroupMembership[];
   memberships?: Payment[];
+  /** Активный выданный абонемент с остатком посещений */
+  activeMembership?: {
+    id: string;
+    membershipId: string;
+    name: string;
+    type: string;
+    visitsUsed: number;
+    visitsTotal: number | null;
+    remaining: number | null;
+    endDate?: string | null;
+    isActive: boolean;
+  } | null;
+  clientMemberships?: Array<{
+    id: string;
+    visitsUsed: number;
+    visitsTotal?: number | null;
+    isActive: boolean;
+    membership?: Membership;
+  }>;
   parents?: Parent[];
   attendances?: Attendance[];
 }

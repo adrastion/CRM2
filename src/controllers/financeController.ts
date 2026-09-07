@@ -119,6 +119,19 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
   res.status(201).json({ success: true, data: op });
 });
 
+export const deleteFinanceOperation = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  if (!req.tenant?.id) {
+    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    return;
+  }
+  const { id } = req.params;
+  if (!id) {
+    throw badRequest('Укажите ID операции');
+  }
+  await FinanceService.deleteOperation(req.tenant.id, id);
+  res.json({ success: true, data: { id }, message: 'Операция отменена' });
+});
+
 export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
     res.status(400).json({ success: false, error: 'Tenant ID is required' });
@@ -190,8 +203,21 @@ export const receiveMembershipPayment = asyncHandler(
     }
 
     const increment = amount != null ? Number(amount) : NaN;
-    if (!Number.isFinite(increment) || increment <= 0) {
+    if (!Number.isFinite(increment) || increment === 0) {
       throw badRequest('Некорректная сумма', 'amount');
+    }
+
+    // Отрицательная сумма: уменьшить «выплачено» (4000 + (−3000) → 1000)
+    if (increment < 0) {
+      const result = await FinanceService.reduceMembershipPaid(req.tenant.id, {
+        clientId: clientId || null,
+        paymentId: paymentId || null,
+        amount: increment,
+        notes: notes ?? null,
+        createdById: req.user?.id,
+      });
+      res.json({ success: true, data: result, message: `Выплачено уменьшено на ${result.reducedBy}` });
+      return;
     }
 
     let pendingPayment = paymentId

@@ -249,6 +249,7 @@ export class FinanceService {
       groupId?: string | null;
       branchId?: string | null;
       paymentId?: string | null;
+      externalKey?: string | null;
       createdById?: string | null;
     }
   ) {
@@ -279,10 +280,26 @@ export class FinanceService {
       if (existing) return existing;
     }
 
+    if (input.externalKey) {
+      const existing = await prisma.financeOperation.findFirst({
+        where: { tenantId, externalKey: input.externalKey },
+      });
+      if (existing) return existing;
+    }
+
     const isBonusAccrual =
       input.typeCode === 'bonus' && input.direction === 'expense' && Boolean(input.trainerId);
+    // Ручное «начисление клиенту» из формы — только для прочих/кастомных expense, не системных списаний
+    const autoPendingPaymentTypes = new Set([
+      'other',
+      'purchase',
+      'advertising',
+      'rent',
+    ]);
     const isClientCharge =
-      input.direction === 'expense' && Boolean(input.clientId) && input.typeCode !== 'bonus';
+      input.direction === 'expense' &&
+      Boolean(input.clientId) &&
+      autoPendingPaymentTypes.has(input.typeCode);
 
     if (isBonusAccrual) {
       const trainer = await prisma.trainer.findFirst({
@@ -291,11 +308,13 @@ export class FinanceService {
       if (!trainer) throw badRequest('Тренер не найден', 'trainerId');
     }
 
-    if (isClientCharge) {
-      const client = await prisma.client.findFirst({
-        where: { id: input.clientId!, tenantId },
-      });
-      if (!client) throw badRequest('Клиент не найден', 'clientId');
+    if (isClientCharge || (input.clientId && input.direction === 'expense')) {
+      if (input.clientId) {
+        const client = await prisma.client.findFirst({
+          where: { id: input.clientId, tenantId },
+        });
+        if (!client) throw badRequest('Клиент не найден', 'clientId');
+      }
     }
 
     return prisma.$transaction(async (tx) => {
@@ -313,6 +332,7 @@ export class FinanceService {
           groupId: input.groupId || null,
           branchId: input.branchId || null,
           paymentId: input.paymentId || null,
+          externalKey: input.externalKey || null,
           createdById: input.createdById || null,
         },
       });
@@ -355,7 +375,7 @@ export class FinanceService {
     });
   }
 
-  /** Идемпотентно создаёт приход при оплате абонемента/платежа клиента. */
+  /** Идемпотентно создаёт приход при оплате абонемента/платежа клиента + пополняет баланс. */
   static async recordPaymentIncome(payment: {
     id: string;
     amount: any;
@@ -375,7 +395,7 @@ export class FinanceService {
     });
     if (existing) return existing;
 
-    const isMembership = payment.type === 'membership' || payment.type === 'monthly';
+    const isMembership = payment.type === 'membership' || payment.type === 'monthly' || payment.type === 'monthly_payment';
     const typeCode = isMembership ? 'membership' : 'client_payment';
     const title = clientName
       ? clientName
@@ -383,11 +403,12 @@ export class FinanceService {
         ? 'Оплата абонемента'
         : 'Принятие оплаты от клиента';
 
-    return this.createOperation(payment.tenantId, {
+    const amount = Number(payment.amount);
+    const op = await this.createOperation(payment.tenantId, {
       direction: 'income',
       typeCode,
       title,
-      amount: Number(payment.amount),
+      amount,
       occurredAt: payment.paidAt || new Date(),
       notes: payment.notes,
       clientId: payment.clientId,
@@ -395,6 +416,399 @@ export class FinanceService {
       groupId: payment.groupId,
       paymentId: payment.id,
     });
+
+    // Пополнение кошелька клиента (идемпотентно через наличие income-op выше)
+    await prisma.client.update({
+      where: { id: payment.clientId },
+      data: { balance: { increment: amount } },
+    }).catch(() => undefined);
+
+    return op;
+  }
+
+  /**
+   * Уменьшить «выплачено» (ввод −N в диалоге).
+   * Paid-платёж с отрицательной суммой + expense в реестре + откат баланса клиента.
+   */
+  static async reduceMembershipPaid(
+    tenantId: string,
+    input: {
+      clientId?: string | null;
+      paymentId?: string | null;
+      amount: number;
+      notes?: string | null;
+      createdById?: string | null;
+    }
+  ) {
+    const requested = Math.abs(Number(input.amount));
+    if (!Number.isFinite(requested) || requested <= 0) {
+      throw badRequest('Некорректная сумма', 'amount');
+    }
+
+    let clientId = input.clientId || null;
+    let ref: {
+      type: string;
+      isMonthlyPayment: boolean;
+      branchId: string | null;
+      groupId: string | null;
+      membershipId: string | null;
+    } | null = null;
+
+    if (input.paymentId) {
+      const payment = await prisma.payment.findFirst({
+        where: { id: input.paymentId, tenantId },
+      });
+      if (!payment) throw badRequest('Платёж не найден', 'paymentId');
+      clientId = payment.clientId;
+      ref = payment;
+    }
+
+    if (!clientId) throw badRequest('Укажите клиента', 'clientId');
+
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, tenantId },
+    });
+    if (!client) throw badRequest('Клиент не найден', 'clientId');
+
+    const paidPayments = await prisma.payment.findMany({
+      where: {
+        tenantId,
+        clientId,
+        status: 'paid',
+        OR: [
+          { type: 'membership' },
+          { type: 'monthly' },
+          { type: 'monthly_payment' },
+          { isMonthlyPayment: true },
+        ],
+      },
+    });
+    const currentPaid = paidPayments.reduce((s, p) => s + Number(p.amount), 0);
+    if (currentPaid <= 0) {
+      throw badRequest('Нечего уменьшать: выплачено уже 0');
+    }
+
+    const reduceBy = Math.min(requested, currentPaid);
+    const clientName = `${client.lastName} ${client.firstName}`.trim();
+
+    const correction = await prisma.payment.create({
+      data: {
+        tenantId,
+        clientId,
+        amount: -reduceBy,
+        type: ref?.type || 'membership',
+        status: 'paid',
+        paidAt: new Date(),
+        isMonthlyPayment: ref?.isMonthlyPayment ?? true,
+        branchId: ref?.branchId ?? null,
+        groupId: ref?.groupId ?? null,
+        membershipId: ref?.membershipId ?? null,
+        notes:
+          input.notes?.trim() ||
+          `Корректировка выплачено −${reduceBy.toLocaleString('ru-RU')} ₽`,
+      },
+      include: { client: true },
+    });
+
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { balance: { decrement: reduceBy } },
+    });
+
+    const isMembership =
+      correction.type === 'membership' ||
+      correction.type === 'monthly' ||
+      correction.type === 'monthly_payment' ||
+      correction.isMonthlyPayment;
+    const op = await this.createOperation(tenantId, {
+      direction: 'expense',
+      typeCode: isMembership ? 'membership' : 'client_payment',
+      title: `${clientName} — корректировка оплаты`,
+      amount: reduceBy,
+      occurredAt: new Date(),
+      notes: correction.notes,
+      clientId,
+      branchId: correction.branchId,
+      groupId: correction.groupId,
+      paymentId: correction.id,
+      createdById: input.createdById,
+    });
+
+    return {
+      payment: correction,
+      reducedBy: reduceBy,
+      paidBefore: currentPaid,
+      paidAfter: currentPaid - reduceBy,
+      operation: op,
+    };
+  }
+
+  /** Выдача абонемента: списание с баланса клиента + операция. */
+  static async recordMembershipIssue(params: {
+    tenantId: string;
+    clientId: string;
+    clientMembershipId: string;
+    amount: number;
+    title: string;
+    occurredAt?: Date;
+  }) {
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    const externalKey = `membership_issue:${params.clientMembershipId}`;
+    const existing = await prisma.financeOperation.findFirst({
+      where: { tenantId: params.tenantId, externalKey },
+    });
+    if (existing) return existing;
+
+    await prisma.client.update({
+      where: { id: params.clientId },
+      data: { balance: { decrement: amount } },
+    });
+
+    return this.createOperation(params.tenantId, {
+      direction: 'expense',
+      typeCode: 'membership_issue',
+      title: params.title,
+      amount,
+      occurredAt: params.occurredAt || new Date(),
+      clientId: params.clientId,
+      externalKey,
+      notes: 'Выдача абонемента',
+    });
+  }
+
+  /** Счёт / наступление оплаты: списание с баланса + операция. */
+  static async recordMembershipCharge(params: {
+    tenantId: string;
+    clientId: string;
+    paymentId: string;
+    amount: number;
+    title: string;
+    occurredAt?: Date;
+    groupId?: string | null;
+    branchId?: string | null;
+  }) {
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    const externalKey = `membership_charge:${params.paymentId}`;
+    const existing = await prisma.financeOperation.findFirst({
+      where: { tenantId: params.tenantId, externalKey },
+    });
+    if (existing) return existing;
+
+    await prisma.client.update({
+      where: { id: params.clientId },
+      data: { balance: { decrement: amount } },
+    });
+
+    return this.createOperation(params.tenantId, {
+      direction: 'expense',
+      typeCode: 'membership_charge',
+      title: params.title,
+      amount,
+      occurredAt: params.occurredAt || new Date(),
+      clientId: params.clientId,
+      groupId: params.groupId,
+      branchId: params.branchId,
+      externalKey,
+      notes: `Выставлен счёт / paymentId=${params.paymentId}`,
+    });
+  }
+
+  /**
+   * Зеркало начисления тренеру в «Все операции» (баланс уже изменён через salary ledger).
+   */
+  static async recordSalaryAccrual(params: {
+    tenantId: string;
+    trainerId: string;
+    amount: number;
+    title: string;
+    externalKey: string;
+    occurredAt?: Date;
+    clientId?: string | null;
+    groupId?: string | null;
+    notes?: string | null;
+  }) {
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    return this.createOperation(params.tenantId, {
+      direction: 'expense',
+      typeCode: 'salary_accrual',
+      title: params.title,
+      amount,
+      occurredAt: params.occurredAt || new Date(),
+      trainerId: params.trainerId,
+      clientId: params.clientId,
+      groupId: params.groupId,
+      externalKey: params.externalKey,
+      notes: params.notes || 'Начисление зарплаты',
+    });
+  }
+
+  /** Удаление операции = отмена с откатом связанных эффектов. */
+  static async deleteOperation(tenantId: string, operationId: string) {
+    const op = await prisma.financeOperation.findFirst({
+      where: { id: operationId, tenantId },
+    });
+    if (!op) throw notFound('Операция не найдена');
+
+    const amount = Number(op.amount);
+
+    await prisma.$transaction(async (tx) => {
+      if (op.typeCode === 'salary' && op.direction === 'expense' && op.trainerId) {
+        await tx.trainer.update({
+          where: { id: op.trainerId },
+          data: { balance: { increment: amount } },
+        });
+        // Удаляем последнюю payout-запись на эту сумму около даты операции
+        const payout = await tx.trainerSalaryLedger.findFirst({
+          where: {
+            tenantId,
+            trainerId: op.trainerId,
+            kind: 'payout',
+            amount: -amount,
+          },
+          orderBy: { occurredAt: 'desc' },
+        });
+        if (payout) {
+          await tx.trainerSalaryLedger.delete({ where: { id: payout.id } });
+        }
+      }
+
+      if (op.typeCode === 'bonus' && op.trainerId) {
+        await tx.trainer.update({
+          where: { id: op.trainerId },
+          data: { balance: { decrement: amount } },
+        });
+        const bonus = await tx.trainerSalaryLedger.findFirst({
+          where: {
+            tenantId,
+            trainerId: op.trainerId,
+            kind: 'bonus',
+            amount,
+          },
+          orderBy: { occurredAt: 'desc' },
+        });
+        if (bonus) await tx.trainerSalaryLedger.delete({ where: { id: bonus.id } });
+      }
+
+      if (op.typeCode === 'salary_accrual' && op.trainerId) {
+        await tx.trainer.update({
+          where: { id: op.trainerId },
+          data: { balance: { decrement: amount } },
+        });
+        if (op.externalKey?.startsWith('salary_accrual:attendance:')) {
+          const attendanceId = op.externalKey.replace('salary_accrual:attendance:', '');
+          await tx.trainerSalaryLedger.deleteMany({
+            where: { tenantId, trainerId: op.trainerId, attendanceId },
+          });
+        } else if (op.externalKey?.startsWith('salary_accrual:payment:')) {
+          // salary_accrual:payment:{paymentId}:{trainerId}
+          const paymentId = op.externalKey.split(':')[2];
+          if (paymentId) {
+            await tx.trainerSalaryLedger.deleteMany({
+              where: {
+                tenantId,
+                trainerId: op.trainerId,
+                paymentId,
+                kind: { in: ['membership_share', 'membership_percent'] },
+              },
+            });
+          }
+        } else if (op.externalKey?.startsWith('salary_accrual:fixed_monthly:')) {
+          // salary_accrual:fixed_monthly:{trainerId}:{periodKey}
+          const periodKey = op.externalKey.split(':').slice(3).join(':');
+          if (periodKey) {
+            await tx.trainerSalaryLedger.deleteMany({
+              where: {
+                tenantId,
+                trainerId: op.trainerId,
+                kind: 'fixed_monthly',
+                periodKey,
+              },
+            });
+          }
+        } else if (op.externalKey?.startsWith('salary_ledger:')) {
+          const ledgerId = op.externalKey.replace('salary_ledger:', '');
+          await tx.trainerSalaryLedger.delete({ where: { id: ledgerId } }).catch(() => undefined);
+        }
+      }
+
+      if (
+        (op.typeCode === 'membership_issue' || op.typeCode === 'membership_charge') &&
+        op.clientId
+      ) {
+        await tx.client.update({
+          where: { id: op.clientId },
+          data: { balance: { increment: amount } },
+        });
+        if (op.typeCode === 'membership_issue' && op.externalKey?.startsWith('membership_issue:')) {
+          const cmId = op.externalKey.replace('membership_issue:', '');
+          await tx.clientMembership.update({
+            where: { id: cmId },
+            data: { isActive: false },
+          }).catch(() => undefined);
+        }
+      }
+
+      if (
+        (op.typeCode === 'membership' || op.typeCode === 'client_payment') &&
+        op.direction === 'income' &&
+        op.clientId
+      ) {
+        await tx.client.update({
+          where: { id: op.clientId },
+          data: { balance: { decrement: amount } },
+        });
+        if (op.paymentId) {
+          await tx.payment.update({
+            where: { id: op.paymentId },
+            data: { status: 'cancelled', paidAt: null },
+          });
+        }
+      }
+
+      // Корректировка «выплачено» со знаком минус (expense + payment с отрицательной суммой)
+      if (
+        (op.typeCode === 'membership' || op.typeCode === 'client_payment') &&
+        op.direction === 'expense' &&
+        op.clientId &&
+        op.paymentId
+      ) {
+        await tx.client.update({
+          where: { id: op.clientId },
+          data: { balance: { increment: amount } },
+        });
+        await tx.payment.update({
+          where: { id: op.paymentId },
+          data: { status: 'cancelled', paidAt: null },
+        }).catch(() => undefined);
+      }
+
+      if (op.paymentId && op.typeCode === 'membership_charge') {
+        await tx.payment.update({
+          where: { id: op.paymentId },
+          data: { status: 'cancelled' },
+        }).catch(() => undefined);
+      }
+
+      if (op.typeCode === 'membership_charge' && op.notes?.includes('paymentId=')) {
+        const pid = op.notes.split('paymentId=')[1]?.trim();
+        if (pid) {
+          await tx.payment.update({
+            where: { id: pid },
+            data: { status: 'cancelled' },
+          }).catch(() => undefined);
+        }
+      }
+
+      await tx.financeOperation.delete({ where: { id: op.id } });
+    });
+
+    return { deleted: true, id: operationId };
   }
 
   static async payoutTrainerSalary(

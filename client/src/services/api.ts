@@ -944,6 +944,10 @@ class ApiService {
     return response.data.data;
   }
 
+  async deleteFinanceOperation(id: string): Promise<void> {
+    await this.api.delete<ApiResponse>(`/finance/operations/${id}`);
+  }
+
   async getFinanceSalarySummary(params?: Record<string, any>): Promise<import('../types').FinanceSalaryRow[]> {
     const response = await this.api.get<ApiResponse>('/finance/salary-summary', { params });
     return response.data.data || [];

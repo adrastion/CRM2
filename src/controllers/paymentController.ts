@@ -1,62 +1,54 @@
 import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
+import { issueClientMembership } from '../services/clientMembershipService';
 import { FinanceService } from '../services/financeService';
 import { accrueForPayment } from '../services/trainerSalaryService';
 
 /**
- * Helper function to create ClientMembership from payment
+ * Helper function to create ClientMembership from payment (с переносом долга)
  */
 async function createClientMembershipFromPayment(
   payment: { type: string; status: string; membershipId: string | null; clientId: string },
   tenantId: string
 ): Promise<void> {
-  // Если платеж за абонемент и статус "paid", создаем ClientMembership
   if (payment.type === 'membership' && payment.status === 'paid' && payment.membershipId) {
-    // Проверяем, не существует ли уже активный абонемент для этого платежа
     const existingMembership = await prisma.clientMembership.findFirst({
       where: {
         clientId: payment.clientId,
         membershipId: payment.membershipId,
         isActive: true,
-        tenantId
-      }
+        tenantId,
+      },
     });
 
-    // Если уже есть активный абонемент, не создаем новый
-    if (existingMembership) {
+    // Уже есть активный тот же тариф без долга — не дублируем
+    if (
+      existingMembership &&
+      (existingMembership.visitsTotal == null ||
+        existingMembership.visitsUsed <= existingMembership.visitsTotal)
+    ) {
       console.log('Active membership already exists for this payment');
       return;
     }
 
-    const membership = await prisma.membership.findFirst({
-      where: {
-        id: payment.membershipId,
-        tenantId
+    await issueClientMembership({
+      tenantId,
+      clientId: payment.clientId,
+      membershipId: payment.membershipId,
+    }).then(async (cm) => {
+      const price = Number(cm.membership?.price || 0);
+      if (price > 0) {
+        const clientName = `${cm.client.lastName} ${cm.client.firstName}`.trim();
+        await FinanceService.recordMembershipIssue({
+          tenantId,
+          clientId: payment.clientId,
+          clientMembershipId: cm.id,
+          amount: price,
+          title: `${clientName} — ${cm.membership.name}`,
+        }).catch((err) => console.error('Finance membership issue record failed:', err));
       }
     });
-
-    if (membership) {
-      // Calculate end date for monthly memberships
-      let endDate: Date | null = null;
-      if (membership.type === 'monthly' && membership.duration) {
-        endDate = new Date();
-        endDate.setDate(endDate.getDate() + membership.duration);
-      }
-
-      await prisma.clientMembership.create({
-        data: {
-          clientId: payment.clientId,
-          membershipId: payment.membershipId,
-          startDate: new Date(),
-          endDate,
-          visitsTotal: membership.visits || null,
-          visitsUsed: 0,
-          isActive: true,
-          tenantId
-        }
-      });
-    }
   }
 }
 
@@ -190,9 +182,31 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       await createClientMembershipFromPayment(payment, req.tenant.id);
     }
 
+    const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
+
+    // Выставлен счёт (pending): списание с баланса + операция
+    if (
+      payment.status === 'pending' &&
+      req.tenant?.id &&
+      (payment.isMonthlyPayment ||
+        payment.type === 'membership' ||
+        payment.type === 'monthly_payment' ||
+        payment.type === 'monthly')
+    ) {
+      await FinanceService.recordMembershipCharge({
+        tenantId: req.tenant.id,
+        clientId: payment.clientId,
+        paymentId: payment.id,
+        amount: Number(payment.amount),
+        title: `${clientName}${payment.group?.name ? ` — ${payment.group.name}` : payment.membership?.name ? ` — ${payment.membership.name}` : ''}`,
+        occurredAt: payment.dueDate || new Date(),
+        groupId: payment.groupId,
+        branchId: payment.branchId,
+      }).catch((err) => console.error('Finance membership charge record failed:', err));
+    }
+
     // Ledger «Финансы»: приход при оплате
     if (payment.status === 'paid' && req.tenant?.id) {
-      const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
       await FinanceService.recordPaymentIncome(payment, clientName).catch((err) => {
         console.error('Finance ledger record failed:', err);
       });
@@ -756,6 +770,18 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
             }
           });
 
+          const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
+          await FinanceService.recordMembershipCharge({
+            tenantId,
+            clientId: payment.clientId,
+            paymentId: payment.id,
+            amount: monthlyAmount,
+            title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
+            occurredAt: dueDate,
+            groupId: group.id,
+            branchId: group.branchId,
+          }).catch((err) => console.error('Finance membership charge record failed:', err));
+
           createdPayments.push(payment);
         } catch (error: any) {
           console.error(`Error creating payment for client ${membership.clientId} and group ${group.id}:`, error);
@@ -865,7 +891,7 @@ export const createMonthlyPaymentsForAllTenants = async () => {
               }
 
               // Создаем платеж
-              await prisma.payment.create({
+              const payment = await prisma.payment.create({
                 data: {
                   tenantId: tenant.id,
                   clientId: membership.clientId,
@@ -877,8 +903,21 @@ export const createMonthlyPaymentsForAllTenants = async () => {
                   dueDate,
                   isMonthlyPayment: true,
                   branchId: group.branchId
-                }
+                },
+                include: { client: true, group: true },
               });
+
+              const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
+              await FinanceService.recordMembershipCharge({
+                tenantId: tenant.id,
+                clientId: payment.clientId,
+                paymentId: payment.id,
+                amount: monthlyAmount,
+                title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
+                occurredAt: dueDate,
+                groupId: group.id,
+                branchId: group.branchId,
+              }).catch((err) => console.error('[Cron] Finance membership charge record failed:', err));
 
               totalCreated++;
             } catch (error: any) {

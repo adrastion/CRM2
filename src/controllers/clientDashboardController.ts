@@ -4,6 +4,7 @@ import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
 import { unauthorized } from '../utils/httpError';
+import { getActiveMembershipSummary } from '../services/clientMembershipService';
 
 /** Начало недели (понедельник) для переданной даты. */
 function startOfWeek(date: Date): Date {
@@ -432,6 +433,16 @@ export const getClientDashboard = asyncHandler(
       }
     }
 
+    const activeMembership = await getActiveMembershipSummary(client.id, tenantId);
+    const membershipPayload = activeMembership
+      ? {
+          ...activeMembership,
+          endDate: activeMembership.endDate
+            ? activeMembership.endDate.toISOString()
+            : null,
+        }
+      : null;
+
     res.json({
       success: true,
       data: {
@@ -455,6 +466,7 @@ export const getClientDashboard = asyncHandler(
           photo: client.photo,
           membershipFeePaid: client.membershipFeePaid,
         },
+        membership: membershipPayload,
         balance: {
           amount: Number(client.balance),
           nextCharge,

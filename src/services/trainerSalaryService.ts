@@ -242,6 +242,18 @@ export async function accrueForAttendance(params: {
         tenantId: params.tenantId,
       },
     }).catch(() => undefined);
+
+    const { FinanceService } = await import('./financeService');
+    await FinanceService.recordSalaryAccrual({
+      tenantId: params.tenantId,
+      trainerId: params.trainerId,
+      amount: rate,
+      title: `Начисление: ${title}${params.trainingTitle ? ` — ${params.trainingTitle}` : ''}`,
+      externalKey: `salary_accrual:attendance:${params.attendanceId}`,
+      occurredAt: params.trainingStart || new Date(),
+      clientId: params.clientId,
+      notes: comment,
+    }).catch((err) => console.error('Finance salary accrual record failed:', err));
   }
 
   return result.amount;
@@ -328,6 +340,20 @@ export async function accrueForPayment(params: {
         groupId: m.groupId,
         paymentId: params.paymentId,
       });
+      if (result.created) {
+        const { FinanceService } = await import('./financeService');
+        await FinanceService.recordSalaryAccrual({
+          tenantId: params.tenantId,
+          trainerId: trainer.id,
+          amount: rate,
+          title: `Начисление: ${personName}`,
+          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}`,
+          occurredAt: params.paidAt || new Date(),
+          clientId: params.clientId,
+          groupId: m.groupId,
+          notes: comment,
+        }).catch((err) => console.error('Finance salary accrual record failed:', err));
+      }
       total += result.amount;
     } else if (scheme === 'percent_month') {
       if (rate <= 0) continue;
@@ -346,6 +372,20 @@ export async function accrueForPayment(params: {
         groupId: m.groupId,
         paymentId: params.paymentId,
       });
+      if (result.created) {
+        const { FinanceService } = await import('./financeService');
+        await FinanceService.recordSalaryAccrual({
+          tenantId: params.tenantId,
+          trainerId: trainer.id,
+          amount,
+          title: `Начисление: ${personName}`,
+          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}`,
+          occurredAt: params.paidAt || new Date(),
+          clientId: params.clientId,
+          groupId: m.groupId,
+          notes: comment,
+        }).catch((err) => console.error('Finance salary accrual record failed:', err));
+      }
       total += result.amount;
     }
   }
@@ -383,7 +423,19 @@ export async function accrueFixedMonthlyForTenant(
       comment: `начисление за ${periodKey}`,
       periodKey,
     });
-    if (result.created) count += 1;
+    if (result.created) {
+      count += 1;
+      const { FinanceService } = await import('./financeService');
+      await FinanceService.recordSalaryAccrual({
+        tenantId,
+        trainerId: trainer.id,
+        amount: rate,
+        title: 'Фиксированная зарплата',
+        externalKey: `salary_accrual:fixed_monthly:${trainer.id}:${periodKey}`,
+        occurredAt: forDate,
+        notes: `начисление за ${periodKey}`,
+      }).catch((err) => console.error('Finance salary accrual record failed:', err));
+    }
   }
 
   return count;
@@ -463,6 +515,19 @@ export async function addManualLedgerEntry(params: {
     });
     return ledger;
   });
+
+  if (amount > 0) {
+    const { FinanceService } = await import('./financeService');
+    await FinanceService.recordSalaryAccrual({
+      tenantId: params.tenantId,
+      trainerId: params.trainerId,
+      amount,
+      title,
+      externalKey: `salary_ledger:${row.id}`,
+      occurredAt,
+      notes: params.comment?.trim() || (kind === 'bonus' ? 'премия' : 'корректировка'),
+    }).catch((err) => console.error('Finance salary accrual record failed:', err));
+  }
 
   return { id: row.id, amount };
 }

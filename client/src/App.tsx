@@ -27,6 +27,7 @@ const Groups = lazy(() => import('./pages/Groups'));
 const Branches = lazy(() => import('./pages/Branches'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Finance = lazy(() => import('./pages/Finance'));
+const Memberships = lazy(() => import('./pages/Memberships'));
 const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
@@ -410,8 +411,17 @@ const AppContent: React.FC = () => {
           }
         />
         <Route path="/payments" element={<Navigate to="/finance" replace />} />
-        <Route path="/memberships" element={<Navigate to="/finance" replace />} />
-        <Route path="/client-memberships" element={<Navigate to="/finance" replace />} />
+        <Route
+          path="/memberships"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Memberships />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/client-memberships" element={<Navigate to="/memberships" replace />} />
         <Route
           path="/settings"
           element={

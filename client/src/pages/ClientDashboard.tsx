@@ -247,6 +247,19 @@ const ClientDashboard: React.FC = () => {
     ? `${data.attendance.present}/${data.attendance.total}`
     : '—';
 
+  const membershipRemaining = data.membership?.remaining;
+  const membershipValue =
+    membershipRemaining == null
+      ? data.membership
+        ? 'без лимита'
+        : '—'
+      : String(membershipRemaining);
+  const membershipCaption = data.membership
+    ? data.membership.visitsTotal != null
+      ? `${data.membership.name} · использовано ${data.membership.visitsUsed} из ${data.membership.visitsTotal}`
+      : data.membership.name
+    : 'Нет активного абонемента';
+
   const balanceCaption =
     data.balance?.nextCharge && !pending
       ? `${new Date(data.balance.nextCharge.date).toLocaleDateString('ru-RU')} будет списано ${RUB.format(
@@ -320,7 +333,7 @@ const ClientDashboard: React.FC = () => {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 2fr' },
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr 1.6fr' },
           gap: { xs: 2, md: 3 },
         }}
       >
@@ -339,6 +352,23 @@ const ClientDashboard: React.FC = () => {
               : { value: 0, max: 1 }
           }
           caption={balanceCaption}
+          placeholder={pending}
+        />
+        <MetricCard
+          label="Абонемент"
+          value={membershipValue}
+          icon={<DesignIcon category="metric" name="attendance" size={81} />}
+          designIcon
+          progress={
+            data.membership?.visitsTotal != null
+              ? {
+                  value: Math.max(0, data.membership.visitsTotal - data.membership.visitsUsed),
+                  max: Math.max(1, data.membership.visitsTotal),
+                  danger: (data.membership.remaining ?? 0) < 0,
+                }
+              : { value: 0, max: 1 }
+          }
+          caption={membershipCaption}
           placeholder={pending}
         />
         <MetricCard

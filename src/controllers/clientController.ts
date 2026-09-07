@@ -7,6 +7,7 @@ import { clientSchemas, commonSchemas } from '../middleware/validation';
 import Joi from 'joi';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
+import { pickActiveMembershipSummary } from '../services/clientMembershipService';
 
 /**
  * Approve parent account registration
@@ -251,7 +252,8 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       hasPassword: Boolean(password),
       password: undefined,
       debt: totalDebt,
-      overduePaymentsCount: overduePayments.length
+      overduePaymentsCount: overduePayments.length,
+      activeMembership: pickActiveMembershipSummary(client.clientMemberships || []),
     };
   });
 
@@ -338,6 +340,7 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
       parents: parentsSafe,
       hasPassword: Boolean(password),
       password: undefined,
+      activeMembership: pickActiveMembershipSummary(client.clientMemberships || []),
     }
   });
 });
