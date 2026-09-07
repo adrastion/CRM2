@@ -4,6 +4,51 @@ import { AuthenticatedRequest } from '../types';
 import { deductFromClientBalance } from '../utils/finance';
 import { accrueForAttendance } from '../services/trainerSalaryService';
 
+/**
+ * Начисление тренеру по схеме per_training_person.
+ * Идемпотентно (уникальность attendanceId в реестре).
+ * Не зависит от group.trainingPrice — ставка берётся из настроек тренера.
+ */
+async function accrueTrainerForAttendanceStatus(params: {
+  tenantId: string;
+  attendanceId: string;
+  clientId: string;
+  trainingId: string;
+  status: string;
+  /** true = не списывать с клиента (галочка «не брать плату») */
+  shouldCharge: boolean;
+}) {
+  const isPresent = params.status === 'PRESENT';
+  const isPaidMiss =
+    (params.status === 'ABSENT' || params.status === 'EXCUSED') && !params.shouldCharge;
+
+  if (!isPresent && !isPaidMiss) return;
+
+  const training = await prisma.training.findFirst({
+    where: { id: params.trainingId, tenantId: params.tenantId },
+    select: {
+      id: true,
+      title: true,
+      startTime: true,
+      trainerId: true,
+      substituteTrainerId: true,
+    },
+  });
+  if (!training) return;
+
+  const trainerId = training.substituteTrainerId || training.trainerId;
+  await accrueForAttendance({
+    tenantId: params.tenantId,
+    trainerId,
+    trainingId: params.trainingId,
+    attendanceId: params.attendanceId,
+    clientId: params.clientId,
+    trainingTitle: training.title,
+    trainingStart: training.startTime,
+    isMissed: isPaidMiss,
+  });
+}
+
 export const getAttendances = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { page = 1, limit = 10, trainingId, clientId } = req.query;
@@ -397,19 +442,6 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
                 tenantId,
                 `Оплата тренировки: ${trainingWithDetails.title}`
               );
-
-              // Определяем, кто должен получить заработок (замена или оригинальный тренер)
-              const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
-
-              await accrueForAttendance({
-                tenantId,
-                trainerId: actualTrainerId,
-                trainingId,
-                attendanceId: attendance.id,
-                clientId,
-                trainingTitle: trainingWithDetails.title,
-                trainingStart: trainingWithDetails.startTime,
-              });
             } else {
               // Недостаточно средств - можно создать запись о задолженности
               // Пока просто создаем посещение без списания, но логируем проблему
@@ -417,19 +449,17 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
             }
           }
         }
-      } else if (trainingWithDetails && activeMembership) {
-        // Если есть абонемент, все равно начисляем тренеру (но не списываем с клиента)
-        const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
-        await accrueForAttendance({
-          tenantId,
-          trainerId: actualTrainerId,
-          trainingId,
-          attendanceId: attendance.id,
-          clientId,
-          trainingTitle: trainingWithDetails.title,
-          trainingStart: trainingWithDetails.startTime,
-        });
       }
+
+      // Зарплата тренеру — всегда при PRESENT (ставка из настроек тренера), независимо от trainingPrice
+      await accrueTrainerForAttendanceStatus({
+        tenantId,
+        attendanceId: attendance.id,
+        clientId,
+        trainingId,
+        status: 'PRESENT',
+        shouldCharge: false,
+      });
     } else if ((status === 'ABSENT' || status === 'EXCUSED') && !finalShouldCharge) {
       // Если пропуск с shouldCharge=false (галочка не стоит), списываем средства и начисляем тренеру
       const trainingWithDetails = await prisma.training.findFirst({
@@ -468,26 +498,21 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
                 tenantId,
                 `Списание за пропуск тренировки: ${trainingWithDetails.title}`
               );
-
-              // Определяем, кто должен получить заработок (замена или оригинальный тренер)
-              const actualTrainerId = trainingWithDetails.substituteTrainerId || trainingWithDetails.trainerId;
-
-              await accrueForAttendance({
-                tenantId,
-                trainerId: actualTrainerId,
-                trainingId,
-                attendanceId: attendance.id,
-                clientId,
-                trainingTitle: trainingWithDetails.title,
-                trainingStart: trainingWithDetails.startTime,
-                isMissed: true,
-              });
             } else {
               console.warn(`Insufficient balance for client ${clientId} for missed training. Balance: ${clientBalance}, Required: ${trainingPrice}`);
             }
           }
         }
       }
+
+      await accrueTrainerForAttendanceStatus({
+        tenantId,
+        attendanceId: attendance.id,
+        clientId,
+        trainingId,
+        status,
+        shouldCharge: finalShouldCharge,
+      });
     }
 
     res.status(201).json({
@@ -556,6 +581,17 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
         training: true
       }
     });
+
+    if (req.tenant?.id) {
+      await accrueTrainerForAttendanceStatus({
+        tenantId: req.tenant.id,
+        attendanceId: updatedAttendance.id,
+        clientId: updatedAttendance.clientId,
+        trainingId: updatedAttendance.trainingId,
+        status: updatedAttendance.status,
+        shouldCharge: updatedAttendance.shouldCharge,
+      });
+    }
 
     res.json({
       success: true,
@@ -692,6 +728,14 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
             data: { status, notes, shouldCharge: finalShouldCharge },
             include: { client: true }
           });
+          await accrueTrainerForAttendanceStatus({
+            tenantId,
+            attendanceId: updated.id,
+            clientId: updated.clientId,
+            trainingId,
+            status: updated.status,
+            shouldCharge: updated.shouldCharge,
+          });
           results.push(updated);
         } else {
           // Create new
@@ -708,6 +752,14 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
             include: { client: true }
           });
           console.log(`Successfully created attendance record ${created.id} for client ${created.client?.lastName} ${created.client?.firstName}`);
+          await accrueTrainerForAttendanceStatus({
+            tenantId,
+            attendanceId: created.id,
+            clientId: created.clientId,
+            trainingId,
+            status: created.status,
+            shouldCharge: created.shouldCharge,
+          });
           results.push(created);
         }
       } catch (error: any) {

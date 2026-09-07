@@ -14,6 +14,7 @@ import {
   addManualLedgerEntry,
   getPayoutReminder,
   accrueFixedMonthlyForTenant,
+  backfillTrainingVisitAccruals,
   SCHEME_LABELS,
 } from '../services/trainerSalaryService';
 
@@ -203,13 +204,49 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 
     const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, canViewAllGroups } = req.body;
     const salary = parseSalaryFields(req.body);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    // Создаем пользователя напрямую
+    if (!normalizedEmail) {
+      res.status(400).json({ success: false, error: 'Укажите email' });
+      return;
+    }
+    if (!password || String(password).length < 6) {
+      res.status(400).json({ success: false, error: 'Пароль должен содержать минимум 6 символов' });
+      return;
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { trainer: true },
+    });
+
+    if (existingUser) {
+      if (existingUser.tenantId !== req.tenant.id) {
+        res.status(400).json({
+          success: false,
+          error: 'Этот email уже используется в другой организации',
+        });
+        return;
+      }
+      if (existingUser.trainer) {
+        res.status(400).json({
+          success: false,
+          error: 'Тренер с таким email уже существует',
+        });
+        return;
+      }
+      res.status(400).json({
+        success: false,
+        error: `Email уже занят сотрудником (${existingUser.role}). Укажите другой email или измените роль существующего пользователя`,
+      });
+      return;
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
-    
+
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         firstName,
         lastName,
@@ -245,8 +282,15 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       message: 'Trainer created successfully'
     });
     return;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create trainer error:', error);
+    if (error?.code === 'P2002') {
+      res.status(400).json({
+        success: false,
+        error: 'Этот email уже занят. Укажите другой адрес',
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
       error: 'Failed to create trainer'
@@ -711,6 +755,29 @@ export const accrueFixedMonthlySalaries = async (req: AuthenticatedRequest, res:
   } catch (error) {
     console.error('Accrue fixed monthly error:', error);
     res.status(500).json({ success: false, error: 'Failed to accrue fixed monthly salaries' });
+  }
+};
+
+/** Доначислить зарплату за уже отмеченные PRESENT (схема «фикс за тренировку с человека»). */
+export const backfillSalaryFromAttendance = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Требуется ID тенанта' });
+      return;
+    }
+    const result = await backfillTrainingVisitAccruals(req.tenant.id);
+    res.json({
+      success: true,
+      data: result,
+      message: `Обработано посещений: ${result.processed}, новых начислений: ${result.accruedCount} на сумму ${result.accruedTotal}`,
+    });
+  } catch (error) {
+    console.error('Backfill salary from attendance error:', error);
+    res.status(500).json({ success: false, error: 'Failed to backfill salary accruals' });
   }
 };
 

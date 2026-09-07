@@ -605,4 +605,52 @@ export async function getPayoutReminder(tenantId: string, today: Date = new Date
   };
 }
 
+/**
+ * Доначисление за уже отмеченные PRESENT (идемпотентно по attendanceId).
+ * Нужно после исправления путей, где bulk-посещения не писали в реестр.
+ */
+export async function backfillTrainingVisitAccruals(tenantId: string): Promise<{
+  processed: number;
+  accruedCount: number;
+  accruedTotal: number;
+}> {
+  const rows = await prisma.attendance.findMany({
+    where: { tenantId, status: 'PRESENT' },
+    include: {
+      training: {
+        select: {
+          id: true,
+          title: true,
+          startTime: true,
+          trainerId: true,
+          substituteTrainerId: true,
+        },
+      },
+    },
+  });
+
+  let accruedCount = 0;
+  let accruedTotal = 0;
+
+  for (const a of rows) {
+    if (!a.training) continue;
+    const trainerId = a.training.substituteTrainerId || a.training.trainerId;
+    const amount = await accrueForAttendance({
+      tenantId,
+      trainerId,
+      trainingId: a.trainingId,
+      attendanceId: a.id,
+      clientId: a.clientId,
+      trainingTitle: a.training.title,
+      trainingStart: a.training.startTime,
+    });
+    if (amount > 0) {
+      accruedCount += 1;
+      accruedTotal += amount;
+    }
+  }
+
+  return { processed: rows.length, accruedCount, accruedTotal };
+}
+
 export { SCHEME_LABELS };
