@@ -49,10 +49,25 @@ export function resolveScheme(trainer: {
   salaryType?: string | null;
 }): SalaryScheme {
   const s = trainer.salaryScheme;
+  const legacy = trainer.salaryType;
+
+  // Явная новая схема — если не конфликтует с более специфичным legacy-типом
   if (s && (SALARY_SCHEMES as readonly string[]).includes(s)) {
-    return s as SalaryScheme;
+    const scheme = s as SalaryScheme;
+    // Старые записи: salaryScheme мог остаться default, а salaryType = percentage/fixed
+    if (
+      scheme === 'per_training_person' &&
+      legacy &&
+      !['per_student', 'per_training', 'per_training_person'].includes(legacy) &&
+      !(SALARY_SCHEMES as readonly string[]).includes(legacy)
+    ) {
+      // fall through to legacy mapping
+    } else {
+      return scheme;
+    }
   }
-  switch (trainer.salaryType) {
+
+  switch (legacy) {
     case 'percentage':
     case 'individual':
       return 'percent_month';
@@ -60,6 +75,12 @@ export function resolveScheme(trainer: {
       return 'fixed_monthly';
     case 'per_student':
     case 'per_training':
+    case 'fixed_per_student_month':
+      return legacy === 'fixed_per_student_month' ? 'fixed_per_student_month' : 'per_training_person';
+    case 'percent_month':
+      return 'percent_month';
+    case 'fixed_monthly':
+      return 'fixed_monthly';
     default:
       return 'per_training_person';
   }
@@ -651,6 +672,43 @@ export async function backfillTrainingVisitAccruals(tenantId: string): Promise<{
   }
 
   return { processed: rows.length, accruedCount, accruedTotal };
+}
+
+/**
+ * Доначисление по оплаченным платежам для схем percent_month / fixed_per_student_month.
+ * Идемпотентно по (trainerId, paymentId, kind).
+ */
+export async function backfillPaymentAccruals(tenantId: string): Promise<{
+  processed: number;
+  accruedCount: number;
+  accruedTotal: number;
+}> {
+  const payments = await prisma.payment.findMany({
+    where: { tenantId, status: 'paid' },
+    orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  let accruedCount = 0;
+  let accruedTotal = 0;
+
+  for (const p of payments) {
+    const amount = await accrueForPayment({
+      tenantId,
+      paymentId: p.id,
+      clientId: p.clientId,
+      amount: Number(p.amount),
+      groupId: p.groupId,
+      isMonthlyPayment: p.isMonthlyPayment,
+      paymentType: p.type,
+      paidAt: p.paidAt,
+    });
+    if (amount > 0) {
+      accruedCount += 1;
+      accruedTotal += amount;
+    }
+  }
+
+  return { processed: payments.length, accruedCount, accruedTotal };
 }
 
 export { SCHEME_LABELS };

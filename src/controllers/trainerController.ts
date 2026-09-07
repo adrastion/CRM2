@@ -15,6 +15,7 @@ import {
   getPayoutReminder,
   accrueFixedMonthlyForTenant,
   backfillTrainingVisitAccruals,
+  backfillPaymentAccruals,
   SCHEME_LABELS,
 } from '../services/trainerSalaryService';
 
@@ -778,6 +779,29 @@ export const backfillSalaryFromAttendance = async (req: AuthenticatedRequest, re
   } catch (error) {
     console.error('Backfill salary from attendance error:', error);
     res.status(500).json({ success: false, error: 'Failed to backfill salary accruals' });
+  }
+};
+
+/** Доначислить зарплату по оплаченным платежам (фикс % / фикс с ученика). */
+export const backfillSalaryFromPayments = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Требуется ID тенанта' });
+      return;
+    }
+    const result = await backfillPaymentAccruals(req.tenant.id);
+    res.json({
+      success: true,
+      data: result,
+      message: `Обработано платежей: ${result.processed}, новых начислений: ${result.accruedCount} на сумму ${result.accruedTotal}`,
+    });
+  } catch (error) {
+    console.error('Backfill salary from payments error:', error);
+    res.status(500).json({ success: false, error: 'Failed to backfill payment salary accruals' });
   }
 };
 

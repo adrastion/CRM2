@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { FinanceService, FinanceDirection } from '../services/financeService';
+import { accrueForPayment } from '../services/trainerSalaryService';
 import { badRequest } from '../utils/httpError';
 
 function parseList(value: unknown): string[] | undefined {
@@ -18,6 +19,31 @@ function parseDate(value: unknown): Date | undefined {
   if (!value) return undefined;
   const d = new Date(String(value));
   return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/** Начисление тренеру (фикс % / фикс с ученика) после оплаты в разделе «Финансы». */
+async function accrueTrainerFromPaidPayment(
+  tenantId: string,
+  payment: {
+    id: string;
+    clientId: string;
+    amount: unknown;
+    groupId?: string | null;
+    isMonthlyPayment?: boolean | null;
+    type?: string | null;
+    paidAt?: Date | null;
+  }
+) {
+  await accrueForPayment({
+    tenantId,
+    paymentId: payment.id,
+    clientId: payment.clientId,
+    amount: Number(payment.amount),
+    groupId: payment.groupId,
+    isMonthlyPayment: Boolean(payment.isMonthlyPayment),
+    paymentType: payment.type || undefined,
+    paidAt: payment.paidAt,
+  }).catch((err) => console.error('Trainer salary accrue on finance payment failed:', err));
 }
 
 export const listFinanceTypes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -211,6 +237,7 @@ export const receiveMembershipPayment = asyncHandler(
         include: { client: true },
       });
       await FinanceService.recordPaymentIncome(extra, clientName);
+      await accrueTrainerFromPaidPayment(req.tenant.id, extra);
       res.json({ success: true, data: { payment: extra } });
       return;
     }
@@ -235,6 +262,7 @@ export const receiveMembershipPayment = asyncHandler(
         include: { client: true },
       });
       await FinanceService.recordPaymentIncome(extra, clientName);
+      await accrueTrainerFromPaidPayment(req.tenant.id, extra);
       res.json({ success: true, data: { payment: extra } });
       return;
     }
@@ -259,6 +287,7 @@ export const receiveMembershipPayment = asyncHandler(
         include: { client: true },
       });
       await FinanceService.recordPaymentIncome(resultPayment, clientName);
+      await accrueTrainerFromPaidPayment(req.tenant.id, resultPayment);
 
       const excess = increment - pendingAmt;
       if (excess > 0) {
@@ -279,6 +308,7 @@ export const receiveMembershipPayment = asyncHandler(
           include: { client: true },
         });
         await FinanceService.recordPaymentIncome(extra, clientName);
+        await accrueTrainerFromPaidPayment(req.tenant.id, extra);
         resultPayment = extra;
       }
     } else {
@@ -306,6 +336,7 @@ export const receiveMembershipPayment = asyncHandler(
         include: { client: true },
       });
       await FinanceService.recordPaymentIncome(resultPayment, clientName);
+      await accrueTrainerFromPaidPayment(req.tenant.id, resultPayment);
     }
 
     res.json({

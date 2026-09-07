@@ -18,6 +18,7 @@ import {
   getSalaryPayoutReminder,
   accrueFixedMonthlySalaries,
   backfillSalaryFromAttendance,
+  backfillSalaryFromPayments,
 } from '../controllers/trainerController';
 
 const router = Router();
@@ -30,6 +31,7 @@ router.get('/earnings/all', getAllTrainersEarnings); // Only admin/owner
 router.get('/salary-payout-reminder', getSalaryPayoutReminder);
 router.post('/accrue-fixed-monthly', accrueFixedMonthlySalaries);
 router.post('/backfill-salary-from-attendance', backfillSalaryFromAttendance);
+router.post('/backfill-salary-from-payments', backfillSalaryFromPayments);
 
 // Trainer management routes
 router.get('/', getTrainers);
