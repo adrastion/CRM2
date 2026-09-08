@@ -42,6 +42,7 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import {
   normalizeSalaryScheme,
   salarySchemeLabel,
@@ -1436,6 +1437,21 @@ const Trainers: React.FC = () => {
               </>
             )}
           </Grid>
+          {editingTrainer && getCurrentEmployeeRole() === 'TRAINER' && (
+            <Box sx={{ mt: 3 }}>
+              <AttendanceExcelExport
+                scope="trainer"
+                entityId={editingTrainer.id}
+                entityName={[
+                  editingTrainer.user?.lastName,
+                  editingTrainer.user?.firstName,
+                  editingTrainer.user?.middleName,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button 

@@ -91,6 +91,7 @@ model User {
   middleName    String?
   trainer       Trainer?
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  linkedSuperAdmin SuperAdmin?
 
   @@unique([tenantId, email])
   @@map("users")
@@ -468,18 +469,23 @@ model Group {
 }
 
 model GroupMembership {
-  id       String    @id @default(cuid())
-  clientId String
-  groupId  String
-  joinedAt DateTime  @default(now())
-  leftAt   DateTime?
-  isActive Boolean   @default(true)
-  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  clientId        String
+  groupId         String
+  joinedAt        DateTime  @default(now())
+  leftAt          DateTime?
+  isActive        Boolean   @default(true)
+  /// Временное членство на пробное занятие (не делает клиента «не лидом»)
+  isTrial         Boolean   @default(false)
+  trialTrainingId String?
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  group           Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  trialTraining   Training? @relation(fields: [trialTrainingId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, groupId])
   @@index([clientId, isActive])
   @@index([groupId, isActive])
+  @@index([isTrial, isActive])
   @@map("group_memberships")
 }
 
@@ -580,6 +586,7 @@ model Training {
   substituteTrainerId String? // ID тренера-замены
   originalTrainerId   String? // ID оригинального тренера (если есть замена)
   attendances         Attendance[]
+  trialMemberships    GroupMembership[]
   branch              Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   group               Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   hall                Hall?         @relation(fields: [hallId], references: [id])
@@ -1043,16 +1050,40 @@ model SuperAdmin {
   lastName           String
   isActive           Boolean                      @default(true)
   lastLogin          DateTime?
+  /// OWNER школы, которому выдан доступ супер-админа (переключение аккаунтов).
+  linkedUserId       String?                      @unique
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
+  linkedUser         User?                        @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
   transactions       AdminTransaction[]
   auditLogs          AdminAuditLog[]
   dashboardPresets   DashboardPreset[]
   supportMessages    SupportTicketMessage[]
   grantLogs          SubscriptionGrantLog[]
   pushSubscriptions  SuperAdminPushSubscription[]
+  devNotes           SuperAdminDevNote[]
 
   @@map("super_admins")
+}
+
+enum DevNoteStatus {
+  IDEA
+  IN_PROGRESS
+  DONE
+}
+
+model SuperAdminDevNote {
+  id          String        @id @default(cuid())
+  title       String
+  description String?       @db.Text
+  status      DevNoteStatus @default(IDEA)
+  createdById String
+  createdBy   SuperAdmin    @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("super_admin_dev_notes")
 }
 
 model DashboardPreset {

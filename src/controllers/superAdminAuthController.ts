@@ -22,6 +22,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   // Find super admin
   const superAdmin = await prisma.superAdmin.findUnique({
     where: { email: email.toLowerCase().trim() },
+    include: { linkedUser: { include: { tenant: true } } },
   });
 
   if (!superAdmin) {
@@ -59,22 +60,52 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
     });
     return;
   }
-  
-  const token = jwt.sign(
-    {
-      userId: superAdmin.id,
-      email: superAdmin.email,
-      type: 'SUPER_ADMIN',
-    },
-    jwtSecret,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as jwt.SignOptions
-  );
+
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  const sign = (payload: object) =>
+    jwt.sign(payload, jwtSecret, { expiresIn } as jwt.SignOptions);
+
+  const token = sign({
+    userId: superAdmin.id,
+    email: superAdmin.email,
+    type: 'SUPER_ADMIN',
+  });
 
   // Update last login
   await prisma.superAdmin.update({
     where: { id: superAdmin.id },
     data: { lastLogin: new Date() },
   });
+
+  let linkedSession: Record<string, unknown> | undefined;
+  const user = superAdmin.linkedUser;
+  if (user && user.isActive) {
+    linkedSession = {
+      accountType: 'TENANT_USER',
+      token: sign({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        tenantId: user.tenantId,
+      }),
+      tenant: {
+        id: user.tenant.id,
+        name: user.tenant.name,
+        subdomain: user.tenant.subdomain,
+      },
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        middleName: user.middleName,
+        phone: user.phone,
+        role: user.role,
+        tenantId: user.tenantId,
+      },
+    };
+  }
 
   res.json({
     success: true,
@@ -86,7 +117,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
         lastName: superAdmin.lastName,
       },
       token,
+      ...(linkedSession ? { linkedSession } : {}),
     },
   });
 });
-

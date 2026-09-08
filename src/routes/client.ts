@@ -18,7 +18,8 @@ import {
   updateMembershipFeeStatus,
   approveClientAccount,
   rejectClientAccount,
-  approveParentAccount
+  approveParentAccount,
+  assignClientTrial,
 } from '../controllers/clientController';
 import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
@@ -53,6 +54,9 @@ router.put('/:id/membership-fee', requireOwnerOrAdmin, updateMembershipFeeStatus
 // Approve / reject client account (OWNER, ADMIN, or TRAINER)
 router.put('/:id/approve-account', requireOwnerAdminOrTrainer, approveClientAccount);
 router.put('/:id/reject-account', requireOwnerAdminOrTrainer, rejectClientAccount);
+
+// Пробное занятие
+router.post('/:id/trial', requireOwnerAdminOrTrainer, assignClientTrial);
 
 // Approve parent account (OWNER or ADMIN)
 router.put('/parents/:parentId/approve', requireOwnerOrAdmin, approveParentAccount);

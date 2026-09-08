@@ -2621,7 +2621,16 @@ const Schedule: React.FC = () => {
                   <InputLabel>Группа</InputLabel>
                   <Select
                     value={formData.groupId}
-                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                    onChange={(e) => {
+                      const groupId = e.target.value;
+                      const group = groups.find((g) => g.id === groupId);
+                      setFormData({
+                        ...formData,
+                        groupId,
+                        trainerId: group?.trainerId || formData.trainerId,
+                        substituteTrainerId: '',
+                      });
+                    }}
                   >
                     {groups.map((group) => (
                       <MenuItem key={group.id} value={group.id}>
@@ -3280,7 +3289,16 @@ const Schedule: React.FC = () => {
                   <InputLabel>Группа</InputLabel>
                   <Select
                     value={formData.groupId}
-                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                    onChange={(e) => {
+                      const groupId = e.target.value;
+                      const group = groups.find((g) => g.id === groupId);
+                      setFormData({
+                        ...formData,
+                        groupId,
+                        trainerId: group?.trainerId || formData.trainerId,
+                        substituteTrainerId: '',
+                      });
+                    }}
                   >
                     {groups.map((group) => (
                       <MenuItem key={group.id} value={group.id}>

@@ -7,7 +7,8 @@ import {
   createAttendance,
   updateAttendance,
   deleteAttendance,
-  bulkUpdateAttendance
+  bulkUpdateAttendance,
+  exportAttendanceExcel,
 } from '../controllers/attendanceController';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.use(authenticate);
 
 // Attendance management routes
 router.get('/', getAttendances);
+router.get('/export/excel', requireOwnerAdminOrTrainer, exportAttendanceExcel);
 router.get('/training/:trainingId', getAttendancesByTraining);
 router.get('/:id', getAttendanceById);
 router.post('/', requireOwnerAdminOrTrainer, createAttendance);

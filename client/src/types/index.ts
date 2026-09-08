@@ -112,6 +112,8 @@ export interface UnifiedSession {
   superAdmin?: any;
   staff?: { id: string; email: string; firstName: string; lastName: string; role: string; mustChangePassword?: boolean };
   isAccountApproved?: boolean;
+  /** Связанная сессия школа ↔ супер-админ. */
+  linkedSession?: Omit<UnifiedSession, 'requiresSelection' | 'linkedSession'>;
 }
 
 /** Нужен выбор организации/роли. */
@@ -501,6 +503,9 @@ export interface GroupMembership {
   joinedAt: string;
   leftAt?: string;
   isActive: boolean;
+  /** Временное членство на пробное занятие */
+  isTrial?: boolean;
+  trialTrainingId?: string | null;
   client?: Client;
   group?: Group;
 }

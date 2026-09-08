@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { deductFromClientBalance } from '../utils/finance';
 import { accrueForAttendance } from '../services/trainerSalaryService';
 import { consumeVisitFromActivePack } from '../services/clientMembershipService';
+import * as XLSX from 'xlsx';
 
 /**
  * Начисление тренеру по схеме per_training_person.
@@ -747,6 +748,231 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     res.status(500).json({
       success: false,
       error: 'Failed to update attendances'
+    });
+  }
+};
+
+const ATTENDANCE_STATUS_RU: Record<string, string> = {
+  PRESENT: 'Присутствовал',
+  ABSENT: 'Отсутствовал',
+  EXCUSED: 'Уважительная причина',
+};
+
+function defaultMonthRange(): { from: Date; to: Date } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { from, to };
+}
+
+function personName(parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join(' ').trim();
+}
+
+function formatDateRu(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+/** Имя файла без запрещённых символов Windows/браузера. */
+function sanitizeFilenamePart(value: string): string {
+  return value
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+/**
+ * Выгрузка посещаемости в Excel по тренеру / клиенту / группе.
+ * GET /attendances/export/excel?scope=trainer|client|group&id=...&from=&to=
+ */
+export const exportAttendanceExcel = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+
+    const scope = String(req.query.scope || '');
+    const entityId = String(req.query.id || '');
+    if (!['trainer', 'client', 'group'].includes(scope) || !entityId) {
+      res.status(400).json({
+        success: false,
+        error: 'Укажите scope=trainer|client|group и id',
+      });
+      return;
+    }
+
+    let from: Date;
+    let to: Date;
+    if (req.query.from && req.query.to) {
+      from = new Date(String(req.query.from));
+      to = new Date(String(req.query.to));
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        res.status(400).json({ success: false, error: 'Некорректный период from/to' });
+        return;
+      }
+      to.setHours(23, 59, 59, 999);
+    } else {
+      ({ from, to } = defaultMonthRange());
+    }
+
+    let entityLabel = scope;
+    if (scope === 'trainer') {
+      const trainer = await prisma.trainer.findFirst({
+        where: { id: entityId, tenantId },
+        include: { user: true },
+      });
+      entityLabel =
+        personName([trainer?.user.lastName, trainer?.user.firstName, trainer?.user.middleName]) ||
+        'trainer';
+    } else if (scope === 'client') {
+      const client = await prisma.client.findFirst({
+        where: { id: entityId, tenantId },
+        select: { lastName: true, firstName: true, middleName: true },
+      });
+      entityLabel =
+        personName([client?.lastName, client?.firstName, client?.middleName]) || 'client';
+    } else if (scope === 'group') {
+      const group = await prisma.group.findFirst({
+        where: { id: entityId, tenantId },
+        select: { name: true },
+      });
+      entityLabel = group?.name || 'group';
+    }
+
+    // Тренер без canViewAllGroups — только свои данные
+    if (req.user?.role === 'TRAINER') {
+      const selfTrainer = await prisma.trainer.findFirst({
+        where: { userId: req.user.id, tenantId },
+        select: { id: true, canViewAllGroups: true },
+      });
+      if (!selfTrainer) {
+        res.status(403).json({ success: false, error: 'Тренер не найден' });
+        return;
+      }
+      if (!selfTrainer.canViewAllGroups) {
+        if (scope === 'trainer' && entityId !== selfTrainer.id) {
+          res.status(403).json({ success: false, error: 'Можно выгружать только свою посещаемость' });
+          return;
+        }
+        if (scope === 'group') {
+          const group = await prisma.group.findFirst({
+            where: { id: entityId, tenantId, trainerId: selfTrainer.id },
+          });
+          if (!group) {
+            res.status(403).json({ success: false, error: 'Нет доступа к этой группе' });
+            return;
+          }
+        }
+        if (scope === 'client') {
+          const inMyGroup = await prisma.groupMembership.findFirst({
+            where: {
+              clientId: entityId,
+              isActive: true,
+              group: { tenantId, trainerId: selfTrainer.id },
+            },
+          });
+          if (!inMyGroup) {
+            res.status(403).json({ success: false, error: 'Нет доступа к этому клиенту' });
+            return;
+          }
+        }
+      }
+    }
+
+    const trainingWhere: any = {
+      tenantId,
+      startTime: { gte: from, lte: to },
+      isCancelled: false,
+    };
+
+    if (scope === 'trainer') {
+      trainingWhere.OR = [
+        { trainerId: entityId },
+        { substituteTrainerId: entityId },
+      ];
+    } else if (scope === 'group') {
+      trainingWhere.groupId = entityId;
+    }
+
+    const attendances = await prisma.attendance.findMany({
+      where: {
+        tenantId,
+        ...(scope === 'client' ? { clientId: entityId } : {}),
+        training: trainingWhere,
+      },
+      include: {
+        client: true,
+        training: {
+          include: {
+            group: true,
+            trainer: { include: { user: true } },
+            substituteTrainer: { include: { user: true } },
+          },
+        },
+      },
+      orderBy: [{ training: { startTime: 'asc' } }, { client: { lastName: 'asc' } }],
+    });
+
+    const rows = attendances.map((a) => {
+      const start = new Date(a.training.startTime);
+      const end = new Date(a.training.endTime);
+      const activeTrainer = a.training.substituteTrainer || a.training.trainer;
+      const trainerUser = activeTrainer?.user;
+      return {
+        Дата: start.toLocaleDateString('ru-RU'),
+        Время: `${start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+        Тренировка: a.training.title,
+        Группа: a.training.group?.name || '—',
+        Клиент: personName([a.client.lastName, a.client.firstName, a.client.middleName]) || a.client.id,
+        Статус: ATTENDANCE_STATUS_RU[a.status] || a.status,
+        Тренер: trainerUser
+          ? personName([trainerUser.lastName, trainerUser.firstName, trainerUser.middleName])
+          : '—',
+        Примечание: a.notes || '',
+      };
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(
+      rows.length > 0
+        ? rows
+        : [
+            {
+              Дата: '',
+              Время: '',
+              Тренировка: '',
+              Группа: '',
+              Клиент: '',
+              Статус: '',
+              Тренер: '',
+              Примечание: 'Нет записей за выбранный период',
+            },
+          ]
+    );
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Посещаемость');
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    const periodLabel = `${formatDateRu(from)}-${formatDateRu(to)}`;
+    const safeName = sanitizeFilenamePart(entityLabel) || scope;
+    const filenameUtf8 = `Посещаемость ${safeName} ${periodLabel}.xlsx`;
+    const filenameAscii = `attendance_${periodLabel.replace(/\./g, '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filenameAscii}"; filename*=UTF-8''${encodeURIComponent(filenameUtf8)}`
+    );
+    res.send(excelBuffer);
+  } catch (error) {
+    console.error('Export attendance excel error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Не удалось выгрузить посещаемость',
     });
   }
 };

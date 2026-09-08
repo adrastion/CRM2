@@ -1,5 +1,9 @@
 import { UnifiedSession } from '../types';
-import { upsertSavedAccountFromSession } from './accountSwitcher';
+import {
+  captureActiveSessionKeys,
+  upsertFromActiveStorage,
+  upsertSavedAccountFromSession,
+} from './accountSwitcher';
 
 /**
  * Флаг подтверждения клиентского аккаунта школой.
@@ -50,13 +54,10 @@ export function clearAllAuthStorage(): void {
   sessionStorage.removeItem('clientLoginFieldErrors');
 }
 
-/**
- * Записывает сессию в localStorage в формате, который ожидают
- * существующие контексты и middleware, и возвращает маршрут для перехода.
- */
-export function applyUnifiedSession(session: UnifiedSession): string {
-  clearAllAuthStorage();
+type SessionLike = Omit<UnifiedSession, 'requiresSelection'>;
 
+/** Записывает ключи сессии в localStorage (без очистки). */
+function writeSessionKeys(session: SessionLike): string {
   let destination = '/auth';
 
   switch (session.accountType) {
@@ -118,7 +119,36 @@ export function applyUnifiedSession(session: UnifiedSession): string {
       break;
   }
 
+  return destination;
+}
+
+function restoreSessionKeys(keys: Record<string, string>): void {
+  for (const [key, value] of Object.entries(keys)) {
+    localStorage.setItem(key, value);
+  }
+}
+
+/**
+ * Записывает сессию в localStorage в формате, который ожидают
+ * существующие контексты и middleware, и возвращает маршрут для перехода.
+ * Если есть linkedSession (OWNER ↔ супер-админ) — оба слота попадают в свитчер.
+ */
+export function applyUnifiedSession(session: UnifiedSession): string {
+  clearAllAuthStorage();
+
+  const destination = writeSessionKeys(session);
   upsertSavedAccountFromSession(session);
+
+  if (session.linkedSession) {
+    const primaryKeys = captureActiveSessionKeys();
+    clearAllAuthStorage();
+    writeSessionKeys(session.linkedSession);
+    upsertFromActiveStorage();
+    clearAllAuthStorage();
+    restoreSessionKeys(primaryKeys);
+    upsertFromActiveStorage();
+  }
+
   return destination;
 }
 

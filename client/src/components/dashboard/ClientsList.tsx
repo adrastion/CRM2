@@ -4,6 +4,10 @@ import { Client } from '../../types';
 import { colors, typography } from '../../theme/tokens';
 import ClientNameLink from '../ClientNameLink';
 import DesignIcon from '../common/DesignIcon';
+import {
+  clientAccountStatusLabel,
+  getClientAccountStatus,
+} from '../../utils/clientAccountStatus';
 
 const SOFT_DANGER = '#EC7C94';
 
@@ -31,7 +35,12 @@ const formatBalance = (value?: number) => {
 const primaryGroupName = (client: Client): string => {
   const active = (client.groupMemberships || []).filter((gm: any) => gm.isActive);
   if (active.length === 0) return '—';
-  return active[0].group?.name || 'Группа';
+  return active
+    .map((gm: any) => {
+      const name = gm.group?.name || 'Группа';
+      return gm.isTrial ? `${name} (пробное)` : name;
+    })
+    .join(', ');
 };
 
 const membershipChipLabel = (client: Client): { title: string; remaining: number | null } => {
@@ -90,15 +99,14 @@ const SortHeader: React.FC<{
  * заголовок + поиск, колонки Клиент / Статус / Группа / Баланс,
  * белые карточки с действиями Редактировать / Тарифы / Удалить.
  */
-const accountStatusLabel = (client: Client): string => {
-  if (!client.hasPassword) return 'Не зарегистрирован';
-  if (!client.isAccountApproved) return 'Ожидает подтверждения';
-  return 'Зарегистрирован';
-};
+const accountStatusLabel = (client: Client): string =>
+  clientAccountStatusLabel(getClientAccountStatus(client));
 
 const accountStatusColor = (client: Client): string => {
-  if (!client.hasPassword) return colors.textHint;
-  if (!client.isAccountApproved) return '#ED6C02';
+  const status = getClientAccountStatus(client);
+  if (status === 'lead') return '#7B6CF6';
+  if (status === 'unregistered') return colors.textHint;
+  if (status === 'pending') return '#ED6C02';
   return colors.success;
 };
 

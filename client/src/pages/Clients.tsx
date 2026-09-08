@@ -33,6 +33,7 @@ import {
   MenuItem,
   TableSortLabel,
   Checkbox,
+  FormControlLabel,
   ListItemText,
   List,
   ListItem,
@@ -41,8 +42,10 @@ import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Do
 import { apiService } from '../services/api';
 import { Client, Membership } from '../types';
 import ClientsList from '../components/dashboard/ClientsList';
+import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
+import { getClientAccountStatus } from '../utils/clientAccountStatus';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -77,6 +80,7 @@ const Clients: React.FC = () => {
   const [groups, setGroups] = useState<any[]>([]);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterGroupId, setFilterGroupId] = useState<string>('');
+  const [filterAccountStatus, setFilterAccountStatus] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>(''); // Поиск по клиентам
   const [passportDialog, setPassportDialog] = useState(false);
   const [passportData, setPassportData] = useState({
@@ -176,6 +180,19 @@ const Clients: React.FC = () => {
           );
           if (!hasGroup) return false;
         }
+        // Фильтр по статусу: лид / не зарегистрирован / зарегистрирован
+        if (filterAccountStatus) {
+          const status = getClientAccountStatus(client);
+          if (filterAccountStatus === 'lead' && status !== 'lead') return false;
+          if (filterAccountStatus === 'unregistered' && status !== 'unregistered') return false;
+          if (
+            filterAccountStatus === 'registered' &&
+            status !== 'registered' &&
+            status !== 'pending'
+          ) {
+            return false;
+          }
+        }
         return true;
       })
       .sort((a, b) => {
@@ -205,9 +222,11 @@ const Clients: React.FC = () => {
             break;
           case 'accountStatus': {
             const rank = (c: Client) => {
-              if (!c.hasPassword) return 0;
-              if (!c.isAccountApproved) return 1;
-              return 2;
+              const s = getClientAccountStatus(c);
+              if (s === 'lead') return 0;
+              if (s === 'unregistered') return 1;
+              if (s === 'pending') return 2;
+              return 3;
             };
             aValue = rank(a);
             bValue = rank(b);
@@ -237,7 +256,7 @@ const Clients: React.FC = () => {
             : (aValue < bValue ? 1 : -1);
         }
       });
-  }, [clients, searchQuery, filterBranchId, filterGroupId, sortBy, sortOrder]);
+  }, [clients, searchQuery, filterBranchId, filterGroupId, filterAccountStatus, sortBy, sortOrder]);
   const [editingPhoneClientId, setEditingPhoneClientId] = useState<string | null>(null);
   const [editingPhoneValue, setEditingPhoneValue] = useState<string>('');
   const [groupsDialog, setGroupsDialog] = useState(false);
@@ -300,6 +319,14 @@ const Clients: React.FC = () => {
   const [medicalCertificateFile, setMedicalCertificateFile] = useState<File | null>(null);
   const [medicalCertificatePreview, setMedicalCertificatePreview] = useState<string | null>(null);
   const medicalCertificateInputRef = useRef<HTMLInputElement>(null);
+  const [trialEnabled, setTrialEnabled] = useState(false);
+  const [trialTrainingId, setTrialTrainingId] = useState('');
+  const [upcomingTrialTrainings, setUpcomingTrialTrainings] = useState<any[]>([]);
+  const [loadingTrialTrainings, setLoadingTrialTrainings] = useState(false);
+  /** Пробное при добавлении в группу из диалога (для лидов) */
+  const [groupDialogTrial, setGroupDialogTrial] = useState(false);
+  const [groupDialogTrialTrainingId, setGroupDialogTrialTrainingId] = useState('');
+  const [groupDialogAddGroupId, setGroupDialogAddGroupId] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
@@ -523,6 +550,13 @@ const Clients: React.FC = () => {
   const handleCreateClient = async () => {
     // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateClientForm(formData);
+
+    if (trialEnabled && !trialTrainingId) {
+      setError('Выберите занятие для пробной записи');
+      setSnackbarMessage('Для пробного занятия нужно выбрать тренировку');
+      setSnackbarOpen(true);
+      return;
+    }
     
     if (hasFormErrors(errors)) {
       setError('Пожалуйста, исправьте ошибки в форме');
@@ -545,18 +579,36 @@ const Clients: React.FC = () => {
         passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
       };
       const createdClient = await apiService.createClient(dataToSend);
-      
-      // Добавляем клиента в выбранные группы
+
+      let trialGroupId: string | null = null;
+      if (trialEnabled && trialTrainingId && createdClient?.id) {
+        try {
+          const membership = await apiService.assignClientTrial(createdClient.id, trialTrainingId);
+          trialGroupId = membership?.groupId || membership?.group?.id || null;
+        } catch (err: any) {
+          console.error('Error assigning trial:', err);
+          setSnackbarMessage(
+            err?.response?.data?.error || 'Клиент создан, но не удалось записать на пробное занятие'
+          );
+          setSnackbarOpen(true);
+        }
+      }
+
+      // Постоянные группы (пробную группу не дублируем через addClientToGroup)
       if (groupIds && groupIds.length > 0 && createdClient?.id) {
         for (const groupId of groupIds) {
+          if (trialGroupId && groupId === trialGroupId) continue;
           try {
             await apiService.addClientToGroup(groupId, createdClient.id);
           } catch (err: any) {
             console.error(`Error adding client to group ${groupId}:`, err);
-            // Продолжаем добавлять в другие группы даже если одна не удалась
           }
         }
       }
+
+      setTrialEnabled(false);
+      setTrialTrainingId('');
+      setUpcomingTrialTrainings([]);
       
       await fetchClients();
       // Сбрасываем все и закрываем диалог только после успешного создания
@@ -1196,6 +1248,9 @@ const Clients: React.FC = () => {
               groupIds: [],
               parents: [],
             });
+            setTrialEnabled(false);
+            setTrialTrainingId('');
+            setUpcomingTrialTrainings([]);
             setPhotoPreview(null);
             setPhotoFile(null);
             setBirthCertificatePreview(null);
@@ -1208,6 +1263,31 @@ const Clients: React.FC = () => {
             setValidFields(new Set());
             setError('');
             setOpenDialog(true);
+  };
+
+  const loadUpcomingTrialTrainings = async (groupId?: string) => {
+    setLoadingTrialTrainings(true);
+    try {
+      const now = new Date();
+      const end = new Date(now);
+      end.setDate(end.getDate() + 30);
+      const res = await apiService.getTrainings({
+        startDate: now.toISOString(),
+        endDate: end.toISOString(),
+        limit: 50,
+        page: 1,
+      });
+      let list = (res.data || []).filter((t: any) => t.groupId && !t.isCancelled);
+      if (groupId) {
+        list = list.filter((t: any) => t.groupId === groupId);
+      }
+      setUpcomingTrialTrainings(list);
+    } catch (err) {
+      console.error('Failed to load trainings for trial:', err);
+      setUpcomingTrialTrainings([]);
+    } finally {
+      setLoadingTrialTrainings(false);
+    }
   };
 
   return (
@@ -1224,6 +1304,9 @@ const Clients: React.FC = () => {
         onRejectAccount={handleRejectAccount}
         onGroupClick={(client) => {
           setSelectedClientForGroups(client);
+          setGroupDialogTrial(false);
+          setGroupDialogTrialTrainingId('');
+          setGroupDialogAddGroupId('');
           setGroupsDialog(true);
         }}
         onMembershipClick={async (client) => {
@@ -1310,6 +1393,19 @@ const Clients: React.FC = () => {
                     {group.name}
                   </MenuItem>
                 ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 }, width: { xs: '100%', sm: 'auto' } }}>
+              <InputLabel>Статус</InputLabel>
+              <Select
+                value={filterAccountStatus}
+                onChange={(e) => setFilterAccountStatus(e.target.value)}
+                label="Статус"
+              >
+                <MenuItem value="">Все статусы</MenuItem>
+                <MenuItem value="lead">Лид</MenuItem>
+                <MenuItem value="unregistered">Не зарегистрирован</MenuItem>
+                <MenuItem value="registered">Зарегистрирован</MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -1582,6 +1678,57 @@ const Clients: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={trialEnabled}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setTrialEnabled(on);
+                      if (on) {
+                        loadUpcomingTrialTrainings();
+                      } else {
+                        setTrialTrainingId('');
+                      }
+                    }}
+                  />
+                }
+                label="Пробное занятие"
+              />
+            </Grid>
+            {trialEnabled && (
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Занятие для пробы</InputLabel>
+                  <Select
+                    value={trialTrainingId}
+                    onChange={(e) => setTrialTrainingId(e.target.value)}
+                    label="Занятие для пробы"
+                    disabled={loadingTrialTrainings}
+                  >
+                    {loadingTrialTrainings && (
+                      <MenuItem value="" disabled>
+                        Загрузка…
+                      </MenuItem>
+                    )}
+                    {!loadingTrialTrainings && upcomingTrialTrainings.length === 0 && (
+                      <MenuItem value="" disabled>
+                        Нет ближайших занятий с группой
+                      </MenuItem>
+                    )}
+                    {upcomingTrialTrainings.map((t: any) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {format(new Date(t.startTime), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                        {' — '}
+                        {t.group?.name || t.title}
+                        {t.branch?.name ? ` (${t.branch.name})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -2398,6 +2545,17 @@ const Clients: React.FC = () => {
             </Box>
           )}
           {editingClient && (
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <AttendanceExcelExport
+                scope="client"
+                entityId={editingClient.id}
+                entityName={[editingClient.lastName, editingClient.firstName, editingClient.middleName]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            </Box>
+          )}
+          {editingClient && (
             <AthleteCard
               mode="staff"
               clientId={editingClient.id}
@@ -2688,6 +2846,9 @@ const Clients: React.FC = () => {
         onClose={() => {
           setGroupsDialog(false);
           setSelectedClientForGroups(null);
+          setGroupDialogTrial(false);
+          setGroupDialogTrialTrainingId('');
+          setGroupDialogAddGroupId('');
         }} 
         maxWidth="sm" 
         fullWidth
@@ -2711,7 +2872,7 @@ const Clients: React.FC = () => {
                   .map((gm: any) => (
                     <Chip
                       key={gm.id}
-                      label={gm.group?.name || 'Группа'}
+                      label={`${gm.group?.name || 'Группа'}${gm.isTrial ? ' (пробное)' : ''}`}
                       onDelete={async () => {
                         if (window.confirm(`Удалить клиента из группы "${gm.group?.name}"?`)) {
                           try {
@@ -2725,58 +2886,150 @@ const Clients: React.FC = () => {
                           }
                         }
                       }}
-                      color="primary"
-                      sx={{ backgroundColor: gm.group?.color || 'primary.main' }}
+                      color={gm.isTrial ? 'secondary' : 'primary'}
+                      sx={{ backgroundColor: gm.isTrial ? undefined : (gm.group?.color || 'primary.main') }}
                     />
                   ))}
               </Box>
             )}
-            <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
-              Добавить в группу:
-            </Typography>
-            <FormControl fullWidth>
-              <InputLabel>Выберите группу</InputLabel>
-              <Select
-                value=""
-                onChange={async (e) => {
-                  const groupId = e.target.value;
-                  if (!selectedClientForGroups || !groupId) return;
-                  
-                  try {
-                    await apiService.addClientToGroup(groupId, selectedClientForGroups.id);
-                    await fetchClients();
-                    const updatedClient = await apiService.getClient(selectedClientForGroups.id);
-                    setSelectedClientForGroups(updatedClient);
-                    // Сброс выбора
-                    (e.target as any).value = '';
-                  } catch (err: any) {
-                    setError(err.response?.data?.error || 'Ошибка добавления в группу');
-                    console.error('Error adding to group:', err);
+
+            {selectedClientForGroups &&
+              getClientAccountStatus(selectedClientForGroups) === 'lead' && (
+                <FormControlLabel
+                  sx={{ mb: 1, display: 'flex' }}
+                  control={
+                    <Checkbox
+                      checked={groupDialogTrial}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setGroupDialogTrial(on);
+                        setGroupDialogTrialTrainingId('');
+                        setGroupDialogAddGroupId('');
+                        if (on) {
+                          loadUpcomingTrialTrainings();
+                        }
+                      }}
+                    />
                   }
-                }}
-                label="Выберите группу"
-              >
-                {groups
-                  .filter((group) => {
-                    if (!selectedClientForGroups) return false;
-                    const currentGroupIds = selectedClientForGroups.groupMemberships
-                      ?.filter((gm: any) => gm.isActive)
-                      .map((gm: any) => gm.group?.id) || [];
-                    return !currentGroupIds.includes(group.id) && group.isActive;
-                  })
-                  .map((group) => (
-                    <MenuItem key={group.id} value={group.id}>
-                      {group.name} {group.branch ? `(${group.branch.name})` : ''}
-                    </MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
+                  label="Пробное занятие"
+                />
+              )}
+
+            {groupDialogTrial && selectedClientForGroups && getClientAccountStatus(selectedClientForGroups) === 'lead' ? (
+              <>
+                <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>
+                  Записать на пробное занятие:
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Занятие для пробы</InputLabel>
+                  <Select
+                    value={groupDialogTrialTrainingId}
+                    onChange={(e) => setGroupDialogTrialTrainingId(e.target.value)}
+                    label="Занятие для пробы"
+                    disabled={loadingTrialTrainings}
+                  >
+                    {loadingTrialTrainings && (
+                      <MenuItem value="" disabled>
+                        Загрузка…
+                      </MenuItem>
+                    )}
+                    {!loadingTrialTrainings && upcomingTrialTrainings.length === 0 && (
+                      <MenuItem value="" disabled>
+                        Нет ближайших занятий с группой
+                      </MenuItem>
+                    )}
+                    {upcomingTrialTrainings.map((t: any) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {format(new Date(t.startTime), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                        {' — '}
+                        {t.group?.name || t.title}
+                        {t.branch?.name ? ` (${t.branch.name})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  disabled={!groupDialogTrialTrainingId || loadingTrialTrainings}
+                  onClick={async () => {
+                    if (!selectedClientForGroups || !groupDialogTrialTrainingId) return;
+                    try {
+                      await apiService.assignClientTrial(
+                        selectedClientForGroups.id,
+                        groupDialogTrialTrainingId
+                      );
+                      await fetchClients();
+                      const updatedClient = await apiService.getClient(selectedClientForGroups.id);
+                      setSelectedClientForGroups(updatedClient);
+                      setGroupDialogTrial(false);
+                      setGroupDialogTrialTrainingId('');
+                      setSnackbarMessage('Клиент записан на пробное занятие');
+                      setSnackbarOpen(true);
+                    } catch (err: any) {
+                      setError(err.response?.data?.error || 'Ошибка записи на пробное занятие');
+                      console.error('Error assigning trial from groups dialog:', err);
+                    }
+                  }}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Записать на пробу
+                </Button>
+              </>
+            ) : (
+              <>
+                <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                  Добавить в группу:
+                </Typography>
+                <FormControl fullWidth>
+                  <InputLabel>Выберите группу</InputLabel>
+                  <Select
+                    value={groupDialogAddGroupId}
+                    onChange={async (e) => {
+                      const groupId = e.target.value;
+                      if (!selectedClientForGroups || !groupId) return;
+
+                      try {
+                        await apiService.addClientToGroup(groupId, selectedClientForGroups.id);
+                        await fetchClients();
+                        const updatedClient = await apiService.getClient(selectedClientForGroups.id);
+                        setSelectedClientForGroups(updatedClient);
+                        setGroupDialogAddGroupId('');
+                      } catch (err: any) {
+                        setError(err.response?.data?.error || 'Ошибка добавления в группу');
+                        console.error('Error adding to group:', err);
+                        setGroupDialogAddGroupId('');
+                      }
+                    }}
+                    label="Выберите группу"
+                  >
+                    {groups
+                      .filter((group) => {
+                        if (!selectedClientForGroups) return false;
+                        const currentGroupIds = selectedClientForGroups.groupMemberships
+                          ?.filter((gm: any) => gm.isActive && !gm.isTrial)
+                          .map((gm: any) => gm.group?.id) || [];
+                        // Пробные группы можно «закрепить» постоянным добавлением
+                        const hasPermanent = currentGroupIds.includes(group.id);
+                        return !hasPermanent && group.isActive;
+                      })
+                      .map((group) => (
+                        <MenuItem key={group.id} value={group.id}>
+                          {group.name} {group.branch ? `(${group.branch.name})` : ''}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => {
             setGroupsDialog(false);
             setSelectedClientForGroups(null);
+            setGroupDialogTrial(false);
+            setGroupDialogTrialTrainingId('');
+            setGroupDialogAddGroupId('');
           }}>
             Закрыть
           </Button>

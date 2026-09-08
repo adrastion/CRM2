@@ -575,6 +575,17 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
   const tenants = await prisma.tenant.findMany({
     include: {
       subscription: true,
+      users: {
+        where: { role: 'OWNER', isActive: true },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          linkedSuperAdmin: { select: { id: true } },
+        },
+        take: 1,
+      },
       _count: {
         select: {
           users: {
@@ -611,6 +622,7 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
     );
 
     const sub = tenant.subscription as any;
+    const owner = tenant.users[0] || null;
 
     return {
       id: tenant.id,
@@ -619,6 +631,13 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
       subdomain: tenant.subdomain,
       isActive: tenant.isActive,
       createdAt: tenant.createdAt,
+      ownerId: owner?.id ?? null,
+      ownerEmail: owner?.email ?? null,
+      ownerName: owner
+        ? [owner.lastName, owner.firstName].filter(Boolean).join(' ').trim()
+        : null,
+      linkedSuperAdminId: owner?.linkedSuperAdmin?.id ?? null,
+      isSuperAdminLinked: Boolean(owner?.linkedSuperAdmin?.id),
       subscription: sub
         ? {
             planType: sub.planType,
@@ -2683,5 +2702,152 @@ export const deleteDashboardPreset = asyncHandler(async (req: AuthenticatedReque
   res.json({
     success: true,
     message: 'Preset deleted successfully',
+  });
+});
+
+/**
+ * Привязать OWNER школы к супер-админу (создать или связать по email).
+ * POST /admin-dashboard/tenants/:tenantId/link-super-admin
+ */
+export const linkTenantOwnerAsSuperAdmin = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const superAdmin = (req as any).superAdmin;
+  const { tenantId } = req.params;
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    res.status(404).json({ success: false, error: 'Школа не найдена' });
+    return;
+  }
+
+  const owner = await prisma.user.findFirst({
+    where: { tenantId, role: 'OWNER', isActive: true },
+  });
+  if (!owner) {
+    res.status(400).json({ success: false, error: 'У школы нет активного OWNER' });
+    return;
+  }
+
+  const alreadyLinked = await prisma.superAdmin.findFirst({
+    where: { linkedUserId: owner.id },
+  });
+  if (alreadyLinked) {
+    res.status(400).json({
+      success: false,
+      error: 'OWNER уже привязан к супер-админу',
+      data: { linkedSuperAdminId: alreadyLinked.id },
+    });
+    return;
+  }
+
+  let linked: { id: string; email: string; created: boolean };
+
+  const byEmail = await prisma.superAdmin.findUnique({ where: { email: owner.email } });
+  if (byEmail) {
+    if (byEmail.linkedUserId && byEmail.linkedUserId !== owner.id) {
+      res.status(400).json({
+        success: false,
+        error: 'Супер-админ с этим email уже привязан к другому пользователю',
+      });
+      return;
+    }
+    const updated = await prisma.superAdmin.update({
+      where: { id: byEmail.id },
+      data: { linkedUserId: owner.id, isActive: true },
+    });
+    linked = { id: updated.id, email: updated.email, created: false };
+  } else {
+    const created = await prisma.superAdmin.create({
+      data: {
+        email: owner.email,
+        password: owner.password,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        linkedUserId: owner.id,
+        isActive: true,
+      },
+    });
+    linked = { id: created.id, email: created.email, created: true };
+  }
+
+  await createAuditLog({
+    superAdminId: superAdmin?.id,
+    action: 'link_tenant_owner_super_admin',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: linked.created
+      ? `Создан супер-админ и привязан OWNER школы «${tenant.name}» (${owner.email})`
+      : `OWNER школы «${tenant.name}» (${owner.email}) привязан к супер-админу`,
+    newValue: { tenantId, ownerId: owner.id, linkedSuperAdminId: linked.id },
+    ipAddress: getIpAddress(req),
+    userAgent: getUserAgent(req),
+  });
+
+  res.json({
+    success: true,
+    data: {
+      tenantId,
+      ownerId: owner.id,
+      ownerEmail: owner.email,
+      linkedSuperAdminId: linked.id,
+      created: linked.created,
+    },
+  });
+});
+
+/**
+ * Отвязать OWNER школы от супер-админа (запись SuperAdmin не удаляется).
+ * DELETE /admin-dashboard/tenants/:tenantId/link-super-admin
+ */
+export const unlinkTenantOwnerSuperAdmin = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const superAdmin = (req as any).superAdmin;
+  const { tenantId } = req.params;
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    res.status(404).json({ success: false, error: 'Школа не найдена' });
+    return;
+  }
+
+  const owner = await prisma.user.findFirst({
+    where: { tenantId, role: 'OWNER', isActive: true },
+  });
+  if (!owner) {
+    res.status(400).json({ success: false, error: 'У школы нет активного OWNER' });
+    return;
+  }
+
+  const linked = await prisma.superAdmin.findFirst({
+    where: { linkedUserId: owner.id },
+  });
+  if (!linked) {
+    res.status(400).json({ success: false, error: 'OWNER не привязан к супер-админу' });
+    return;
+  }
+
+  await prisma.superAdmin.update({
+    where: { id: linked.id },
+    data: { linkedUserId: null },
+  });
+
+  await createAuditLog({
+    superAdminId: superAdmin?.id,
+    action: 'unlink_tenant_owner_super_admin',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: `Отвязан супер-админ от OWNER школы «${tenant.name}» (${owner.email})`,
+    oldValue: { tenantId, ownerId: owner.id, linkedSuperAdminId: linked.id },
+    ipAddress: getIpAddress(req),
+    userAgent: getUserAgent(req),
+  });
+
+  res.json({
+    success: true,
+    data: { tenantId, ownerId: owner.id, unlinkedSuperAdminId: linked.id },
   });
 });

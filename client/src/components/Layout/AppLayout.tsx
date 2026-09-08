@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSuperAdminAuth } from '../../contexts/SuperAdminAuthContext';
 import DashboardShell, {
   ShellNavItem,
   GlobalSearchResults,
@@ -56,8 +57,14 @@ const ROLE_LABELS: Record<string, string> = {
  */
 const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   const { user, tenant, logout } = useAuth();
+  const { superAdmin, logout: logoutSuperAdmin } = useSuperAdminAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const isSuperAdminRoute =
+    Boolean(superAdmin && localStorage.getItem('superAdminToken')) &&
+    (location.pathname.startsWith('/admin/dashboard') ||
+      location.pathname.startsWith('/admin/support-hub'));
 
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem('visibleTabs');
@@ -76,6 +83,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   }, []);
 
   useEffect(() => {
+    if (isSuperAdminRoute) return;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     const q = searchValue.trim();
     if (q.length < 2) {
@@ -97,16 +105,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [searchValue]);
+  }, [searchValue, isSuperAdminRoute]);
 
   const handleLogout = () => {
-    logout();
+    if (isSuperAdminRoute) {
+      logoutSuperAdmin();
+    } else {
+      logout();
+    }
     logoutCurrentAccount();
     navigate('/auth', { replace: true });
   };
 
   const handleAddAccount = () => {
-    logout();
+    if (isSuperAdminRoute) {
+      logoutSuperAdmin();
+    } else {
+      logout();
+    }
     prepareAddAccount();
     navigate('/auth', { replace: true });
   };
@@ -123,40 +139,68 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     }
   };
 
-  const navItems: ShellNavItem[] = navigationItems
-    .filter((item) => {
-      if (!item.roles.includes(user?.role || '')) return false;
-      if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
-      return true;
-    })
-    .map((item) => ({
-      key: item.path,
-      label: item.label,
-      iconName: item.iconName,
-      dataOnboarding: item.onboarding,
-      onClick: () => navigate(item.path),
-    }));
+  const navItems: ShellNavItem[] = isSuperAdminRoute
+    ? [
+        {
+          key: '/admin/dashboard',
+          label: 'Панель супер-админа',
+          iconName: 'dashboard',
+          onClick: () => navigate('/admin/dashboard'),
+        },
+        {
+          key: '/admin/support-hub',
+          label: 'Support Hub',
+          iconName: 'knowledge-base',
+          onClick: () => navigate('/admin/support-hub'),
+        },
+      ]
+    : navigationItems
+        .filter((item) => {
+          if (!item.roles.includes(user?.role || '')) return false;
+          if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
+          return true;
+        })
+        .map((item) => ({
+          key: item.path,
+          label: item.label,
+          iconName: item.iconName,
+          dataOnboarding: item.onboarding,
+          onClick: () => navigate(item.path),
+        }));
 
-  const userName = user
-    ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
-    : '';
+  const userName = isSuperAdminRoute
+    ? [superAdmin?.lastName, superAdmin?.firstName].filter(Boolean).join(' ') ||
+      superAdmin?.email ||
+      'Супер-админ'
+    : user
+      ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
+      : '';
 
-  const activeKey = location.pathname.startsWith('/schedule')
-    ? '/schedule'
-    : location.pathname;
+  const userRole = isSuperAdminRoute
+    ? 'Супер-админ'
+    : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
+
+  const activeKey = isSuperAdminRoute
+    ? location.pathname.startsWith('/admin/support-hub')
+      ? '/admin/support-hub'
+      : '/admin/dashboard'
+    : location.pathname.startsWith('/schedule')
+      ? '/schedule'
+      : location.pathname;
 
   return (
     <Box>
-      <TelegramBanner />
-      <SalaryPayoutBanner />
+      {!isSuperAdminRoute && <TelegramBanner />}
+      {!isSuperAdminRoute && <SalaryPayoutBanner />}
       <DashboardShell
         pageTitle={pageTitle}
         navItems={navItems}
         activeKey={activeKey}
         userName={userName || tenant?.name || 'Профиль'}
-        userRole={ROLE_LABELS[user?.role || ''] || tenant?.name || ''}
+        userRole={userRole}
         onLogout={handleLogout}
         onAddAccount={handleAddAccount}
+        hideSearch={isSuperAdminRoute}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         searchResults={searchResults}

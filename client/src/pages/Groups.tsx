@@ -44,6 +44,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
+import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
 import {
@@ -1975,6 +1976,15 @@ const Groups: React.FC = () => {
               />
             </Grid>
           </Grid>
+          {editingGroup && (
+            <Box sx={{ mt: 3 }}>
+              <AttendanceExcelExport
+                scope="group"
+                entityId={editingGroup.id}
+                entityName={editingGroup.name}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button 

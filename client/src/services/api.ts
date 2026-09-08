@@ -334,6 +334,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async assignClientTrial(clientId: string, trainingId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/clients/${clientId}/trial`, { trainingId });
+    return response.data.data;
+  }
+
   async updateClient(id: string, data: any): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/clients/${id}`, data);
     return response.data.data;
@@ -818,6 +823,32 @@ class ApiService {
       data: response.data.data || [],
       pagination: response.data.pagination
     };
+  }
+
+  async exportAttendanceExcel(params: {
+    scope: 'trainer' | 'client' | 'group';
+    id: string;
+    from?: string;
+    to?: string;
+  }): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get('/attendances/export/excel', {
+      params,
+      responseType: 'blob',
+    });
+    const disposition = String(response.headers['content-disposition'] || '');
+    let filename = `attendance_${params.scope}_${params.from || ''}_${params.to || ''}.xlsx`;
+    const utf8Match = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+    const plainMatch = disposition.match(/filename\s*=\s*"?([^";]+)"?/i);
+    if (utf8Match?.[1]) {
+      try {
+        filename = decodeURIComponent(utf8Match[1].trim());
+      } catch {
+        filename = utf8Match[1].trim();
+      }
+    } else if (plainMatch?.[1]) {
+      filename = plainMatch[1].trim();
+    }
+    return { blob: response.data, filename };
   }
 
   async getAttendance(id: string): Promise<any> {
@@ -1683,6 +1714,46 @@ class ApiService {
 
   async getDashboardPresets(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/dashboard/presets');
+    return response.data.data;
+  }
+
+  async getDevNotes(params?: { status?: string }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/dev-notes', { params });
+    return response.data.data || [];
+  }
+
+  async createDevNote(data: {
+    title: string;
+    description?: string | null;
+    status?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/dev-notes', data);
+    return response.data.data;
+  }
+
+  async updateDevNote(
+    id: string,
+    data: { title?: string; description?: string | null; status?: string }
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/dev-notes/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteDevNote(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/dev-notes/${id}`);
+  }
+
+  async linkTenantOwnerAsSuperAdmin(tenantId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/link-super-admin`
+    );
+    return response.data.data;
+  }
+
+  async unlinkTenantOwnerSuperAdmin(tenantId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/link-super-admin`
+    );
     return response.data.data;
   }
 

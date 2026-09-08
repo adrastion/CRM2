@@ -12,6 +12,8 @@ import {
   updateTenantPlan,
   updateTenantSubscriptionEndDate,
   getTenantGrantHistory,
+  linkTenantOwnerAsSuperAdmin,
+  unlinkTenantOwnerSuperAdmin,
   getExpenseCategories,
   createExpenseCategory,
   getAnalyticsByPeriod,
@@ -33,6 +35,12 @@ import {
   saveDashboardPreset,
   deleteDashboardPreset,
 } from '../controllers/adminDashboardController';
+import {
+  listDevNotes,
+  createDevNote,
+  updateDevNote,
+  deleteDevNote,
+} from '../controllers/superAdminDevNoteController';
 import {
   getLogFileInfo,
   readLogFile,
@@ -108,9 +116,17 @@ router.get('/marketers/stats', getMarketerStats);
 router.put('/tenants/:tenantId/plan', updateTenantPlan);
 router.put('/tenants/:tenantId/subscription/end-date', updateTenantSubscriptionEndDate);
 router.get('/tenants/:tenantId/grant-history', getTenantGrantHistory);
+router.post('/tenants/:tenantId/link-super-admin', linkTenantOwnerAsSuperAdmin);
+router.delete('/tenants/:tenantId/link-super-admin', unlinkTenantOwnerSuperAdmin);
 
 // Массовое обновление аккаунтов
 router.post('/tenants/bulk', bulkUpdateTenants);
+
+// Заметки разработок
+router.get('/dev-notes', listDevNotes);
+router.post('/dev-notes', createDevNote);
+router.put('/dev-notes/:id', updateDevNote);
+router.delete('/dev-notes/:id', deleteDevNote);
 
 // Категории расходов
 router.get('/expense-categories', getExpenseCategories);

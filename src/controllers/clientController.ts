@@ -8,6 +8,10 @@ import Joi from 'joi';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
 import { pickActiveMembershipSummary } from '../services/clientMembershipService';
+import {
+  assignClientToTrial,
+  cleanupExpiredTrialMemberships,
+} from '../services/trialMembershipService';
 
 /**
  * Approve parent account registration
@@ -136,6 +140,10 @@ export const updateMembershipFeeStatus = asyncHandler(async (req: AuthenticatedR
 export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
   const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query as SearchQuery;
+
+  if (tenantId) {
+    await cleanupExpiredTrialMemberships(tenantId);
+  }
 
   const skip = (parseInt(page.toString()) - 1) * parseInt(limit.toString());
   const take = parseInt(limit.toString());
@@ -275,6 +283,10 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
   const { id } = req.params;
+
+  if (tenantId) {
+    await cleanupExpiredTrialMemberships(tenantId);
+  }
 
   const client = await prisma.client.findFirst({
     where: {
@@ -1089,6 +1101,43 @@ export const importClients = asyncHandler(async (req: AuthenticatedRequest, res:
     res.status(500).json({
       success: false,
       error: error?.message || 'Ошибка при обработке Excel файла'
+    });
+  }
+});
+
+/**
+ * Записать клиента на пробное занятие (временное членство в группе).
+ */
+export const assignClientTrial = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req;
+  const { id } = req.params;
+  const { trainingId } = req.body || {};
+
+  if (!tenantId) {
+    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    return;
+  }
+  if (!trainingId || typeof trainingId !== 'string') {
+    res.status(400).json({ success: false, error: 'Укажите тренировку для пробного занятия' });
+    return;
+  }
+
+  try {
+    const membership = await assignClientToTrial({
+      tenantId,
+      clientId: id,
+      trainingId,
+    });
+    res.status(201).json({
+      success: true,
+      data: membership,
+      message: 'Клиент записан на пробное занятие',
+    });
+  } catch (err: any) {
+    const status = err?.status || 500;
+    res.status(status).json({
+      success: false,
+      error: err?.message || 'Не удалось записать на пробное занятие',
     });
   }
 });

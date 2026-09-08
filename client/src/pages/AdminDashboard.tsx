@@ -57,6 +57,9 @@ import {
   VisibilityOff,
   Bookmark,
   Memory as MemoryIcon,
+  NoteAlt,
+  AdminPanelSettings,
+  LinkOff,
 } from '@mui/icons-material';
 import type {
   SubscriptionPlanItem,
@@ -102,6 +105,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
 import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
+import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -505,6 +509,31 @@ const AdminDashboard: React.FC = () => {
       setError(err.response?.data?.error || 'Ошибка загрузки аккаунтов');
     } finally {
       setTenantsLoading(false);
+    }
+  };
+
+  const handleLinkTenantSuperAdmin = async (tenantId: string) => {
+    try {
+      setSubmitting(true);
+      await apiService.linkTenantOwnerAsSuperAdmin(tenantId);
+      await loadAllTenants();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось сделать супер-админом');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUnlinkTenantSuperAdmin = async (tenantId: string) => {
+    if (!window.confirm('Отвязать OWNER этой школы от супер-админа?')) return;
+    try {
+      setSubmitting(true);
+      await apiService.unlinkTenantOwnerSuperAdmin(tenantId);
+      await loadAllTenants();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось отвязать супер-админа');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1432,6 +1461,7 @@ const AdminDashboard: React.FC = () => {
           <Tab icon={<AttachMoney />} label="Управление тарифами" />
           <Tab icon={<People />} label="Маркетологи" />
           <Tab icon={<MemoryIcon />} label="Нагрузка сервера" />
+          <Tab icon={<NoteAlt />} label="Разработка" />
         </Tabs>
       </Paper>
 
@@ -2314,6 +2344,14 @@ const AdminDashboard: React.FC = () => {
                               color={tenant.isActive ? 'success' : 'default'}
                               size="small"
                             />
+                            {tenant.isSuperAdminLinked && (
+                              <Chip
+                                label="Супер-админ"
+                                color="secondary"
+                                size="small"
+                                sx={{ ml: 0.5 }}
+                              />
+                            )}
                           </TableCell>
                           <TableCell>
                             <IconButton
@@ -2324,6 +2362,28 @@ const AdminDashboard: React.FC = () => {
                             >
                               <Settings />
                             </IconButton>
+                            {tenant.ownerId && !tenant.isSuperAdminLinked && (
+                              <IconButton
+                                size="small"
+                                color="secondary"
+                                disabled={submitting}
+                                onClick={() => handleLinkTenantSuperAdmin(tenant.id)}
+                                title="Сделать супер-админом (OWNER)"
+                              >
+                                <AdminPanelSettings />
+                              </IconButton>
+                            )}
+                            {tenant.isSuperAdminLinked && (
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                disabled={submitting}
+                                onClick={() => handleUnlinkTenantSuperAdmin(tenant.id)}
+                                title="Отвязать супер-админа"
+                              >
+                                <LinkOff />
+                              </IconButton>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -3008,6 +3068,8 @@ const AdminDashboard: React.FC = () => {
 
       {/* Вкладка: Нагрузка сервера */}
       {tabValue === 8 && <ServerLoadMonitoringTab />}
+
+      {tabValue === 9 && <SuperAdminDevNotesTab />}
 
       {/* Диалог создания расхода */}
       <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>

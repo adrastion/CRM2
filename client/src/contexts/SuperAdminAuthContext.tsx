@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api';
+import { applyUnifiedSession } from '../utils/authSession';
 
 interface SuperAdmin {
   id: string;
@@ -111,16 +112,24 @@ export const SuperAdminAuthProvider: React.FC<SuperAdminAuthProviderProps> = ({ 
   const login = async (email: string, password: string): Promise<void> => {
     try {
       dispatch({ type: 'AUTH_START' });
-      
+
       const response = await apiService.superAdminLogin({ email, password });
-      
-      // Store in localStorage
-      localStorage.setItem('superAdminToken', response.token);
-      localStorage.setItem('superAdmin', JSON.stringify(response.superAdmin));
-      
-      // Set token in API service
+
+      const primary = {
+        requiresSelection: false as const,
+        accountType: 'SUPER_ADMIN' as const,
+        token: response.token,
+        superAdmin: response.superAdmin,
+        ...(response.linkedSession
+          ? { linkedSession: response.linkedSession }
+          : {}),
+      };
+
+      // Пишет оба слота в savedAccounts и активную супер-админ сессию
+      applyUnifiedSession(primary);
+
       apiService.setToken(response.token);
-      
+
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {

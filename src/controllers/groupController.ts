@@ -569,7 +569,9 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
           },
           data: {
             isActive: true,
-            leftAt: null
+            leftAt: null,
+            isTrial: false,
+            trialTrainingId: null,
           },
           include: {
             client: true
@@ -580,6 +582,32 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
           success: true,
           data: updated,
           message: 'Client re-added to group successfully'
+        });
+        return;
+      } else if (existingMembership.isTrial) {
+        // Пробное → постоянное членство
+        const updated = await prisma.groupMembership.update({
+          where: {
+            clientId_groupId: {
+              clientId,
+              groupId: id
+            }
+          },
+          data: {
+            isActive: true,
+            leftAt: null,
+            isTrial: false,
+            trialTrainingId: null,
+          },
+          include: {
+            client: true
+          }
+        });
+
+        res.json({
+          success: true,
+          data: updated,
+          message: 'Client permanently added to group'
         });
         return;
       } else {
@@ -613,7 +641,9 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     const membership = await prisma.groupMembership.create({
       data: {
         clientId,
-        groupId: id
+        groupId: id,
+        isTrial: false,
+        trialTrainingId: null,
       },
       include: {
         client: true

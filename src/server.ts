@@ -103,7 +103,8 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+  exposedHeaders: ['Content-Disposition'],
 }));
 
 // Body parsing middleware
@@ -238,6 +239,21 @@ httpServer.listen(PORT, () => {
   });
 
   console.log(`⏰ Training notifications cron jobs scheduled (timezone: ${process.env.TZ || 'Europe/Moscow'})`);
+
+  // Снятие пробных членств после окончания занятия
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const { cleanupExpiredTrialMemberships } = await import('./services/trialMembershipService');
+      const n = await cleanupExpiredTrialMemberships();
+      if (n > 0) {
+        console.log(`[Cron] Deactivated ${n} expired trial group membership(s)`);
+      }
+    } catch (error) {
+      console.error('[Cron] Error cleaning up trial memberships:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
 
   // Удаление просроченных записей звонков дизайнеров (хранение 14 дней)
   cron.schedule('15 3 * * *', async () => {

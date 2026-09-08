@@ -98,6 +98,8 @@ export interface SessionPayload {
   staff?: Record<string, unknown>;
   /** Подтверждён ли аккаунт (только клиенты/родители). */
   isAccountApproved?: boolean;
+  /** Связанная сессия школа ↔ супер-админ (для свитчера аккаунтов). */
+  linkedSession?: Omit<SessionPayload, 'linkedSession'>;
 }
 
 export interface SelectionRequired {
@@ -554,6 +556,73 @@ export class UnifiedAuthService {
     return { requiresSelection: false, ...session };
   }
 
+  /** Если OWNER ↔ SuperAdmin связаны — добавить вторую сессию в ответ. */
+  private static async withLinkedSession(
+    session: SessionPayload,
+    sign: (payload: object) => string
+  ): Promise<SessionPayload> {
+    if (session.accountType === 'TENANT_USER' && session.user?.id) {
+      const linked = await prisma.superAdmin.findFirst({
+        where: { linkedUserId: String(session.user.id), isActive: true },
+      });
+      if (linked) {
+        return {
+          ...session,
+          linkedSession: {
+            accountType: 'SUPER_ADMIN',
+            token: sign({
+              userId: linked.id,
+              email: linked.email,
+              type: 'SUPER_ADMIN',
+            }),
+            superAdmin: {
+              id: linked.id,
+              email: linked.email,
+              firstName: linked.firstName,
+              lastName: linked.lastName,
+            },
+          },
+        };
+      }
+    }
+
+    if (session.accountType === 'SUPER_ADMIN' && session.superAdmin?.id) {
+      const sa = await prisma.superAdmin.findUnique({
+        where: { id: String(session.superAdmin.id) },
+        include: { linkedUser: { include: { tenant: true } } },
+      });
+      const user = sa?.linkedUser;
+      if (user && user.isActive) {
+        return {
+          ...session,
+          linkedSession: {
+            accountType: 'TENANT_USER',
+            token: sign({
+              userId: user.id,
+              email: user.email,
+              role: user.role,
+              tenantId: user.tenantId,
+            }),
+            tenant: toTenantBrief(user.tenant),
+            user: {
+              id: user.id,
+              email: user.email,
+              emailVerified: user.emailVerified,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              middleName: user.middleName,
+              phone: user.phone,
+              role: user.role,
+              tenantId: user.tenantId,
+            },
+          },
+        };
+      }
+    }
+
+    return session;
+  }
+
   /**
    * Выдаёт JWT в том же формате, который ожидают существующие middleware,
    * чтобы не ломать защищённые маршруты.
@@ -566,6 +635,8 @@ export class UnifiedAuthService {
     const expiresIn = rememberMe ? SESSION_TTL_REMEMBER : SESSION_TTL;
     const sign = (payload: object) => jwt.sign(payload, secret, { expiresIn } as SignOptions);
 
+    let session: SessionPayload;
+
     switch (account.accountType) {
       case 'TENANT_USER': {
         const user = await prisma.user.findUnique({
@@ -576,7 +647,7 @@ export class UnifiedAuthService {
 
         await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
-        return {
+        session = {
           accountType: 'TENANT_USER',
           token: sign({
             userId: user.id,
@@ -597,6 +668,7 @@ export class UnifiedAuthService {
             tenantId: user.tenantId,
           },
         };
+        break;
       }
 
       case 'CLIENT': {
@@ -608,7 +680,7 @@ export class UnifiedAuthService {
 
         await prisma.client.update({ where: { id: client.id }, data: { lastLogin: new Date() } });
 
-        return {
+        session = {
           accountType: 'CLIENT',
           token: sign({ clientId: client.id, tenantId: client.tenantId, type: 'client' }),
           tenant: toTenantBrief(client.tenant),
@@ -625,6 +697,7 @@ export class UnifiedAuthService {
           },
           isAccountApproved: client.isAccountApproved,
         };
+        break;
       }
 
       case 'PARENT': {
@@ -639,7 +712,7 @@ export class UnifiedAuthService {
 
         await prisma.parent.update({ where: { id: parent.id }, data: { lastLogin: new Date() } });
 
-        return {
+        session = {
           accountType: 'PARENT',
           token: sign({ parentId: parent.id, tenantId: parent.tenantId, type: 'parent' }),
           tenant: toTenantBrief(parent.tenant),
@@ -656,6 +729,7 @@ export class UnifiedAuthService {
           },
           isAccountApproved: parent.isAccountApproved,
         };
+        break;
       }
 
       case 'MARKETER': {
@@ -665,7 +739,7 @@ export class UnifiedAuthService {
         });
         if (!marketer) throw unauthorized('Аккаунт не найден');
 
-        return {
+        session = {
           accountType: 'MARKETER',
           token: sign({
             userId: marketer.id,
@@ -682,6 +756,7 @@ export class UnifiedAuthService {
             tenantId: marketer.tenantId,
           },
         };
+        break;
       }
 
       case 'PROMO_CODE_ADMIN': {
@@ -691,7 +766,7 @@ export class UnifiedAuthService {
         });
         if (!admin) throw unauthorized('Аккаунт не найден');
 
-        return {
+        session = {
           accountType: 'PROMO_CODE_ADMIN',
           token: sign({
             userId: admin.id,
@@ -707,6 +782,7 @@ export class UnifiedAuthService {
             tenantId: admin.tenantId,
           },
         };
+        break;
       }
 
       case 'SUPER_ADMIN': {
@@ -718,7 +794,7 @@ export class UnifiedAuthService {
           data: { lastLogin: new Date() },
         });
 
-        return {
+        session = {
           accountType: 'SUPER_ADMIN',
           token: sign({ userId: superAdmin.id, email: superAdmin.email, type: 'SUPER_ADMIN' }),
           superAdmin: {
@@ -728,6 +804,7 @@ export class UnifiedAuthService {
             lastName: superAdmin.lastName,
           },
         };
+        break;
       }
 
       case 'PLATFORM_STAFF': {
@@ -739,7 +816,7 @@ export class UnifiedAuthService {
           data: { lastLogin: new Date() },
         });
 
-        return {
+        session = {
           accountType: 'PLATFORM_STAFF',
           token: sign({
             userId: staff.id,
@@ -756,10 +833,13 @@ export class UnifiedAuthService {
             mustChangePassword: staff.mustChangePassword,
           },
         };
+        break;
       }
 
       default:
         throw new HttpError(500, 'Неизвестный тип аккаунта');
     }
+
+    return this.withLinkedSession(session, sign);
   }
 }
