@@ -82,19 +82,11 @@ export class AuthService {
     // Normalize email (lowercase and trim)
     const normalizedEmail = data.email.toLowerCase().trim();
 
-    // Check if email is already registered
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
-    });
-
-    if (existingUser) {
-      throw new Error('Email is already registered');
-    }
-
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, 12);
 
     // Create tenant and user in transaction
+    // Email уникален только внутри школы — тот же email может быть тренером в другой школе
     const result = await prisma.$transaction(async (tx) => {
       // Create tenant
       const tenant = await tx.tenant.create({
@@ -165,30 +157,39 @@ export class AuthService {
   static async login(email: string, password: string) {
     // Приводим email к нижнему регистру для поиска
     const normalizedEmail = email.trim().toLowerCase();
-    
-    // Find user with tenant
-    const user = await prisma.user.findUnique({
+
+    const candidates = await prisma.user.findMany({
       where: { email: normalizedEmail },
-      include: { tenant: true }
+      include: { tenant: true },
     });
 
-    if (!user) {
+    if (candidates.length === 0) {
       throw new Error('Аккаунт не существует');
     }
 
-    if (!user.isActive) {
-      throw new Error('Account is deactivated');
+    const matched: typeof candidates = [];
+    for (const candidate of candidates) {
+      if (!candidate.isActive || !candidate.tenant.isActive) continue;
+      if (await bcrypt.compare(password, candidate.password)) {
+        matched.push(candidate);
+      }
     }
 
-    if (!user.tenant.isActive) {
-      throw new Error('Tenant account is deactivated');
-    }
-
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
+    if (matched.length === 0) {
+      const anyActive = candidates.some((c) => c.isActive && c.tenant.isActive);
+      if (!anyActive) {
+        throw new Error('Account is deactivated');
+      }
       throw new Error('Неверный пароль');
     }
+
+    if (matched.length > 1) {
+      throw new Error(
+        'Несколько школ с этим email. Войдите через единую авторизацию на странице /auth'
+      );
+    }
+
+    const user = matched[0];
 
     // Update last login
     await prisma.user.update({
@@ -475,9 +476,11 @@ export class AuthService {
     role: string;
     tenantId: string;
   }) {
-    // Check if email is already registered
-    const existingUser = await prisma.user.findUnique({
-      where: { email: data.email }
+    const normalizedEmail = data.email.toLowerCase().trim();
+
+    // Email уникален внутри школы
+    const existingUser = await prisma.user.findFirst({
+      where: { email: normalizedEmail, tenantId: data.tenantId },
     });
 
     if (existingUser) {
@@ -490,7 +493,7 @@ export class AuthService {
     // Create user
     const user = await prisma.user.create({
       data: {
-        email: data.email,
+        email: normalizedEmail,
         password: hashedPassword,
         firstName: data.firstName,
         lastName: data.lastName,
@@ -572,12 +575,16 @@ export class AuthService {
       throw new Error('Password is incorrect');
     }
 
-    // Check if email is already taken
-    const existingUser = await prisma.user.findUnique({
-      where: { email: newEmail.toLowerCase() }
+    // Check if email is already taken in this school
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: newEmail.toLowerCase(),
+        tenantId: user.tenantId,
+        NOT: { id: userId },
+      },
     });
 
-    if (existingUser && existingUser.id !== userId) {
+    if (existingUser) {
       throw new Error('Email already in use');
     }
 
@@ -763,18 +770,20 @@ export class AuthService {
     };
 
     if (data.email) {
-      // Check if email is already registered by another user
+      const normalizedEmail = data.email.toLowerCase().trim();
+      // Уникальность email внутри школы
       const existingUser = await prisma.user.findFirst({
         where: {
-          email: data.email,
-          NOT: { id: userId }
-        }
+          email: normalizedEmail,
+          tenantId: currentUser.tenantId,
+          NOT: { id: userId },
+        },
       });
 
       if (existingUser) {
         throw new Error('Email is already registered');
       }
-      updateData.email = data.email;
+      updateData.email = normalizedEmail;
     }
 
     if (data.password) {

@@ -76,7 +76,7 @@ model TenantSettings {
 
 model User {
   id            String    @id @default(cuid())
-  email         String    @unique
+  email         String
   password      String
   firstName     String
   lastName      String
@@ -92,6 +92,7 @@ model User {
   trainer       Trainer?
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, email])
   @@map("users")
 }
 

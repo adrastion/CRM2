@@ -216,29 +216,22 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+    const existingUser = await prisma.user.findFirst({
+      where: { email: normalizedEmail, tenantId: req.tenant.id },
       include: { trainer: true },
     });
 
     if (existingUser) {
-      if (existingUser.tenantId !== req.tenant.id) {
-        res.status(400).json({
-          success: false,
-          error: 'Этот email уже используется в другой организации',
-        });
-        return;
-      }
       if (existingUser.trainer) {
         res.status(400).json({
           success: false,
-          error: 'Тренер с таким email уже существует',
+          error: 'Тренер с таким email уже существует в этой школе',
         });
         return;
       }
       res.status(400).json({
         success: false,
-        error: `Email уже занят сотрудником (${existingUser.role}). Укажите другой email или измените роль существующего пользователя`,
+        error: `Email уже занят сотрудником (${existingUser.role}) в этой школе. Укажите другой email или измените роль существующего пользователя`,
       });
       return;
     }
@@ -288,7 +281,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
     if (error?.code === 'P2002') {
       res.status(400).json({
         success: false,
-        error: 'Этот email уже занят. Укажите другой адрес',
+        error: 'Этот email уже занят в этой школе. Укажите другой адрес',
       });
       return;
     }
@@ -329,14 +322,38 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
+    const normalizedEmail =
+      email !== undefined && email !== null
+        ? String(email).trim().toLowerCase()
+        : undefined;
+
+    if (normalizedEmail) {
+      const emailTaken = await prisma.user.findFirst({
+        where: {
+          email: normalizedEmail,
+          tenantId: req.tenant!.id,
+          NOT: { id: trainer.userId },
+        },
+      });
+      if (emailTaken) {
+        res.status(400).json({
+          success: false,
+          error: 'Этот email уже занят в этой школе. Укажите другой адрес',
+        });
+        return;
+      }
+    }
+
     // Обновляем данные пользователя
     const userUpdateData: any = {
       firstName,
       lastName,
       middleName,
-      email,
-      phone
+      phone,
     };
+    if (normalizedEmail) {
+      userUpdateData.email = normalizedEmail;
+    }
 
     // Если указан новый пароль, хешируем его
     if (password && password.trim() !== '') {
@@ -383,8 +400,15 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       data: updatedTrainer,
       message: 'Trainer updated successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update trainer error:', error);
+    if (error?.code === 'P2002') {
+      res.status(400).json({
+        success: false,
+        error: 'Этот email уже занят в этой школе. Укажите другой адрес',
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
       error: 'Failed to update trainer'
