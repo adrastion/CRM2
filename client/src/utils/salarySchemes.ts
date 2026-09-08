@@ -25,6 +25,11 @@ export const SALARY_SCHEME_OPTIONS = [
   },
 ] as const;
 
+/** Схемы, настраиваемые на карточке группы (без фикс/мес сотрудника). */
+export const GROUP_SALARY_SCHEME_OPTIONS = SALARY_SCHEME_OPTIONS.filter(
+  (o) => o.value !== 'fixed_monthly'
+);
+
 export type SalarySchemeValue = (typeof SALARY_SCHEME_OPTIONS)[number]['value'];
 
 const LEGACY_MAP: Record<string, SalarySchemeValue> = {

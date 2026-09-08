@@ -43,12 +43,13 @@ import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  SALARY_SCHEME_OPTIONS,
   normalizeSalaryScheme,
   salarySchemeLabel,
   salaryRateFieldLabel,
   salarySchemeHint,
 } from '../utils/salarySchemes';
+
+const TRAINER_FIXED_MONTHLY = 'fixed_monthly';
 
 const isEmployeeAdmin = (employee: any): boolean =>
   employee?.employeeType === 'admin' ||
@@ -66,7 +67,8 @@ const emptyFormData = {
   qualification: '',
   experience: '',
   specialization: '',
-  salaryScheme: 'per_training_person',
+  /** fixed_monthly или '' (= зарплата на группах) */
+  salaryScheme: '',
   salaryRate: '',
   canViewAllGroups: false,
 };
@@ -211,10 +213,22 @@ const Trainers: React.FC = () => {
         // Если создаем тренера, используем API создания тренера
         await apiService.createTrainer({
           ...formData,
-          salaryScheme: formData.salaryScheme,
-          salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
-          salaryType: formData.salaryScheme,
-          salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+          salaryScheme:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY
+              ? TRAINER_FIXED_MONTHLY
+              : 'per_training_person',
+          salaryRate:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+              ? parseFloat(formData.salaryRate)
+              : 0,
+          salaryType:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY
+              ? TRAINER_FIXED_MONTHLY
+              : 'per_training_person',
+          salaryAmount:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+              ? parseFloat(formData.salaryRate)
+              : 0,
         });
       }
       // Обновляем список сотрудников, получая свежие данные с сервера
@@ -233,7 +247,7 @@ const Trainers: React.FC = () => {
         qualification: '',
         experience: '',
         specialization: '',
-        salaryScheme: 'per_training_person',
+        salaryScheme: '',
         salaryRate: '',
         canViewAllGroups: false,
       });
@@ -273,8 +287,14 @@ const Trainers: React.FC = () => {
       qualification: trainer.qualification || '',
       experience: trainer.experience?.toString() || '',
       specialization: trainer.specialization || '',
-      salaryScheme: normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType),
-      salaryRate: String((trainer as any).salaryRate ?? trainer.salaryAmount ?? ''),
+      salaryScheme:
+        normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
+          ? TRAINER_FIXED_MONTHLY
+          : '',
+      salaryRate:
+        normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
+          ? String((trainer as any).salaryRate ?? trainer.salaryAmount ?? '')
+          : '',
       canViewAllGroups: (trainer as any).canViewAllGroups || false,
     });
     setEditDialog(true);
@@ -359,10 +379,22 @@ const Trainers: React.FC = () => {
               qualification: formData.qualification,
               experience: formData.experience,
               specialization: formData.specialization,
-              salaryScheme: formData.salaryScheme,
-              salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
-              salaryType: formData.salaryScheme,
-              salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+              salaryScheme:
+                formData.salaryScheme === TRAINER_FIXED_MONTHLY
+                  ? TRAINER_FIXED_MONTHLY
+                  : 'per_training_person',
+              salaryRate:
+                formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+                  ? parseFloat(formData.salaryRate)
+                  : 0,
+              salaryType:
+                formData.salaryScheme === TRAINER_FIXED_MONTHLY
+                  ? TRAINER_FIXED_MONTHLY
+                  : 'per_training_person',
+              salaryAmount:
+                formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+                  ? parseFloat(formData.salaryRate)
+                  : 0,
               canViewAllGroups: formData.canViewAllGroups,
               firstName: formData.firstName,
               lastName: formData.lastName,
@@ -387,10 +419,22 @@ const Trainers: React.FC = () => {
       } else {
         await apiService.updateTrainer(editingTrainer.id, {
           ...formData,
-          salaryScheme: formData.salaryScheme,
-          salaryRate: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
-          salaryType: formData.salaryScheme,
-          salaryAmount: formData.salaryRate ? parseFloat(formData.salaryRate) : 0,
+          salaryScheme:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY
+              ? TRAINER_FIXED_MONTHLY
+              : 'per_training_person',
+          salaryRate:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+              ? parseFloat(formData.salaryRate)
+              : 0,
+          salaryType:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY
+              ? TRAINER_FIXED_MONTHLY
+              : 'per_training_person',
+          salaryAmount:
+            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
+              ? parseFloat(formData.salaryRate)
+              : 0,
         });
       }
 
@@ -627,9 +671,11 @@ const Trainers: React.FC = () => {
                       color={employee.isActive !== false ? 'success' : 'default'}
                       size="small"
                     />
-                    {!isAdmin && (employee.salaryType || employee.salaryScheme) && (
+                    {!isAdmin &&
+                      normalizeSalaryScheme(employee.salaryScheme || employee.salaryType) ===
+                        TRAINER_FIXED_MONTHLY && (
                       <Chip
-                        label={salarySchemeLabel(employee.salaryScheme || employee.salaryType)}
+                        label={salarySchemeLabel(TRAINER_FIXED_MONTHLY)}
                         size="small"
                         variant="outlined"
                       />
@@ -726,12 +772,18 @@ const Trainers: React.FC = () => {
                       <TableCell>{employee.qualification || '-'}</TableCell>
                       <TableCell>{employee.experience ? `${employee.experience} лет` : '-'}</TableCell>
                       <TableCell>
-                        {employee.salaryType || (employee as any).salaryScheme ? (
+                        {normalizeSalaryScheme(
+                          (employee as any).salaryScheme || employee.salaryType
+                        ) === TRAINER_FIXED_MONTHLY ? (
                           <Chip
-                            label={salarySchemeLabel((employee as any).salaryScheme || employee.salaryType)}
+                            label={salarySchemeLabel(TRAINER_FIXED_MONTHLY)}
                             color="primary"
                             size="small"
                           />
+                        ) : !isAdmin ? (
+                          <Typography variant="body2" color="text.secondary">
+                            На группах
+                          </Typography>
                         ) : (
                           '-'
                         )}
@@ -872,9 +924,9 @@ const Trainers: React.FC = () => {
                     qualification: '',
                     experience: '',
                     specialization: '',
-                    salaryScheme: 'per_training_person',
-                    salaryRate: '',
-                    canViewAllGroups: false,
+      salaryScheme: '',
+      salaryRate: '',
+      canViewAllGroups: false,
                   }));
                   setRoleSelectionDialog(false);
                   setOpenDialog(true);
@@ -908,9 +960,9 @@ const Trainers: React.FC = () => {
                     qualification: '',
                     experience: '',
                     specialization: '',
-                    salaryScheme: 'per_training_person',
-                    salaryRate: '',
-                    canViewAllGroups: false,
+      salaryScheme: '',
+      salaryRate: '',
+      canViewAllGroups: false,
                   }));
                   setRoleSelectionDialog(false);
                   setOpenDialog(true);
@@ -1083,28 +1135,29 @@ const Trainers: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Тип зарплаты</InputLabel>
+                    <InputLabel>Зарплата сотрудника</InputLabel>
                     <Select
                       value={formData.salaryScheme}
-                      label="Тип зарплаты"
+                      label="Зарплата сотрудника"
                       onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
                     >
-                      {SALARY_SCHEME_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                      ))}
+                      <MenuItem value="">На группах</MenuItem>
+                      <MenuItem value={TRAINER_FIXED_MONTHLY}>Фикс плата в месяц</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
+                {formData.salaryScheme === TRAINER_FIXED_MONTHLY && (
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label={salaryRateFieldLabel(formData.salaryScheme)}
+                    label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
                     type="number"
                     value={formData.salaryRate}
                     onChange={(e) => handleInputChange('salaryRate', e.target.value)}
-                    helperText={salarySchemeHint(formData.salaryScheme)}
+                    helperText={salarySchemeHint(TRAINER_FIXED_MONTHLY)}
                   />
                 </Grid>
+                )}
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1148,7 +1201,7 @@ const Trainers: React.FC = () => {
                 qualification: '',
                 experience: '',
                 specialization: '',
-                salaryScheme: 'per_training_person',
+                salaryScheme: '',
                 salaryRate: '',
                 canViewAllGroups: false,
               });
@@ -1333,15 +1386,14 @@ const Trainers: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth error={!!formErrors.salaryScheme}>
-                    <InputLabel>Тип зарплаты</InputLabel>
+                    <InputLabel>Зарплата сотрудника</InputLabel>
                     <Select
                       value={formData.salaryScheme}
-                      label="Тип зарплаты"
+                      label="Зарплата сотрудника"
                       onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
                     >
-                      {SALARY_SCHEME_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                      ))}
+                      <MenuItem value="">На группах</MenuItem>
+                      <MenuItem value={TRAINER_FIXED_MONTHLY}>Фикс плата в месяц</MenuItem>
                     </Select>
                     {formErrors.salaryScheme && (
                       <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
@@ -1350,17 +1402,19 @@ const Trainers: React.FC = () => {
                     )}
                   </FormControl>
                 </Grid>
+                {formData.salaryScheme === TRAINER_FIXED_MONTHLY && (
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label={salaryRateFieldLabel(formData.salaryScheme)}
+                    label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
                     type="number"
                     value={formData.salaryRate}
                     onChange={(e) => handleInputChange('salaryRate', e.target.value)}
                     error={!!formErrors.salaryRate}
-                    helperText={formErrors.salaryRate || salarySchemeHint(formData.salaryScheme)}
+                    helperText={formErrors.salaryRate || salarySchemeHint(TRAINER_FIXED_MONTHLY)}
                   />
                 </Grid>
+                )}
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1629,7 +1683,13 @@ const Trainers: React.FC = () => {
                             Тип зарплаты
                           </Typography>
                           <Chip
-                            label={salarySchemeLabel(earnings.trainer?.salaryScheme || earnings.trainer?.salaryType)}
+                            label={
+                              normalizeSalaryScheme(
+                                earnings.trainer?.salaryScheme || earnings.trainer?.salaryType
+                              ) === TRAINER_FIXED_MONTHLY
+                                ? salarySchemeLabel(TRAINER_FIXED_MONTHLY)
+                                : 'На группах'
+                            }
                             color="primary"
                             sx={{ mt: 1 }}
                           />

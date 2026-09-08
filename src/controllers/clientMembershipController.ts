@@ -83,6 +83,7 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
         clientMembershipId: clientMembership.id,
         amount: price,
         title: `${clientName} — ${clientMembership.membership.name}`,
+        membershipCatalogId: membershipId,
       }).catch((err) => console.error('Finance membership issue record failed:', err));
     }
 
@@ -114,7 +115,7 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
 /**
  * Update client membership
  * Body: visitsUsed? | remaining? | isActive?
- * remaining — удобная правка остатка (visitsTotal - visitsUsed), может быть < 0
+ * remaining — правка остатка (visitsTotal - visitsUsed); при <= 0 пак деактивируется
  */
 export const updateClientMembership = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -170,10 +171,19 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
       shouldDeactivate = true;
     }
 
+    const nextUsed =
+      visitsUsed !== undefined ? Number(visitsUsed) : clientMembership.visitsUsed;
+    if (
+      clientMembership.visitsTotal != null &&
+      nextUsed >= clientMembership.visitsTotal
+    ) {
+      shouldDeactivate = true;
+    }
+
     const updated = await prisma.clientMembership.update({
       where: { id },
       data: {
-        visitsUsed: visitsUsed !== undefined ? Number(visitsUsed) : clientMembership.visitsUsed,
+        visitsUsed: nextUsed,
         isActive:
           isActive !== undefined
             ? isActive
@@ -206,7 +216,8 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
 };
 
 /**
- * Mark visit used for client membership (можно уйти в минус)
+ * Mark visit used for client membership.
+ * При исчерпании посещений абонемент деактивируется.
  */
 export const markVisitUsed = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -231,11 +242,15 @@ export const markVisitUsed = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
+    const visitsUsed = clientMembership.visitsUsed + 1;
+    const exhausted =
+      clientMembership.visitsTotal != null && visitsUsed >= clientMembership.visitsTotal;
+
     const updated = await prisma.clientMembership.update({
       where: { id },
       data: {
-        visitsUsed: clientMembership.visitsUsed + 1,
-        isActive: true,
+        visitsUsed,
+        isActive: !exhausted,
       },
       include: {
         client: true,
@@ -250,7 +265,7 @@ export const markVisitUsed = async (req: AuthenticatedRequest, res: Response) =>
         remaining: updated.visitsTotal != null ? updated.visitsTotal - updated.visitsUsed : null,
         summary: toMembershipSummary(updated),
       },
-      message: 'Visit marked as used'
+      message: exhausted ? 'Visit marked as used; membership closed' : 'Visit marked as used'
     });
   } catch (error) {
     console.error('Mark visit used error:', error);

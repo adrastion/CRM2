@@ -476,7 +476,7 @@ const ClientDashboard: React.FC = () => {
       userName={data.viewerName}
       userRole={data.userType === 'parent' ? 'Родитель' : 'Ученик'}
       onLogout={handleLogout}
-      searchDisabled={pending}
+      hideSearch
     >
       {pending ? (
         <Box sx={{ position: 'relative' }}>

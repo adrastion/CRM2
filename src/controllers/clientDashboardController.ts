@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
 import { unauthorized } from '../utils/httpError';
 import { getActiveMembershipSummary } from '../services/clientMembershipService';
+import { applyPersonalDiscount } from '../utils/personalDiscount';
 
 /** Начало недели (понедельник) для переданной даты. */
 function startOfWeek(date: Date): Date {
@@ -248,6 +249,8 @@ export const getClientDashboard = asyncHandler(
           photo: true,
           balance: true,
           membershipFeePaid: true,
+          personalDiscountType: true,
+          personalDiscountValue: true,
         },
       }),
       prisma.tenant.findUnique({
@@ -427,7 +430,11 @@ export const getClientDashboard = asyncHandler(
       const dueDay = g.paymentDueDay || 1;
       const candidate = new Date(now.getFullYear(), now.getMonth(), dueDay);
       if (candidate < now) candidate.setMonth(candidate.getMonth() + 1);
-      const amount = Number(g.monthlyPaymentAmount);
+      const { amount } = applyPersonalDiscount(
+        Number(g.monthlyPaymentAmount),
+        client?.personalDiscountType,
+        client?.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
+      );
       if (!nextCharge || candidate.toISOString() < nextCharge.date) {
         nextCharge = { date: candidate.toISOString(), amount };
       }

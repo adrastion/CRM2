@@ -7,7 +7,7 @@ export type ActiveMembershipSummary = {
   type: string;
   visitsUsed: number;
   visitsTotal: number | null;
-  /** visitsTotal - visitsUsed; для visit-pack может быть < 0 */
+  /** visitsTotal - visitsUsed; null если без лимита */
   remaining: number | null;
   endDate: Date | null;
   isActive: boolean;
@@ -96,8 +96,9 @@ export async function getActiveMembershipSummary(
 
 /**
  * Списать одно посещение с активного visit-pack.
- * visitsUsed может превысить visitsTotal (минус); пак остаётся активным.
- * @returns true если списали с абонемента (клиенту не нужно списывать баланс за визит)
+ * Если после списания посещений не осталось (visitsUsed >= visitsTotal) —
+ * абонемент деактивируется; следующие визиты идут без пакета (списание с баланса).
+ * @returns true если визит покрыт абонементом
  */
 export async function consumeVisitFromActivePack(
   clientId: string,
@@ -118,11 +119,23 @@ export async function consumeVisitFromActivePack(
     return { coveredByMembership: true, membershipId: active.id };
   }
 
+  // Уже исчерпан, но ещё числится активным — закрываем и не покрываем
+  if (active.visitsUsed >= active.visitsTotal) {
+    await prisma.clientMembership.update({
+      where: { id: active.id },
+      data: { isActive: false },
+    });
+    return { coveredByMembership: false };
+  }
+
+  const visitsUsed = active.visitsUsed + 1;
+  const exhausted = visitsUsed >= active.visitsTotal;
+
   await prisma.clientMembership.update({
     where: { id: active.id },
     data: {
-      visitsUsed: active.visitsUsed + 1,
-      isActive: true,
+      visitsUsed,
+      isActive: !exhausted,
     },
   });
 
@@ -203,7 +216,7 @@ export async function issueClientMembership(params: {
 
 /**
  * Задать остаток посещений вручную (remaining = visitsTotal - visitsUsed).
- * remaining может быть отрицательным.
+ * При remaining <= 0 абонемент деактивируется.
  */
 export async function setClientMembershipRemaining(params: {
   tenantId: string;
@@ -226,12 +239,15 @@ export async function setClientMembershipRemaining(params: {
     throw Object.assign(new Error('Некорректный остаток'), { statusCode: 400 });
   }
 
-  const visitsUsed = row.visitsTotal - Math.trunc(params.remaining);
+  const remaining = Math.trunc(params.remaining);
+  const visitsUsed = row.visitsTotal - remaining;
+  const isActive = remaining > 0;
+
   const updated = await prisma.clientMembership.update({
     where: { id: row.id },
     data: {
       visitsUsed,
-      isActive: true,
+      isActive,
     },
     include: { client: true, membership: true },
   });

@@ -48,6 +48,10 @@ interface DashboardShellProps {
   onLogout: () => void;
   /** Поисковая строка отключена (например, в режиме ожидания подтверждения). */
   searchDisabled?: boolean;
+  /** Полностью скрыть поиск (ЛК клиента). */
+  hideSearch?: boolean;
+  /** maxWidth поиска на sm/md (кабинет школы — шире). */
+  searchMaxWidth?: { sm?: number | string; md?: number | string };
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   /** Результаты глобального поиска для dropdown. */
@@ -72,6 +76,8 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   notifications = 0,
   onLogout,
   searchDisabled,
+  hideSearch = false,
+  searchMaxWidth,
   searchValue = '',
   onSearchChange,
   searchResults = null,
@@ -295,13 +301,18 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           </Typography>
         </Box>
 
+        {!hideSearch && (
         <Box
           ref={searchWrapRef}
           sx={{
             position: 'relative',
             justifySelf: 'center',
             width: '100%',
-            maxWidth: { xs: '100%', sm: 420, md: 540 },
+            maxWidth: {
+              xs: '100%',
+              sm: searchMaxWidth?.sm ?? 420,
+              md: searchMaxWidth?.md ?? 540,
+            },
             display: { xs: 'none', sm: 'block' },
           }}
         >
@@ -374,6 +385,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             </Box>
           )}
         </Box>
+        )}
 
         <Box
           sx={{
@@ -384,6 +396,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             flexShrink: 0,
           }}
         >
+          {!hideSearch && (
           <IconButton
             aria-label="Поиск"
             size="small"
@@ -396,6 +409,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           >
             <SearchIcon sx={{ fontSize: 22 }} />
           </IconButton>
+          )}
 
           <Box sx={{ position: 'relative' }}>
             <IconButton aria-label="Уведомления" size="small" sx={{ color: colors.textMuted }}>
@@ -502,7 +516,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         </Box>
       </Box>
 
-      {mobileSearchOpen && (
+      {!hideSearch && mobileSearchOpen && (
         <Box
           ref={mobileSearchRef}
           sx={{

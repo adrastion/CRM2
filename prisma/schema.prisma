@@ -170,6 +170,9 @@ model Client {
   membershipFeePaid        Boolean                  @default(false)
   membershipFeePaidAt      DateTime?
   membershipFeePaidBy      String?
+  /// Личная скидка на ежемесячный платёж: percent | fixed
+  personalDiscountType     String?
+  personalDiscountValue    Decimal?
   passportBirthPlace       String?
   passportDivisionCode     String?
   passportIssueDate        DateTime?
@@ -438,11 +441,15 @@ model Group {
   isMonthlyPayment          Boolean           @default(false)
   monthlyPaymentAmount      Decimal?
   paymentDueDay             Int? // День месяца для оплаты (1-31)
-  // Настройки зарплаты тренера
+  // Настройки зарплаты тренера (legacy)
   trainerSalaryType         String? // 'monthly_percentage', 'per_visit_percentage', 'per_visit_amount'
   trainerMonthlyPercentage  Decimal? // Процент от ежемесячной суммы оплаченной клиентами
   trainerPerVisitPercentage Decimal? // Процент за посещение
   trainerPerVisitAmount     Decimal? // Фиксированная сумма за посещение
+  /// Схема зарплаты на группе: per_training_person | fixed_per_student_month | percent_month
+  salaryScheme              String?
+  /// Ставка (₽) или процент в зависимости от salaryScheme
+  salaryRate                Decimal?
   memberships               GroupMembership[]
   standardGroups            StandardGroup[]
   branch                    Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)

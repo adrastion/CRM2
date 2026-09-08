@@ -149,12 +149,14 @@ describe('Подтверждённый кабинет', () => {
     expect(container.textContent).toContain('Плавание');
   });
 
-  it('меню активно, поиск доступен', async () => {
+  it('меню активно, поиск скрыт', async () => {
     await mount();
     const disabledItems = container.querySelectorAll('[aria-disabled="true"]');
     expect(disabledItems.length).toBe(0);
-    const search = container.querySelector('input[aria-label="Поиск"]') as HTMLInputElement;
-    expect(search.disabled).toBe(false);
+    const search = container.querySelector('input[aria-label="Глобальный поиск"]');
+    const searchBtn = container.querySelector('button[aria-label="Поиск"]');
+    expect(search).toBeNull();
+    expect(searchBtn).toBeNull();
   });
 
   it('роль в шапке — Ученик', async () => {
@@ -215,10 +217,12 @@ describe('Кабинет в ожидании подтверждения', () => 
     expect(hidden).not.toBeNull();
   });
 
-  it('поиск отключён', async () => {
+  it('поиск скрыт', async () => {
     await mount();
-    const search = container.querySelector('input[aria-label="Поиск"]') as HTMLInputElement;
-    expect(search.disabled).toBe(true);
+    const search = container.querySelector('input[aria-label="Глобальный поиск"]');
+    const searchBtn = container.querySelector('button[aria-label="Поиск"]');
+    expect(search).toBeNull();
+    expect(searchBtn).toBeNull();
   });
 
   it('роль в шапке — Родитель', async () => {

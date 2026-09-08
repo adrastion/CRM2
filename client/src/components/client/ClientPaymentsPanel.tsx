@@ -100,20 +100,27 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                 <TableRow key={p.id} hover>
                   <TableCell>{formatDate(p.paidAt || p.createdAt)}</TableCell>
                   <TableCell>
-                    {TYPE_LABELS[p.type] || p.type}
-                    {p.isMonthlyPayment ? ' · ежемес.' : ''}
+                    {String(p.notes || '').includes('Списание при выдаче')
+                      ? 'Списание абонемента'
+                      : `${TYPE_LABELS[p.type] || p.type}${p.isMonthlyPayment ? ' · ежемес.' : ''}`}
                   </TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{RUB.format(Number(p.amount) || 0)}</TableCell>
                   <TableCell>
                     <Chip
                       size="small"
-                      label={STATUS_LABELS[p.status] || p.status}
+                      label={
+                        String(p.notes || '').includes('Списание при выдаче')
+                          ? 'Списание'
+                          : STATUS_LABELS[p.status] || p.status
+                      }
                       color={
-                        p.status === 'paid'
-                          ? 'success'
-                          : p.status === 'cancelled'
-                            ? 'default'
-                            : 'warning'
+                        String(p.notes || '').includes('Списание при выдаче')
+                          ? 'default'
+                          : p.status === 'paid'
+                            ? 'success'
+                            : p.status === 'cancelled'
+                              ? 'default'
+                              : 'warning'
                       }
                     />
                   </TableCell>

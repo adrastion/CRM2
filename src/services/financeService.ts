@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { FinanceOperationType, Prisma } from '@prisma/client';
 import { badRequest, notFound } from '../utils/httpError';
+import { applyPersonalDiscount } from '../utils/personalDiscount';
 
 type TrainerSalarySummaryRow = Prisma.TrainerGetPayload<{
   include: {
@@ -543,7 +544,7 @@ export class FinanceService {
     };
   }
 
-  /** Выдача абонемента: списание с баланса клиента + операция. */
+  /** Выдача абонемента: списание с баланса клиента + операция (+ Payment для ЛК / Начислено). */
   static async recordMembershipIssue(params: {
     tenantId: string;
     clientId: string;
@@ -551,6 +552,12 @@ export class FinanceService {
     amount: number;
     title: string;
     occurredAt?: Date;
+    /** Каталожный Membership.id для связи Payment */
+    membershipCatalogId?: string | null;
+    /**
+     * true — не создавать Payment (уже есть оплаченный платёж, из которого выдали абонемент).
+     */
+    skipPayment?: boolean;
   }) {
     const amount = Number(params.amount);
     if (!Number.isFinite(amount) || amount <= 0) return null;
@@ -566,6 +573,32 @@ export class FinanceService {
       data: { balance: { decrement: amount } },
     });
 
+    if (!params.skipPayment) {
+      const noteMarker = `clientMembershipId=${params.clientMembershipId}`;
+      const existingPay = await prisma.payment.findFirst({
+        where: {
+          tenantId: params.tenantId,
+          clientId: params.clientId,
+          notes: { contains: noteMarker },
+        },
+      });
+      if (!existingPay) {
+        await prisma.payment.create({
+          data: {
+            tenantId: params.tenantId,
+            clientId: params.clientId,
+            membershipId: params.membershipCatalogId || null,
+            amount,
+            originalAmount: amount,
+            type: 'membership',
+            status: 'paid',
+            paidAt: params.occurredAt || new Date(),
+            notes: `Списание при выдаче абонемента / ${noteMarker}`,
+          },
+        });
+      }
+    }
+
     return this.createOperation(params.tenantId, {
       direction: 'expense',
       typeCode: 'membership_issue',
@@ -574,7 +607,7 @@ export class FinanceService {
       occurredAt: params.occurredAt || new Date(),
       clientId: params.clientId,
       externalKey,
-      notes: 'Выдача абонемента',
+      notes: `Выдача абонемента / clientMembershipId=${params.clientMembershipId}`,
     });
   }
 
@@ -751,6 +784,16 @@ export class FinanceService {
             where: { id: cmId },
             data: { isActive: false },
           }).catch(() => undefined);
+          const noteMarker = `clientMembershipId=${cmId}`;
+          await tx.payment.updateMany({
+            where: {
+              tenantId,
+              clientId: op.clientId,
+              notes: { contains: noteMarker },
+              status: { not: 'cancelled' },
+            },
+            data: { status: 'cancelled', paidAt: null },
+          });
         }
       }
 
@@ -937,12 +980,20 @@ export class FinanceService {
     const rows = clients.map((client) => {
       const pending = client.payments.filter((p) => p.status === 'pending' || p.status === 'overdue');
       const paid = client.payments.filter((p) => p.status === 'paid');
+      const chargePayments = client.payments.filter(
+        (p) => p.status !== 'cancelled' && Number(p.amount) > 0
+      );
       const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
       const paidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
       const latest = client.payments[0];
-      const membershipPrice = latest
-        ? Number(latest.originalAmount ?? latest.amount)
-        : Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0);
+      const membershipPrice =
+        chargePayments.length > 0
+          ? chargePayments.reduce((s, p) => s + Number(p.amount), 0)
+          : applyPersonalDiscount(
+              Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0),
+              client.personalDiscountType,
+              client.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
+            ).amount;
 
       let status: 'paid' | 'unpaid' | 'partial' = 'unpaid';
       if (dueAmount <= 0 && paidAmount > 0) status = 'paid';

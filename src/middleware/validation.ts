@@ -173,7 +173,9 @@ export const clientSchemas = {
         isPrimaryContact: Joi.boolean().optional(),
       })
     ).optional(),
-    isActive: Joi.boolean().optional()
+    isActive: Joi.boolean().optional(),
+    personalDiscountType: Joi.string().valid('percent', 'fixed').optional().allow(null, ''),
+    personalDiscountValue: Joi.number().min(0).optional().allow(null),
   })
 };
 
@@ -252,7 +254,21 @@ export const groupSchemas = {
       })
     ).optional(),
     branchId: commonSchemas.id,
-    trainerId: commonSchemas.id
+    trainerId: commonSchemas.id,
+    // Ежемесячная оплата
+    isMonthlyPayment: Joi.boolean().optional(),
+    monthlyPaymentAmount: Joi.number().precision(2).min(0).optional().allow(null),
+    paymentDueDay: Joi.number().integer().min(1).max(31).optional().allow(null),
+    // Зарплата на группе
+    salaryScheme: Joi.string()
+      .valid('per_training_person', 'fixed_per_student_month', 'percent_month')
+      .optional()
+      .allow(null, ''),
+    salaryRate: Joi.number().precision(2).min(0).optional().allow(null),
+    trainerSalaryType: Joi.string().valid('monthly_percentage', 'per_visit_percentage', 'per_visit_amount').optional().allow(null),
+    trainerMonthlyPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),
+    trainerPerVisitPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),
+    trainerPerVisitAmount: Joi.number().precision(2).min(0).optional().allow(null),
   }),
   update: Joi.object({
     name: Joi.string().min(2).max(100).optional(),
@@ -269,11 +285,19 @@ export const groupSchemas = {
       })
     ).optional(),
     isActive: Joi.boolean().optional(),
+    branchId: commonSchemas.id.optional(),
+    trainerId: commonSchemas.id.optional(),
     // Ежемесячная оплата
     isMonthlyPayment: Joi.boolean().optional(),
     monthlyPaymentAmount: Joi.number().precision(2).min(0).optional().allow(null),
     paymentDueDay: Joi.number().integer().min(1).max(31).optional().allow(null),
-    // Настройки зарплаты тренера
+    // Зарплата на группе
+    salaryScheme: Joi.string()
+      .valid('per_training_person', 'fixed_per_student_month', 'percent_month')
+      .optional()
+      .allow(null, ''),
+    salaryRate: Joi.number().precision(2).min(0).optional().allow(null),
+    // Legacy
     trainerSalaryType: Joi.string().valid('monthly_percentage', 'per_visit_percentage', 'per_visit_amount').optional().allow(null),
     trainerMonthlyPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),
     trainerPerVisitPercentage: Joi.number().precision(2).min(0).max(100).optional().allow(null),

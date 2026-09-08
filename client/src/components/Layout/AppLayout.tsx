@@ -155,6 +155,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         searchResults={searchResults}
         searchLoading={searchLoading}
         onSearchResultClick={handleSearchResultClick}
+        searchMaxWidth={{ sm: 560, md: 720 }}
       >
         {children}
       </DashboardShell>

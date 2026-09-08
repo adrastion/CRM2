@@ -233,6 +233,16 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
       }
     }
 
+    if (groupData.salaryScheme === '' || groupData.salaryScheme === undefined) {
+      groupData.salaryScheme = 'per_training_person';
+    }
+    if (groupData.salaryRate === '' || groupData.salaryRate === undefined) {
+      groupData.salaryRate = null;
+    } else if (typeof groupData.salaryRate === 'string') {
+      const rate = parseFloat(groupData.salaryRate);
+      groupData.salaryRate = Number.isFinite(rate) ? rate : null;
+    }
+
     // Удаляем поле createPaymentsImmediately, так как оно используется только на фронтенде
     delete groupData.createPaymentsImmediately;
 
@@ -386,6 +396,20 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
         } else {
           updateData.trainerPerVisitAmount = amount;
         }
+      }
+    }
+
+    if (updateData.salaryScheme !== undefined) {
+      if (updateData.salaryScheme === '' || updateData.salaryScheme === null) {
+        updateData.salaryScheme = null;
+      }
+    }
+    if (updateData.salaryRate !== undefined) {
+      if (updateData.salaryRate === '' || updateData.salaryRate === null) {
+        updateData.salaryRate = null;
+      } else if (typeof updateData.salaryRate === 'string') {
+        const rate = parseFloat(updateData.salaryRate);
+        updateData.salaryRate = Number.isFinite(rate) ? rate : null;
       }
     }
 

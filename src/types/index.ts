@@ -81,6 +81,9 @@ export interface CreateClientData {
   passportDivisionCode?: string | null;
   passportBirthPlace?: string | null;
   parents?: CreateParentData[];
+  /** percent | fixed */
+  personalDiscountType?: 'percent' | 'fixed' | null;
+  personalDiscountValue?: number | null;
 }
 
 export interface UpdateClientData extends Partial<Omit<CreateClientData, 'parents'>> {
@@ -121,11 +124,13 @@ export interface CreateGroupData {
   isMonthlyPayment?: boolean;
   monthlyPaymentAmount?: number;
   paymentDueDay?: number; // День месяца для оплаты (1-31)
-  // Настройки зарплаты тренера
+  salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | null;
+  salaryRate?: number | null;
+  // Legacy настройки зарплаты тренера
   trainerSalaryType?: 'monthly_percentage' | 'per_visit_percentage' | 'per_visit_amount';
-  trainerMonthlyPercentage?: number; // Процент от ежемесячной суммы оплаченной клиентами
-  trainerPerVisitPercentage?: number; // Процент за посещение
-  trainerPerVisitAmount?: number; // Фиксированная сумма за посещение
+  trainerMonthlyPercentage?: number;
+  trainerPerVisitPercentage?: number;
+  trainerPerVisitAmount?: number;
 }
 
 // Membership interfaces

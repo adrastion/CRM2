@@ -430,6 +430,24 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     dateOfBirth: updateData.dateOfBirth ? new Date(updateData.dateOfBirth) : undefined
   };
 
+  if ('personalDiscountType' in clientFields) {
+    const t = clientFields.personalDiscountType;
+    processedData.personalDiscountType =
+      t === 'percent' || t === 'fixed' ? t : null;
+  }
+  if ('personalDiscountValue' in clientFields) {
+    const v = clientFields.personalDiscountValue;
+    if (v === null || v === undefined || v === ('' as any)) {
+      processedData.personalDiscountValue = null;
+    } else {
+      const num = Number(v);
+      processedData.personalDiscountValue = Number.isFinite(num) ? num : null;
+    }
+  }
+  if (!processedData.personalDiscountType) {
+    processedData.personalDiscountValue = null;
+  }
+
   // Если есть родители, обновляем их
   if (parents !== undefined) {
     // Удаляем всех существующих родителей

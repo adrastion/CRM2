@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { issueClientMembership } from '../services/clientMembershipService';
 import { FinanceService } from '../services/financeService';
 import { accrueForPayment } from '../services/trainerSalaryService';
+import { applyPersonalDiscount } from '../utils/personalDiscount';
 
 /**
  * Helper function to create ClientMembership from payment (с переносом долга)
@@ -46,6 +47,8 @@ async function createClientMembershipFromPayment(
           clientMembershipId: cm.id,
           amount: price,
           title: `${clientName} — ${cm.membership.name}`,
+          membershipCatalogId: payment.membershipId,
+          skipPayment: true,
         }).catch((err) => console.error('Finance membership issue record failed:', err));
       }
     });
@@ -161,11 +164,33 @@ export const getPaymentById = async (req: AuthenticatedRequest, res: Response) =
 
 export const createPayment = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const paymentData = {
+    const paymentData: any = {
       ...req.body,
       tenantId: req.tenant?.id,
       paidAt: req.body.status === 'paid' ? new Date() : null
     };
+
+    // Личная скидка на ежемесячный платёж (в т.ч. из Groups UI)
+    if (
+      req.tenant?.id &&
+      paymentData.clientId &&
+      (paymentData.isMonthlyPayment ||
+        paymentData.type === 'monthly_payment' ||
+        paymentData.type === 'monthly')
+    ) {
+      const client = await prisma.client.findFirst({
+        where: { id: paymentData.clientId, tenantId: req.tenant.id },
+        select: { personalDiscountType: true, personalDiscountValue: true },
+      });
+      const base = Number(paymentData.originalAmount ?? paymentData.amount ?? 0);
+      const { amount, originalAmount } = applyPersonalDiscount(
+        base,
+        client?.personalDiscountType,
+        client?.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
+      );
+      paymentData.amount = amount;
+      paymentData.originalAmount = originalAmount;
+    }
 
     const payment = await prisma.payment.create({
       data: paymentData,
@@ -750,14 +775,26 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
             continue;
           }
 
-          // Создаем платеж
+          // Создаем платеж (с учётом личной скидки клиента)
+          const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
+            monthlyAmount,
+            membership.client?.personalDiscountType,
+            membership.client?.personalDiscountValue != null
+              ? Number(membership.client.personalDiscountValue)
+              : null
+          );
+          if (chargeAmount <= 0) {
+            console.log(`Skipped monthly payment for client ${membership.clientId}: amount after discount is 0`);
+            continue;
+          }
+
           const payment = await prisma.payment.create({
             data: {
               tenantId,
               clientId: membership.clientId,
               groupId: group.id,
-              amount: monthlyAmount,
-              originalAmount: monthlyAmount,
+              amount: chargeAmount,
+              originalAmount,
               type: 'monthly_payment',
               status: 'pending',
               dueDate,
@@ -775,7 +812,7 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
             tenantId,
             clientId: payment.clientId,
             paymentId: payment.id,
-            amount: monthlyAmount,
+            amount: chargeAmount,
             title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
             occurredAt: dueDate,
             groupId: group.id,
@@ -890,14 +927,25 @@ export const createMonthlyPaymentsForAllTenants = async () => {
                 continue;
               }
 
-              // Создаем платеж
+              // Создаем платеж (с учётом личной скидки клиента)
+              const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
+                monthlyAmount,
+                membership.client?.personalDiscountType,
+                membership.client?.personalDiscountValue != null
+                  ? Number(membership.client.personalDiscountValue)
+                  : null
+              );
+              if (chargeAmount <= 0) {
+                continue;
+              }
+
               const payment = await prisma.payment.create({
                 data: {
                   tenantId: tenant.id,
                   clientId: membership.clientId,
                   groupId: group.id,
-                  amount: monthlyAmount,
-                  originalAmount: monthlyAmount,
+                  amount: chargeAmount,
+                  originalAmount,
                   type: 'monthly_payment',
                   status: 'pending',
                   dueDate,
@@ -912,7 +960,7 @@ export const createMonthlyPaymentsForAllTenants = async () => {
                 tenantId: tenant.id,
                 clientId: payment.clientId,
                 paymentId: payment.id,
-                amount: monthlyAmount,
+                amount: chargeAmount,
                 title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
                 occurredAt: dueDate,
                 groupId: group.id,

@@ -347,6 +347,9 @@ export interface Client {
   membershipFeePaid?: boolean;
   membershipFeePaidAt?: string;
   membershipFeePaidBy?: string;
+  /** percent | fixed */
+  personalDiscountType?: 'percent' | 'fixed' | null;
+  personalDiscountValue?: number | null;
   // Задолженность
   debt?: number;
   overduePaymentsCount?: number;
@@ -478,7 +481,10 @@ export interface Group {
   isMonthlyPayment?: boolean;
   monthlyPaymentAmount?: number;
   paymentDueDay?: number; // День месяца для оплаты (1-31)
-  // Настройки зарплаты тренера
+  /** Схема зарплаты на группе */
+  salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | null;
+  salaryRate?: number | null;
+  // Legacy настройки зарплаты тренера
   trainerSalaryType?: 'monthly_percentage' | 'per_visit_percentage' | 'per_visit_amount';
   trainerMonthlyPercentage?: number; // Процент от ежемесячной суммы оплаченной клиентами
   trainerPerVisitPercentage?: number; // Процент за посещение

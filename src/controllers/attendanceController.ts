@@ -364,7 +364,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         }
       });
 
-      // Находим / списываем активный абонемент (visit-pack может уйти в минус)
+      // Списание с visit-pack; при исчерпании пак закрывается → дальше списание с баланса
       const { coveredByMembership } = await consumeVisitFromActivePack(clientId, tenantId);
       let shouldChargeClient = !coveredByMembership;
 

@@ -97,6 +97,35 @@ export function resolveRate(trainer: {
   return 0;
 }
 
+/** Схема зарплаты группы с fallback на тренера (для старых данных). */
+export function resolveGroupScheme(
+  group: { salaryScheme?: string | null } | null | undefined,
+  trainer?: { salaryScheme?: string | null; salaryType?: string | null } | null
+): SalaryScheme {
+  const gs = group?.salaryScheme;
+  if (gs && (SALARY_SCHEMES as readonly string[]).includes(gs) && gs !== 'fixed_monthly') {
+    return gs as SalaryScheme;
+  }
+  if (trainer) return resolveScheme(trainer);
+  return 'per_training_person';
+}
+
+/** Ставка группы с fallback на тренера. */
+export function resolveGroupRate(
+  group: { salaryRate?: Prisma.Decimal | number | null } | null | undefined,
+  trainer?: {
+    salaryRate?: Prisma.Decimal | number | null;
+    salaryAmount?: Prisma.Decimal | number | null;
+    salaryPercentage?: Prisma.Decimal | number | null;
+  } | null
+): number {
+  if (group?.salaryRate != null && Number(group.salaryRate) > 0) {
+    return Number(group.salaryRate);
+  }
+  if (trainer) return resolveRate(trainer);
+  return 0;
+}
+
 function formatPersonName(client: {
   lastName?: string | null;
   firstName?: string | null;
@@ -197,10 +226,16 @@ export async function accrueForAttendance(params: {
   });
   if (!trainer || !trainer.isActive) return 0;
 
-  const scheme = resolveScheme(trainer);
+  const training = await prisma.training.findFirst({
+    where: { id: params.trainingId, tenantId: params.tenantId },
+    include: { group: true },
+  });
+  const group = training?.group || null;
+
+  const scheme = resolveGroupScheme(group, trainer);
   if (scheme !== 'per_training_person') return 0;
 
-  const rate = resolveRate(trainer);
+  const rate = resolveGroupRate(group, trainer);
   if (rate <= 0) return 0;
 
   const client = await prisma.client.findFirst({
@@ -311,19 +346,18 @@ export async function accrueForPayment(params: {
 
   let total = 0;
 
-  // Prefer unique trainers (client may be in multiple groups of same trainer)
-  const byTrainer = new Map<string, (typeof memberships)[0]>();
+  // Уникальные группы (у тренера может быть несколько групп с разными схемами)
+  const byGroup = new Map<string, (typeof memberships)[0]>();
   for (const m of memberships) {
-    const tid = m.group.trainerId;
-    if (!byTrainer.has(tid)) byTrainer.set(tid, m);
+    if (!byGroup.has(m.groupId)) byGroup.set(m.groupId, m);
   }
 
-  for (const [, m] of byTrainer) {
+  for (const [, m] of byGroup) {
     const trainer = m.group.trainer;
     if (!trainer?.isActive) continue;
 
-    const scheme = resolveScheme(trainer);
-    const rate = resolveRate(trainer);
+    const scheme = resolveGroupScheme(m.group, trainer);
+    const rate = resolveGroupRate(m.group, trainer);
 
     if (scheme === 'fixed_per_student_month') {
       if (rate <= 0) continue;
@@ -347,7 +381,7 @@ export async function accrueForPayment(params: {
           trainerId: trainer.id,
           amount: rate,
           title: `Начисление: ${personName}`,
-          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}`,
+          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}:${m.groupId}`,
           occurredAt: params.paidAt || new Date(),
           clientId: params.clientId,
           groupId: m.groupId,
@@ -379,7 +413,7 @@ export async function accrueForPayment(params: {
           trainerId: trainer.id,
           amount,
           title: `Начисление: ${personName}`,
-          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}`,
+          externalKey: `salary_accrual:payment:${params.paymentId}:${trainer.id}:${m.groupId}`,
           occurredAt: params.paidAt || new Date(),
           clientId: params.clientId,
           groupId: m.groupId,

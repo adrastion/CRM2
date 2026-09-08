@@ -28,6 +28,7 @@ import {
   Grid,
   FormControl,
   InputLabel,
+  InputAdornment,
   Select,
   MenuItem,
   TableSortLabel,
@@ -1078,20 +1079,25 @@ const Clients: React.FC = () => {
   };
 
   const handleDeleteClient = async (clientId: string) => {
-    console.log('Attempting to delete client:', clientId);
-    if (window.confirm('Вы уверены, что хотите удалить этого клиента?')) {
-      try {
-        console.log('Deleting client...');
-        await apiService.deleteClient(clientId);
-        console.log('Client deleted successfully, refreshing list...');
-        await fetchClients();
-        console.log('Client list refreshed');
-      } catch (err: any) {
-        console.error('Error deleting client:', err);
-        setError(err.response?.data?.error || 'Ошибка удаления клиента');
+    if (!window.confirm('Вы уверены, что хотите удалить этого клиента?')) {
+      return;
+    }
+    try {
+      await apiService.deleteClient(clientId);
+      await fetchClients();
+      if (editingClient?.id === clientId) {
+        setEditDialogOpen(false);
+        setEditDialog(false);
+        setEditingClient(null);
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('clientId');
+          return next;
+        });
       }
-    } else {
-      console.log('Delete cancelled by user');
+    } catch (err: any) {
+      console.error('Error deleting client:', err);
+      setError(err.response?.data?.error || 'Ошибка удаления клиента');
     }
   };
 
@@ -2254,8 +2260,107 @@ const Clients: React.FC = () => {
           }}
         >
           {(user?.role === 'OWNER' || user?.role === 'ADMIN') && editingClient && (
-            <Box sx={{ mb: 2 }}>
-              <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
+            <Box
+              sx={{
+                mb: 2,
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 1.5,
+                alignItems: 'stretch',
+              }}
+            >
+              <Paper
+                sx={{
+                  p: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.default',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>
+                  Личная скидка (ежемес.)
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 110 }}>
+                    <InputLabel>Тип</InputLabel>
+                    <Select
+                      label="Тип"
+                      value={editingClient.personalDiscountType || ''}
+                      onChange={(e) => {
+                        const type = (e.target.value || null) as 'percent' | 'fixed' | null;
+                        setEditingClient({
+                          ...editingClient,
+                          personalDiscountType: type,
+                          personalDiscountValue: type
+                            ? editingClient.personalDiscountValue ?? 0
+                            : null,
+                        });
+                      }}
+                    >
+                      <MenuItem value="">Нет</MenuItem>
+                      <MenuItem value="percent">%</MenuItem>
+                      <MenuItem value="fixed">₽</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="Значение"
+                    type="number"
+                    disabled={!editingClient.personalDiscountType}
+                    value={
+                      editingClient.personalDiscountValue != null
+                        ? editingClient.personalDiscountValue
+                        : ''
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? null : Number(e.target.value);
+                      setEditingClient({
+                        ...editingClient,
+                        personalDiscountValue: v != null && Number.isFinite(v) ? v : null,
+                      });
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          {editingClient.personalDiscountType === 'percent' ? '%' : '₽'}
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ width: 140 }}
+                  />
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={async () => {
+                      try {
+                        const type = editingClient.personalDiscountType || null;
+                        const updated = await apiService.updateClient(editingClient.id, {
+                          personalDiscountType: type,
+                          personalDiscountValue: type ? editingClient.personalDiscountValue ?? 0 : null,
+                        });
+                        setEditingClient({ ...editingClient, ...updated });
+                        await fetchClients();
+                      } catch (err: any) {
+                        setError(err.response?.data?.error || 'Не удалось сохранить скидку');
+                      }
+                    }}
+                  >
+                    Сохранить
+                  </Button>
+                </Box>
+              </Paper>
+              <Paper
+                sx={{
+                  p: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.default',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Payment color={editingClient.membershipFeePaid ? 'success' : 'disabled'} />
@@ -2318,6 +2423,18 @@ const Clients: React.FC = () => {
                 setTimeout(() => { isCancellingRef.current = false; }, 100);
               }}
             />
+          )}
+          {(user?.role === 'OWNER' || user?.role === 'ADMIN') && editingClient && (
+            <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Button
+                color="error"
+                variant="outlined"
+                fullWidth
+                onClick={() => handleDeleteClient(editingClient.id)}
+              >
+                Удалить клиента
+              </Button>
+            </Box>
           )}
         </DialogContent>
       </Dialog>

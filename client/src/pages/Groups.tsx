@@ -46,6 +46,12 @@ import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
+import {
+  GROUP_SALARY_SCHEME_OPTIONS,
+  salaryRateFieldLabel,
+  salarySchemeHint,
+  normalizeSalaryScheme,
+} from '../utils/salarySchemes';
 
 const Groups: React.FC = () => {
   const navigate = useNavigate();
@@ -141,6 +147,8 @@ const Groups: React.FC = () => {
     monthlyPaymentAmount: '',
     paymentDueDay: '',
     createPaymentsImmediately: false,
+    salaryScheme: 'per_training_person' as string,
+    salaryRate: '',
   });
 
   const [formData, setFormData] = useState(emptyGroupForm);
@@ -227,7 +235,8 @@ const Groups: React.FC = () => {
         isMonthlyPayment: formData.isMonthlyPayment,
         monthlyPaymentAmount: formData.monthlyPaymentAmount ? parseFloat(formData.monthlyPaymentAmount) : undefined,
         paymentDueDay: formData.paymentDueDay ? parseInt(formData.paymentDueDay) : undefined,
-        // Обнуляем legacy-поля зарплаты на группе — схема берётся из карточки сотрудника
+        salaryScheme: formData.salaryScheme || 'per_training_person',
+        salaryRate: formData.salaryRate !== '' ? parseFloat(formData.salaryRate) : null,
         trainerSalaryType: null,
         trainerMonthlyPercentage: null,
         trainerPerVisitPercentage: null,
@@ -354,7 +363,13 @@ const Groups: React.FC = () => {
     }
 
     try {
-      const createdTrainer = await apiService.createTrainer(trainerFormData);
+      const createdTrainer = await apiService.createTrainer({
+        ...trainerFormData,
+        salaryScheme: 'per_training_person',
+        salaryRate: 0,
+        salaryType: 'per_training_person',
+        salaryAmount: 0,
+      });
       // Обновляем список тренеров
       const trainersRes = await apiService.getTrainers();
       setTrainers(trainersRes.data);
@@ -452,6 +467,10 @@ const Groups: React.FC = () => {
       monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
       paymentDueDay: group.paymentDueDay?.toString() || '',
       createPaymentsImmediately: false,
+      salaryScheme: group.salaryScheme
+        ? normalizeSalaryScheme(group.salaryScheme)
+        : 'per_training_person',
+      salaryRate: group.salaryRate != null ? String(group.salaryRate) : '',
     });
     setEditDialog(true);
   };
@@ -469,6 +488,8 @@ const Groups: React.FC = () => {
         isMonthlyPayment: formData.isMonthlyPayment,
         monthlyPaymentAmount: formData.monthlyPaymentAmount ? parseFloat(formData.monthlyPaymentAmount) : undefined,
         paymentDueDay: formData.paymentDueDay ? parseInt(formData.paymentDueDay) : undefined,
+        salaryScheme: formData.salaryScheme || 'per_training_person',
+        salaryRate: formData.salaryRate !== '' ? parseFloat(formData.salaryRate) : null,
         trainerSalaryType: null,
         trainerMonthlyPercentage: null,
         trainerPerVisitPercentage: null,
@@ -1200,6 +1221,10 @@ const Groups: React.FC = () => {
                               monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
                               paymentDueDay: group.paymentDueDay?.toString() || '',
                               createPaymentsImmediately: false,
+                              salaryScheme: group.salaryScheme
+                                ? normalizeSalaryScheme(group.salaryScheme)
+                                : 'per_training_person',
+                              salaryRate: group.salaryRate != null ? String(group.salaryRate) : '',
                             });
                             setEditDialog(true);
                           }}
@@ -1525,6 +1550,39 @@ const Groups: React.FC = () => {
               </>
             )}
             
+            {/* Зарплата тренера по группе */}
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Зарплата тренера</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Тип зарплаты</InputLabel>
+                <Select
+                  value={formData.salaryScheme}
+                  label="Тип зарплаты"
+                  onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
+                >
+                  {GROUP_SALARY_SCHEME_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label={salaryRateFieldLabel(formData.salaryScheme)}
+                value={formData.salaryRate}
+                onChange={(e) => handleInputChange('salaryRate', e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText={salarySchemeHint(formData.salaryScheme)}
+              />
+            </Grid>
+
             {/* Выбор участников группы */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
@@ -1883,6 +1941,39 @@ const Groups: React.FC = () => {
                 )}
               </>
             )}
+
+            {/* Зарплата тренера по группе */}
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Зарплата тренера</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Тип зарплаты</InputLabel>
+                <Select
+                  value={formData.salaryScheme}
+                  label="Тип зарплаты"
+                  onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
+                >
+                  {GROUP_SALARY_SCHEME_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label={salaryRateFieldLabel(formData.salaryScheme)}
+                value={formData.salaryRate}
+                onChange={(e) => handleInputChange('salaryRate', e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText={salarySchemeHint(formData.salaryScheme)}
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -2641,35 +2732,10 @@ const Groups: React.FC = () => {
                 onChange={(e) => setTrainerFormData(prev => ({ ...prev, specialization: e.target.value }))}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Тип зарплаты</InputLabel>
-                <Select
-                  value={trainerFormData.salaryType}
-                  onChange={(e) => setTrainerFormData(prev => ({ ...prev, salaryType: e.target.value }))}
-                >
-                  <MenuItem value="fixed">Фиксированная плата</MenuItem>
-                  <MenuItem value="percentage">Процент от суммы оплаты</MenuItem>
-                  <MenuItem value="per_student">Оплата за каждого ученика</MenuItem>
-                  <MenuItem value="per_training">Оплата за тренировку</MenuItem>
-                  <MenuItem value="individual">Индивидуальное занятие</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label={
-                  trainerFormData.salaryType === 'percentage' ? 'Процент (%)' :
-                  trainerFormData.salaryType === 'per_student' ? 'Цена за ученика (₽)' :
-                  trainerFormData.salaryType === 'fixed' ? 'Фиксированная сумма (₽)' :
-                  trainerFormData.salaryType === 'per_training' ? 'Цена за тренировку (₽)' :
-                  'Размер зарплаты'
-                }
-                type="number"
-                value={trainerFormData.salaryAmount}
-                onChange={(e) => setTrainerFormData(prev => ({ ...prev, salaryAmount: e.target.value }))}
-              />
+            <Grid item xs={12}>
+              <Typography variant="caption" color="text.secondary">
+                Тип и ставка зарплаты задаются в карточке группы после назначения тренера.
+              </Typography>
             </Grid>
           </Grid>
         </DialogContent>
