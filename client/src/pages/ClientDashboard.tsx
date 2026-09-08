@@ -4,7 +4,8 @@ import { HourglassEmpty, SportsMartialArtsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { ClientDashboardData, ClientDashboardEvent } from '../types';
-import { clearAllAuthStorage, extractApiError, CLIENT_APPROVED_KEY } from '../utils/authSession';
+import { extractApiError, CLIENT_APPROVED_KEY } from '../utils/authSession';
+import { logoutCurrentAccount, prepareAddAccount } from '../utils/accountSwitcher';
 import AthleteCard from '../components/athlete/AthleteCard';
 import ClientCalendarPlan from '../components/client/ClientCalendarPlan';
 import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
@@ -96,7 +97,7 @@ const ClientDashboard: React.FC = () => {
         if (cancelled) return;
         const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
         if (status === 401) {
-          clearAllAuthStorage();
+          logoutCurrentAccount();
           navigate('/auth', { replace: true });
           return;
         }
@@ -112,7 +113,12 @@ const ClientDashboard: React.FC = () => {
   }, [navigate, switchClientId]);
 
   const handleLogout = () => {
-    clearAllAuthStorage();
+    logoutCurrentAccount();
+    navigate('/auth', { replace: true });
+  };
+
+  const handleAddAccount = () => {
+    prepareAddAccount();
     navigate('/auth', { replace: true });
   };
 
@@ -476,6 +482,7 @@ const ClientDashboard: React.FC = () => {
       userName={data.viewerName}
       userRole={data.userType === 'parent' ? 'Родитель' : 'Ученик'}
       onLogout={handleLogout}
+      onAddAccount={handleAddAccount}
       hideSearch
     >
       {pending ? (

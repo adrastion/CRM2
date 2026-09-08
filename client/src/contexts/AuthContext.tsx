@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { User, Tenant, AuthResponse } from '../types';
 import { apiService } from '../services/api';
+import { upsertFromActiveStorage } from '../utils/accountSwitcher';
 
 interface AuthState {
   user: User | null;
@@ -129,7 +130,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('token', response.token);
       localStorage.setItem('user', JSON.stringify(response.user));
       localStorage.setItem('tenant', JSON.stringify(response.tenant));
-      
+      upsertFromActiveStorage();
+
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {
@@ -154,7 +156,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('token', response.token);
       localStorage.setItem('user', JSON.stringify(response.user));
       localStorage.setItem('tenant', JSON.stringify(response.tenant));
-      
+      upsertFromActiveStorage();
+
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {

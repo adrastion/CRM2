@@ -9,7 +9,7 @@ import DashboardShell, {
 } from '../dashboard/DashboardShell';
 import TelegramBanner from '../TelegramBanner';
 import SalaryPayoutBanner from '../SalaryPayoutBanner';
-import { clearAllAuthStorage } from '../../utils/authSession';
+import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwitcher';
 import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
 
@@ -101,7 +101,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
 
   const handleLogout = () => {
     logout();
-    clearAllAuthStorage();
+    logoutCurrentAccount();
+    navigate('/auth', { replace: true });
+  };
+
+  const handleAddAccount = () => {
+    logout();
+    prepareAddAccount();
     navigate('/auth', { replace: true });
   };
 
@@ -150,6 +156,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         userName={userName || tenant?.name || 'Профиль'}
         userRole={ROLE_LABELS[user?.role || ''] || tenant?.name || ''}
         onLogout={handleLogout}
+        onAddAccount={handleAddAccount}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         searchResults={searchResults}

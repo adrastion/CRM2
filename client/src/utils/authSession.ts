@@ -1,4 +1,5 @@
 import { UnifiedSession } from '../types';
+import { upsertSavedAccountFromSession } from './accountSwitcher';
 
 /**
  * Флаг подтверждения клиентского аккаунта школой.
@@ -20,6 +21,7 @@ export function isClientApproved(): boolean {
  * В приложении шесть параллельных наборов ключей, и axios-интерцептор выбирает
  * токен по фиксированному приоритету. Поэтому перед записью новой сессии нужно
  * убрать все старые, иначе запросы уйдут от «чужого» аккаунта.
+ * Реестр сохранённых аккаунтов (`savedAccounts`) не трогаем.
  */
 export function clearAllAuthStorage(): void {
   const keys = [
@@ -55,12 +57,15 @@ export function clearAllAuthStorage(): void {
 export function applyUnifiedSession(session: UnifiedSession): string {
   clearAllAuthStorage();
 
+  let destination = '/auth';
+
   switch (session.accountType) {
     case 'TENANT_USER':
       localStorage.setItem('token', session.token);
       localStorage.setItem('user', JSON.stringify(session.user));
       localStorage.setItem('tenant', JSON.stringify(session.tenant));
-      return '/dashboard';
+      destination = '/dashboard';
+      break;
 
     case 'CLIENT':
       localStorage.setItem('clientToken', session.token);
@@ -68,7 +73,8 @@ export function applyUnifiedSession(session: UnifiedSession): string {
       localStorage.setItem('clientTenant', JSON.stringify(session.tenant));
       localStorage.setItem('userType', 'client');
       localStorage.setItem(CLIENT_APPROVED_KEY, String(Boolean(session.isAccountApproved)));
-      return '/client/dashboard';
+      destination = '/client/dashboard';
+      break;
 
     case 'PARENT':
       localStorage.setItem('clientToken', session.token);
@@ -76,35 +82,44 @@ export function applyUnifiedSession(session: UnifiedSession): string {
       localStorage.setItem('clientTenant', JSON.stringify(session.tenant));
       localStorage.setItem('userType', 'parent');
       localStorage.setItem(CLIENT_APPROVED_KEY, String(Boolean(session.isAccountApproved)));
-      return '/client/dashboard';
+      destination = '/client/dashboard';
+      break;
 
     case 'MARKETER':
       localStorage.setItem('marketerToken', session.token);
       localStorage.setItem('marketer', JSON.stringify(session.marketer));
       localStorage.setItem('marketerTenant', JSON.stringify(session.tenant));
-      return '/marketer/panel';
+      destination = '/marketer/panel';
+      break;
 
     case 'PROMO_CODE_ADMIN':
       localStorage.setItem('promoCodeAdminToken', session.token);
       localStorage.setItem('promoCodeAdmin', JSON.stringify(session.admin));
       localStorage.setItem('promoCodeAdminTenant', JSON.stringify(session.tenant));
-      return '/admin/promo-codes';
+      destination = '/admin/promo-codes';
+      break;
 
     case 'SUPER_ADMIN':
       localStorage.setItem('superAdminToken', session.token);
       localStorage.setItem('superAdmin', JSON.stringify(session.superAdmin));
-      return '/admin/dashboard';
+      destination = '/admin/dashboard';
+      break;
 
     case 'PLATFORM_STAFF':
       localStorage.setItem('platformStaffToken', session.token);
       localStorage.setItem('platformStaff', JSON.stringify(session.staff));
-      return session.staff?.mustChangePassword
+      destination = session.staff?.mustChangePassword
         ? '/platform-staff/change-password'
         : '/platform-staff/desk';
+      break;
 
     default:
-      return '/auth';
+      destination = '/auth';
+      break;
   }
+
+  upsertSavedAccountFromSession(session);
+  return destination;
 }
 
 /** Есть ли хоть одна активная сессия. */

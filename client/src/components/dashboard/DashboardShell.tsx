@@ -1,9 +1,35 @@
 import React from 'react';
-import { Box, IconButton, InputBase, Typography, Menu, MenuItem, ListItemIcon } from '@mui/material';
-import { KeyboardArrowDown, Logout, MenuOutlined, NotificationsNone, Search as SearchIcon, Close } from '@mui/icons-material';
+import {
+  Box,
+  IconButton,
+  InputBase,
+  Typography,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+} from '@mui/material';
+import {
+  KeyboardArrowDown,
+  Logout,
+  MenuOutlined,
+  NotificationsNone,
+  Search as SearchIcon,
+  Close,
+  Check,
+  PersonAddAlt1,
+} from '@mui/icons-material';
 import { colors, radii, sizes, typography } from '../../theme/tokens';
 import DesignIcon from '../common/DesignIcon';
 import { NavIconName } from '../../assets/icons/registry';
+import {
+  getActiveAccountId,
+  listSavedAccounts,
+  switchToAccount,
+  upsertFromActiveStorage,
+  type SavedAccountSlot,
+} from '../../utils/accountSwitcher';
 
 export interface ShellNavItem {
   key: string;
@@ -46,6 +72,8 @@ interface DashboardShellProps {
   /** Количество непрочитанных уведомлений. */
   notifications?: number;
   onLogout: () => void;
+  /** Добавить ещё один аккаунт (очистить активную сессию, оставить реестр). */
+  onAddAccount?: () => void;
   /** Поисковая строка отключена (например, в режиме ожидания подтверждения). */
   searchDisabled?: boolean;
   /** Полностью скрыть поиск (ЛК клиента). */
@@ -75,6 +103,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   userRole,
   notifications = 0,
   onLogout,
+  onAddAccount,
   searchDisabled,
   hideSearch = false,
   searchMaxWidth,
@@ -89,8 +118,18 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false);
+  const [savedAccounts, setSavedAccounts] = React.useState<SavedAccountSlot[]>([]);
+  const [activeAccountId, setActiveAccountId] = React.useState<string | null>(null);
   const searchWrapRef = React.useRef<HTMLDivElement | null>(null);
   const mobileSearchRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!menuAnchor) return;
+    // Подхватить текущую сессию, если пользователь залогинен до появления реестра
+    upsertFromActiveStorage();
+    setSavedAccounts(listSavedAccounts());
+    setActiveAccountId(getActiveAccountId());
+  }, [menuAnchor]);
 
   React.useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -253,7 +292,11 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         component="header"
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: 'auto 1fr auto', sm: '1fr auto 1fr' },
+          // Без поиска (ЛК клиента) — только логотип и профиль, иначе профиль
+          // попадает во вторую колонку 1fr auto 1fr и оказывается по центру.
+          gridTemplateColumns: hideSearch
+            ? '1fr auto'
+            : { xs: 'auto 1fr auto', sm: '1fr auto 1fr' },
           alignItems: 'center',
           columnGap: { xs: 1, md: 2 },
           px: { xs: 2, md: 3 },
@@ -500,7 +543,49 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             onClose={() => setMenuAnchor(null)}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            PaperProps={{ sx: { minWidth: 260 } }}
           >
+            {savedAccounts.map((account) => {
+              const isActive = account.id === activeAccountId;
+              return (
+                <MenuItem
+                  key={account.id}
+                  selected={isActive}
+                  disabled={isActive}
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    if (!isActive) switchToAccount(account.id);
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    {isActive ? <Check fontSize="small" /> : null}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={account.displayName}
+                    secondary={account.subtitle || undefined}
+                    primaryTypographyProps={{
+                      noWrap: true,
+                      sx: { maxWidth: 200, fontWeight: isActive ? 700 : 500 },
+                    }}
+                    secondaryTypographyProps={{ noWrap: true, sx: { maxWidth: 200 } }}
+                  />
+                </MenuItem>
+              );
+            })}
+            {savedAccounts.length > 0 && <Divider />}
+            {onAddAccount && (
+              <MenuItem
+                onClick={() => {
+                  setMenuAnchor(null);
+                  onAddAccount();
+                }}
+              >
+                <ListItemIcon>
+                  <PersonAddAlt1 fontSize="small" />
+                </ListItemIcon>
+                Добавить аккаунт
+              </MenuItem>
+            )}
             <MenuItem
               onClick={() => {
                 setMenuAnchor(null);
