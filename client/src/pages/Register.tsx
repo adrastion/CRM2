@@ -16,6 +16,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { RegisterForm } from '../types';
 import PublicFooter from '../components/PublicFooter';
+import { normalizePhone, validatePhone } from '../utils/phone';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState<RegisterForm>({
@@ -87,9 +88,9 @@ const Register: React.FC = () => {
 
     // Validate phone (if provided)
     if (formData.phone && formData.phone.trim() !== '') {
-      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-      if (!phoneRegex.test(formData.phone.replace(/\s/g, ''))) {
-        errors.phone = 'Введите корректный номер телефона (например: +79991234567)';
+      const phoneError = validatePhone(formData.phone);
+      if (phoneError) {
+        errors.phone = phoneError;
       }
     }
 
@@ -113,10 +114,10 @@ const Register: React.FC = () => {
     setFieldErrors({});
 
     try {
-      // Clean phone number (remove spaces)
+      // Нормализуем телефон к +7XXXXXXXXXX
       const cleanedData = {
         ...formData,
-        phone: formData.phone ? formData.phone.replace(/\s/g, '') : undefined,
+        phone: formData.phone?.trim() ? normalizePhone(formData.phone) : undefined,
         tenantName: formData.tenantName.trim(),
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
@@ -254,7 +255,7 @@ const Register: React.FC = () => {
                   disabled={isLoading}
                   placeholder="+79991234567"
                   error={!!fieldErrors.phone}
-                  helperText={fieldErrors.phone || "Необязательно. Формат: +79991234567"}
+                  helperText={fieldErrors.phone || 'Необязательно. Например: +7 999 123-45-67 или 8 (999) 123-45-67'}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>

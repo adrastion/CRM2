@@ -2,6 +2,10 @@
  * Validation utilities for form fields
  */
 
+import { validatePhone as validatePhoneNormalized, normalizePhone } from './phone';
+
+export { normalizePhone };
+
 export interface ValidationError {
   field: string;
   message: string;
@@ -27,21 +31,10 @@ export const validateEmail = (email: string): string | null => {
 };
 
 /**
- * Validate phone number
+ * Validate phone number (принимает маски и 8…)
  */
 export const validatePhone = (phone: string, required: boolean = false): string | null => {
-  if (!phone || phone.trim() === '') {
-    if (required) {
-      return 'Телефон обязателен для заполнения';
-    }
-    return null; // Phone is optional
-  }
-  const cleanedPhone = phone.replace(/\s/g, '');
-  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-  if (!phoneRegex.test(cleanedPhone)) {
-    return 'Введите корректный номер телефона (например: +79991234567)';
-  }
-  return null;
+  return validatePhoneNormalized(phone, required);
 };
 
 /**

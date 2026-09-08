@@ -2,6 +2,8 @@
  * Real-time client form validation
  */
 
+import { validatePhone } from './phone';
+
 export interface ClientFormData {
   firstName: string;
   lastName: string;
@@ -71,14 +73,7 @@ export const validateField = (
       return null;
 
     case 'phone':
-      if (value && value.trim() !== '') {
-        const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-        const cleanedPhone = value.replace(/\s/g, '');
-        if (!phoneRegex.test(cleanedPhone)) {
-          return 'Введите корректный номер телефона (например: +79991234567)';
-        }
-      }
-      return null;
+      return validatePhone(value || '', false);
 
     case 'dateOfBirth':
       if (value) {
@@ -118,10 +113,9 @@ export const validateField = (
 
     case 'parent_phone':
       if (value && value.trim() !== '') {
-        const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-        const cleanedPhone = value.replace(/\s/g, '');
-        if (!phoneRegex.test(cleanedPhone)) {
-          return `Телефон родителя ${(parentIndex ?? 0) + 1}: Введите корректный номер телефона`;
+        const phoneError = validatePhone(value, false);
+        if (phoneError) {
+          return `Телефон родителя ${(parentIndex ?? 0) + 1}: ${phoneError}`;
         }
       }
       return null;

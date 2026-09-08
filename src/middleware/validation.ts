@@ -1,6 +1,31 @@
 import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
 import { ApiResponse } from '../types';
+import { normalizePhone } from '../utils/identifier';
+
+/**
+ * Телефон: принимает маскированный ввод (8 (999) 123-45-67), пишет в body +7XXXXXXXXXX.
+ */
+export const phoneSchema = Joi.string()
+  .allow('', null)
+  .optional()
+  .custom((value, helpers) => {
+    if (value == null || value === '') return value;
+    const normalized = normalizePhone(String(value));
+    if (/^\+7\d{10}$/.test(normalized)) return normalized;
+    // Прочие международные E.164 после нормализации
+    if (/^\+[1-9]\d{7,14}$/.test(normalized) && onlyDigitsLen(normalized) >= 8) {
+      return normalized;
+    }
+    return helpers.error('any.invalid');
+  })
+  .messages({
+    'any.invalid': 'Введите корректный номер телефона (например: +7 999 123-45-67 или 8 (999) 123-45-67)',
+  });
+
+function onlyDigitsLen(s: string): number {
+  return (s.match(/\d/g) || []).length;
+}
 
 /**
  * Validation middleware factory
@@ -69,7 +94,7 @@ export const commonSchemas = {
   id: Joi.string().required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+  phone: phoneSchema,
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(10000).default(10),
@@ -91,7 +116,7 @@ export const clientSchemas = {
     lastName: Joi.string().min(2).max(50).required(),
     middleName: Joi.string().min(2).max(50).optional().allow('', null),
     email: Joi.string().email().optional().allow('', null),
-    phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+    phone: phoneSchema,
     dateOfBirth: Joi.alternatives().try(
       Joi.date().max('now'),
       Joi.string().allow('', null)
@@ -121,7 +146,7 @@ export const clientSchemas = {
     parents: Joi.array().items(
       Joi.object({
         fullName: Joi.string().min(2).max(100).required(),
-        phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+        phone: phoneSchema,
         email: Joi.string().email().optional().allow('', null),
         workplace: Joi.string().max(200).optional().allow('', null),
         workplaceContact: Joi.string().max(200).optional().allow('', null),
@@ -135,7 +160,7 @@ export const clientSchemas = {
     lastName: Joi.string().min(2).max(50).optional(),
     middleName: Joi.string().min(2).max(50).optional().allow('', null),
     email: Joi.string().email().optional().allow('', null),
-    phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+    phone: phoneSchema,
     dateOfBirth: Joi.alternatives().try(
       Joi.date().max('now'),
       Joi.string().allow('', null)
@@ -165,7 +190,7 @@ export const clientSchemas = {
     parents: Joi.array().items(
       Joi.object({
         fullName: Joi.string().min(2).max(100).required(),
-        phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().allow('', null),
+        phone: phoneSchema,
         email: Joi.string().email().optional().allow('', null),
         workplace: Joi.string().max(200).optional().allow('', null),
         workplaceContact: Joi.string().max(200).optional().allow('', null),

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { AuthService } from '../services/authService';
 import { asyncHandler } from '../middleware/errorHandler';
-import { validate, validateQuery } from '../middleware/validation';
+import { validate, validateQuery, phoneSchema } from '../middleware/validation';
 import Joi from 'joi';
 
 /** Без проверки списка TLD — иначе Joi отклоняет служебные адреса (*.local и т.п.). */
@@ -15,7 +15,7 @@ const registerSchema = Joi.object({
   password: Joi.string().min(6).required(),
   firstName: Joi.string().min(2).max(50).required(),
   lastName: Joi.string().min(2).max(50).required(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional()
+  phone: phoneSchema
 });
 
 const loginSchema = Joi.object({
@@ -39,7 +39,7 @@ const createUserSchema = Joi.object({
   firstName: Joi.string().min(2).max(50).required(),
   lastName: Joi.string().min(2).max(50).required(),
   middleName: Joi.string().max(50).allow('', null).optional(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).allow('', null).optional(),
+  phone: phoneSchema,
   role: Joi.string().valid('ADMIN', 'TRAINER').required()
 });
 
@@ -60,7 +60,7 @@ const newPasswordSchema = Joi.object({
 const updateProfileSchema = Joi.object({
   firstName: Joi.string().min(2).max(50).optional(),
   lastName: Joi.string().min(2).max(50).optional(),
-  phone: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional()
+  phone: phoneSchema
 });
 
 const changeEmailSchema = Joi.object({
