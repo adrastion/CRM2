@@ -67,6 +67,8 @@ model TenantSettings {
   membershipFeeResetDate   String?
   // День месяца выплаты зарплаты сотрудникам (1–28)
   salaryPayoutDay          Int      @default(25)
+  /// Сколько минут после отправки можно редактировать сообщение в чатах школы (0 = без ограничения)
+  chatMessageEditLimitMinutes Int    @default(15)
   // Настройки личного кабинета клиента
   clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой

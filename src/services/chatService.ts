@@ -871,7 +871,30 @@ export async function getMessages(
     threadId,
     messages: enriched.reverse(),
     hasMore: messages.length === limit,
+    chatMessageEditLimitMinutes: await resolveChatEditLimitMinutes(thread.tenantId),
   };
+}
+
+/** 0 = без ограничения; платформенные чаты без tenant — без ограничения. */
+async function resolveChatEditLimitMinutes(tenantId: string | null): Promise<number> {
+  if (!tenantId) return 0;
+  const settings = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: { chatMessageEditLimitMinutes: true },
+  });
+  const minutes = settings?.chatMessageEditLimitMinutes;
+  if (minutes == null || minutes < 0) return 15;
+  return minutes;
+}
+
+function assertMessageEditable(createdAt: Date, limitMinutes: number): void {
+  if (!limitMinutes || limitMinutes <= 0) return;
+  const deadline = createdAt.getTime() + limitMinutes * 60_000;
+  if (Date.now() > deadline) {
+    throw forbidden(
+      `Время редактирования истекло (доступно ${limitMinutes} мин. после отправки)`
+    );
+  }
 }
 
 export type CreatedMessagePayload = {
@@ -1095,6 +1118,9 @@ export async function updateMessage(
   if (!isMessageAuthor(actor, existing)) {
     throw forbidden('Можно редактировать только свои сообщения');
   }
+
+  const editLimitMinutes = await resolveChatEditLimitMinutes(thread.tenantId);
+  assertMessageEditable(existing.createdAt, editLimitMinutes);
 
   const editedAt = new Date();
   const message = await prisma.chatMessage.update({

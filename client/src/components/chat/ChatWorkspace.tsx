@@ -88,6 +88,12 @@ const EMOJI_LIST = [
   '🏆', '🥇', '⚽', '🏀', '🥊', '🏋️', '🏃', '🎯', '📌', '💬',
 ];
 
+/** 0 = без ограничения */
+function isWithinEditWindow(createdAt: string, limitMinutes: number, nowMs: number): boolean {
+  if (!limitMinutes || limitMinutes <= 0) return true;
+  return nowMs <= new Date(createdAt).getTime() + limitMinutes * 60_000;
+}
+
 function PresenceDot({ status }: { status: PresenceStatus }) {
   return (
     <Box
@@ -136,6 +142,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLimitMinutes, setEditLimitMinutes] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [search, setSearch] = useState('');
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +171,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  useEffect(() => {
+    if (mode === 'platform') {
+      setEditLimitMinutes(0);
+      return;
+    }
+    const timer = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [mode]);
 
   useEffect(() => {
     selectedRef.current = threads.find((t) => t.threadKey === selectedKey) || null;
@@ -209,6 +226,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
             ? await apiService.clientGetChatMessages(threadId!)
             : await apiService.getPlatformChatMessages(threadId!);
       setMessages(data.messages || []);
+      if (typeof data.chatMessageEditLimitMinutes === 'number') {
+        setEditLimitMinutes(data.chatMessageEditLimitMinutes);
+      } else if (mode === 'platform') {
+        setEditLimitMinutes(0);
+      }
       if (mode === 'staff') await apiService.markChatRead(threadId!);
       else if (mode === 'client') await apiService.clientMarkChatRead(threadId!);
       else await apiService.markPlatformChatRead(threadId!);
@@ -309,6 +331,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (!editingId) return;
+    const msg = messages.find((m) => m.id === editingId);
+    if (msg && !isWithinEditWindow(msg.createdAt, editLimitMinutes, nowTick)) {
+      cancelEdit();
+      setError(
+        editLimitMinutes > 0
+          ? `Время редактирования истекло (${editLimitMinutes} мин.)`
+          : 'Редактирование недоступно'
+      );
+    }
+  }, [nowTick, editingId, messages, editLimitMinutes]);
+
   const isOwn = (m: ChatMessageItem) => {
     if (self.kind === 'USER') return m.authorType === 'USER' && m.authorUserId === self.id;
     if (self.kind === 'CLIENT') return m.authorType === 'CLIENT' && m.authorClientId === self.id;
@@ -320,6 +355,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
   };
 
   const startEdit = (m: ChatMessageItem) => {
+    if (!isWithinEditWindow(m.createdAt, editLimitMinutes, Date.now())) {
+      setError(
+        editLimitMinutes > 0
+          ? `Редактирование доступно ${editLimitMinutes} мин. после отправки`
+          : 'Редактирование недоступно'
+      );
+      return;
+    }
     setEditingId(m.id);
     setDraft(m.body);
     setTimeout(() => inputRef.current?.focus(), 0);
@@ -536,6 +579,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
               ) : (
                 messages.map((m) => {
                   const own = isOwn(m);
+                  const canEdit =
+                    own && isWithinEditWindow(m.createdAt, editLimitMinutes, nowTick);
                   return (
                     <Box
                       key={m.id}
@@ -575,7 +620,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                           gap={0.5}
                           mt={0.5}
                         >
-                          {own && (
+                          {canEdit && (
                             <IconButton
                               size="small"
                               onClick={() => startEdit(m)}

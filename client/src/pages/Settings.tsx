@@ -82,6 +82,7 @@ const Settings: React.FC = () => {
   const [salaryPayoutDay, setSalaryPayoutDay] = useState<number>(25);
   const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
   const [clientCanViewAllBranches, setClientCanViewAllBranches] = useState<boolean>(false);
+  const [chatMessageEditLimitMinutes, setChatMessageEditLimitMinutes] = useState<number>(15);
   
   // Смена email
   const [newEmail, setNewEmail] = useState('');
@@ -160,6 +161,11 @@ const Settings: React.FC = () => {
           setSalaryPayoutDay(response.data.salaryPayoutDay || 25);
           setClientCanViewAllTrainers(response.data.clientCanViewAllTrainers || false);
           setClientCanViewAllBranches(response.data.clientCanViewAllBranches || false);
+          setChatMessageEditLimitMinutes(
+            typeof response.data.chatMessageEditLimitMinutes === 'number'
+              ? response.data.chatMessageEditLimitMinutes
+              : 15
+          );
         }
         
         // Загрузить настройки видимых вкладок
@@ -372,6 +378,7 @@ const Settings: React.FC = () => {
           ? {
               membershipFeeResetDate: membershipFeeResetDate || '12-01',
               salaryPayoutDay,
+              chatMessageEditLimitMinutes,
             }
           : {}),
         clientCanViewAllTrainers,
@@ -657,6 +664,34 @@ const Settings: React.FC = () => {
                       helperText="Формат: ММ-ДД (например, 12-01 для 1 декабря). По умолчанию: 1 декабря"
                       sx={{ mb: 2 }}
                     />
+                  </Box>
+                )}
+                {canEditFinanceSettings && (
+                  <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                      Редактирование сообщений в чатах
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Сколько времени после отправки сотрудники, клиенты и родители могут править свои сообщения.
+                      Платформенные чаты супер-админов этим лимитом не ограничиваются.
+                    </Typography>
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel id="chat-edit-limit-label">Лимит времени</InputLabel>
+                      <Select
+                        labelId="chat-edit-limit-label"
+                        label="Лимит времени"
+                        value={chatMessageEditLimitMinutes}
+                        onChange={(e) => setChatMessageEditLimitMinutes(Number(e.target.value))}
+                      >
+                        <MenuItem value={5}>5 минут</MenuItem>
+                        <MenuItem value={15}>15 минут</MenuItem>
+                        <MenuItem value={30}>30 минут</MenuItem>
+                        <MenuItem value={60}>1 час</MenuItem>
+                        <MenuItem value={180}>3 часа</MenuItem>
+                        <MenuItem value={1440}>24 часа</MenuItem>
+                        <MenuItem value={0}>Без ограничения</MenuItem>
+                      </Select>
+                    </FormControl>
                   </Box>
                 )}
                 {/* Настройки личного кабинета клиента */}

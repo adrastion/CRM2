@@ -43,7 +43,14 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
  */
 export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId, user } = req;
-  const { defaultTrainingDuration, membershipFeeResetDate, clientCanViewAllTrainers, clientCanViewAllBranches, salaryPayoutDay } = req.body;
+  const {
+    defaultTrainingDuration,
+    membershipFeeResetDate,
+    clientCanViewAllTrainers,
+    clientCanViewAllBranches,
+    salaryPayoutDay,
+    chatMessageEditLimitMinutes,
+  } = req.body;
 
   if (!tenantId) {
     res.status(400).json({
@@ -56,11 +63,12 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   const isOwner = user?.role === 'OWNER';
   const wantsFinanceSettings =
     salaryPayoutDay !== undefined || membershipFeeResetDate !== undefined;
+  const wantsChatEditLimit = chatMessageEditLimitMinutes !== undefined;
 
-  if (wantsFinanceSettings && !isOwner) {
+  if ((wantsFinanceSettings || wantsChatEditLimit) && !isOwner) {
     res.status(403).json({
       success: false,
-      error: 'Только владелец может менять день выплаты зарплаты и дату сброса членских взносов'
+      error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов и лимит редактирования сообщений'
     });
     return;
   }
@@ -87,6 +95,19 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     }
   }
 
+  let parsedChatEditLimit: number | undefined;
+  if (isOwner && wantsChatEditLimit) {
+    const minutes = Number(chatMessageEditLimitMinutes);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 10080) {
+      res.status(400).json({
+        success: false,
+        error: 'Лимит редактирования: целое число от 0 (без ограничения) до 10080 минут (7 суток)'
+      });
+      return;
+    }
+    parsedChatEditLimit = minutes;
+  }
+
   // Валидация даты сброса (формат MM-DD)
   if (isOwner && membershipFeeResetDate !== undefined && membershipFeeResetDate !== null && membershipFeeResetDate !== '') {
     const dateRegex = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
@@ -108,6 +129,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : undefined,
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : undefined,
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
+      chatMessageEditLimitMinutes:
+        parsedChatEditLimit !== undefined ? parsedChatEditLimit : undefined,
     },
     create: {
       tenantId,
@@ -116,6 +139,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : false,
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false,
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
+      chatMessageEditLimitMinutes: parsedChatEditLimit !== undefined ? parsedChatEditLimit : 15,
     }
   });
 
