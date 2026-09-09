@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -11,6 +11,10 @@ import {
   FormControl,
   IconButton,
   InputLabel,
+  List,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -23,10 +27,25 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add, Delete, Edit, NoteAlt } from '@mui/icons-material';
+import {
+  Add,
+  AttachFile,
+  Delete,
+  Download,
+  Edit,
+  NoteAlt,
+} from '@mui/icons-material';
 import { apiService } from '../services/api';
 
 export type DevNoteStatus = 'IDEA' | 'IN_PROGRESS' | 'DONE';
+
+interface DevNoteAttachment {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
 
 interface DevNote {
   id: string;
@@ -36,6 +55,7 @@ interface DevNote {
   createdAt: string;
   updatedAt: string;
   createdBy?: { id: string; firstName: string; lastName: string; email: string };
+  attachments?: DevNoteAttachment[];
 }
 
 const STATUS_LABELS: Record<DevNoteStatus, string> = {
@@ -49,6 +69,21 @@ const STATUS_COLORS: Record<DevNoteStatus, 'default' | 'info' | 'warning' | 'suc
   IN_PROGRESS: 'warning',
   DONE: 'success',
 };
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
 
 /**
  * Вкладка «Разработка»: общие заметки-задачи супер-админов.
@@ -64,6 +99,9 @@ const SuperAdminDevNotesTab: React.FC = () => {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<DevNoteStatus>('IDEA');
   const [saving, setSaving] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<DevNoteAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +127,8 @@ const SuperAdminDevNotesTab: React.FC = () => {
     setTitle('');
     setDescription('');
     setStatus('IDEA');
+    setPendingFiles([]);
+    setAttachments([]);
     setDialogOpen(true);
   };
 
@@ -97,6 +137,8 @@ const SuperAdminDevNotesTab: React.FC = () => {
     setTitle(note.title);
     setDescription(note.description || '');
     setStatus(note.status);
+    setPendingFiles([]);
+    setAttachments(note.attachments || []);
     setDialogOpen(true);
   };
 
@@ -104,19 +146,32 @@ const SuperAdminDevNotesTab: React.FC = () => {
     if (!title.trim()) return;
     setSaving(true);
     try {
+      let noteId = editing?.id;
       if (editing) {
-        await apiService.updateDevNote(editing.id, {
+        const updated = await apiService.updateDevNote(editing.id, {
           title: title.trim(),
           description: description.trim() || null,
           status,
         });
+        noteId = updated.id;
+        setAttachments(updated.attachments || attachments);
       } else {
-        await apiService.createDevNote({
+        const created = await apiService.createDevNote({
           title: title.trim(),
           description: description.trim() || null,
           status,
         });
+        noteId = created.id;
+        setEditing(created);
+        setAttachments(created.attachments || []);
       }
+
+      if (noteId && pendingFiles.length) {
+        const uploaded = await apiService.uploadDevNoteAttachments(noteId, pendingFiles);
+        setAttachments((prev) => [...uploaded, ...prev]);
+        setPendingFiles([]);
+      }
+
       setDialogOpen(false);
       await load();
     } catch (e: any) {
@@ -142,6 +197,27 @@ const SuperAdminDevNotesTab: React.FC = () => {
       await load();
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось удалить');
+    }
+  };
+
+  const handleDownloadAttachment = async (noteId: string, att: DevNoteAttachment) => {
+    try {
+      const { blob, filename } = await apiService.downloadDevNoteAttachment(noteId, att.id);
+      triggerBlobDownload(blob, filename || att.originalName);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось скачать файл');
+    }
+  };
+
+  const handleDeleteAttachment = async (att: DevNoteAttachment) => {
+    if (!editing) return;
+    if (!window.confirm(`Удалить файл «${att.originalName}»?`)) return;
+    try {
+      await apiService.deleteDevNoteAttachment(editing.id, att.id);
+      setAttachments((prev) => prev.filter((a) => a.id !== att.id));
+      await load();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось удалить файл');
     }
   };
 
@@ -189,6 +265,7 @@ const SuperAdminDevNotesTab: React.FC = () => {
                 <TableRow>
                   <TableCell>Заголовок</TableCell>
                   <TableCell>Описание</TableCell>
+                  <TableCell width={100}>Файлы</TableCell>
                   <TableCell width={180}>Статус</TableCell>
                   <TableCell>Автор</TableCell>
                   <TableCell>Обновлено</TableCell>
@@ -198,7 +275,7 @@ const SuperAdminDevNotesTab: React.FC = () => {
               <TableBody>
                 {notes.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Typography color="text.secondary" sx={{ py: 3 }}>
                         Нет заметок
                       </Typography>
@@ -225,6 +302,13 @@ const SuperAdminDevNotesTab: React.FC = () => {
                         >
                           {note.description || '—'}
                         </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {(note.attachments?.length || 0) > 0 ? (
+                          <Chip size="small" icon={<AttachFile />} label={note.attachments!.length} />
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
                       <TableCell>
                         <FormControl size="small" fullWidth>
@@ -310,6 +394,80 @@ const SuperAdminDevNotesTab: React.FC = () => {
               <MenuItem value="DONE">Готово</MenuItem>
             </Select>
           </FormControl>
+
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>
+              Вложения
+            </Typography>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                const list = Array.from(e.target.files || []);
+                if (list.length) setPendingFiles((prev) => [...prev, ...list]);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              size="small"
+              startIcon={<AttachFile />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={saving}
+            >
+              Выбрать файлы
+            </Button>
+            {pendingFiles.length > 0 && (
+              <List dense>
+                {pendingFiles.map((f, i) => (
+                  <ListItem key={`${f.name}-${i}`}>
+                    <ListItemText primary={f.name} secondary={`${formatSize(f.size)} · будет загружен при сохранении`} />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+            {attachments.length > 0 && editing && (
+              <List dense>
+                {attachments.map((att) => (
+                  <ListItem key={att.id}>
+                    <ListItemText
+                      primary={att.originalName}
+                      secondary={formatSize(att.sizeBytes)}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => handleDownloadAttachment(editing.id, att)}
+                        title="Скачать"
+                      >
+                        <Download fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteAttachment(att)}
+                        title="Удалить"
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)} disabled={saving}>

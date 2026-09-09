@@ -25,6 +25,25 @@ import {
   removeSavedAccount,
 } from '../utils/accountSwitcher';
 
+/** Разбор Content-Disposition: предпочитаем filename*=UTF-8''… (кириллица). */
+function parseContentDispositionFilename(
+  disposition: string | undefined,
+  fallback: string
+): string {
+  const header = String(disposition || '');
+  const utf8Match = header.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+  const plainMatch = header.match(/filename\s*=\s*"?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1].trim();
+  return fallback;
+}
+
 class ApiService {
   private api: AxiosInstance;
 
@@ -1768,6 +1787,164 @@ class ApiService {
 
   async deleteDevNote(id: string): Promise<void> {
     await this.api.delete(`/admin-dashboard/dev-notes/${id}`);
+  }
+
+  async uploadDevNoteAttachments(noteId: string, files: File[]): Promise<any[]> {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/dev-notes/${noteId}/attachments`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      }
+    );
+    return response.data.data || [];
+  }
+
+  async downloadDevNoteAttachment(
+    noteId: string,
+    attachmentId: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(
+      `/admin-dashboard/dev-notes/${noteId}/attachments/${attachmentId}/download`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, 'file');
+    return { blob: response.data, filename };
+  }
+
+  async deleteDevNoteAttachment(noteId: string, attachmentId: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/dev-notes/${noteId}/attachments/${attachmentId}`);
+  }
+
+  async listClientContracts(clientId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(`/clients/${clientId}/contracts`);
+    return response.data.data || [];
+  }
+
+  async uploadClientContract(
+    clientId: string,
+    file: File,
+    meta?: { title?: string; signedAt?: string }
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (meta?.title) formData.append('title', meta.title);
+    if (meta?.signedAt) formData.append('signedAt', meta.signedAt);
+    const response = await this.api.post<ApiResponse>(`/clients/${clientId}/contracts`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    });
+    return response.data.data;
+  }
+
+  async downloadClientContract(
+    clientId: string,
+    contractId: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(`/clients/${clientId}/contracts/${contractId}/download`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, 'contract.pdf');
+    return { blob: response.data, filename };
+  }
+
+  async deleteClientContract(clientId: string, contractId: string): Promise<void> {
+    await this.api.delete(`/clients/${clientId}/contracts/${contractId}`);
+  }
+
+  async uploadClientContractAddendum(
+    clientId: string,
+    contractId: string,
+    file: File,
+    meta?: { title?: string; signedAt?: string }
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (meta?.title) formData.append('title', meta.title);
+    if (meta?.signedAt) formData.append('signedAt', meta.signedAt);
+    const response = await this.api.post<ApiResponse>(
+      `/clients/${clientId}/contracts/${contractId}/addenda`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      }
+    );
+    return response.data.data;
+  }
+
+  async downloadClientContractAddendum(
+    clientId: string,
+    contractId: string,
+    addendumId: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(
+      `/clients/${clientId}/contracts/${contractId}/addenda/${addendumId}/download`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, 'addendum.pdf');
+    return { blob: response.data, filename };
+  }
+
+  async deleteClientContractAddendum(
+    clientId: string,
+    contractId: string,
+    addendumId: string
+  ): Promise<void> {
+    await this.api.delete(
+      `/clients/${clientId}/contracts/${contractId}/addenda/${addendumId}`
+    );
+  }
+
+  async clientListDocuments(clientId: string): Promise<{
+    contracts: any[];
+    personalDocs: {
+      birthCertificate: boolean;
+      birthCertificateNumber: string | null;
+      medicalCertificate: boolean;
+      medicalCertificateNumber: string | null;
+      birthCertificateDataUrl: string | null;
+      medicalCertificateDataUrl: string | null;
+    };
+  }> {
+    const response = await this.api.get<ApiResponse>(
+      `/client-auth/clients/${clientId}/contracts`
+    );
+    return response.data.data;
+  }
+
+  async clientDownloadContract(
+    clientId: string,
+    contractId: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(
+      `/client-auth/clients/${clientId}/contracts/${contractId}/download`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, 'contract.pdf');
+    return { blob: response.data, filename };
+  }
+
+  async clientDownloadContractAddendum(
+    clientId: string,
+    contractId: string,
+    addendumId: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(
+      `/client-auth/clients/${clientId}/contracts/${contractId}/addenda/${addendumId}/download`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, 'addendum.pdf');
+    return { blob: response.data, filename };
   }
 
   async getPlannerEvents(params: { from: string; to: string }): Promise<{

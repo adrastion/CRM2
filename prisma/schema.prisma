@@ -52,6 +52,7 @@ model Tenant {
   supportTickets          SupportTicket[]
   trainerSalaryLedgers    TrainerSalaryLedger[]
   chatThreads             ChatThread[]
+  clientContracts         ClientContract[]
 
   @@map("tenants")
 }
@@ -96,6 +97,8 @@ model User {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   linkedSuperAdmin SuperAdmin?
   linkedTester     Tester?
+  uploadedContracts ClientContract[]
+  uploadedAddenda   ClientContractAddendum[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -207,6 +210,7 @@ model Client {
   financeOperations        FinanceOperation[]
   supportTickets           SupportTicket[] @relation("ClientSupportTickets")
   chatThreads              ChatThread[]
+  contracts                ClientContract[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, firstName, lastName])
@@ -214,6 +218,48 @@ model Client {
   @@index([tenantId, phone])
   @@index([tenantId, createdAt])
   @@map("clients")
+}
+
+/// Договор спортсмена (PDF на диске).
+model ClientContract {
+  id             String                   @id @default(cuid())
+  tenantId       String
+  clientId       String
+  title          String
+  originalName   String
+  storagePath    String
+  mimeType       String
+  sizeBytes      Int
+  signedAt       DateTime?
+  uploadedById   String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy     User?                    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  addenda        ClientContractAddendum[]
+
+  @@index([clientId, createdAt])
+  @@index([tenantId])
+  @@map("client_contracts")
+}
+
+model ClientContractAddendum {
+  id             String         @id @default(cuid())
+  contractId     String
+  title          String
+  originalName   String
+  storagePath    String
+  mimeType       String
+  sizeBytes      Int
+  signedAt       DateTime?
+  uploadedById   String?
+  createdAt      DateTime       @default(now())
+  contract       ClientContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  uploadedBy     User?          @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([contractId, createdAt])
+  @@map("client_contract_addenda")
 }
 
 model Parent {
@@ -1076,6 +1122,7 @@ model SuperAdmin {
   devNotes           SuperAdminDevNote[]
   changelogEntries   PlatformChangelogEntry[]
   plannerEvents      PlatformCalendarEvent[]
+  devNoteAttachments SuperAdminDevNoteAttachment[]
 
   @@map("super_admins")
 }
@@ -1118,17 +1165,34 @@ enum DevNoteStatus {
 }
 
 model SuperAdminDevNote {
-  id          String        @id @default(cuid())
+  id          String                       @id @default(cuid())
   title       String
-  description String?       @db.Text
-  status      DevNoteStatus @default(IDEA)
+  description String?                      @db.Text
+  status      DevNoteStatus                @default(IDEA)
   createdById String
-  createdBy   SuperAdmin    @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdBy   SuperAdmin                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+  attachments SuperAdminDevNoteAttachment[]
 
   @@index([status, updatedAt])
   @@map("super_admin_dev_notes")
+}
+
+model SuperAdminDevNoteAttachment {
+  id           String            @id @default(cuid())
+  noteId       String
+  originalName String
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  createdById  String
+  createdAt    DateTime          @default(now())
+  note         SuperAdminDevNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  createdBy    SuperAdmin        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@map("super_admin_dev_note_attachments")
 }
 
 /// Единица интервала повтора для планировщика платформы (NONE = разовое).

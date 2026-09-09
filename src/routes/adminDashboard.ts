@@ -42,6 +42,9 @@ import {
   createDevNote,
   updateDevNote,
   deleteDevNote,
+  uploadDevNoteAttachments,
+  downloadDevNoteAttachment,
+  deleteDevNoteAttachment,
 } from '../controllers/superAdminDevNoteController';
 import {
   listPlannerEvents,
@@ -49,6 +52,8 @@ import {
   updatePlannerEvent,
   deletePlannerEvent,
 } from '../controllers/superAdminPlannerController';
+import multer from 'multer';
+import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
 import {
   getLogFileInfo,
   readLogFile,
@@ -70,6 +75,15 @@ import {
   authenticatePlatformViewer,
   requirePlatformWrite,
 } from '../middleware/superAdminAuth';
+
+const devNotesUploadDir = ensureUploadDir('dev-notes');
+const devNotesUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, devNotesUploadDir),
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+});
 
 const router = Router();
 
@@ -137,6 +151,19 @@ router.get('/dev-notes', listDevNotes);
 router.post('/dev-notes', createDevNote);
 router.put('/dev-notes/:id', updateDevNote);
 router.delete('/dev-notes/:id', deleteDevNote);
+router.post(
+  '/dev-notes/:id/attachments',
+  devNotesUpload.array('files', 10),
+  uploadDevNoteAttachments
+);
+router.get(
+  '/dev-notes/:id/attachments/:attachmentId/download',
+  downloadDevNoteAttachment
+);
+router.delete(
+  '/dev-notes/:id/attachments/:attachmentId',
+  deleteDevNoteAttachment
+);
 
 // Планировщик платформы (календарь SA)
 router.get('/planner/events', listPlannerEvents);

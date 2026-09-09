@@ -9,6 +9,7 @@ import { logoutCurrentAccount, prepareAddAccount } from '../utils/accountSwitche
 import AthleteCard from '../components/athlete/AthleteCard';
 import ClientCalendarPlan from '../components/client/ClientCalendarPlan';
 import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
+import ClientDocumentsPanel from '../components/client/ClientDocumentsPanel';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
 import Panel from '../components/dashboard/Panel';
@@ -27,6 +28,7 @@ const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
   { key: 'dashboard', label: 'Панель управления', iconName: 'dashboard' },
   { key: 'chats', label: 'Чаты', iconName: 'chats' },
   { key: 'card', label: 'Карточка спортсмена', iconName: 'clients' },
+  { key: 'documents', label: 'Документы', iconName: 'faq' },
   { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
   { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
 ];
@@ -463,16 +465,24 @@ const ClientDashboard: React.FC = () => {
   const pageTitle =
     activeKey === 'card'
       ? 'Карточка спортсмена'
-      : activeKey === 'plan'
-        ? 'Календарный план'
-        : activeKey === 'payments'
-          ? 'Платежи'
-          : activeKey === 'chats'
-            ? 'Чаты'
-            : 'Панель управления';
+      : activeKey === 'documents'
+        ? 'Документы'
+        : activeKey === 'plan'
+          ? 'Календарный план'
+          : activeKey === 'payments'
+            ? 'Платежи'
+            : activeKey === 'chats'
+              ? 'Чаты'
+              : 'Панель управления';
 
   const cardContent = (
     <AthleteCard mode="client" clientId={currentAthleteId || undefined} />
+  );
+
+  const documentsContent = currentAthleteId ? (
+    <ClientDocumentsPanel clientId={currentAthleteId} />
+  ) : (
+    <Typography color="text.secondary">Выберите спортсмена</Typography>
   );
 
   const planContent = <ClientCalendarPlan clientId={currentAthleteId || undefined} />;
@@ -512,13 +522,15 @@ const ClientDashboard: React.FC = () => {
   const mainContent =
     activeKey === 'card'
       ? cardContent
-      : activeKey === 'plan'
-        ? planContent
-        : activeKey === 'payments'
-          ? paymentsContent
-          : activeKey === 'chats'
-            ? chatsContent
-            : content;
+      : activeKey === 'documents'
+        ? documentsContent
+        : activeKey === 'plan'
+          ? planContent
+          : activeKey === 'payments'
+            ? paymentsContent
+            : activeKey === 'chats'
+              ? chatsContent
+              : content;
 
   return (
     <DashboardShell

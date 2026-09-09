@@ -26,7 +26,10 @@ import AthleteStandardsAccordion from './AthleteStandardsAccordion';
 import AthletePersonalCalendar from './AthletePersonalCalendar';
 import AthleteCompetitionResults from './AthleteCompetitionResults';
 import AthletePersonalDocs from './AthletePersonalDocs';
+import AthleteContracts from './AthleteContracts';
 import AthleteParents from './AthleteParents';
+import { useAuth } from '../../contexts/AuthContext';
+import { isOwnerOrAdmin } from '../../utils/roles';
 
 async function loadStaffCard(clientId: string): Promise<AthleteCardData> {
   const client = await apiService.getClient(clientId);
@@ -102,6 +105,8 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   onClose,
   docsAccess = 'full',
 }) => {
+  const { user } = useAuth();
+  const canManageContracts = mode === 'staff' && isOwnerOrAdmin(user?.role);
   const [data, setData] = React.useState<AthleteCardData | null>(initialData || null);
   const [loading, setLoading] = React.useState(!initialData);
   const [error, setError] = React.useState('');
@@ -413,6 +418,14 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         access={docsAccess}
         onFileUpload={(field, base64) => patchDraft({ [field]: base64 })}
       />
+
+      {mode === 'staff' && clientId && docsAccess !== 'denied' && (
+        <AthleteContracts
+          clientId={clientId}
+          mode={mode}
+          canManage={canManageContracts}
+        />
+      )}
 
       <AthleteParents
         parents={parents as any}

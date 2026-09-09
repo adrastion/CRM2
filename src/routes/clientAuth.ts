@@ -28,6 +28,11 @@ import {
   clientPostMessage,
   clientUnreadTotal,
 } from '../controllers/chatController';
+import {
+  clientListContracts,
+  clientDownloadContract,
+  clientDownloadAddendum,
+} from '../controllers/clientContractController';
 
 const router = Router();
 
@@ -44,8 +49,20 @@ router.get('/trainings', authenticateClient, getClientTrainings);
 router.get('/athlete-card', authenticateClient, getAthleteCard);
 router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
-// Данные для новой панели управления клиента (учитывает статус подтверждения)
 router.get('/dashboard', authenticateClient, getClientDashboard);
+
+// Документы (договоры)
+router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);
+router.get(
+  '/clients/:clientId/contracts/:contractId/download',
+  authenticateClient,
+  clientDownloadContract
+);
+router.get(
+  '/clients/:clientId/contracts/:contractId/addenda/:addendumId/download',
+  authenticateClient,
+  clientDownloadAddendum
+);
 
 // Техподдержка / дизайн (клиент или родитель)
 router.post('/support/tickets', authenticateClient, clientCreateSupportTicket);
