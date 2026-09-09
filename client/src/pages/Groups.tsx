@@ -815,11 +815,18 @@ const Groups: React.FC = () => {
 
             // Fallback: дата начала из формы графика
             if (!firstTrainingDate) {
-              firstTrainingDate = trainingFormData.isRecurring
+              const fromForm = trainingFormData.isRecurring
                 ? trainingFormData.recurrenceStartDate || trainingFormData.date
                 : trainingFormData.date;
+              firstTrainingDate = fromForm ? new Date(fromForm) : null;
             }
 
+            if (!firstTrainingDate || Number.isNaN(firstTrainingDate.getTime())) {
+              console.warn('Skip immediate monthly payments: first training date unknown');
+              alert(
+                'Платежи не созданы: не удалось определить месяц первого занятия. Они появятся в день оплаты группы после старта графика.'
+              );
+            } else {
             const y = firstTrainingDate.getFullYear();
             const m = firstTrainingDate.getMonth();
             const dueDay = Math.min(Math.max(1, paymentDay), 28);
@@ -873,6 +880,7 @@ const Groups: React.FC = () => {
                   (skippedCount > 0 ? `, пропущено ${skippedCount}` : '') +
                   (errorCount > 0 ? `. Ошибок: ${errorCount}` : '')
               );
+            }
             }
           }
         } catch (paymentErr: any) {
