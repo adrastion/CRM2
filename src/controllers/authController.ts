@@ -157,8 +157,44 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
     return;
   }
 
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      error: 'Пользователь не аутентифицирован'
+    });
+    return;
+  }
+
+  // ADMIN может создавать только тренеров; OWNER — администраторов и тренеров
+  let role = req.body.role as string;
+  if (req.user.role === 'ADMIN') {
+    if (role && role !== 'TRAINER') {
+      res.status(403).json({
+        success: false,
+        error: 'Администратор может создавать только тренеров'
+      });
+      return;
+    }
+    role = 'TRAINER';
+  } else if (req.user.role === 'OWNER') {
+    if (role !== 'ADMIN' && role !== 'TRAINER') {
+      res.status(400).json({
+        success: false,
+        error: 'Роль должна быть ADMIN или TRAINER'
+      });
+      return;
+    }
+  } else {
+    res.status(403).json({
+      success: false,
+      error: 'Недостаточно прав для создания пользователей'
+    });
+    return;
+  }
+
   const userData = {
     ...req.body,
+    role,
     tenantId: req.tenantId
   };
 

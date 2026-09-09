@@ -42,13 +42,25 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
  * Update tenant settings
  */
 export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
+  const { tenantId, user } = req;
   const { defaultTrainingDuration, membershipFeeResetDate, clientCanViewAllTrainers, clientCanViewAllBranches, salaryPayoutDay } = req.body;
 
   if (!tenantId) {
     res.status(400).json({
       success: false,
       error: 'Tenant ID is required'
+    });
+    return;
+  }
+
+  const isOwner = user?.role === 'OWNER';
+  const wantsFinanceSettings =
+    salaryPayoutDay !== undefined || membershipFeeResetDate !== undefined;
+
+  if (wantsFinanceSettings && !isOwner) {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец может менять день выплаты зарплаты и дату сброса членских взносов'
     });
     return;
   }
@@ -64,7 +76,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     }
   }
 
-  if (salaryPayoutDay !== undefined && salaryPayoutDay !== null) {
+  if (isOwner && salaryPayoutDay !== undefined && salaryPayoutDay !== null) {
     const day = Number(salaryPayoutDay);
     if (!Number.isInteger(day) || day < 1 || day > 28) {
       res.status(400).json({
@@ -76,7 +88,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   }
 
   // Валидация даты сброса (формат MM-DD)
-  if (membershipFeeResetDate !== undefined && membershipFeeResetDate !== null && membershipFeeResetDate !== '') {
+  if (isOwner && membershipFeeResetDate !== undefined && membershipFeeResetDate !== null && membershipFeeResetDate !== '') {
     const dateRegex = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
     if (!dateRegex.test(membershipFeeResetDate)) {
       res.status(400).json({
@@ -92,18 +104,18 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     where: { tenantId },
     update: {
       defaultTrainingDuration: defaultTrainingDuration !== undefined ? defaultTrainingDuration : undefined,
-      membershipFeeResetDate: membershipFeeResetDate !== undefined ? membershipFeeResetDate : undefined,
+      membershipFeeResetDate: isOwner && membershipFeeResetDate !== undefined ? membershipFeeResetDate : undefined,
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : undefined,
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : undefined,
-      salaryPayoutDay: salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
+      salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
     },
     create: {
       tenantId,
       defaultTrainingDuration: defaultTrainingDuration || 60,
-      membershipFeeResetDate: membershipFeeResetDate || null,
+      membershipFeeResetDate: isOwner ? (membershipFeeResetDate || null) : null,
       clientCanViewAllTrainers: clientCanViewAllTrainers !== undefined ? clientCanViewAllTrainers : false,
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false,
-      salaryPayoutDay: salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
+      salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
     }
   });
 

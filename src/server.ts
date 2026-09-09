@@ -261,6 +261,24 @@ httpServer.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow'
   });
 
+  // Абонемент без живого покрытия → слет с групп с ежемесячной оплатой
+  cron.schedule('20 * * * *', async () => {
+    try {
+      const { cleanupExpiredMembershipMonthlyGroups } = await import(
+        './services/clientMembershipService'
+      );
+      const n = await cleanupExpiredMembershipMonthlyGroups();
+      if (n > 0) {
+        console.log(`[Cron] Removed ${n} membership(s) from monthly-payment groups (expired/debt pack)`);
+      }
+    } catch (error) {
+      console.error('[Cron] Error cleaning membership monthly groups:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Membership→monthly-group cleanup scheduled (hourly at :20)');
+
   // Удаление просроченных записей звонков дизайнеров (хранение 14 дней)
   cron.schedule('15 3 * * *', async () => {
     try {

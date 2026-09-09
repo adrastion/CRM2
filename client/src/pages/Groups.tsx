@@ -792,71 +792,87 @@ const Groups: React.FC = () => {
           
           if (fullGroup.isMonthlyPayment && fullGroup.monthlyPaymentAmount && fullGroup.memberships) {
             const monthlyAmount = Number(fullGroup.monthlyPaymentAmount);
-            const today = new Date();
-            const dueDate = new Date(today);
-            // Используем paymentDueDay группы или текущий день
-            const paymentDay = fullGroup.paymentDueDay || today.getDate();
-            dueDate.setDate(paymentDay);
-            if (dueDate < today) {
-              // Если день уже прошел, устанавливаем на следующий месяц
-              dueDate.setMonth(dueDate.getMonth() + 1);
+            const paymentDay = fullGroup.paymentDueDay || 5;
+
+            // Период = месяц первого занятия группы (не месяц набора)
+            let firstTrainingDate: Date | null = null;
+            try {
+              const trainingsRes = await apiService.getTrainings({
+                groupId: fullGroup.id,
+                limit: 500,
+              });
+              const list = trainingsRes?.data || [];
+              if (list.length > 0) {
+                const sorted = [...list].sort(
+                  (a: any, b: any) =>
+                    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+                );
+                firstTrainingDate = new Date(sorted[0].startTime);
+              }
+            } catch (e) {
+              console.warn('Could not load trainings for payment period:', e);
             }
-            dueDate.setHours(23, 59, 59, 999);
-            
-            // Создаем платежи для всех активных клиентов группы
+
+            // Fallback: дата начала из формы графика
+            if (!firstTrainingDate) {
+              firstTrainingDate = trainingFormData.isRecurring
+                ? trainingFormData.recurrenceStartDate || trainingFormData.date
+                : trainingFormData.date;
+            }
+
+            const y = firstTrainingDate.getFullYear();
+            const m = firstTrainingDate.getMonth();
+            const dueDay = Math.min(Math.max(1, paymentDay), 28);
+            const dueDate = new Date(y, m, dueDay, 23, 59, 59, 999);
+            const periodKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+
             const activeMemberships = fullGroup.memberships.filter(
               (m: any) => m.isActive && !m.leftAt
             );
-            
+
             let createdCount = 0;
             let errorCount = 0;
-            
+            let skippedCount = 0;
+
             for (const membership of activeMemberships) {
               try {
-                // Проверяем, не существует ли уже платеж для этого клиента и группы в текущем месяце
-                const currentMonth = today.getMonth();
-                const currentYear = today.getFullYear();
-                const monthStart = new Date(currentYear, currentMonth, 1);
-                const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
-                
-                const existingPayments = await apiService.getPayments({
+                if (membership.isTrial) continue;
+
+                await apiService.createPayment({
                   clientId: membership.clientId,
                   groupId: fullGroup.id,
-                  limit: 100
+                  branchId: fullGroup.branchId,
+                  amount: monthlyAmount,
+                  originalAmount: monthlyAmount,
+                  type: 'monthly_payment',
+                  status: 'pending',
+                  dueDate: dueDate.toISOString(),
+                  periodKey,
+                  isMonthlyPayment: true,
                 });
-                
-                const hasExistingPayment = existingPayments.data?.some((p: any) => {
-                  const paymentDate = new Date(p.createdAt);
-                  return (
-                    p.isMonthlyPayment &&
-                    p.groupId === fullGroup.id &&
-                    paymentDate >= monthStart &&
-                    paymentDate <= monthEnd
-                  );
-                });
-                
-                if (!hasExistingPayment) {
-                  await apiService.createPayment({
-                    clientId: membership.clientId,
-                    groupId: fullGroup.id,
-                    branchId: fullGroup.branchId,
-                    amount: monthlyAmount,
-                    originalAmount: monthlyAmount,
-                    type: 'monthly_payment',
-                    status: 'pending',
-                    dueDate: dueDate.toISOString(),
-                    isMonthlyPayment: true
-                  });
-                  createdCount++;
-                }
+                createdCount++;
               } catch (paymentErr: any) {
+                const status = paymentErr?.response?.status;
+                const msg = paymentErr?.response?.data?.error || '';
+                if (status === 409 || status === 400) {
+                  skippedCount++;
+                  console.warn(
+                    `Skipped monthly payment for client ${membership.clientId}:`,
+                    msg || status
+                  );
+                  continue;
+                }
                 console.error(`Error creating payment for client ${membership.clientId}:`, paymentErr);
                 errorCount++;
               }
             }
-            
-            if (createdCount > 0) {
-              alert(`Создано платежей: ${createdCount}${errorCount > 0 ? `. Ошибок: ${errorCount}` : ''}`);
+
+            if (createdCount > 0 || skippedCount > 0) {
+              alert(
+                `Платежи за ${periodKey}: создано ${createdCount}` +
+                  (skippedCount > 0 ? `, пропущено ${skippedCount}` : '') +
+                  (errorCount > 0 ? `. Ошибок: ${errorCount}` : '')
+              );
             }
           }
         } catch (paymentErr: any) {
@@ -1544,7 +1560,9 @@ const Groups: React.FC = () => {
                       label="Создать платежи сразу после создания графика тренировок"
                     />
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      При проставлении этого чекбокса первый платеж будет создан сразу после создания графика тренировок для всех активных клиентов группы
+                      Счёт создаётся за месяц первого занятия (не за месяц набора). Пока есть незакрытый
+                      ежемесячный платёж по группе, повтор не создаётся; пробные участники и клиенты с
+                      абонементом пропускаются.
                     </Typography>
                   </Grid>
                 )}
@@ -1936,7 +1954,9 @@ const Groups: React.FC = () => {
                       label="Создать платежи сразу после создания графика тренировок"
                     />
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      При проставлении этого чекбокса первый платеж будет создан сразу после создания графика тренировок для всех активных клиентов группы
+                      Счёт создаётся за месяц первого занятия (не за месяц набора). Пока есть незакрытый
+                      ежемесячный платёж по группе, повтор не создаётся; пробные участники и клиенты с
+                      абонементом пропускаются.
                     </Typography>
                   </Grid>
                 )}
@@ -2047,6 +2067,14 @@ const Groups: React.FC = () => {
         <DialogContent>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Добавить клиентов</Typography>
+            {selectedGroup?.isMonthlyPayment &&
+              selectedClientIds.some((id) => clients.find((c) => c.id === id)?.activeMembership) && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  У выбранных клиентов есть абонемент — ежемесячный платёж этой группы на них
+                  начисляться не будет. После окончания абонемента (или ухода в долг) клиент будет
+                  снят с группы с ежемесячной оплатой.
+                </Alert>
+              )}
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Autocomplete

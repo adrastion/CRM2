@@ -548,6 +548,8 @@ model Payment {
   tenantId         String
   isMonthlyPayment Boolean         @default(false) // Является ли это ежемесячным платежом
   originalAmount   Decimal? // Оригинальная сумма до перерасчета
+  /// Период ежемесячного платежа (YYYY-MM); уникален вместе с client+group (partial unique в SQL)
+  periodKey        String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   branch           Branch?         @relation(fields: [branchId], references: [id])
@@ -564,6 +566,7 @@ model Payment {
   @@index([tenantId, dueDate])
   @@index([tenantId, createdAt])
   @@index([tenantId, status, paidAt])
+  @@index([tenantId, clientId, groupId, periodKey])
   @@map("payments")
 }
 

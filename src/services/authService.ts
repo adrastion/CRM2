@@ -476,6 +476,10 @@ export class AuthService {
     role: string;
     tenantId: string;
   }) {
+    if (data.role !== 'ADMIN' && data.role !== 'TRAINER') {
+      throw new Error('Role must be ADMIN or TRAINER');
+    }
+
     const normalizedEmail = data.email.toLowerCase().trim();
 
     // Email уникален внутри школы

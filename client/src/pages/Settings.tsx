@@ -41,6 +41,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { setHours, setMinutes } from 'date-fns';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import { subscribeToPushNotifications, unsubscribeFromPushNotifications, checkPushSubscriptionStatus, checkNotificationPermission } from '../utils/pushNotifications';
 
 interface TabPanelProps {
@@ -67,6 +68,8 @@ function TabPanel(props: TabPanelProps) {
 
 const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
+  const canEditFinanceSettings = canEditSchoolFinanceSettings(user?.role);
+  const canEditSchoolSettings = isOwnerOrAdmin(user?.role);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -365,8 +368,12 @@ const Settings: React.FC = () => {
 
       await apiService.updateSettings({
         defaultTrainingDuration,
-        membershipFeeResetDate: membershipFeeResetDate || '12-01',
-        salaryPayoutDay,
+        ...(canEditFinanceSettings
+          ? {
+              membershipFeeResetDate: membershipFeeResetDate || '12-01',
+              salaryPayoutDay,
+            }
+          : {}),
         clientCanViewAllTrainers,
         clientCanViewAllBranches
       });
@@ -603,7 +610,7 @@ const Settings: React.FC = () => {
                   helperText="Минимум: 15 минут, максимум: 480 минут (8 часов)"
                   sx={{ mb: 2 }}
                 />
-                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                {canEditFinanceSettings && (
                   <Box sx={{ mt: 2 }}>
                     <Typography variant="subtitle1" gutterBottom fontWeight="medium">
                       День выплаты зарплаты
@@ -627,7 +634,7 @@ const Settings: React.FC = () => {
                   </Box>
                 )}
                 {/* Настройка даты сброса членского взноса */}
-                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                {canEditFinanceSettings && (
                   <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle1" gutterBottom fontWeight="medium">
                       Автоматический сброс отметок членского взноса
@@ -653,7 +660,7 @@ const Settings: React.FC = () => {
                   </Box>
                 )}
                 {/* Настройки личного кабинета клиента */}
-                {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                {canEditSchoolSettings && (
                   <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
                       Настройки личного кабинета клиента

@@ -3,8 +3,64 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { deductFromClientBalance } from '../utils/finance';
 import { accrueForAttendance } from '../services/trainerSalaryService';
-import { consumeVisitFromActivePack } from '../services/clientMembershipService';
+import {
+  consumeVisitFromActivePack,
+  getActiveMembershipSummary,
+} from '../services/clientMembershipService';
 import * as XLSX from 'xlsx';
+
+async function applyClientBillingForPresent(params: {
+  tenantId: string;
+  clientId: string;
+  trainingId: string;
+  attendanceId: string;
+}) {
+  const { tenantId, clientId, trainingId, attendanceId } = params;
+
+  const trainingWithDetails = await prisma.training.findFirst({
+    where: { id: trainingId, tenantId },
+    include: {
+      group: true,
+      trainer: true,
+      substituteTrainer: {
+        include: { user: true },
+      },
+    },
+  });
+
+  const { coveredByMembership } = await consumeVisitFromActivePack(clientId, tenantId);
+  const shouldChargeClient = !coveredByMembership;
+
+  if (shouldChargeClient && trainingWithDetails?.group) {
+    const trainingPrice = trainingWithDetails.group.trainingPrice
+      ? Number(trainingWithDetails.group.trainingPrice)
+      : 0;
+
+    if (trainingPrice > 0) {
+      const currentClient = await prisma.client.findFirst({
+        where: { id: clientId, tenantId },
+      });
+
+      if (currentClient) {
+        const clientBalance = Number(currentClient.balance || 0);
+        if (clientBalance >= trainingPrice) {
+          await deductFromClientBalance(
+            clientId,
+            trainingPrice,
+            trainingId,
+            attendanceId,
+            tenantId,
+            `Оплата тренировки: ${trainingWithDetails.title}`
+          );
+        } else {
+          console.warn(
+            `Insufficient balance for client ${clientId}. Balance: ${clientBalance}, Required: ${trainingPrice}`
+          );
+        }
+      }
+    }
+  }
+}
 
 /**
  * Начисление тренеру по схеме per_training_person.
@@ -232,6 +288,27 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
       // В данном случае возвращаем только тех, для кого уже созданы записи
     }
 
+    const tenantId = req.tenant?.id;
+    if (tenantId && result.length > 0) {
+      result = await Promise.all(
+        result.map(async (row) => {
+          const summary = await getActiveMembershipSummary(row.client.id, tenantId);
+          return {
+            ...row,
+            client: {
+              ...row.client,
+              activeMembership: summary
+                ? {
+                    ...summary,
+                    endDate: summary.endDate ? summary.endDate.toISOString() : null,
+                  }
+                : null,
+            },
+          };
+        })
+      );
+    }
+
     res.json({
       success: true,
       data: {
@@ -351,57 +428,12 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
 
     // Если посещение со статусом PRESENT, обрабатываем оплату и абонемент
     if (status === 'PRESENT') {
-      // Получаем информацию о тренировке с группой и тренером
-      const trainingWithDetails = await prisma.training.findFirst({
-        where: { id: trainingId, tenantId },
-        include: {
-          group: true,
-          trainer: true,
-          substituteTrainer: {
-            include: {
-              user: true
-            }
-          }
-        }
+      await applyClientBillingForPresent({
+        tenantId,
+        clientId,
+        trainingId,
+        attendanceId: attendance.id,
       });
-
-      // Списание с visit-pack; при исчерпании пак закрывается → дальше списание с баланса
-      const { coveredByMembership } = await consumeVisitFromActivePack(clientId, tenantId);
-      let shouldChargeClient = !coveredByMembership;
-
-      // Если нет активного абонемента, списываем деньги с баланса клиента
-      if (shouldChargeClient && trainingWithDetails && trainingWithDetails.group) {
-        const trainingPrice = trainingWithDetails.group.trainingPrice 
-          ? Number(trainingWithDetails.group.trainingPrice) 
-          : 0;
-
-        if (trainingPrice > 0) {
-          // Проверяем баланс клиента
-          const currentClient = await prisma.client.findFirst({
-            where: { id: clientId, tenantId }
-          });
-
-          if (currentClient) {
-            const clientBalance = Number(currentClient.balance || 0);
-            
-            if (clientBalance >= trainingPrice) {
-              // Снимаем деньги с баланса клиента
-              await deductFromClientBalance(
-                clientId,
-                trainingPrice,
-                trainingId,
-                attendance.id,
-                tenantId,
-                `Оплата тренировки: ${trainingWithDetails.title}`
-              );
-            } else {
-              // Недостаточно средств - можно создать запись о задолженности
-              // Пока просто создаем посещение без списания, но логируем проблему
-              console.warn(`Insufficient balance for client ${clientId}. Balance: ${clientBalance}, Required: ${trainingPrice}`);
-            }
-          }
-        }
-      }
 
       // Зарплата тренеру — всегда при PRESENT (ставка из настроек тренера), независимо от trainingPrice
       await accrueTrainerForAttendanceStatus({
@@ -538,7 +570,13 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
 
     if (req.tenant?.id) {
       if (status === 'PRESENT' && previousStatus !== 'PRESENT') {
-        await consumeVisitFromActivePack(updatedAttendance.clientId, req.tenant.id);
+        // Как при создании: visit-pack → иначе баланс группы + начисление ЗП
+        await applyClientBillingForPresent({
+          tenantId: req.tenant.id,
+          clientId: updatedAttendance.clientId,
+          trainingId: updatedAttendance.trainingId,
+          attendanceId: updatedAttendance.id,
+        });
       }
       await accrueTrainerForAttendanceStatus({
         tenantId: req.tenant.id,
@@ -686,7 +724,12 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
             include: { client: true }
           });
           if (status === 'PRESENT' && !wasPresent) {
-            await consumeVisitFromActivePack(clientId, tenantId);
+            await applyClientBillingForPresent({
+              tenantId,
+              clientId,
+              trainingId,
+              attendanceId: updated.id,
+            });
           }
           await accrueTrainerForAttendanceStatus({
             tenantId,
@@ -713,7 +756,12 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
           });
           console.log(`Successfully created attendance record ${created.id} for client ${created.client?.lastName} ${created.client?.firstName}`);
           if (status === 'PRESENT') {
-            await consumeVisitFromActivePack(clientId, tenantId);
+            await applyClientBillingForPresent({
+              tenantId,
+              clientId,
+              trainingId,
+              attendanceId: created.id,
+            });
           }
           await accrueTrainerForAttendanceStatus({
             tenantId,

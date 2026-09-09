@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireOwnerOrAdmin } from '../middleware/auth';
+import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 import { getSettings, updateSettings, updateOnboardingStatus, resetMembershipFees } from '../controllers/settingsController';
 
 const router = Router();
@@ -11,7 +11,8 @@ router.use(authenticate);
 router.get('/', getSettings);
 router.put('/', requireOwnerOrAdmin, updateSettings);
 router.post('/onboarding', updateOnboardingStatus);
-router.post('/reset-membership-fees', requireOwnerOrAdmin, resetMembershipFees);
+// Массовый сброс отметок членских — только OWNER
+router.post('/reset-membership-fees', requireOwner, resetMembershipFees);
 
 export default router;
 

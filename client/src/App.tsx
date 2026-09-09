@@ -106,6 +106,25 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
+/** Доступ только для указанных ролей школьного кабинета. */
+const RoleRoute: React.FC<{ roles: string[]; children: React.ReactNode }> = ({ roles, children }) => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (!user || !roles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 /** Корень сайта: гости → лендинг, авторизованные → свой кабинет. */
 const HomeRoute: React.FC = () => {
   if (hasAnySession()) {
@@ -363,11 +382,11 @@ const AppContent: React.FC = () => {
         <Route
           path="/trainers"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <Trainers />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
@@ -383,11 +402,11 @@ const AppContent: React.FC = () => {
         <Route
           path="/trainers/earnings"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <AllTrainersEarnings />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
@@ -403,11 +422,11 @@ const AppContent: React.FC = () => {
         <Route
           path="/branches"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <Branches />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
@@ -437,22 +456,22 @@ const AppContent: React.FC = () => {
         <Route
           path="/finance"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <Finance />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route path="/payments" element={<Navigate to="/finance" replace />} />
         <Route
           path="/memberships"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <Memberships />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route path="/client-memberships" element={<Navigate to="/memberships" replace />} />

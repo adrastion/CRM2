@@ -3957,7 +3957,32 @@ const Schedule: React.FC = () => {
                       return (
                         <TableRow key={item.client.id}>
                           <TableCell>
-                            <ClientNameLink clientId={item.client.id} client={item.client} />
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <ClientNameLink clientId={item.client.id} client={item.client} />
+                              {item.client.activeMembership?.remaining != null &&
+                                item.client.activeMembership.remaining < 0 && (
+                                  <Chip
+                                    size="small"
+                                    color="warning"
+                                    label={`Долг по абонементу: ${Math.abs(
+                                      item.client.activeMembership.remaining
+                                    )} пос.`}
+                                    sx={{ alignSelf: 'flex-start', height: 22, fontSize: 11 }}
+                                  />
+                                )}
+                              {item.client.activeMembership?.remaining != null &&
+                                item.client.activeMembership.remaining >= 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Абонемент: осталось {item.client.activeMembership.remaining}
+                                  </Typography>
+                                )}
+                              {item.client.activeMembership &&
+                                item.client.activeMembership.remaining == null && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Абонемент: {item.client.activeMembership.name}
+                                  </Typography>
+                                )}
+                            </Box>
                           </TableCell>
                           <TableCell>{item.client.phone || '-'}</TableCell>
                           <TableCell align="center">

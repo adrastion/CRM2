@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { FinanceService } from './financeService';
 
 export type ActiveMembershipSummary = {
   id: string;
@@ -11,6 +12,14 @@ export type ActiveMembershipSummary = {
   remaining: number | null;
   endDate: Date | null;
   isActive: boolean;
+};
+
+export type ConsumeVisitResult = {
+  coveredByMembership: boolean;
+  membershipId?: string;
+  /** Пакет только что ушёл в долг / истёк по дате */
+  enteredDebt?: boolean;
+  debt?: number;
 };
 
 export function visitsRemaining(visitsTotal: number | null | undefined, visitsUsed: number): number | null {
@@ -63,18 +72,16 @@ export function pickActiveMembershipSummary(
   return toMembershipSummary(chosen);
 }
 
-/** Активный visit-pack или месячный (для отображения / списания). */
+/**
+ * Активный visit-pack (в т.ч. в долгу) или duration-абонемент.
+ * Долговые пакеты остаются isActive до выдачи нового.
+ */
 export async function findActiveClientMembership(clientId: string, tenantId: string) {
   const rows = await prisma.clientMembership.findMany({
     where: {
       clientId,
       tenantId,
       isActive: true,
-      OR: [
-        { visitsTotal: { not: null } },
-        { visitsTotal: null, endDate: { gte: new Date() } },
-        { visitsTotal: null, endDate: null },
-      ],
     },
     include: { membership: true },
     orderBy: { createdAt: 'desc' },
@@ -94,56 +101,163 @@ export async function getActiveMembershipSummary(
   return toMembershipSummary(row);
 }
 
+/** Клиент на абонементной схеме (активный или долговой пакет) — monthly не начисляем. */
+export async function clientHasMembershipBilling(
+  clientId: string,
+  tenantId: string
+): Promise<boolean> {
+  const active = await findActiveClientMembership(clientId, tenantId);
+  return active != null;
+}
+
+/** Снять клиента со всех групп с ежемесячной оплатой. */
+export async function removeClientFromMonthlyPaymentGroups(
+  clientId: string,
+  tenantId: string
+): Promise<number> {
+  const memberships = await prisma.groupMembership.findMany({
+    where: {
+      clientId,
+      isActive: true,
+      leftAt: null,
+      group: {
+        tenantId,
+        isMonthlyPayment: true,
+      },
+    },
+    select: { id: true },
+  });
+  if (memberships.length === 0) return 0;
+
+  await prisma.groupMembership.updateMany({
+    where: { id: { in: memberships.map((m) => m.id) } },
+    data: { isActive: false, leftAt: new Date() },
+  });
+  return memberships.length;
+}
+
 /**
- * Списать одно посещение с активного visit-pack.
- * Если после списания посещений не осталось (visitsUsed >= visitsTotal) —
- * абонемент деактивируется; следующие визиты идут без пакета (списание с баланса).
- * @returns true если визит покрыт абонементом
+ * Есть ли «живое» покрытие (остаток > 0 или duration ещё не истёк).
+ * В долгу / после expiry — false → клиент должен слететь с monthly-групп.
+ */
+export function hasLiveMembershipCoverage(row: {
+  visitsTotal: number | null;
+  visitsUsed: number;
+  endDate: Date | null;
+}): boolean {
+  if (row.visitsTotal != null) {
+    return row.visitsUsed < row.visitsTotal;
+  }
+  if (row.endDate) {
+    return new Date() <= new Date(row.endDate);
+  }
+  // Безлимитный без даты окончания — считаем живым
+  return true;
+}
+
+/**
+ * Отменить pending/overdue ежемесячные платежи клиента и откатить membership_charge.
+ */
+export async function cancelPendingMonthlyPaymentsForClient(
+  clientId: string,
+  tenantId: string
+): Promise<number> {
+  const payments = await prisma.payment.findMany({
+    where: {
+      tenantId,
+      clientId,
+      isMonthlyPayment: true,
+      status: { in: ['pending', 'overdue'] },
+    },
+    select: { id: true },
+  });
+
+  let cancelled = 0;
+  for (const payment of payments) {
+    const op = await prisma.financeOperation.findFirst({
+      where: {
+        tenantId,
+        externalKey: `membership_charge:${payment.id}`,
+      },
+      select: { id: true },
+    });
+    if (op) {
+      await FinanceService.deleteOperation(tenantId, op.id);
+      cancelled += 1;
+    } else {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'cancelled', paidAt: null },
+      });
+      cancelled += 1;
+    }
+  }
+  return cancelled;
+}
+
+/**
+ * Списать одно посещение с активного абонемента.
+ * Visit-pack: visitsUsed++ даже сверх лимита (долг), пакет не деактивируется.
+ * Duration после endDate: перевод в долговой режим (visitsTotal=0) + покрытие в долг.
  */
 export async function consumeVisitFromActivePack(
   clientId: string,
   tenantId: string
-): Promise<{ coveredByMembership: boolean; membershipId?: string }> {
+): Promise<ConsumeVisitResult> {
   const active = await findActiveClientMembership(clientId, tenantId);
   if (!active) return { coveredByMembership: false };
 
-  // Месячный без лимита посещений — покрывает визит без инкремента visits
+  // Duration / безлимит
   if (active.visitsTotal == null) {
     if (active.endDate && new Date() > new Date(active.endDate)) {
+      const visitsUsed = (active.visitsUsed || 0) + 1;
       await prisma.clientMembership.update({
         where: { id: active.id },
-        data: { isActive: false },
+        data: {
+          visitsTotal: 0,
+          visitsUsed,
+          isActive: true,
+        },
       });
-      return { coveredByMembership: false };
+      await removeClientFromMonthlyPaymentGroups(clientId, tenantId);
+      return {
+        coveredByMembership: true,
+        membershipId: active.id,
+        enteredDebt: true,
+        debt: visitDebt(0, visitsUsed),
+      };
     }
     return { coveredByMembership: true, membershipId: active.id };
   }
 
-  // Уже исчерпан, но ещё числится активным — закрываем и не покрываем
-  if (active.visitsUsed >= active.visitsTotal) {
-    await prisma.clientMembership.update({
-      where: { id: active.id },
-      data: { isActive: false },
-    });
-    return { coveredByMembership: false };
-  }
-
+  const wasLive = active.visitsUsed < active.visitsTotal;
   const visitsUsed = active.visitsUsed + 1;
-  const exhausted = visitsUsed >= active.visitsTotal;
+  const enteredDebt = wasLive && visitsUsed >= active.visitsTotal;
+  const alreadyInDebt = active.visitsUsed >= active.visitsTotal;
 
   await prisma.clientMembership.update({
     where: { id: active.id },
     data: {
       visitsUsed,
-      isActive: !exhausted,
+      isActive: true,
     },
   });
 
-  return { coveredByMembership: true, membershipId: active.id };
+  if (enteredDebt || alreadyInDebt) {
+    await removeClientFromMonthlyPaymentGroups(clientId, tenantId);
+  }
+
+  return {
+    coveredByMembership: true,
+    membershipId: active.id,
+    enteredDebt: enteredDebt || alreadyInDebt,
+    debt: visitDebt(active.visitsTotal, visitsUsed),
+  };
 }
 
 /**
  * Выдать абонемент клиенту: долг по старым visit-pack переносится в visitsUsed нового.
+ * Pending monthly платежи отменяются (схема взаимоисключающая).
  */
 export async function issueClientMembership(params: {
   tenantId: string;
@@ -165,7 +279,7 @@ export async function issueClientMembership(params: {
 
   const visitsTotal = membership.visits ?? null;
 
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const activeVisitPacks = await tx.clientMembership.findMany({
       where: {
         clientId: params.clientId,
@@ -180,8 +294,6 @@ export async function issueClientMembership(params: {
       debt += visitDebt(pack.visitsTotal, pack.visitsUsed);
     }
 
-    // Закрываем ВСЕ активные абонементы клиента (visit + monthly), иначе ЛК может
-    // продолжать показывать старый пакет.
     await tx.clientMembership.updateMany({
       where: {
         clientId: params.clientId,
@@ -193,7 +305,7 @@ export async function issueClientMembership(params: {
 
     const initialUsed = visitsTotal != null ? debt : 0;
 
-    const created = await tx.clientMembership.create({
+    return tx.clientMembership.create({
       data: {
         clientId: params.clientId,
         membershipId: params.membershipId,
@@ -209,14 +321,18 @@ export async function issueClientMembership(params: {
         membership: true,
       },
     });
-
-    return created;
   });
+
+  await cancelPendingMonthlyPaymentsForClient(params.clientId, params.tenantId).catch((err) => {
+    console.error('Failed to cancel pending monthly payments after membership issue:', err);
+  });
+
+  return created;
 }
 
 /**
  * Задать остаток посещений вручную (remaining = visitsTotal - visitsUsed).
- * При remaining <= 0 абонемент деактивируется.
+ * Отрицательный remaining = долг; пакет остаётся активным.
  */
 export async function setClientMembershipRemaining(params: {
   tenantId: string;
@@ -241,20 +357,55 @@ export async function setClientMembershipRemaining(params: {
 
   const remaining = Math.trunc(params.remaining);
   const visitsUsed = row.visitsTotal - remaining;
-  const isActive = remaining > 0;
+  const wasLive = row.visitsUsed < row.visitsTotal;
+  const nowLive = remaining > 0;
 
   const updated = await prisma.clientMembership.update({
     where: { id: row.id },
     data: {
       visitsUsed,
-      isActive,
+      isActive: true,
     },
     include: { client: true, membership: true },
   });
+
+  if (wasLive && !nowLive) {
+    await removeClientFromMonthlyPaymentGroups(row.clientId, params.tenantId);
+  }
 
   return {
     ...updated,
     remaining: visitsRemaining(updated.visitsTotal, updated.visitsUsed),
     summary: toMembershipSummary(updated),
   };
+}
+
+/**
+ * Cron: клиенты без живого покрытия абонемента, но ещё в monthly-группах → слет.
+ */
+export async function cleanupExpiredMembershipMonthlyGroups(): Promise<number> {
+  const activeRows = await prisma.clientMembership.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      clientId: true,
+      tenantId: true,
+      visitsTotal: true,
+      visitsUsed: true,
+      endDate: true,
+    },
+  });
+
+  let removed = 0;
+  const seen = new Set<string>();
+
+  for (const row of activeRows) {
+    if (hasLiveMembershipCoverage(row)) continue;
+    const key = `${row.tenantId}:${row.clientId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    removed += await removeClientFromMonthlyPaymentGroups(row.clientId, row.tenantId);
+  }
+
+  return removed;
 }

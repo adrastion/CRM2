@@ -6,26 +6,49 @@ import {
   Paper,
   Grid,
   Divider,
+  Button,
 } from '@mui/material';
 import {
   ContactMail,
   Email,
   Business,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import PublicFooter from '../components/PublicFooter';
+import PublicSiteNav from '../components/PublicSiteNav';
+import { useAuth } from '../contexts/AuthContext';
+import { hasAnySession } from '../utils/authSession';
 
 const Contacts: React.FC = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const showPublicNav = !isAuthenticated && !hasAnySession();
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {showPublicNav && <PublicSiteNav />}
       <Container maxWidth="lg" sx={{ py: 3, flexGrow: 1 }}>
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <ContactMail sx={{ fontSize: 36, color: 'primary.main', mb: 1.5 }} />
         <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
           Контакты и реквизиты
         </Typography>
-        <Typography variant="h6" color="text.secondary">
-          Свяжитесь с нами или ознакомьтесь с реквизитами
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          Шаг 3 из пути: регистрация → тарифы → контакты
         </Typography>
+        {showPublicNav && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+            <Button variant="outlined" onClick={() => navigate('/register')}>
+              1. Регистрация
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/pricing')}>
+              2. Тарифы
+            </Button>
+            <Button variant="contained" disabled>
+              3. Контакты
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Grid container spacing={3}>
@@ -157,6 +180,23 @@ const Contacts: React.FC = () => {
         </Grid>
       </Grid>
       </Container>
+      {showPublicNav && (
+        <Box sx={{ bgcolor: 'grey.50', borderTop: 1, borderColor: 'divider', py: 4 }}>
+          <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              Готовы подключить школу?
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
+              <Button variant="contained" onClick={() => navigate('/register')}>
+                1. Регистрация
+              </Button>
+              <Button variant="outlined" onClick={() => navigate('/pricing')}>
+                2. Тарифы
+              </Button>
+            </Box>
+          </Container>
+        </Box>
+      )}
       <PublicFooter />
     </Box>
   );

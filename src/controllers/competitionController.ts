@@ -779,8 +779,10 @@ export const getTrainerConflicts = async (req: AuthenticatedRequest, res: Respon
     const conflictingTrainings = await prisma.training.findMany({
       where: {
         tenantId: req.tenant?.id,
-        trainerId: { in: trainerIds },
         isCancelled: false,
+        // Только занятия без уже назначенной замены: у таких trainerId = основной тренер
+        substituteTrainerId: null,
+        trainerId: { in: trainerIds },
         OR: [
           {
             startTime: {

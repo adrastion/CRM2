@@ -42,6 +42,7 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { canCreateAdminUsers, isOwner as roleIsOwner } from '../utils/roles';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import {
   normalizeSalaryScheme,
@@ -79,7 +80,7 @@ const Trainers: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
-  const isOwner = user?.role === 'OWNER';
+  const isOwner = roleIsOwner(user?.role);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,6 +206,12 @@ const Trainers: React.FC = () => {
     try {
       // Если создаем администратора, используем API создания пользователя
       if (formData.role === 'ADMIN') {
+        if (!canCreateAdminUsers(user?.role)) {
+          setError('Только владелец может создавать администраторов');
+          setSnackbarMessage('Только владелец может создавать администраторов');
+          setSnackbarOpen(true);
+          return;
+        }
         const { role, qualification, experience, specialization, salaryScheme, salaryRate, canViewAllGroups, ...userData } = formData;
         await apiService.createUser({
           ...userData,

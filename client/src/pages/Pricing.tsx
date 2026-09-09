@@ -35,9 +35,11 @@ import {
   LocalOffer,
 } from '@mui/icons-material';
 import PublicFooter from '../components/PublicFooter';
+import PublicSiteNav from '../components/PublicSiteNav';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import type { PublicPlanItem, PlanLimitValue } from '../types';
+import { hasAnySession } from '../utils/authSession';
 
 interface PricingPlanCard {
   code: string;
@@ -201,7 +203,8 @@ const Pricing: React.FC = () => {
 
   const handleSelectPlan = (plan: PricingPlanCard) => {
     if (!isAuthenticated) {
-      navigate('/login');
+      // Гость: сначала регистрация школы, затем возврат к тарифам
+      navigate('/register', { state: { next: '/pricing', from: 'pricing' } });
       return;
     }
 
@@ -211,7 +214,7 @@ const Pricing: React.FC = () => {
     }
 
     if (plan.isNegotiable) {
-      setError('Для тарифа с договорной ценой свяжитесь с нами');
+      setError('Для тарифа с договорной ценой свяжитесь с нами через страницу «Контакты»');
       return;
     }
 
@@ -268,6 +271,7 @@ const Pricing: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {!isAuthenticated && !hasAnySession() && <PublicSiteNav />}
       <Container maxWidth="xl" sx={{ py: 3, flexGrow: 1 }}>
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <AttachMoney sx={{ fontSize: 40, color: 'primary.main', mb: 1.5 }} />
@@ -275,11 +279,24 @@ const Pricing: React.FC = () => {
           Тарифные планы
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 1.5 }}>
-          Выберите подходящий тариф для вашей спортивной школы
+          Шаг 2 из пути: регистрация → тарифы → контакты
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Все тарифы включают комиссию платежной системы. Оплата производится ежемесячно.
         </Typography>
+        {!isAuthenticated && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+            <Button variant="outlined" onClick={() => navigate('/register')}>
+              1. Регистрация
+            </Button>
+            <Button variant="contained" disabled>
+              2. Тарифы
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/contacts')}>
+              3. Контакты
+            </Button>
+          </Box>
+        )}
         {isAuthenticated && user?.role === 'OWNER' && subscription && (
           <Alert severity="info" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
             Текущий тариф: <strong>{subscription.planType}</strong>
@@ -634,6 +651,26 @@ const Pricing: React.FC = () => {
         </Grid>
       </Box>
       </Container>
+      {!isAuthenticated && (
+        <Box sx={{ bgcolor: 'grey.50', borderTop: 1, borderColor: 'divider', py: 4 }}>
+          <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              Дальше по пути
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Нет школы — сначала регистрация. Вопросы по тарифу — в контакты.
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+              <Button variant="contained" onClick={() => navigate('/register')}>
+                1. Регистрация
+              </Button>
+              <Button variant="outlined" onClick={() => navigate('/contacts')}>
+                3. Контакты
+              </Button>
+            </Box>
+          </Container>
+        </Box>
+      )}
       <PublicFooter />
     </Box>
   );

@@ -12,10 +12,11 @@ import {
   Divider,
   Grid,
 } from '@mui/material';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { RegisterForm } from '../types';
 import PublicFooter from '../components/PublicFooter';
+import PublicSiteNav from '../components/PublicSiteNav';
 import { normalizePhone, validatePhone } from '../utils/phone';
 
 const Register: React.FC = () => {
@@ -34,6 +35,9 @@ const Register: React.FC = () => {
   
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const nextAfterRegister =
+    (location.state as { next?: string } | null)?.next === '/pricing' ? '/pricing' : '/dashboard';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -126,7 +130,7 @@ const Register: React.FC = () => {
 
       await register(cleanedData);
       // Navigate to dashboard on success
-      navigate('/dashboard');
+      navigate(nextAfterRegister);
     } catch (err: any) {
       // Handle different error types
       const errorMessage = err.response?.data?.error || err.message || 'Ошибка регистрации. Попробуйте еще раз.';
@@ -149,6 +153,7 @@ const Register: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <PublicSiteNav />
       <Container component="main" maxWidth="md" sx={{ flexGrow: 1, py: 4 }}>
       <Box
         sx={{
@@ -158,13 +163,24 @@ const Register: React.FC = () => {
           alignItems: 'center',
         }}
       >
+        <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Button variant="contained" size="small" disabled>
+            1. Регистрация
+          </Button>
+          <Button variant="outlined" size="small" onClick={() => navigate('/pricing')}>
+            2. Тарифы
+          </Button>
+          <Button variant="outlined" size="small" onClick={() => navigate('/contacts')}>
+            3. Контакты
+          </Button>
+        </Box>
         <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
               Создайте свою спортивную школу
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Настройте CRM-систему за несколько минут
+              Шаг 1: регистрация. После входа можно выбрать тариф или написать в контакты.
             </Typography>
           </Box>
 

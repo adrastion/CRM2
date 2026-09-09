@@ -483,7 +483,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                         }}
                       >
                         {membership.remaining < 0
-                          ? `−${Math.abs(membership.remaining)}`
+                          ? `долг ${Math.abs(membership.remaining)} пос.`
                           : `осталось ${membership.remaining}`}
                       </Typography>
                     )}

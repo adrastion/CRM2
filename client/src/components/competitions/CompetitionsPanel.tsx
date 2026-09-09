@@ -109,6 +109,10 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
   const [tabValue, setTabValue] = useState(0);
   const [trainerConflicts, setTrainerConflicts] = useState<any[]>([]);
   const [showConflicts, setShowConflicts] = useState(false);
+  const [replacementDialogOpen, setReplacementDialogOpen] = useState(false);
+  /** trainingId → substituteTrainerId */
+  const [replacementChoices, setReplacementChoices] = useState<Record<string, string>>({});
+  const [replacementSaving, setReplacementSaving] = useState(false);
   const [positionDocumentPreview, setPositionDocumentPreview] = useState<string>('');
   const [regulationsDocumentPreview, setRegulationsDocumentPreview] = useState<string>('');
   const [results, setResults] = useState<CompetitionResult[]>([]);
@@ -237,11 +241,11 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
   const checkTrainerConflicts = async (competitionId?: string) => {
     if (!formData.startDate || !formData.endDate || formData.trainerIds.length === 0) {
       setTrainerConflicts([]);
+      setShowConflicts(false);
       return;
     }
 
     try {
-      // If editing, use competition ID, otherwise create a temporary check
       if (competitionId) {
         const conflicts = await apiService.getTrainerConflicts(competitionId, {
           startDate: formData.startDate.toISOString(),
@@ -250,12 +254,76 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
         setTrainerConflicts(conflicts);
         setShowConflicts(conflicts.length > 0);
       } else {
-        // For new competitions, we'll check after creation
         setTrainerConflicts([]);
+        setShowConflicts(false);
       }
     } catch (err) {
       console.error('Error checking trainer conflicts:', err);
     }
+  };
+
+  const openReplacementDialog = () => {
+    const initial: Record<string, string> = {};
+    trainerConflicts.forEach((c) => {
+      if (c.id && c.substituteTrainerId) {
+        initial[c.id] = c.substituteTrainerId;
+      }
+    });
+    setReplacementChoices(initial);
+    setReplacementDialogOpen(true);
+  };
+
+  const handleApplyReplacements = async () => {
+    const entries = trainerConflicts
+      .map((c) => ({ trainingId: c.id as string, substituteId: replacementChoices[c.id] }))
+      .filter((e) => e.trainingId && e.substituteId);
+
+    if (entries.length === 0) {
+      setSnackbarMessage('Выберите тренера-замену хотя бы для одной тренировки');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    const incomplete = trainerConflicts.some((c) => !replacementChoices[c.id]);
+    if (incomplete) {
+      setSnackbarMessage('Укажите замену для всех конфликтных тренировок');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    setReplacementSaving(true);
+    try {
+      const results = await Promise.allSettled(
+        entries.map((e) =>
+          apiService.updateTraining(e.trainingId, { substituteTrainerId: e.substituteId })
+        )
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const ok = results.length - failed;
+
+      if (editingCompetition?.id) {
+        await checkTrainerConflicts(editingCompetition.id);
+      }
+
+      if (failed === 0) {
+        setSnackbarMessage(`Замена назначена для ${ok} тренировок`);
+        setReplacementDialogOpen(false);
+      } else {
+        setSnackbarMessage(`Назначено: ${ok}, ошибок: ${failed}. Проверьте права и список тренеров.`);
+      }
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      setSnackbarMessage(err?.response?.data?.error || 'Не удалось назначить замены');
+      setSnackbarOpen(true);
+    } finally {
+      setReplacementSaving(false);
+    }
+  };
+
+  const trainerLabel = (t: Trainer) => {
+    const u = t.user;
+    if (!u) return t.id;
+    return `${u.lastName || ''} ${u.firstName || ''}`.trim() || t.id;
   };
 
   useEffect(() => {
@@ -284,25 +352,38 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
 
     try {
       const newCompetition = await apiService.createCompetition(competitionData);
-      
-      // Check for trainer conflicts after creation
-      if (newCompetition) {
-        await checkTrainerConflicts(newCompetition.id);
+      await fetchData();
+
+      let conflicts: any[] = [];
+      if (newCompetition?.id && formData.startDate && formData.endDate) {
+        try {
+          conflicts = await apiService.getTrainerConflicts(newCompetition.id, {
+            startDate: formData.startDate.toISOString(),
+            endDate: formData.endDate.toISOString(),
+          });
+        } catch {
+          conflicts = [];
+        }
       }
 
-      // Remove participants from groups on competition dates
-      if (formData.participantIds.length > 0 && formData.startDate && formData.endDate) {
-        // This will be handled on the backend or in a separate function
-        // For now, we'll just show a message
-        setSnackbarMessage('Соревнование создано. Участники автоматически исключены из групп на дни соревнования.');
-      } else {
-        setSnackbarMessage('Соревнование создано успешно');
-      }
-
-      setSnackbarOpen(true);
       setOpenDialog(false);
-      resetForm();
-      fetchData();
+
+      if (conflicts.length > 0 && newCompetition) {
+        setTrainerConflicts(conflicts);
+        setShowConflicts(true);
+        handleEditCompetition(newCompetition);
+        setSnackbarMessage(
+          'Соревнование создано. Назначьте замену тренерам с конфликтными тренировками.'
+        );
+      } else {
+        resetForm();
+        setSnackbarMessage(
+          formData.participantIds.length > 0
+            ? 'Соревнование создано. Участники автоматически исключены из групп на дни соревнования.'
+            : 'Соревнование создано успешно'
+        );
+      }
+      setSnackbarOpen(true);
     } catch (err: any) {
       console.error('Create competition error:', err);
       console.error('Request data:', competitionData);
@@ -338,9 +419,32 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
 
     try {
       await apiService.updateCompetition(editingCompetition.id, competitionData);
-      
-      // Check for trainer conflicts after update
       await checkTrainerConflicts(editingCompetition.id);
+
+      // Перечитываем конфликты из API, т.к. setState асинхронен
+      let remaining = 0;
+      if (formData.startDate && formData.endDate) {
+        try {
+          const conflicts = await apiService.getTrainerConflicts(editingCompetition.id, {
+            startDate: formData.startDate.toISOString(),
+            endDate: formData.endDate.toISOString(),
+          });
+          remaining = conflicts.length;
+          setTrainerConflicts(conflicts);
+          setShowConflicts(conflicts.length > 0);
+        } catch {
+          remaining = 0;
+        }
+      }
+
+      if (remaining > 0) {
+        setSnackbarMessage(
+          'Соревнование сохранено, но остались конфликты расписания — назначьте замену тренера.'
+        );
+        setSnackbarOpen(true);
+        fetchData();
+        return;
+      }
 
       setSnackbarMessage('Соревнование обновлено успешно');
       setSnackbarOpen(true);
@@ -969,11 +1073,7 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                     size="small"
                     variant="outlined"
                     sx={{ mt: 1 }}
-                    onClick={() => {
-                      // TODO: Implement trainer replacement logic
-                      setSnackbarMessage('Функция замены тренеров будет реализована');
-                      setSnackbarOpen(true);
-                    }}
+                    onClick={openReplacementDialog}
                   >
                     Предложить замену тренера
                   </Button>
@@ -1386,6 +1486,80 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
             </Button>
             <Button onClick={handleUpdateCompetition} variant="contained">
               Сохранить изменения
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={replacementDialogOpen}
+          onClose={() => !replacementSaving && setReplacementDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Замена тренера на время соревнования</DialogTitle>
+          <DialogContent dividers>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Для каждой конфликтной тренировки выберите другого тренера. Основной тренер останется
+              на соревновании, а занятия проведёт замена.
+            </Typography>
+            {trainerConflicts.map((conflict) => {
+              const mainTrainerId =
+                conflict.originalTrainerId || conflict.trainerId || conflict.trainer?.id;
+              const options = trainers.filter((t) => t.id !== mainTrainerId && t.isActive !== false);
+              return (
+                <Box key={conflict.id} sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                    {conflict.title || 'Тренировка'}
+                    {conflict.startTime
+                      ? ` · ${format(new Date(conflict.startTime), 'dd.MM.yyyy HH:mm', { locale: ru })}`
+                      : ''}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    Тренер:{' '}
+                    {conflict.trainer?.user
+                      ? `${conflict.trainer.user.lastName || ''} ${conflict.trainer.user.firstName || ''}`.trim()
+                      : '—'}
+                    {conflict.group?.name ? ` · ${conflict.group.name}` : ''}
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Тренер-замена</InputLabel>
+                    <Select
+                      label="Тренер-замена"
+                      value={replacementChoices[conflict.id] || ''}
+                      onChange={(e) =>
+                        setReplacementChoices((prev) => ({
+                          ...prev,
+                          [conflict.id]: e.target.value as string,
+                        }))
+                      }
+                    >
+                      {options.length === 0 ? (
+                        <MenuItem value="" disabled>
+                          Нет доступных тренеров
+                        </MenuItem>
+                      ) : (
+                        options.map((t) => (
+                          <MenuItem key={t.id} value={t.id}>
+                            {trainerLabel(t)}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+                </Box>
+              );
+            })}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setReplacementDialogOpen(false)} disabled={replacementSaving}>
+              Отмена
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleApplyReplacements}
+              disabled={replacementSaving || trainerConflicts.length === 0}
+            >
+              {replacementSaving ? <CircularProgress size={22} /> : 'Назначить замены'}
             </Button>
           </DialogActions>
         </Dialog>

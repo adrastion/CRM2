@@ -35,6 +35,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { canCancelFinanceOperations } from '../utils/roles';
 import ClientNameLink from '../components/ClientNameLink';
 import FinanceOperationsTable from '../components/finance/FinanceOperationsTable';
 import FinanceSummaryTable, {
@@ -132,7 +133,7 @@ const financeErrorMessage = (e: any) => {
 
 const Finance: React.FC = () => {
   const { user } = useAuth();
-  const canDeleteOperations = user?.role === 'OWNER';
+  const canDeleteOperations = canCancelFinanceOperations(user?.role);
   const [tab, setTab] = useState<FinanceTab>('operations');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -777,6 +778,12 @@ const Finance: React.FC = () => {
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
+          </Alert>
+        )}
+
+        {!canDeleteOperations && tab === 'operations' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Отменять финансовые операции может только владелец школы.
           </Alert>
         )}
 

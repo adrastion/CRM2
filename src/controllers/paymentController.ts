@@ -1,10 +1,158 @@
 import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
-import { issueClientMembership } from '../services/clientMembershipService';
+import {
+  clientHasMembershipBilling,
+  issueClientMembership,
+} from '../services/clientMembershipService';
 import { FinanceService } from '../services/financeService';
 import { accrueForPayment } from '../services/trainerSalaryService';
 import { applyPersonalDiscount } from '../utils/personalDiscount';
+import {
+  dueDateForPeriodKey,
+  getGroupFirstTrainingMonth,
+  hasOpenMonthlyPayment,
+  isMonthlyPaymentPayload,
+  isUniqueConstraintError,
+  resolveMonthlyPeriodKey,
+} from '../utils/monthlyPaymentPeriod';
+
+type GroupForMonthly = {
+  id: string;
+  branchId: string | null;
+  paymentDueDay?: number | null;
+  monthlyPaymentAmount: unknown;
+  memberships: Array<{
+    clientId: string;
+    isTrial?: boolean;
+    client?: {
+      personalDiscountType?: string | null;
+      personalDiscountValue?: unknown;
+      lastName?: string;
+      firstName?: string;
+    } | null;
+  }>;
+};
+
+/**
+ * Создать один ежемесячный платёж с дедупом, skip trial/абонемент/ранний месяц/открытый счёт.
+ */
+async function createOneMonthlyPayment(params: {
+  tenantId: string;
+  group: GroupForMonthly;
+  membership: GroupForMonthly['memberships'][0];
+  monthlyAmount: number;
+  /** Дата, от которой берём кандидатный период (обычно сегодня) */
+  candidateDate: Date;
+  /** Явный periodKey (например с UI за месяц первого занятия); иначе вычисляется */
+  periodKey?: string;
+}): Promise<{ payment: any; skipped?: string } | { skipped: string }> {
+  const { tenantId, group, membership, monthlyAmount, candidateDate } = params;
+
+  if (membership.isTrial) {
+    return { skipped: 'trial' };
+  }
+
+  if (await clientHasMembershipBilling(membership.clientId, tenantId)) {
+    return { skipped: 'membership_billing' };
+  }
+
+  if (
+    await hasOpenMonthlyPayment({
+      tenantId,
+      clientId: membership.clientId,
+      groupId: group.id,
+    })
+  ) {
+    return { skipped: 'open_pending' };
+  }
+
+  const firstTrainingMonth = await getGroupFirstTrainingMonth(group.id);
+  if (!firstTrainingMonth) {
+    return { skipped: 'no_trainings' };
+  }
+
+  let periodKey = params.periodKey || null;
+  if (!periodKey) {
+    periodKey = resolveMonthlyPeriodKey({
+      candidateDate,
+      firstTrainingMonth,
+    });
+  } else if (periodKey < firstTrainingMonth) {
+    return { skipped: 'before_first_training' };
+  }
+
+  if (!periodKey) {
+    return { skipped: 'before_first_training' };
+  }
+
+  const existingByPeriod = await prisma.payment.findFirst({
+    where: {
+      tenantId,
+      clientId: membership.clientId,
+      groupId: group.id,
+      isMonthlyPayment: true,
+      periodKey,
+    },
+  });
+  if (existingByPeriod) {
+    return { skipped: 'already_exists' };
+  }
+
+  const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
+    monthlyAmount,
+    membership.client?.personalDiscountType,
+    membership.client?.personalDiscountValue != null
+      ? Number(membership.client.personalDiscountValue)
+      : null
+  );
+  if (chargeAmount <= 0) {
+    return { skipped: 'zero_amount' };
+  }
+
+  const dueDate = dueDateForPeriodKey(periodKey, Number(group.paymentDueDay) || 1);
+
+  try {
+    const payment = await prisma.payment.create({
+      data: {
+        tenantId,
+        clientId: membership.clientId,
+        groupId: group.id,
+        amount: chargeAmount,
+        originalAmount,
+        type: 'monthly_payment',
+        status: 'pending',
+        dueDate,
+        isMonthlyPayment: true,
+        periodKey,
+        branchId: group.branchId,
+      },
+      include: {
+        client: true,
+        group: true,
+      },
+    });
+
+    const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
+    await FinanceService.recordMembershipCharge({
+      tenantId,
+      clientId: payment.clientId,
+      paymentId: payment.id,
+      amount: chargeAmount,
+      title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
+      occurredAt: dueDate,
+      groupId: group.id,
+      branchId: group.branchId,
+    }).catch((err) => console.error('Finance membership charge record failed:', err));
+
+    return { payment };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { skipped: 'already_exists' };
+    }
+    throw error;
+  }
+}
 
 /**
  * Helper function to create ClientMembership from payment (с переносом долга)
@@ -170,14 +318,97 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       paidAt: req.body.status === 'paid' ? new Date() : null
     };
 
+    const isMonthly = isMonthlyPaymentPayload(paymentData);
+
+    if (isMonthly && req.tenant?.id && paymentData.clientId) {
+      if (await clientHasMembershipBilling(paymentData.clientId, req.tenant.id)) {
+        res.status(400).json({
+          success: false,
+          error:
+            'У клиента активный абонемент. Ежемесячный платёж группы не начисляется — схемы взаимоисключающие.',
+        });
+        return;
+      }
+
+      if (!paymentData.groupId) {
+        res.status(400).json({
+          success: false,
+          error: 'Для ежемесячного платежа нужна группа',
+        });
+        return;
+      }
+
+      if (
+        await hasOpenMonthlyPayment({
+          tenantId: req.tenant.id,
+          clientId: paymentData.clientId,
+          groupId: paymentData.groupId,
+        })
+      ) {
+        res.status(409).json({
+          success: false,
+          error:
+            'У клиента уже есть незакрытый ежемесячный платёж по этой группе. Оплатите или отмените его перед новым начислением.',
+        });
+        return;
+      }
+
+      const firstTrainingMonth = await getGroupFirstTrainingMonth(paymentData.groupId);
+      if (!firstTrainingMonth) {
+        res.status(400).json({
+          success: false,
+          error: 'Нельзя создать ежемесячный платёж: у группы ещё нет занятий в расписании',
+        });
+        return;
+      }
+
+      const candidateDate = paymentData.dueDate ? new Date(paymentData.dueDate) : new Date();
+      let periodKey =
+        paymentData.periodKey ||
+        resolveMonthlyPeriodKey({
+          candidateDate,
+          firstTrainingMonth,
+        });
+
+      // Если UI прислал dueDate в месяце набора раньше старта — поднимаем до месяца первого занятия
+      if (!periodKey || periodKey < firstTrainingMonth) {
+        periodKey = firstTrainingMonth;
+      }
+
+      const group = await prisma.group.findFirst({
+        where: { id: paymentData.groupId, tenantId: req.tenant.id },
+        select: { paymentDueDay: true },
+      });
+
+      paymentData.isMonthlyPayment = true;
+      paymentData.type = paymentData.type || 'monthly_payment';
+      paymentData.periodKey = periodKey;
+      paymentData.dueDate = dueDateForPeriodKey(
+        periodKey,
+        Number(group?.paymentDueDay) || candidateDate.getDate() || 1
+      );
+
+      const existing = await prisma.payment.findFirst({
+        where: {
+          tenantId: req.tenant.id,
+          clientId: paymentData.clientId,
+          groupId: paymentData.groupId,
+          isMonthlyPayment: true,
+          periodKey: paymentData.periodKey,
+        },
+      });
+      if (existing) {
+        res.status(409).json({
+          success: false,
+          error: `Ежемесячный платёж за период ${paymentData.periodKey} уже существует`,
+          data: existing,
+        });
+        return;
+      }
+    }
+
     // Личная скидка на ежемесячный платёж (в т.ч. из Groups UI)
-    if (
-      req.tenant?.id &&
-      paymentData.clientId &&
-      (paymentData.isMonthlyPayment ||
-        paymentData.type === 'monthly_payment' ||
-        paymentData.type === 'monthly')
-    ) {
+    if (req.tenant?.id && paymentData.clientId && isMonthly) {
       const client = await prisma.client.findFirst({
         where: { id: paymentData.clientId, tenantId: req.tenant.id },
         select: { personalDiscountType: true, personalDiscountValue: true },
@@ -192,15 +423,27 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
       paymentData.originalAmount = originalAmount;
     }
 
-    const payment = await prisma.payment.create({
-      data: paymentData,
-      include: {
-        client: true,
-        membership: true,
-        branch: true,
-        group: true
+    let payment;
+    try {
+      payment = await prisma.payment.create({
+        data: paymentData,
+        include: {
+          client: true,
+          membership: true,
+          branch: true,
+          group: true
+        }
+      });
+    } catch (error) {
+      if (isMonthly && isUniqueConstraintError(error)) {
+        res.status(409).json({
+          success: false,
+          error: `Ежемесячный платёж за период ${paymentData.periodKey} уже существует`,
+        });
+        return;
       }
-    });
+      throw error;
+    }
 
     // Если платеж за абонемент и статус "paid", создаем ClientMembership
     if (req.tenant?.id) {
@@ -717,7 +960,6 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
     const today = new Date();
     const currentDay = today.getDate();
 
-    // Находим все группы с ежемесячной оплатой, где paymentDueDay совпадает с текущим днем
     const groups = await prisma.group.findMany({
       where: {
         tenantId,
@@ -730,7 +972,8 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
         memberships: {
           where: {
             isActive: true,
-            leftAt: null
+            leftAt: null,
+            isTrial: false,
           },
           include: {
             client: true
@@ -746,80 +989,18 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
       const monthlyAmount = Number(group.monthlyPaymentAmount || 0);
       if (monthlyAmount <= 0) continue;
 
-      // Вычисляем дату оплаты (сегодня)
-      const dueDate = new Date(today);
-      dueDate.setHours(23, 59, 59, 999);
-
-      // Проверяем, не создан ли уже платеж для этого месяца
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
-
       for (const membership of group.memberships) {
         try {
-          // Проверяем, не существует ли уже платеж для этого клиента и группы в текущем месяце
-          const existingPayment = await prisma.payment.findFirst({
-            where: {
-              tenantId,
-              clientId: membership.clientId,
-              groupId: group.id,
-              isMonthlyPayment: true,
-              createdAt: {
-                gte: new Date(currentYear, currentMonth, 1),
-                lt: new Date(currentYear, currentMonth + 1, 1)
-              }
-            }
-          });
-
-          if (existingPayment) {
-            console.log(`Payment already exists for client ${membership.clientId} and group ${group.id} for ${currentMonth}/${currentYear}`);
-            continue;
-          }
-
-          // Создаем платеж (с учётом личной скидки клиента)
-          const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
-            monthlyAmount,
-            membership.client?.personalDiscountType,
-            membership.client?.personalDiscountValue != null
-              ? Number(membership.client.personalDiscountValue)
-              : null
-          );
-          if (chargeAmount <= 0) {
-            console.log(`Skipped monthly payment for client ${membership.clientId}: amount after discount is 0`);
-            continue;
-          }
-
-          const payment = await prisma.payment.create({
-            data: {
-              tenantId,
-              clientId: membership.clientId,
-              groupId: group.id,
-              amount: chargeAmount,
-              originalAmount,
-              type: 'monthly_payment',
-              status: 'pending',
-              dueDate,
-              isMonthlyPayment: true,
-              branchId: group.branchId
-            },
-            include: {
-              client: true,
-              group: true
-            }
-          });
-
-          const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
-          await FinanceService.recordMembershipCharge({
+          const result = await createOneMonthlyPayment({
             tenantId,
-            clientId: payment.clientId,
-            paymentId: payment.id,
-            amount: chargeAmount,
-            title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
-            occurredAt: dueDate,
-            groupId: group.id,
-            branchId: group.branchId,
-          }).catch((err) => console.error('Finance membership charge record failed:', err));
-
-          createdPayments.push(payment);
+            group,
+            membership,
+            monthlyAmount,
+            candidateDate: today,
+          });
+          if ('payment' in result && result.payment) {
+            createdPayments.push(result.payment);
+          }
         } catch (error: any) {
           console.error(`Error creating payment for client ${membership.clientId} and group ${group.id}:`, error);
           errors.push({
@@ -857,119 +1038,59 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
 export const createMonthlyPaymentsForAllTenants = async () => {
   try {
     console.log('[Cron] Starting automatic monthly payments creation...');
-    
-    // Получаем все активные тенанты
+
     const tenants = await prisma.tenant.findMany({
-      where: {
-        isActive: true
-      }
+      where: { isActive: true },
     });
 
     let totalCreated = 0;
     let totalErrors = 0;
+    const today = new Date();
+    const currentDay = today.getDate();
 
     for (const tenant of tenants) {
       try {
-        const today = new Date();
-        const currentDay = today.getDate();
-
-        // Находим все группы с ежемесячной оплатой, где paymentDueDay совпадает с текущим днем
         const groups = await prisma.group.findMany({
           where: {
             tenantId: tenant.id,
             isActive: true,
             isMonthlyPayment: true,
             paymentDueDay: currentDay,
-            monthlyPaymentAmount: { not: null }
+            monthlyPaymentAmount: { not: null },
           },
           include: {
             memberships: {
               where: {
                 isActive: true,
-                leftAt: null
+                leftAt: null,
+                isTrial: false,
               },
-              include: {
-                client: true
-              }
-            }
-          }
+              include: { client: true },
+            },
+          },
         });
 
         for (const group of groups) {
           const monthlyAmount = Number(group.monthlyPaymentAmount || 0);
           if (monthlyAmount <= 0) continue;
 
-          // Вычисляем дату оплаты (сегодня)
-          const dueDate = new Date(today);
-          dueDate.setHours(23, 59, 59, 999);
-
-          // Проверяем, не создан ли уже платеж для этого месяца
-          const currentMonth = today.getMonth();
-          const currentYear = today.getFullYear();
-
           for (const membership of group.memberships) {
             try {
-              // Проверяем, не существует ли уже платеж для этого клиента и группы в текущем месяце
-              const existingPayment = await prisma.payment.findFirst({
-                where: {
-                  tenantId: tenant.id,
-                  clientId: membership.clientId,
-                  groupId: group.id,
-                  isMonthlyPayment: true,
-                  createdAt: {
-                    gte: new Date(currentYear, currentMonth, 1),
-                    lt: new Date(currentYear, currentMonth + 1, 1)
-                  }
-                }
-              });
-
-              if (existingPayment) {
-                continue;
-              }
-
-              // Создаем платеж (с учётом личной скидки клиента)
-              const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
-                monthlyAmount,
-                membership.client?.personalDiscountType,
-                membership.client?.personalDiscountValue != null
-                  ? Number(membership.client.personalDiscountValue)
-                  : null
-              );
-              if (chargeAmount <= 0) {
-                continue;
-              }
-
-              const payment = await prisma.payment.create({
-                data: {
-                  tenantId: tenant.id,
-                  clientId: membership.clientId,
-                  groupId: group.id,
-                  amount: chargeAmount,
-                  originalAmount,
-                  type: 'monthly_payment',
-                  status: 'pending',
-                  dueDate,
-                  isMonthlyPayment: true,
-                  branchId: group.branchId
-                },
-                include: { client: true, group: true },
-              });
-
-              const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
-              await FinanceService.recordMembershipCharge({
+              const result = await createOneMonthlyPayment({
                 tenantId: tenant.id,
-                clientId: payment.clientId,
-                paymentId: payment.id,
-                amount: chargeAmount,
-                title: `${clientName} — ${payment.group?.name || 'ежемесячная оплата'}`,
-                occurredAt: dueDate,
-                groupId: group.id,
-                branchId: group.branchId,
-              }).catch((err) => console.error('[Cron] Finance membership charge record failed:', err));
-
-              totalCreated++;
+                group,
+                membership,
+                monthlyAmount,
+                candidateDate: today,
+              });
+              if ('payment' in result && result.payment) {
+                totalCreated++;
+              }
             } catch (error: any) {
-              console.error(`[Cron] Error creating payment for tenant ${tenant.id}, client ${membership.clientId}, group ${group.id}:`, error);
+              console.error(
+                `[Cron] Error creating payment for tenant ${tenant.id}, client ${membership.clientId}, group ${group.id}:`,
+                error
+              );
               totalErrors++;
             }
           }

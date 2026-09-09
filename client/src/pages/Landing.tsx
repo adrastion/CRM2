@@ -1,12 +1,16 @@
 import React from 'react';
 import { Box, Button, Container, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import BrandLogo from '../components/common/BrandLogo';
+import PublicSiteNav from '../components/PublicSiteNav';
 import PublicFooter from '../components/PublicFooter';
 import { colors, radii, typography } from '../theme/tokens';
 import { currentSessionDestination, hasAnySession } from '../utils/authSession';
 import heroGym from '../assets/landing-hero-gym.jpg';
 import sectionDesk from '../assets/landing-section-desk.jpg';
+import shotDashboard from '../assets/landing-shot-dashboard.png';
+import shotClients from '../assets/landing-shot-clients.png';
+import shotSchedule from '../assets/landing-shot-schedule.png';
+import shotFinance from '../assets/landing-shot-finance.png';
 
 const MODULES = [
   {
@@ -80,21 +84,48 @@ const CAPABILITIES = [
     title: 'Клиенты от лида до постоянного ученика',
     text: 'Ведите воронку, назначайте пробные и держите карточку спортсмена с группами и платежами.',
     points: ['Статусы лидов', 'Пробные занятия', 'История по ученику'],
-    visual: 'clients' as const,
+    shot: shotClients,
+    alt: 'Скрин раздела «Клиенты» в кабинете ПРОФСПОРТСРМ',
   },
   {
     id: 'schedule',
     title: 'Расписание без путаницы в чатах',
     text: 'Календарь связывает группы, тренеров и филиалы. При конфликте с соревнованиями — предложение замены.',
     points: ['Группы и залы', 'Замена тренера', 'События школы'],
-    visual: 'schedule' as const,
+    shot: shotSchedule,
+    alt: 'Скрин раздела «Календарный план» в кабинете ПРОФСПОРТСРМ',
   },
   {
     id: 'finance',
     title: 'Абонементы, оплаты и зарплата вместе',
     text: 'Выдача абонементов, платежи, журнал операций и начисление зарплаты по схемам школы.',
     points: ['Абонементы', 'Журнал операций', 'Начисление зарплаты'],
-    visual: 'finance' as const,
+    shot: shotFinance,
+    alt: 'Скрин раздела «Финансы» в кабинете ПРОФСПОРТСРМ',
+  },
+] as const;
+
+const CTA_STEPS = [
+  {
+    step: '01',
+    title: 'Регистрация',
+    text: 'Создайте аккаунт школы — займёт несколько минут.',
+    path: '/register',
+    action: 'Создать аккаунт',
+  },
+  {
+    step: '02',
+    title: 'Тарифы',
+    text: 'Выберите план под размер школы или уточните условия.',
+    path: '/pricing',
+    action: 'Смотреть тарифы',
+  },
+  {
+    step: '03',
+    title: 'Контакты',
+    text: 'Вопросы по подключению — напишите нам, поможем.',
+    path: '/contacts',
+    action: 'Написать нам',
   },
 ] as const;
 
@@ -106,97 +137,40 @@ const fadeUp = {
   },
 };
 
-/** Живой UI-мок кабинета поверх фото. */
-const UiMock: React.FC<{ variant: 'clients' | 'schedule' | 'finance' }> = ({ variant }) => {
-  const rows =
-    variant === 'clients'
-      ? [
-          { a: 'Иванов А.', b: 'Лид', c: 'Пробное' },
-          { a: 'Петрова М.', b: 'Активный', c: 'Группа А' },
-          { a: 'Сидоров К.', b: 'Активный', c: 'Группа Б' },
-        ]
-      : variant === 'schedule'
-        ? [
-            { a: '10:00', b: 'Дзюдо · младшая', c: 'Зал 1' },
-            { a: '12:30', b: 'Самбо · средний', c: 'Зал 2' },
-            { a: '17:00', b: 'Вольная борьба', c: 'Зал 1' },
-          ]
-        : [
-            { a: 'Абонемент 8', b: '−4 500 ₽', c: 'Выдача' },
-            { a: 'Оплата клиента', b: '+4 500 ₽', c: 'Приход' },
-            { a: 'Зарплата', b: '−12 000 ₽', c: 'Выплата' },
-          ];
-
-  const title =
-    variant === 'clients' ? 'Клиенты' : variant === 'schedule' ? 'Расписание' : 'Операции';
-
-  return (
+/** Реальный скрин кабинета в рамке. */
+const ShotFrame: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
+  <Box
+    sx={{
+      borderRadius: `${radii.panel}px`,
+      overflow: 'hidden',
+      boxShadow: '0 20px 50px rgba(13, 75, 215, 0.18)',
+      border: `1px solid ${colors.divider}`,
+      bgcolor: colors.card,
+      animation: 'landingFloat 7s ease-in-out infinite',
+      '@keyframes landingFloat': {
+        '0%, 100%': { transform: 'translateY(0)' },
+        '50%': { transform: 'translateY(-6px)' },
+      },
+    }}
+  >
     <Box
-      aria-hidden
+      component="img"
+      src={src}
+      alt={alt}
+      loading="lazy"
       sx={{
-        bgcolor: 'rgba(255,255,255,0.96)',
-        borderRadius: `${radii.panel}px`,
-        p: { xs: 2, md: 2.5 },
-        boxShadow: '0 20px 50px rgba(13, 75, 215, 0.18)',
-        backdropFilter: 'blur(8px)',
-        animation: 'landingFloat 7s ease-in-out infinite',
-        '@keyframes landingFloat': {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-6px)' },
-        },
+        display: 'block',
+        width: '100%',
+        height: 'auto',
+        verticalAlign: 'middle',
       }}
-    >
-      <Typography sx={{ fontSize: 13, fontWeight: 800, color: colors.text, mb: 1.5 }}>
-        {title}
-      </Typography>
-      {rows.map((row, i) => (
-        <Box
-          key={`${row.a}-${i}`}
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr auto',
-            gap: 1,
-            alignItems: 'center',
-            py: 1.1,
-            borderBottom: i < rows.length - 1 ? `1px solid ${colors.divider}` : 'none',
-          }}
-        >
-          <Typography sx={{ fontSize: 13, fontWeight: 600, color: colors.text }} noWrap>
-            {row.a}
-          </Typography>
-          <Typography sx={{ fontSize: 12, color: colors.textMuted }} noWrap>
-            {row.b}
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: colors.primary,
-              bgcolor: colors.primarySoft,
-              px: 1,
-              py: 0.35,
-              borderRadius: 1,
-            }}
-          >
-            {row.c}
-          </Typography>
-        </Box>
-      ))}
-    </Box>
-  );
-};
+    />
+  </Box>
+);
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const loggedIn = hasAnySession();
-  const [scrolled, setScrolled] = React.useState(false);
-
-  React.useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 48);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   const goPrimary = () => {
     if (loggedIn) {
@@ -210,6 +184,10 @@ const Landing: React.FC = () => {
     document.getElementById('features')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const scrollToStart = () => {
+    document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <Box
       sx={{
@@ -220,98 +198,13 @@ const Landing: React.FC = () => {
         fontFamily: '"Montserrat", sans-serif',
       }}
     >
-      <Box
-        component="header"
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 30,
-          transition: 'background-color 0.25s ease, border-color 0.25s ease, backdrop-filter 0.25s ease',
-          bgcolor: scrolled ? 'rgba(255,255,255,0.94)' : 'transparent',
-          borderBottom: scrolled ? `1px solid ${colors.divider}` : '1px solid transparent',
-          backdropFilter: scrolled ? 'blur(12px)' : 'none',
-        }}
-      >
-        <Container
-          maxWidth="lg"
-          sx={{
-            py: 1.5,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 2,
-          }}
-        >
-          <Box
-            onClick={() => navigate('/')}
-            sx={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              px: scrolled ? 0 : 1.25,
-              py: scrolled ? 0 : 0.75,
-              borderRadius: 2,
-              bgcolor: scrolled ? 'transparent' : 'rgba(255,255,255,0.92)',
-              transition: 'background-color 0.25s ease, padding 0.25s ease',
-            }}
-          >
-            <BrandLogo
-              size={{ xs: 34, md: 40 }}
-              layout="horizontal"
-              wordmarkSize={{ xs: 12, md: 14 }}
-            />
-          </Box>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: { xs: 0.5, sm: 1 },
-              px: scrolled ? 0 : 1,
-              py: scrolled ? 0 : 0.5,
-              borderRadius: 2,
-              bgcolor: scrolled ? 'transparent' : 'rgba(255,255,255,0.88)',
-              transition: 'background-color 0.25s ease, padding 0.25s ease',
-            }}
-          >
-            <Button
-              color="inherit"
-              onClick={scrollToFeatures}
-              sx={{ display: { xs: 'none', sm: 'inline-flex' }, color: colors.text, fontWeight: 600 }}
-            >
-              Возможности
-            </Button>
-            <Button
-              color="inherit"
-              onClick={() => navigate('/pricing')}
-              sx={{ display: { xs: 'none', sm: 'inline-flex' }, color: colors.text, fontWeight: 600 }}
-            >
-              Тарифы
-            </Button>
-            {loggedIn ? (
-              <Button variant="contained" onClick={goPrimary} sx={{ fontWeight: 700 }}>
-                В кабинет
-              </Button>
-            ) : (
-              <>
-                <Button
-                  color="inherit"
-                  onClick={() => navigate('/auth')}
-                  sx={{ color: colors.text, fontWeight: 600 }}
-                >
-                  Войти
-                </Button>
-                <Button variant="contained" onClick={() => navigate('/register')} sx={{ fontWeight: 700 }}>
-                  Регистрация
-                </Button>
-              </>
-            )}
-          </Box>
-        </Container>
-      </Box>
+      <PublicSiteNav
+        variant="overlay"
+        showFeatures
+        onFeaturesClick={scrollToFeatures}
+      />
 
-      {/* Герой: full-bleed фото зала */}
+      {/* Герой */}
       <Box
         component="section"
         sx={{
@@ -410,12 +303,12 @@ const Landing: React.FC = () => {
                 },
               }}
             >
-              {loggedIn ? 'Открыть кабинет' : 'Начать работу'}
+              {loggedIn ? 'Открыть кабинет' : 'Начать — регистрация'}
             </Button>
             <Button
               variant="outlined"
               size="large"
-              onClick={scrollToFeatures}
+              onClick={scrollToStart}
               sx={{
                 px: 3.5,
                 py: 1.4,
@@ -429,8 +322,116 @@ const Landing: React.FC = () => {
                 },
               }}
             >
-              Смотреть возможности
+              Как подключиться
             </Button>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Скрин панели под героем */}
+      <Box
+        component="section"
+        sx={{
+          py: { xs: 4, md: 6 },
+          bgcolor: colors.surface,
+          borderBottom: `1px solid ${colors.divider}`,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Typography
+            sx={{
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: colors.primary,
+              mb: 2,
+            }}
+          >
+            Так выглядит кабинет
+          </Typography>
+          <ShotFrame src={shotDashboard} alt="Скрин панели управления ПРОФСПОРТСРМ" />
+        </Container>
+      </Box>
+
+      {/* Связка CTA */}
+      <Box
+        id="start"
+        component="section"
+        sx={{ py: { xs: 7, md: 9 }, bgcolor: colors.white, scrollMarginTop: 72 }}
+      >
+        <Container maxWidth="lg">
+          <Typography
+            component="h2"
+            sx={{
+              fontSize: { xs: 26, md: 34 },
+              fontWeight: 800,
+              color: colors.text,
+              mb: 1.25,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Простой путь без сюрпризов
+          </Typography>
+          <Typography
+            sx={{
+              color: colors.textMuted,
+              mb: 4,
+              maxWidth: 520,
+              fontSize: typography.field,
+              lineHeight: 1.55,
+            }}
+          >
+            Регистрация → тарифы → контакты. На каждом шаге те же разделы в меню — ничего не прячется.
+          </Typography>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+              gap: { xs: 3, md: 0 },
+              borderTop: `1px solid ${colors.divider}`,
+              pt: 4,
+            }}
+          >
+            {CTA_STEPS.map((item, index) => (
+              <Box
+                key={item.step}
+                sx={{
+                  px: { md: index === 0 ? 0 : 4 },
+                  borderLeft: {
+                    md: index === 0 ? 'none' : `1px solid ${colors.divider}`,
+                  },
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: 40,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: colors.primarySoft,
+                    mb: 1.5,
+                  }}
+                >
+                  {item.step}
+                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 18, color: colors.text, mb: 1 }}>
+                  {item.title}
+                </Typography>
+                <Typography
+                  sx={{ color: colors.textMuted, fontSize: 14, lineHeight: 1.55, mb: 2 }}
+                >
+                  {item.text}
+                </Typography>
+                <Button
+                  variant={index === 0 ? 'contained' : 'outlined'}
+                  onClick={() => navigate(item.path)}
+                  sx={{ fontWeight: 700, textTransform: 'none' }}
+                >
+                  {item.action}
+                </Button>
+              </Box>
+            ))}
           </Box>
         </Container>
       </Box>
@@ -442,7 +443,7 @@ const Landing: React.FC = () => {
         sx={{
           py: { xs: 7, md: 10 },
           bgcolor: colors.white,
-          scrollMarginTop: 24,
+          scrollMarginTop: 72,
           backgroundImage: `
             radial-gradient(ellipse 60% 40% at 100% 0%, rgba(72,128,255,0.1), transparent 55%),
             radial-gradient(ellipse 50% 35% at 0% 100%, rgba(13,75,215,0.06), transparent 50%)
@@ -479,7 +480,6 @@ const Landing: React.FC = () => {
             sx={{
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
-              gap: { xs: 0, md: 0 },
               borderTop: `1px solid ${colors.divider}`,
             }}
           >
@@ -521,7 +521,7 @@ const Landing: React.FC = () => {
         </Container>
       </Box>
 
-      {/* Сценарии с фото + UI */}
+      {/* Сценарии со скринами */}
       {CAPABILITIES.map((block, index) => {
         const photoLeft = index % 2 === 1;
         return (
@@ -555,8 +555,8 @@ const Landing: React.FC = () => {
                 zIndex: 1,
                 py: { xs: 6, md: 8 },
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                gap: { xs: 4, md: 6 },
+                gridTemplateColumns: { xs: '1fr', md: '1fr 1.15fr' },
+                gap: { xs: 4, md: 5 },
                 alignItems: 'center',
               }}
             >
@@ -604,8 +604,8 @@ const Landing: React.FC = () => {
                   ))}
                 </Box>
               </Box>
-              <Box sx={{ order: { xs: 2, md: photoLeft ? 1 : 2 }, maxWidth: 420, width: '100%' }}>
-                <UiMock variant={block.visual} />
+              <Box sx={{ order: { xs: 2, md: photoLeft ? 1 : 2 }, width: '100%' }}>
+                <ShotFrame src={block.shot} alt={block.alt} />
               </Box>
             </Container>
           </Box>
@@ -686,7 +686,7 @@ const Landing: React.FC = () => {
         </Container>
       </Box>
 
-      {/* CTA на фото */}
+      {/* CTA */}
       <Box
         component="section"
         sx={{
@@ -726,7 +726,7 @@ const Landing: React.FC = () => {
               lineHeight: 1.55,
             }}
           >
-            Регистрация занимает минуты — дальше клиенты, расписание и оплаты уже в системе.
+            Дальше по цепочке: регистрация, выбор тарифа или вопрос в контактах.
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}>
             <Button
@@ -739,10 +739,11 @@ const Landing: React.FC = () => {
                 fontWeight: 800,
                 px: 3.5,
                 py: 1.35,
+                textTransform: 'none',
                 '&:hover': { bgcolor: colors.primarySoft },
               }}
             >
-              {loggedIn ? 'В кабинет' : 'Создать аккаунт'}
+              {loggedIn ? 'В кабинет' : '1. Регистрация'}
             </Button>
             <Button
               variant="outlined"
@@ -754,13 +755,33 @@ const Landing: React.FC = () => {
                 fontWeight: 700,
                 px: 3.5,
                 py: 1.35,
+                textTransform: 'none',
                 '&:hover': {
                   borderColor: colors.white,
                   bgcolor: 'rgba(255,255,255,0.1)',
                 },
               }}
             >
-              Тарифы
+              2. Тарифы
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={() => navigate('/contacts')}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.75)',
+                color: colors.white,
+                fontWeight: 700,
+                px: 3.5,
+                py: 1.35,
+                textTransform: 'none',
+                '&:hover': {
+                  borderColor: colors.white,
+                  bgcolor: 'rgba(255,255,255,0.1)',
+                },
+              }}
+            >
+              3. Контакты
             </Button>
           </Box>
         </Container>

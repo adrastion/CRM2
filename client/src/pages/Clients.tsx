@@ -3086,6 +3086,11 @@ const Clients: React.FC = () => {
               </Typography>
             )}
 
+            <Alert severity="warning">
+              Выдача абонемента отменяет незакрытые ежемесячные платежи группы. Пока действует
+              абонемент (или долг по нему), ежемесячная оплата группы начисляться не будет.
+            </Alert>
+
             {selectedClientForMembership?.activeMembership?.visitsTotal != null && (
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                 <TextField
