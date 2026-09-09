@@ -128,39 +128,39 @@ class ApiService {
             localStorage.removeItem('superAdminToken');
             localStorage.removeItem('superAdmin');
             const schoolDest = fallbackToSchoolAccount();
-            window.location.href = schoolDest || '/auth';
+            window.location.href = schoolDest || '/';
           } else if (isPlatformRoute && localStorage.getItem('testerToken') && !localStorage.getItem('superAdminToken')) {
             const activeId = getActiveAccountId();
             if (activeId?.startsWith('TESTER:')) removeSavedAccount(activeId);
             localStorage.removeItem('testerToken');
             localStorage.removeItem('tester');
             const schoolDest = fallbackToSchoolAccount();
-            window.location.href = schoolDest || '/auth';
+            window.location.href = schoolDest || '/';
           } else if (isMarketerRoute) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
-            window.location.href = '/auth';
+            window.location.href = '/';
           } else if (isPromoCodeAdminRoute) {
             localStorage.removeItem('promoCodeAdminToken');
             localStorage.removeItem('promoCodeAdmin');
             localStorage.removeItem('promoCodeAdminTenant');
-            window.location.href = '/auth';
+            window.location.href = '/';
           } else if (url.includes('/platform-staff/')) {
             localStorage.removeItem('platformStaffToken');
             localStorage.removeItem('platformStaff');
-            window.location.href = '/auth';
+            window.location.href = '/';
           } else if (url.includes('/client-auth/')) {
             localStorage.removeItem('clientToken');
             localStorage.removeItem('client');
             localStorage.removeItem('clientTenant');
             localStorage.removeItem('userType');
-            window.location.href = '/auth';
+            window.location.href = '/';
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('tenant');
-            window.location.href = '/auth';
+            window.location.href = '/';
           }
         }
         return Promise.reject(error);

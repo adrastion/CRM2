@@ -40,8 +40,10 @@ import { apiService } from '../services/api';
 import {
   subscribeSuperAdminPushNotifications,
   unsubscribeSuperAdminPushNotifications,
-  checkNotificationPermission,
+  getLocalPushStatus,
+  LocalPushStatus,
 } from '../utils/superAdminPushNotifications';
+import type { LogFileInfoResponse, LogFileContentResponse } from '../types';
 
 type HistoryRange = '1h' | '6h' | '24h' | '7d' | '30d';
 
@@ -163,10 +165,18 @@ const ServerLoadMonitoringTab: React.FC = () => {
     alertCooldownMinutes: '15',
   });
   const [savingSettings, setSavingSettings] = useState(false);
-  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [localPush, setLocalPush] = useState<LocalPushStatus>({
+    permission: 'default',
+    subscribedLocally: false,
+  });
   const [vapidConfigured, setVapidConfigured] = useState(true);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [errorLogPath, setErrorLogPath] = useState('');
+  const [logFileInfo, setLogFileInfo] = useState<LogFileInfoResponse | null>(null);
+  const [logContent, setLogContent] = useState<string | null>(null);
+  const [logBusy, setLogBusy] = useState(false);
+  const [savingLogPath, setSavingLogPath] = useState(false);
 
   const loadLive = useCallback(async () => {
     try {
@@ -207,27 +217,45 @@ const ServerLoadMonitoringTab: React.FC = () => {
     }
   }, []);
 
-  const loadPushStatus = useCallback(async () => {
+  const refreshLocalPushStatus = useCallback(async () => {
+    const status = await getLocalPushStatus();
+    setLocalPush(status);
+  }, []);
+
+  const loadVapidStatus = useCallback(async () => {
     try {
       const status = await apiService.getSuperAdminPushStatus();
-      setPushSubscribed(status.subscribed);
       setVapidConfigured(status.vapidConfigured);
     } catch (err) {
       console.error('Push status error:', err);
     }
   }, []);
 
+  const loadLogFileInfo = useCallback(async () => {
+    try {
+      const info = await apiService.getLogFileInfo();
+      setLogFileInfo(info);
+      if (info.path) {
+        setErrorLogPath(info.path);
+      }
+    } catch (err: any) {
+      setPushMessage(err.response?.data?.error || 'Ошибка загрузки сведений о файле логов');
+    }
+  }, []);
+
   useEffect(() => {
     loadLive();
     loadAlertSettings();
-    loadPushStatus();
+    loadVapidStatus();
+    refreshLocalPushStatus();
+    loadLogFileInfo();
 
     const interval = setInterval(() => {
       loadLive();
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [loadLive, loadAlertSettings, loadPushStatus]);
+  }, [loadLive, loadAlertSettings, loadVapidStatus, refreshLocalPushStatus, loadLogFileInfo]);
 
   useEffect(() => {
     loadHistory(historyRange);
@@ -258,18 +286,18 @@ const ServerLoadMonitoringTab: React.FC = () => {
       setPushBusy(true);
       setPushMessage(null);
       const ok = await subscribeSuperAdminPushNotifications();
+      await refreshLocalPushStatus();
       if (ok) {
-        setPushSubscribed(true);
         setPushMessage('Браузерные уведомления включены');
       } else {
-        const perm = checkNotificationPermission();
-        if (perm === 'denied') {
+        const status = await getLocalPushStatus();
+        if (status.permission === 'denied') {
           setPushMessage('Разрешение на уведомления запрещено в браузере');
         } else {
           setPushMessage('Не удалось подписаться на уведомления');
         }
       }
-      await loadPushStatus();
+      await loadVapidStatus();
     } finally {
       setPushBusy(false);
     }
@@ -279,15 +307,88 @@ const ServerLoadMonitoringTab: React.FC = () => {
     try {
       setPushBusy(true);
       const ok = await unsubscribeSuperAdminPushNotifications();
+      await refreshLocalPushStatus();
       if (ok) {
-        setPushSubscribed(false);
         setPushMessage('Подписка на уведомления отменена');
       }
-      await loadPushStatus();
+      await loadVapidStatus();
     } finally {
       setPushBusy(false);
     }
   };
+
+  const handleSaveLogPath = async () => {
+    try {
+      setSavingLogPath(true);
+      await apiService.updateAdminSettings({
+        errorLogPath: errorLogPath.trim() ? errorLogPath.trim() : null,
+      });
+      setLogContent(null);
+      await loadLogFileInfo();
+      setPushMessage('Путь к файлу логов сохранён');
+    } catch (err: any) {
+      setPushMessage(err.response?.data?.error || 'Ошибка сохранения пути логов');
+    } finally {
+      setSavingLogPath(false);
+    }
+  };
+
+  const handleDownloadLogFile = async () => {
+    try {
+      setLogBusy(true);
+      const blob = await apiService.downloadLogFile();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `error-log-${new Date().toISOString().split('T')[0]}.log`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setPushMessage(err.response?.data?.error || 'Ошибка скачивания файла логов');
+    } finally {
+      setLogBusy(false);
+    }
+  };
+
+  const handleClearLogFile = async () => {
+    if (!window.confirm('Очистить файл логов? Это действие нельзя отменить.')) {
+      return;
+    }
+    try {
+      setLogBusy(true);
+      await apiService.clearLogFile();
+      setLogContent(null);
+      await loadLogFileInfo();
+    } catch (err: any) {
+      setPushMessage(err.response?.data?.error || 'Ошибка очистки файла логов');
+    } finally {
+      setLogBusy(false);
+    }
+  };
+
+  const handlePreviewLogFile = async () => {
+    try {
+      setLogBusy(true);
+      const data: LogFileContentResponse = await apiService.readLogFile(200);
+      setLogContent(data.content || (data.exists ? '' : 'Файл не существует'));
+    } catch (err: any) {
+      setPushMessage(err.response?.data?.error || 'Ошибка чтения файла логов');
+    } finally {
+      setLogBusy(false);
+    }
+  };
+
+  const localPushLabel =
+    localPush.permission === 'denied'
+      ? 'В этом браузере: запрещены системой'
+      : localPush.subscribedLocally && localPush.permission === 'granted'
+        ? 'В этом браузере: включены'
+        : 'В этом браузере: выключены';
+
+  const pushEnabledLocally =
+    localPush.subscribedLocally && localPush.permission === 'granted';
 
   const cpuColor = live
     ? metricColor(live.cpuPercent, 70, alertSettings?.alertCpuPercent ?? 90)
@@ -588,7 +689,7 @@ const ServerLoadMonitoringTab: React.FC = () => {
           >
             {savingSettings ? <CircularProgress size={22} /> : 'Сохранить пороги'}
           </Button>
-          {pushSubscribed ? (
+          {pushEnabledLocally ? (
             <Button
               variant="outlined"
               color="warning"
@@ -603,7 +704,7 @@ const ServerLoadMonitoringTab: React.FC = () => {
               variant="outlined"
               startIcon={<NotificationsActive />}
               onClick={handleSubscribePush}
-              disabled={pushBusy || !vapidConfigured}
+              disabled={pushBusy || !vapidConfigured || localPush.permission === 'denied'}
             >
               Включить уведомления браузера
             </Button>
@@ -611,12 +712,86 @@ const ServerLoadMonitoringTab: React.FC = () => {
         </Box>
 
         <Divider sx={{ my: 1 }} />
-        <Typography variant="caption" color="text.secondary">
-          Статус подписки: {pushSubscribed ? 'активна' : 'нет'}
-          {alertSettings?.lastAlertAt
-            ? ` · Последний алерт: ${new Date(alertSettings.lastAlertAt).toLocaleString('ru-RU')}`
-            : ''}
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          {localPushLabel}
         </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {alertSettings?.lastAlertAt
+            ? `Последний алерт: ${new Date(alertSettings.lastAlertAt).toLocaleString('ru-RU')}`
+            : 'Алертов ещё не было'}
+        </Typography>
+      </Paper>
+
+      <Paper sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" fontWeight="bold" gutterBottom>
+          Файл логов ошибок
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Путь к файлу ошибок на сервере, скачивание, очистка и превью.
+        </Typography>
+        <TextField
+          fullWidth
+          label="Путь к файлу логов"
+          value={errorLogPath}
+          onChange={(e) => setErrorLogPath(e.target.value)}
+          sx={{ mb: 1 }}
+          helperText="Абсолютный путь на сервере"
+        />
+        {logFileInfo && (
+          <Alert severity={logFileInfo.exists ? 'info' : 'warning'} sx={{ mb: 2 }}>
+            Путь: {logFileInfo.path}
+            <br />
+            {logFileInfo.exists
+              ? `Размер: ${logFileInfo.sizeHuman}${
+                  logFileInfo.modifiedAt
+                    ? ` • изменён: ${new Date(logFileInfo.modifiedAt).toLocaleString('ru-RU')}`
+                    : ''
+                }`
+              : 'Файл не существует'}
+          </Alert>
+        )}
+        <Box display="flex" flexWrap="wrap" gap={1} mb={2}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleSaveLogPath}
+            disabled={savingLogPath}
+          >
+            {savingLogPath ? <CircularProgress size={18} /> : 'Сохранить путь'}
+          </Button>
+          <Button variant="outlined" size="small" onClick={handleDownloadLogFile} disabled={logBusy}>
+            Скачать
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            onClick={handleClearLogFile}
+            disabled={logBusy}
+          >
+            Очистить
+          </Button>
+          <Button variant="outlined" size="small" onClick={handlePreviewLogFile} disabled={logBusy}>
+            Превью
+          </Button>
+        </Box>
+        {logContent !== null && (
+          <TextField
+            fullWidth
+            multiline
+            minRows={6}
+            maxRows={12}
+            value={logContent}
+            InputProps={{ readOnly: true }}
+            sx={{
+              mb: 1,
+              '& .MuiInputBase-input': {
+                fontFamily: 'monospace',
+                fontSize: 12,
+              },
+            }}
+          />
+        )}
       </Paper>
     </Box>
   );

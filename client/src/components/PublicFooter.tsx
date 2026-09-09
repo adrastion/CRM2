@@ -30,6 +30,29 @@ const PublicFooter: React.FC = () => {
           <Typography
             variant="body2"
             component="a"
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/');
+            }}
+            sx={{
+              color: 'text.secondary',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Главная
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            |
+          </Typography>
+          <Typography
+            variant="body2"
+            component="a"
             href="/terms"
             onClick={(e) => {
               e.preventDefault();

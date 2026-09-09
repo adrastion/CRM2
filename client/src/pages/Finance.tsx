@@ -34,6 +34,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import ClientNameLink from '../components/ClientNameLink';
 import FinanceOperationsTable from '../components/finance/FinanceOperationsTable';
 import FinanceSummaryTable, {
@@ -130,6 +131,8 @@ const financeErrorMessage = (e: any) => {
 };
 
 const Finance: React.FC = () => {
+  const { user } = useAuth();
+  const canDeleteOperations = user?.role === 'OWNER';
   const [tab, setTab] = useState<FinanceTab>('operations');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -805,7 +808,7 @@ const Finance: React.FC = () => {
                 formatMoney={formatMoney}
                 formatDateTime={formatDateTime}
                 deletingId={deletingOpId}
-                onDelete={(op) => setCancelOp(op)}
+                onDelete={canDeleteOperations ? (op) => setCancelOp(op) : undefined}
               />
             )}
           </>

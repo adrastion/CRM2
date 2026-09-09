@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -25,8 +25,6 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
-  Tabs,
-  Tab,
   MenuItem,
   Select,
   FormControl,
@@ -40,35 +38,21 @@ import {
   AccountBalance,
   Warning,
   Settings,
-  History,
   Add,
   Payment,
-  AccountBox,
-  ShowChart,
   Edit,
   Delete,
   GetApp,
-  Assessment,
-  Security,
-  AttachMoney,
-  People,
   DragIndicator,
   Visibility,
   VisibilityOff,
-  Bookmark,
-  Memory as MemoryIcon,
-  NoteAlt,
   AdminPanelSettings,
   LinkOff,
   BugReport,
-  Chat as ChatIcon,
-  Campaign,
 } from '@mui/icons-material';
 import type {
   SubscriptionPlanItem,
   SubscriptionGrantLogItem,
-  LogFileInfoResponse,
-  LogFileContentResponse,
 } from '../types';
 import {
   LineChart,
@@ -115,6 +99,30 @@ import {
 } from '../components/SuperAdminPlatformTabs';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
+
+const SA_SECTIONS = [
+  'overview',
+  'transactions',
+  'accounts',
+  'analytics',
+  'kpi',
+  'audit',
+  'tariffs',
+  'marketers',
+  'server-load',
+  'development',
+  'chats',
+  'changelog',
+] as const;
+
+type SaSection = (typeof SA_SECTIONS)[number];
+
+function resolveSection(raw: string | null): SaSection {
+  if (raw && (SA_SECTIONS as readonly string[]).includes(raw)) {
+    return raw as SaSection;
+  }
+  return 'overview';
+}
 
 interface DashboardData {
   tenants: {
@@ -241,12 +249,14 @@ const SortableWidget: React.FC<SortableWidgetProps> = ({ id, children, title, vi
 };
 
 const AdminDashboard: React.FC = () => {
-  // const { user } = useAuth();
-  const [tabValue, setTabValue] = useState(0);
+  const [searchParams] = useSearchParams();
+  const section = useMemo(
+    () => resolveSection(searchParams.get('section')),
+    [searchParams]
+  );
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [settingsDialog, setSettingsDialog] = useState(false);
   const [staffDialog, setStaffDialog] = useState(false);
   const [newStaff, setNewStaff] = useState<{ email: string; role: PlatformStaffRole; firstName: string; lastName: string }>({
     email: '',
@@ -255,9 +265,6 @@ const AdminDashboard: React.FC = () => {
     lastName: '',
   });
   const [oneTimePassword, setOneTimePassword] = useState<string | null>(null);
-  const [reservePercentage, setReservePercentage] = useState<string>('');
-  const [reserveAmount, setReserveAmount] = useState<string>('');
-  const [savingSettings, setSavingSettings] = useState(false);
   
   // История транзакций
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -292,14 +299,6 @@ const AdminDashboard: React.FC = () => {
     categories: true,
     plans: true,
   });
-  
-  // Пресеты дашборда
-  const [presets, setPresets] = useState<any[]>([]);
-  const [currentPreset, setCurrentPreset] = useState<any>(null);
-  const [presetDialog, setPresetDialog] = useState(false);
-  const [presetName, setPresetName] = useState<string>('');
-  const [presetIsDefault, setPresetIsDefault] = useState<boolean>(false);
-  const [, setPresetsLoading] = useState(false);
   
   // Датчики для drag & drop
   const sensors = useSensors(
@@ -380,9 +379,6 @@ const AdminDashboard: React.FC = () => {
   const [grantEndDate, setGrantEndDate] = useState<Date | null>(null);
   const [grantComment, setGrantComment] = useState('');
   const [grantHistory, setGrantHistory] = useState<SubscriptionGrantLogItem[]>([]);
-  const [errorLogPath, setErrorLogPath] = useState('');
-  const [logFileInfo, setLogFileInfo] = useState<LogFileInfoResponse | null>(null);
-  const [logContent, setLogContent] = useState<string | null>(null);
 
   // Расширенная статистика маркетологов
   const [marketerStats, setMarketerStats] = useState<any>(null);
@@ -398,58 +394,44 @@ const AdminDashboard: React.FC = () => {
     loadDashboard();
     loadExpenseCategories();
     loadForecast();
-    loadPresets();
   }, []);
 
   useEffect(() => {
-    // Загружаем пресет по умолчанию при загрузке пресетов
-    if (presets.length > 0 && !currentPreset) {
-      const defaultPreset = presets.find(p => p.isDefault) || presets[0];
-      if (defaultPreset) {
-        setCurrentPreset(defaultPreset);
-        setWidgetOrder(defaultPreset.widgetOrder || widgetOrder);
-        setWidgetVisibility(defaultPreset.widgetVisibility || widgetVisibility);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presets]);
-
-  useEffect(() => {
-    // Загружаем аналитику для главной вкладки, если даты установлены
-    if (startDate && endDate && tabValue === 0) {
+    // Загружаем аналитику для overview, если даты установлены
+    if (startDate && endDate && section === 'overview') {
       loadAnalytics();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, tabValue]);
+  }, [startDate, endDate, section]);
 
   useEffect(() => {
-    if (tabValue === 1) {
+    if (section === 'transactions') {
       loadTransactions();
-    } else if (tabValue === 2) {
+    } else if (section === 'accounts') {
       loadAllTenants();
-    } else if (tabValue === 3) {
+    } else if (section === 'analytics') {
       loadAnalytics();
-    } else if (tabValue === 4) {
+    } else if (section === 'kpi') {
       loadKPIMetrics();
-    } else if (tabValue === 5) {
+    } else if (section === 'audit') {
       loadAuditLogs();
-    } else if (tabValue === 6) {
+    } else if (section === 'tariffs') {
       loadPlanPrices();
-    } else if (tabValue === 7) {
+    } else if (section === 'marketers') {
       loadMarketerStats();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabValue]);
+  }, [section]);
 
   useEffect(() => {
-    if (tabValue === 1) {
+    if (section === 'transactions') {
       loadTransactions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionTypeFilter, startDate, endDate, selectedCategoryId]);
 
   useEffect(() => {
-    if (tabValue === 3) {
+    if (section === 'analytics') {
       loadAnalytics();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -575,101 +557,10 @@ const AdminDashboard: React.FC = () => {
       setError(null);
       const dashboardData = await apiService.getAdminDashboard();
       setData(dashboardData);
-      
-      // Заполняем форму настроек
-      if (dashboardData.budget.settings.reservePercentage !== null) {
-        setReservePercentage(dashboardData.budget.settings.reservePercentage.toString());
-      }
-      if (dashboardData.budget.settings.reserveAmount !== null) {
-        setReserveAmount(dashboardData.budget.settings.reserveAmount.toString());
-      }
-      if (dashboardData.budget.settings.errorLogPath !== undefined) {
-        setErrorLogPath(dashboardData.budget.settings.errorLogPath || '');
-      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки дашборда');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    try {
-      setSavingSettings(true);
-      await apiService.updateAdminSettings({
-        reservePercentage: reservePercentage ? parseFloat(reservePercentage) : undefined,
-        reserveAmount: reserveAmount ? parseFloat(reserveAmount) : undefined,
-        errorLogPath: errorLogPath.trim() ? errorLogPath.trim() : null,
-      });
-      setSettingsDialog(false);
-      await loadDashboard();
-      await loadLogFileInfo();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка сохранения настроек');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  const loadLogFileInfo = async () => {
-    try {
-      const info = await apiService.getLogFileInfo();
-      setLogFileInfo(info);
-      if (info.path) {
-        setErrorLogPath(info.path);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка загрузки сведений о файле логов');
-    }
-  };
-
-  const openSettingsDialog = async () => {
-    setLogContent(null);
-    setSettingsDialog(true);
-    await loadLogFileInfo();
-  };
-
-  const handleDownloadLogFile = async () => {
-    try {
-      const blob = await apiService.downloadLogFile();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `error-log-${new Date().toISOString().split('T')[0]}.log`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка скачивания файла логов');
-    }
-  };
-
-  const handleClearLogFile = async () => {
-    if (!window.confirm('Очистить файл логов? Это действие нельзя отменить.')) {
-      return;
-    }
-    try {
-      setSubmitting(true);
-      await apiService.clearLogFile();
-      setLogContent(null);
-      await loadLogFileInfo();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка очистки файла логов');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handlePreviewLogFile = async () => {
-    try {
-      setSubmitting(true);
-      const data: LogFileContentResponse = await apiService.readLogFile(200);
-      setLogContent(data.content || (data.exists ? '' : 'Файл не существует'));
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка чтения файла логов');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -1207,18 +1098,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const loadPresets = async () => {
-    try {
-      setPresetsLoading(true);
-      const data = await apiService.getDashboardPresets();
-      setPresets(data || []);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка загрузки пресетов');
-    } finally {
-      setPresetsLoading(false);
-    }
-  };
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -1236,70 +1115,6 @@ const AdminDashboard: React.FC = () => {
       ...prev,
       [widgetId]: !prev[widgetId],
     }));
-  };
-
-  const handleSavePreset = async () => {
-    if (!presetName.trim()) {
-      setError('Введите название пресета');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const preset = await apiService.saveDashboardPreset({
-        id: currentPreset?.id,
-        name: presetName,
-        isDefault: presetIsDefault,
-        widgetOrder,
-        widgetVisibility,
-      });
-      setPresetDialog(false);
-      setPresetName('');
-      setPresetIsDefault(false);
-      await loadPresets();
-      setCurrentPreset(preset);
-      setError(null);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка сохранения пресета');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleLoadPreset = async (preset: any) => {
-    setCurrentPreset(preset);
-    setWidgetOrder(preset.widgetOrder || widgetOrder);
-    setWidgetVisibility(preset.widgetVisibility || widgetVisibility);
-  };
-
-  const handleDeletePreset = async (presetId: string) => {
-    if (!window.confirm('Вы уверены, что хотите удалить этот пресет?')) {
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      await apiService.deleteDashboardPreset(presetId);
-      await loadPresets();
-      if (currentPreset?.id === presetId) {
-        setCurrentPreset(null);
-        // Сбрасываем к дефолтным значениям
-        setWidgetOrder(['revenue', 'expenses', 'profit', 'forecast', 'categories', 'plans']);
-        setWidgetVisibility({
-          revenue: true,
-          expenses: true,
-          profit: true,
-          forecast: true,
-          categories: true,
-          plans: true,
-        });
-      }
-      setError(null);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка удаления пресета');
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   if (loading) {
@@ -1322,84 +1137,19 @@ const AdminDashboard: React.FC = () => {
     return null;
   }
 
-  if (!data) {
-    return null;
-  }
-
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2.5}>
-        <Box>
-          <Typography variant="h5" component="h1" fontWeight="bold">
-            Панель управления
-          </Typography>
-          <Button component={RouterLink} to="/admin/support-hub" size="small" sx={{ mt: 1 }}>
-            Поддержка и дизайн — чаты и записи
-          </Button>
-        </Box>
-        <Box display="flex" gap={2}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setOneTimePassword(null);
-              setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
-              setStaffDialog(true);
-            }}
-          >
-            Создать сотрудника платформы
-          </Button>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Пресет дашборда</InputLabel>
-            <Select
-              value={currentPreset?.id || ''}
-              label="Пресет дашборда"
-              onChange={(e) => {
-                const preset = presets.find(p => p.id === e.target.value);
-                if (preset) {
-                  handleLoadPreset(preset);
-                } else {
-                  setCurrentPreset(null);
-                  setWidgetOrder(['revenue', 'expenses', 'profit', 'forecast', 'categories', 'plans']);
-                  setWidgetVisibility({
-                    revenue: true,
-                    expenses: true,
-                    profit: true,
-                    forecast: true,
-                    categories: true,
-                    plans: true,
-                  });
-                }
-              }}
-            >
-              <MenuItem value="">
-                <em>По умолчанию</em>
-              </MenuItem>
-              {presets.map((preset) => (
-                <MenuItem key={preset.id} value={preset.id}>
-                  {preset.name} {preset.isDefault && '(По умолчанию)'}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button
-            variant="outlined"
-            startIcon={<Bookmark />}
-            onClick={() => {
-              setPresetName(currentPreset?.name || '');
-              setPresetIsDefault(currentPreset?.isDefault || false);
-              setPresetDialog(true);
-            }}
-          >
-            Сохранить пресет
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<Settings />}
-            onClick={() => openSettingsDialog()}
-          >
-            Настройки резерва
-          </Button>
-        </Box>
+      <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2.5}>
+        <Button
+          variant="outlined"
+          onClick={() => {
+            setOneTimePassword(null);
+            setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
+            setStaffDialog(true);
+          }}
+        >
+          Создать сотрудника платформы
+        </Button>
       </Box>
 
       <Dialog open={staffDialog} onClose={() => setStaffDialog(false)} maxWidth="sm" fullWidth>
@@ -1481,26 +1231,8 @@ const AdminDashboard: React.FC = () => {
         </Alert>
       )}
 
-      {/* Вкладки */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} variant="scrollable" scrollButtons="auto">
-          <Tab icon={<TrendingUp />} label="Общая статистика" />
-          <Tab icon={<History />} label="История транзакций" />
-          <Tab icon={<AccountBox />} label="Все аккаунты" />
-          <Tab icon={<ShowChart />} label="Аналитика" />
-          <Tab icon={<Assessment />} label="KPI метрики" />
-          <Tab icon={<Security />} label="Логи аудита" />
-          <Tab icon={<AttachMoney />} label="Управление тарифами" />
-          <Tab icon={<People />} label="Маркетологи" />
-          <Tab icon={<MemoryIcon />} label="Нагрузка сервера" />
-          <Tab icon={<NoteAlt />} label="Разработка" />
-          <Tab icon={<ChatIcon />} label="Чаты" />
-          <Tab icon={<Campaign />} label="Изменения" />
-        </Tabs>
-      </Paper>
-
-      {/* Контент вкладок */}
-      {tabValue === 0 && data && (
+      {/* Контент секций */}
+      {section === 'overview' && data && (
         <>
       {/* Бюджет и финансы */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -1998,7 +1730,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: История транзакций */}
-      {tabValue === 1 && (
+      {section === 'transactions' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -2241,7 +1973,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Все аккаунты */}
-      {tabValue === 2 && (
+      {section === 'accounts' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -2461,7 +2193,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Аналитика */}
-      {tabValue === 3 && (
+      {section === 'analytics' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -2688,7 +2420,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: KPI метрики */}
-      {tabValue === 4 && (
+      {section === 'kpi' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -2824,7 +2556,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Логи аудита */}
-      {tabValue === 5 && (
+      {section === 'audit' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -2912,7 +2644,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Управление тарифами */}
-      {tabValue === 6 && (
+      {section === 'tariffs' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -3020,7 +2752,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Маркетологи */}
-      {tabValue === 7 && (
+      {section === 'marketers' && (
         <Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
@@ -3131,13 +2863,13 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {/* Вкладка: Нагрузка сервера */}
-      {tabValue === 8 && <ServerLoadMonitoringTab />}
+      {section === 'server-load' && <ServerLoadMonitoringTab />}
 
-      {tabValue === 9 && <SuperAdminDevNotesTab />}
+      {section === 'development' && <SuperAdminDevNotesTab />}
 
-      {tabValue === 10 && <SuperAdminPlatformChatsTab />}
+      {section === 'chats' && <SuperAdminPlatformChatsTab />}
 
-      {tabValue === 11 && <SuperAdminPlatformChangelogTab />}
+      {section === 'changelog' && <SuperAdminPlatformChangelogTab />}
 
       {/* Диалог создания расхода */}
       <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>
@@ -3259,83 +2991,6 @@ const AdminDashboard: React.FC = () => {
             onClick={handleUpdateExpense}
             variant="contained"
             disabled={submitting || !expenseAmount || !expenseDescription}
-          >
-            {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Диалог сохранения пресета */}
-      <Dialog open={presetDialog} onClose={() => {
-        setPresetDialog(false);
-        setPresetName('');
-        setPresetIsDefault(false);
-      }} maxWidth="sm" fullWidth>
-        <DialogTitle>Сохранить пресет дашборда</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              fullWidth
-              label="Название пресета"
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              sx={{ mb: 2 }}
-              required
-            />
-            <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <input
-                type="checkbox"
-                checked={presetIsDefault}
-                onChange={(e) => setPresetIsDefault(e.target.checked)}
-                id="preset-default"
-              />
-              <label htmlFor="preset-default">Установить как пресет по умолчанию</label>
-            </Box>
-            {presets.length > 0 && (
-              <Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Существующие пресеты:
-                </Typography>
-                {presets.map((preset) => (
-                  <Box key={preset.id} display="flex" justifyContent="space-between" alignItems="center" mb={1} p={1} sx={{ bgcolor: 'grey.100', borderRadius: 1 }}>
-                    <Typography>
-                      {preset.name} {preset.isDefault && '(По умолчанию)'}
-                    </Typography>
-                    <Box>
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setPresetName(preset.name);
-                          setPresetIsDefault(preset.isDefault);
-                          setCurrentPreset(preset);
-                        }}
-                      >
-                        <Edit fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeletePreset(preset.id)}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setPresetDialog(false);
-            setPresetName('');
-            setPresetIsDefault(false);
-          }}>Отмена</Button>
-          <Button
-            onClick={handleSavePreset}
-            variant="contained"
-            disabled={submitting || !presetName.trim()}
           >
             {submitting ? <CircularProgress size={24} /> : 'Сохранить'}
           </Button>
@@ -3843,102 +3498,6 @@ const AdminDashboard: React.FC = () => {
               {submitting ? <CircularProgress size={24} /> : 'Выдать тариф'}
             </Button>
           )}
-        </DialogActions>
-      </Dialog>
-
-      {/* Диалог настроек резерва */}
-      <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Настройки</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              fullWidth
-              label="Процент от общей суммы (%)"
-              type="number"
-              value={reservePercentage}
-              onChange={(e) => {
-                setReservePercentage(e.target.value);
-                if (e.target.value) {
-                  setReserveAmount('');
-                }
-              }}
-              helperText="Если указан процент, фиксированная сумма будет проигнорирована"
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              label="Фиксированная сумма (₽)"
-              type="number"
-              value={reserveAmount}
-              onChange={(e) => {
-                setReserveAmount(e.target.value);
-                if (e.target.value) {
-                  setReservePercentage('');
-                }
-              }}
-              helperText="Если указана фиксированная сумма, процент будет проигнорирован"
-              sx={{ mb: 3 }}
-            />
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="h6" gutterBottom>
-              Файл логов ошибок
-            </Typography>
-            <TextField
-              fullWidth
-              label="Путь к файлу логов"
-              value={errorLogPath}
-              onChange={(e) => setErrorLogPath(e.target.value)}
-              sx={{ mb: 1 }}
-              helperText="Абсолютный путь на сервере"
-            />
-            {logFileInfo && (
-              <Alert severity={logFileInfo.exists ? 'info' : 'warning'} sx={{ mb: 2 }}>
-                Путь: {logFileInfo.path}
-                <br />
-                {logFileInfo.exists
-                  ? `Размер: ${logFileInfo.sizeHuman}${logFileInfo.modifiedAt ? ` • изменён: ${formatDateTime(logFileInfo.modifiedAt)}` : ''}`
-                  : 'Файл не существует'}
-              </Alert>
-            )}
-            <Box display="flex" flexWrap="wrap" gap={1} mb={2}>
-              <Button variant="outlined" size="small" onClick={handleDownloadLogFile}>
-                Скачать
-              </Button>
-              <Button variant="outlined" size="small" color="error" onClick={handleClearLogFile} disabled={submitting}>
-                Очистить
-              </Button>
-              <Button variant="outlined" size="small" onClick={handlePreviewLogFile} disabled={submitting}>
-                Превью
-              </Button>
-            </Box>
-            {logContent !== null && (
-              <TextField
-                fullWidth
-                multiline
-                minRows={6}
-                maxRows={12}
-                value={logContent}
-                InputProps={{ readOnly: true }}
-                sx={{
-                  mb: 1,
-                  '& .MuiInputBase-input': {
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  },
-                }}
-              />
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsDialog(false)}>Отмена</Button>
-          <Button
-            onClick={handleSaveSettings}
-            variant="contained"
-            disabled={savingSettings}
-          >
-            {savingSettings ? <CircularProgress size={24} /> : 'Сохранить'}
-          </Button>
         </DialogActions>
       </Dialog>
     </Container>

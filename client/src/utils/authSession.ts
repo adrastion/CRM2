@@ -254,8 +254,8 @@ export async function syncLinkedPlatformAccounts(): Promise<{
       return { changed: true, kickedTo: dest };
     }
     clearAllAuthStorage();
-    window.location.assign('/auth');
-    return { changed: true, kickedTo: '/auth' };
+    window.location.assign('/');
+    return { changed: true, kickedTo: '/' };
   }
 
   return { changed: before !== after };

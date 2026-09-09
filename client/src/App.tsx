@@ -14,8 +14,10 @@ import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
+import { currentSessionDestination, hasAnySession } from './utils/authSession';
 
 // Lazy load pages for better performance
+const Landing = lazy(() => import('./pages/Landing'));
 const Auth = lazy(() => import('./pages/Auth'));
 const Register = lazy(() => import('./pages/Register'));
 const PartnerRegister = lazy(() => import('./pages/PartnerRegister'));
@@ -102,6 +104,15 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
+};
+
+/** Корень сайта: гости → лендинг, авторизованные → свой кабинет. */
+const HomeRoute: React.FC = () => {
+  if (hasAnySession()) {
+    const dest = currentSessionDestination();
+    return <Navigate to={dest || '/dashboard'} replace />;
+  }
+  return <Landing />;
 };
 
 // Public Route Component (redirect to dashboard if already authenticated)
@@ -544,11 +555,10 @@ const AppContent: React.FC = () => {
           }
         />
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/auth" replace />} />
-        
+        <Route path="/" element={<HomeRoute />} />
+
         {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/auth" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
     </Router>

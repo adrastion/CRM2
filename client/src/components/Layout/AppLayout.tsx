@@ -54,6 +54,35 @@ const ROLE_LABELS: Record<string, string> = {
   TRAINER: 'Тренер',
 };
 
+/** Секции панели супер-админа (`/admin/dashboard?section=`). */
+const SA_DASHBOARD_SECTIONS: Array<{
+  section: string;
+  label: string;
+  iconName: NavIconName;
+}> = [
+  { section: 'overview', label: 'Общая статистика', iconName: 'dashboard' },
+  { section: 'transactions', label: 'История транзакций', iconName: 'finance' },
+  { section: 'accounts', label: 'Все аккаунты', iconName: 'staff' },
+  { section: 'analytics', label: 'Аналитика', iconName: 'schedule' },
+  { section: 'kpi', label: 'KPI метрики', iconName: 'standards' },
+  { section: 'audit', label: 'Логи аудита', iconName: 'faq' },
+  { section: 'tariffs', label: 'Управление тарифами', iconName: 'tariffs' },
+  { section: 'marketers', label: 'Маркетологи', iconName: 'clients' },
+  { section: 'server-load', label: 'Нагрузка сервера', iconName: 'settings' },
+  { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
+  { section: 'chats', label: 'Чаты', iconName: 'chats' },
+  { section: 'changelog', label: 'Изменения', iconName: 'issued-tariffs' },
+];
+
+const SA_SECTION_TITLES: Record<string, string> = Object.fromEntries(
+  SA_DASHBOARD_SECTIONS.map((item) => [item.section, item.label])
+);
+
+function resolveSaDashboardSection(search: string): string {
+  const raw = new URLSearchParams(search).get('section') || 'overview';
+  return SA_DASHBOARD_SECTIONS.some((item) => item.section === raw) ? raw : 'overview';
+}
+
 /**
  * Оболочка защищённых страниц: тот же каркас, что и в макете панели управления
  * (шапка с поиском и профилем, боковое меню с ролевой фильтрацией, футер).
@@ -164,7 +193,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     } else {
       logout();
     }
-    navigate('/auth', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const handleAddAccount = () => {
@@ -191,14 +220,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     }
   };
 
+  const saSection = resolveSaDashboardSection(location.search);
+
   const navItems: ShellNavItem[] = isSuperAdminRoute
     ? [
-        {
-          key: '/admin/dashboard',
-          label: 'Панель супер-админа',
-          iconName: 'dashboard',
-          onClick: () => navigate('/admin/dashboard'),
-        },
+        ...SA_DASHBOARD_SECTIONS.map((item) => ({
+          key: `/admin/dashboard?section=${item.section}`,
+          label: item.label,
+          iconName: item.iconName,
+          onClick: () => navigate(`/admin/dashboard?section=${item.section}`),
+        })),
         {
           key: '/admin/support-hub',
           label: 'Support Hub',
@@ -251,19 +282,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   const activeKey = isSuperAdminRoute
     ? location.pathname.startsWith('/admin/support-hub')
       ? '/admin/support-hub'
-      : '/admin/dashboard'
+      : `/admin/dashboard?section=${saSection}`
     : isTesterRoute
       ? '/tester/dashboard'
       : location.pathname.startsWith('/schedule')
         ? '/schedule'
         : location.pathname;
 
+  const resolvedPageTitle = isSuperAdminRoute
+    ? pageTitle ||
+      (location.pathname.startsWith('/admin/support-hub')
+        ? 'Support Hub'
+        : SA_SECTION_TITLES[saSection] || 'Панель супер-админа')
+    : pageTitle;
+
   return (
     <Box>
       {!isPlatformShell && <TelegramBanner />}
       {!isPlatformShell && <SalaryPayoutBanner />}
       <DashboardShell
-        pageTitle={pageTitle}
+        pageTitle={resolvedPageTitle}
         navItems={navItems}
         activeKey={activeKey}
         userName={userName || tenant?.name || 'Профиль'}

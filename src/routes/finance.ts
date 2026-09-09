@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireOwnerOrAdmin } from '../middleware/auth';
+import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 import {
   listFinanceTypes,
   createFinanceType,
@@ -25,7 +25,7 @@ router.get('/refs', getFinanceRefs);
 
 router.get('/operations', listFinanceOperations);
 router.post('/operations', createFinanceOperation);
-router.delete('/operations/:id', deleteFinanceOperation);
+router.delete('/operations/:id', requireOwner, deleteFinanceOperation);
 
 router.get('/salary-summary', getSalarySummary);
 router.post('/salary-payout', payoutTrainerSalary);

@@ -78,7 +78,7 @@ export async function unsubscribeSuperAdminPushNotifications(): Promise<boolean>
     }
 
     await apiService.unsubscribeSuperAdminPush(subscription.endpoint);
-    // Не отписываем pushManager полностью — могут быть другие типы уведомлений
+    await subscription.unsubscribe();
     return true;
   } catch (error) {
     console.error('Error unsubscribing super-admin push:', error);
@@ -91,6 +91,33 @@ export function checkNotificationPermission(): 'granted' | 'denied' | 'default' 
     return 'denied';
   }
   return Notification.permission;
+}
+
+export type LocalPushStatus = {
+  permission: 'granted' | 'denied' | 'default';
+  subscribedLocally: boolean;
+};
+
+/**
+ * Статус браузерных push в текущем браузере (не с сервера).
+ */
+export async function getLocalPushStatus(): Promise<LocalPushStatus> {
+  const permission = checkNotificationPermission();
+  let subscribedLocally = false;
+
+  try {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        const subscription = await registration.pushManager.getSubscription();
+        subscribedLocally = Boolean(subscription);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to read local push subscription', error);
+  }
+
+  return { permission, subscribedLocally };
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

@@ -87,7 +87,7 @@ const ClientDashboard: React.FC = () => {
 
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
-      navigate('/auth', { replace: true });
+      navigate('/', { replace: true });
       return;
     }
 
@@ -107,7 +107,7 @@ const ClientDashboard: React.FC = () => {
         const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
         if (status === 401) {
           const nextDestination = logoutCurrentAccount();
-          window.location.assign(nextDestination || '/auth');
+          window.location.assign(nextDestination || '/');
           return;
         }
         setError(message);
@@ -123,7 +123,7 @@ const ClientDashboard: React.FC = () => {
 
   const handleLogout = () => {
     const nextDestination = logoutCurrentAccount();
-    window.location.assign(nextDestination || '/auth');
+    window.location.assign(nextDestination || '/');
   };
 
   const handleAddAccount = () => {

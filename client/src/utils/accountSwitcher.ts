@@ -342,7 +342,7 @@ export function switchToAccount(id: string): void {
 /**
  * Выйти только из текущего аккаунта.
  * Если в реестре остались другие — активирует самый свежий и возвращает destination.
- * Иначе очищает активную сессию и возвращает null (нужен /auth).
+ * Иначе очищает активную сессию и возвращает null (гость → лендинг `/`).
  */
 export function logoutCurrentAccount(): string | null {
   const activeId = getActiveAccountId();
