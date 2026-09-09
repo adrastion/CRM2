@@ -734,7 +734,7 @@ const Finance: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
-      <Box>
+      <Box data-onboarding="finance-page">
         <Typography
           component="h1"
           sx={{

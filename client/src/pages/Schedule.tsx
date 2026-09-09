@@ -1914,7 +1914,13 @@ const Schedule: React.FC = () => {
           }}
         >
           <Tab value="schedule" label="Расписание" icon={<CalendarToday sx={{ fontSize: 18 }} />} iconPosition="start" />
-          <Tab value="competitions" label="Соревнования" icon={<EmojiEvents sx={{ fontSize: 18 }} />} iconPosition="start" />
+          <Tab
+            value="competitions"
+            label="Соревнования"
+            icon={<EmojiEvents sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            data-onboarding="schedule-competitions-tab"
+          />
         </Tabs>
 
         {sectionTab === 'competitions' ? (
