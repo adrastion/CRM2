@@ -2204,6 +2204,14 @@ class ApiService {
     return response.data.data;
   }
 
+  async editChatMessage(threadId: string, messageId: string, body: string): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(
+      `/chats/threads/${threadId}/messages/${messageId}`,
+      { body }
+    );
+    return response.data.data;
+  }
+
   async markChatRead(threadId: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/read`, {});
     return response.data.data;
@@ -2243,6 +2251,14 @@ class ApiService {
     return response.data.data;
   }
 
+  async clientEditChatMessage(threadId: string, messageId: string, body: string): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/messages/${messageId}`,
+      { body }
+    );
+    return response.data.data;
+  }
+
   async clientMarkChatRead(threadId: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/client-auth/chats/threads/${threadId}/read`, {});
     return response.data.data;
@@ -2273,6 +2289,14 @@ class ApiService {
     const response = await this.api.post<ApiResponse>(`/platform/chats/threads/${threadId}/messages`, {
       body,
     });
+    return response.data.data;
+  }
+
+  async editPlatformChatMessage(threadId: string, messageId: string, body: string): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(
+      `/platform/chats/threads/${threadId}/messages/${messageId}`,
+      { body }
+    );
     return response.data.data;
   }
 

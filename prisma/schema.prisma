@@ -1466,6 +1466,7 @@ model ChatMessage {
   authorSuperAdminId String?
   authorTesterId   String?
   createdAt        DateTime   @default(now())
+  editedAt         DateTime?
   thread           ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])

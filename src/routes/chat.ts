@@ -5,6 +5,7 @@ import {
   staffGetMessages,
   staffListThreads,
   staffMarkRead,
+  staffPatchMessage,
   staffPostMessage,
   staffUnreadTotal,
 } from '../controllers/chatController';
@@ -18,6 +19,7 @@ router.get('/unread-total', staffUnreadTotal);
 router.post('/threads/ensure', staffEnsureThread);
 router.get('/threads/:id/messages', staffGetMessages);
 router.post('/threads/:id/messages', staffPostMessage);
+router.patch('/threads/:id/messages/:messageId', staffPatchMessage);
 router.post('/threads/:id/read', staffMarkRead);
 
 export default router;

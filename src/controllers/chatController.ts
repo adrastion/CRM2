@@ -12,6 +12,7 @@ import {
   markThreadRead,
   resolveClientActor,
   resolveStaffActor,
+  updateMessage,
   EnsureThreadInput,
 } from '../services/chatService';
 import { Response } from 'express';
@@ -90,6 +91,17 @@ export const staffPostMessage = asyncHandler(async (req: AuthenticatedRequest, r
   res.status(201).json({ success: true, data });
 });
 
+export const staffPatchMessage = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const actor = await staffActor(req);
+  const data = await updateMessage(
+    actor,
+    String(req.params.id),
+    String(req.params.messageId),
+    String(req.body?.body || '')
+  );
+  res.json({ success: true, data });
+});
+
 export const staffMarkRead = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const actor = await staffActor(req);
   const data = await markThreadRead(actor, String(req.params.id));
@@ -128,6 +140,17 @@ export const clientPostMessage = asyncHandler(async (req: ClientRequest, res: Re
   const actor = await clientSideActor(req);
   const data = await createMessage(actor, String(req.params.id), String(req.body?.body || ''));
   res.status(201).json({ success: true, data });
+});
+
+export const clientPatchMessage = asyncHandler(async (req: ClientRequest, res: Response<ApiResponse>) => {
+  const actor = await clientSideActor(req);
+  const data = await updateMessage(
+    actor,
+    String(req.params.id),
+    String(req.params.messageId),
+    String(req.body?.body || '')
+  );
+  res.json({ success: true, data });
 });
 
 export const clientMarkRead = asyncHandler(async (req: ClientRequest, res: Response<ApiResponse>) => {

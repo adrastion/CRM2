@@ -863,6 +863,7 @@ export async function getMessages(
       authorTesterId: m.authorTesterId,
       authorName,
       createdAt: m.createdAt.toISOString(),
+      editedAt: m.editedAt ? m.editedAt.toISOString() : null,
     };
   });
 
@@ -886,9 +887,11 @@ export type CreatedMessagePayload = {
   authorTesterId: string | null;
   authorName: string;
   createdAt: string;
+  editedAt: string | null;
 };
 
 let emitChatMessage: ((payload: CreatedMessagePayload) => void) | null = null;
+let emitChatMessageUpdated: ((payload: CreatedMessagePayload) => void) | null = null;
 let emitChatUnread:
   | ((opts: {
       thread: {
@@ -905,6 +908,10 @@ let emitChatUnread:
 
 export function setChatMessageEmitter(fn: (payload: CreatedMessagePayload) => void): void {
   emitChatMessage = fn;
+}
+
+export function setChatMessageUpdatedEmitter(fn: (payload: CreatedMessagePayload) => void): void {
+  emitChatMessageUpdated = fn;
 }
 
 export function setChatUnreadEmitter(
@@ -1018,6 +1025,7 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
     authorTesterId: message.authorTesterId,
     authorName,
     createdAt: message.createdAt.toISOString(),
+    editedAt: null,
   };
 
   if (emitChatMessage) {
@@ -1033,6 +1041,133 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
       emitChatUnread({ thread, author: actor });
     } catch (e) {
       console.error('chat unread emit error', e);
+    }
+  }
+
+  return payload;
+}
+
+function isMessageAuthor(actor: ChatActor, message: {
+  authorType: string;
+  authorUserId: string | null;
+  authorClientId: string | null;
+  authorParentId: string | null;
+  authorSuperAdminId: string | null;
+  authorTesterId: string | null;
+}): boolean {
+  if (actor.kind === 'USER') {
+    return message.authorType === 'USER' && message.authorUserId === actor.userId;
+  }
+  if (actor.kind === 'CLIENT') {
+    return message.authorType === 'CLIENT' && message.authorClientId === actor.clientId;
+  }
+  if (actor.kind === 'PARENT') {
+    return message.authorType === 'PARENT' && message.authorParentId === actor.parentId;
+  }
+  if (actor.kind === 'SUPER_ADMIN') {
+    return message.authorType === 'SUPER_ADMIN' && message.authorSuperAdminId === actor.superAdminId;
+  }
+  return message.authorType === 'TESTER' && message.authorTesterId === actor.testerId;
+}
+
+/**
+ * Редактирование своего сообщения. Обновляет превью треда, если это последнее сообщение.
+ */
+export async function updateMessage(
+  actor: ChatActor,
+  threadId: string,
+  messageId: string,
+  bodyRaw: string
+) {
+  const body = String(bodyRaw || '').trim();
+  if (!body) throw badRequest('Пустое сообщение');
+  if (body.length > 5000) throw badRequest('Слишком длинное сообщение');
+
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+
+  const existing = await prisma.chatMessage.findFirst({
+    where: { id: messageId, threadId },
+  });
+  if (!existing) throw notFound('Сообщение не найдено');
+  if (!isMessageAuthor(actor, existing)) {
+    throw forbidden('Можно редактировать только свои сообщения');
+  }
+
+  const editedAt = new Date();
+  const message = await prisma.chatMessage.update({
+    where: { id: messageId },
+    data: { body, editedAt },
+  });
+
+  const latest = await prisma.chatMessage.findFirst({
+    where: { threadId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (latest?.id === message.id) {
+    await prisma.chatThread.update({
+      where: { id: threadId },
+      data: { updatedAt: editedAt },
+    });
+  }
+
+  let authorName = 'Участник';
+  if (message.authorType === 'USER' && message.authorUserId) {
+    const u = await prisma.user.findUnique({
+      where: { id: message.authorUserId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
+  } else if (message.authorType === 'CLIENT' && message.authorClientId) {
+    const c = await prisma.client.findUnique({
+      where: { id: message.authorClientId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+  } else if (message.authorType === 'PARENT' && message.authorParentId) {
+    const p = await prisma.parent.findUnique({
+      where: { id: message.authorParentId },
+      select: { fullName: true },
+    });
+    authorName = p?.fullName || 'Родитель';
+  } else if (message.authorType === 'SUPER_ADMIN' && message.authorSuperAdminId) {
+    const s = await prisma.superAdmin.findUnique({
+      where: { id: message.authorSuperAdminId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+  } else if (message.authorType === 'TESTER' && message.authorTesterId) {
+    const t = await prisma.tester.findUnique({
+      where: { id: message.authorTesterId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+  }
+
+  const payload: CreatedMessagePayload = {
+    id: message.id,
+    threadId: message.threadId,
+    tenantId: message.tenantId,
+    body: message.body,
+    authorType: message.authorType,
+    authorClientId: message.authorClientId,
+    authorParentId: message.authorParentId,
+    authorUserId: message.authorUserId,
+    authorSuperAdminId: message.authorSuperAdminId,
+    authorTesterId: message.authorTesterId,
+    authorName,
+    createdAt: message.createdAt.toISOString(),
+    editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+  };
+
+  if (emitChatMessageUpdated) {
+    try {
+      emitChatMessageUpdated(payload);
+    } catch (e) {
+      console.error('chat update emit error', e);
     }
   }
 

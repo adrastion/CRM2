@@ -7,6 +7,7 @@ import {
   resolveSuperAdminActor,
   resolveTesterActor,
   setChatMessageEmitter,
+  setChatMessageUpdatedEmitter,
   setChatUnreadEmitter,
   ChatActor,
   presenceKeyForActor,
@@ -145,6 +146,10 @@ export function attachChatNamespace(io: Server): void {
 
   setChatMessageEmitter((payload: CreatedMessagePayload) => {
     nsp.to(roomName(payload.threadId)).emit('chat:message', payload);
+  });
+
+  setChatMessageUpdatedEmitter((payload: CreatedMessagePayload) => {
+    nsp.to(roomName(payload.threadId)).emit('chat:message:updated', payload);
   });
 
   setChatUnreadEmitter(({ thread, author }) => {

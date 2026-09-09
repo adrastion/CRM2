@@ -7,6 +7,7 @@ import {
   listPlatformChatThreads,
   markPlatformChatRead,
   sendPlatformChatMessage,
+  updatePlatformChatMessage,
 } from '../controllers/platformChatController';
 import {
   createPlatformChangelog,
@@ -21,6 +22,11 @@ router.get('/chats/threads', authenticateSuperAdminOrTester, listPlatformChatThr
 router.post('/chats/threads/ensure', authenticateSuperAdminOrTester, ensurePlatformChatThread);
 router.get('/chats/threads/:threadId/messages', authenticateSuperAdminOrTester, getPlatformChatMessages);
 router.post('/chats/threads/:threadId/messages', authenticateSuperAdminOrTester, sendPlatformChatMessage);
+router.patch(
+  '/chats/threads/:threadId/messages/:messageId',
+  authenticateSuperAdminOrTester,
+  updatePlatformChatMessage
+);
 router.post('/chats/threads/:threadId/read', authenticateSuperAdminOrTester, markPlatformChatRead);
 
 router.get('/changelog', authenticateSuperAdminOrTester, listPlatformChangelog);

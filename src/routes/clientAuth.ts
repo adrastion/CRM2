@@ -24,6 +24,7 @@ import {
   clientGetMessages,
   clientListThreads,
   clientMarkRead,
+  clientPatchMessage,
   clientPostMessage,
   clientUnreadTotal,
 } from '../controllers/chatController';
@@ -58,6 +59,7 @@ router.get('/chats/unread-total', authenticateClient, clientUnreadTotal);
 router.post('/chats/threads/ensure', authenticateClient, clientEnsureThread);
 router.get('/chats/threads/:id/messages', authenticateClient, clientGetMessages);
 router.post('/chats/threads/:id/messages', authenticateClient, clientPostMessage);
+router.patch('/chats/threads/:id/messages/:messageId', authenticateClient, clientPatchMessage);
 router.post('/chats/threads/:id/read', authenticateClient, clientMarkRead);
 
 export default router;

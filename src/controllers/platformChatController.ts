@@ -9,6 +9,7 @@ import {
   markThreadRead,
   resolveSuperAdminActor,
   resolveTesterActor,
+  updateMessage,
   ChatActor,
 } from '../services/chatService';
 import { ChatThreadType } from '@prisma/client';
@@ -55,6 +56,17 @@ export const getPlatformChatMessages = asyncHandler(async (req: Request, res: Re
 export const sendPlatformChatMessage = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const actor = actorFromReq(req);
   const data = await createMessage(actor, req.params.threadId, req.body?.body);
+  res.json({ success: true, data });
+});
+
+export const updatePlatformChatMessage = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const actor = actorFromReq(req);
+  const data = await updateMessage(
+    actor,
+    req.params.threadId,
+    req.params.messageId,
+    String(req.body?.body || '')
+  );
   res.json({ success: true, data });
 });
 

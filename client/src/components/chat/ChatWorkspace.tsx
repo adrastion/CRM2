@@ -5,14 +5,16 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
+  Popover,
   TextField,
   Typography,
   Badge,
 } from '@mui/material';
-import { Send } from '@mui/icons-material';
+import { Close, Edit, EmojiEmotions, Send } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
@@ -53,6 +55,7 @@ export interface ChatMessageItem {
   authorTesterId?: string | null;
   authorName: string;
   createdAt: string;
+  editedAt?: string | null;
 }
 
 interface ChatWorkspaceProps {
@@ -78,6 +81,13 @@ const PRESENCE_COLOR: Record<PresenceStatus, string> = {
   online: '#2e7d32',
 };
 
+const EMOJI_LIST = [
+  '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '🤔', '😎',
+  '😢', '😭', '😡', '👍', '👎', '👏', '🙏', '🔥', '💪', '✅',
+  '❌', '⭐', '🎉', '❤️', '💙', '💚', '💛', '💜', '🤝', '👋',
+  '🏆', '🥇', '⚽', '🏀', '🥊', '🏋️', '🏃', '🎯', '📌', '💬',
+];
+
 function PresenceDot({ status }: { status: PresenceStatus }) {
   return (
     <Box
@@ -95,6 +105,23 @@ function PresenceDot({ status }: { status: PresenceStatus }) {
   );
 }
 
+function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
+  return {
+    id: msg.id,
+    threadId: msg.threadId,
+    body: msg.body,
+    authorType: msg.authorType,
+    authorClientId: msg.authorClientId,
+    authorParentId: msg.authorParentId,
+    authorUserId: msg.authorUserId,
+    authorSuperAdminId: msg.authorSuperAdminId,
+    authorTesterId: msg.authorTesterId,
+    authorName: msg.authorName,
+    createdAt: msg.createdAt,
+    editedAt: msg.editedAt ?? null,
+  };
+}
+
 /**
  * Двухколоночный UI чатов: список бесед + лента.
  */
@@ -108,8 +135,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const selectedRef = useRef<ChatThreadItem | null>(null);
 
   const loadThreads = useCallback(async () => {
@@ -147,7 +177,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
     });
   }, [threads, search]);
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft('');
+  };
+
   const openThread = async (item: ChatThreadItem) => {
+    cancelEdit();
     setSelectedKey(item.threadKey);
     setLoadingMessages(true);
     setMessages([]);
@@ -206,22 +242,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
       }
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
-        return [
-          ...prev,
-          {
-            id: msg.id,
-            threadId: msg.threadId,
-            body: msg.body,
-            authorType: msg.authorType,
-            authorClientId: msg.authorClientId,
-            authorParentId: msg.authorParentId,
-            authorUserId: msg.authorUserId,
-            authorSuperAdminId: msg.authorSuperAdminId,
-            authorTesterId: msg.authorTesterId,
-            authorName: msg.authorName,
-            createdAt: msg.createdAt,
-          },
-        ];
+        return [...prev, socketToItem(msg)];
       });
       setThreads((prev) =>
         prev.map((t) =>
@@ -234,13 +255,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
     [activeThreadId]
   );
 
+  const onSocketMessageUpdated = useCallback(
+    (msg: ChatSocketMessage) => {
+      setMessages((prev) => {
+        if (msg.threadId !== activeThreadId) return prev;
+        return prev.map((m) => (m.id === msg.id ? { ...m, ...socketToItem(msg) } : m));
+      });
+      setThreads((prev) =>
+        prev.map((t) => {
+          if (t.id !== msg.threadId) return t;
+          const isLatestPreview =
+            !t.lastMessageAt ||
+            new Date(msg.createdAt).getTime() >= new Date(t.lastMessageAt).getTime();
+          return isLatestPreview ? { ...t, lastMessagePreview: msg.body } : t;
+        })
+      );
+    },
+    [activeThreadId]
+  );
+
   useChatSocket({
     token: socketToken,
     threadId: activeThreadId,
     enabled: Boolean(socketToken),
     onMessage: onSocketMessage,
+    onMessageUpdated: onSocketMessageUpdated,
     onPresence: () => {
-      // Обновить статусы без полного лоадера
       (async () => {
         try {
           const data =
@@ -279,32 +319,86 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
     return m.authorType === 'TESTER' && m.authorTesterId === self.id;
   };
 
+  const startEdit = (m: ChatMessageItem) => {
+    setEditingId(m.id);
+    setDraft(m.body);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const el = inputRef.current;
+    if (el && typeof el.selectionStart === 'number') {
+      const start = el.selectionStart;
+      const end = el.selectionEnd ?? start;
+      const next = draft.slice(0, start) + emoji + draft.slice(end);
+      setDraft(next);
+      setTimeout(() => {
+        const pos = start + emoji.length;
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      }, 0);
+    } else {
+      setDraft((prev) => prev + emoji);
+    }
+    setEmojiAnchor(null);
+  };
+
   const handleSend = async () => {
     const text = draft.trim();
     if (!text || !activeThreadId || sending) return;
     setSending(true);
     try {
-      const msg =
-        mode === 'staff'
-          ? await apiService.sendChatMessage(activeThreadId, text)
-          : mode === 'client'
-            ? await apiService.clientSendChatMessage(activeThreadId, text)
-            : await apiService.sendPlatformChatMessage(activeThreadId, text);
-      setDraft('');
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-      setThreads((prev) =>
-        prev.map((t) =>
-          t.id === activeThreadId
-            ? { ...t, lastMessageAt: msg.createdAt, lastMessagePreview: msg.body }
-            : t
-        )
-      );
-      if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
+      if (editingId) {
+        const msg =
+          mode === 'staff'
+            ? await apiService.editChatMessage(activeThreadId, editingId, text)
+            : mode === 'client'
+              ? await apiService.clientEditChatMessage(activeThreadId, editingId, text)
+              : await apiService.editPlatformChatMessage(activeThreadId, editingId, text);
+        setMessages((prev) => {
+          const next = prev.map((m) =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  body: msg.body,
+                  editedAt: msg.editedAt ?? null,
+                }
+              : m
+          );
+          const last = next[next.length - 1];
+          if (last?.id === msg.id) {
+            setThreads((threadsPrev) =>
+              threadsPrev.map((t) =>
+                t.id === activeThreadId ? { ...t, lastMessagePreview: msg.body } : t
+              )
+            );
+          }
+          return next;
+        });
+        cancelEdit();
+      } else {
+        const msg =
+          mode === 'staff'
+            ? await apiService.sendChatMessage(activeThreadId, text)
+            : mode === 'client'
+              ? await apiService.clientSendChatMessage(activeThreadId, text)
+              : await apiService.sendPlatformChatMessage(activeThreadId, text);
+        setDraft('');
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === activeThreadId
+              ? { ...t, lastMessageAt: msg.createdAt, lastMessagePreview: msg.body }
+              : t
+          )
+        );
+        if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
+      }
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось отправить');
+      setError(e?.response?.data?.error || (editingId ? 'Не удалось сохранить' : 'Не удалось отправить'));
     } finally {
       setSending(false);
     }
@@ -418,6 +512,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                   setSelectedKey(null);
                   setActiveThreadId(null);
                   setMessages([]);
+                  cancelEdit();
                 }}
               >
                 ← К списку
@@ -459,6 +554,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                           bgcolor: own ? 'primary.main' : 'background.paper',
                           color: own ? 'primary.contrastText' : 'text.primary',
                           boxShadow: 1,
+                          position: 'relative',
+                          outline: editingId === m.id ? '2px solid' : 'none',
+                          outlineColor: 'warning.main',
                         }}
                       >
                         {!own && (
@@ -470,17 +568,38 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                           {m.body}
                         </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ opacity: 0.7, display: 'block', mt: 0.5, textAlign: 'right' }}
+                        <Box
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="flex-end"
+                          gap={0.5}
+                          mt={0.5}
                         >
-                          {new Date(m.createdAt).toLocaleString('ru-RU', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            day: '2-digit',
-                            month: '2-digit',
-                          })}
-                        </Typography>
+                          {own && (
+                            <IconButton
+                              size="small"
+                              onClick={() => startEdit(m)}
+                              title="Редактировать"
+                              sx={{
+                                p: 0.25,
+                                color: 'inherit',
+                                opacity: 0.75,
+                                '&:hover': { opacity: 1 },
+                              }}
+                            >
+                              <Edit sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          )}
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            {m.editedAt ? 'изм. · ' : ''}
+                            {new Date(m.createdAt).toLocaleString('ru-RU', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              day: '2-digit',
+                              month: '2-digit',
+                            })}
+                          </Typography>
+                        </Box>
                       </Box>
                     </Box>
                   );
@@ -489,14 +608,47 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
               <div ref={bottomRef} />
             </Box>
 
+            {editingId && (
+              <Box
+                sx={{
+                  px: 1.5,
+                  pt: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  bgcolor: 'action.hover',
+                }}
+              >
+                <Edit fontSize="small" color="action" />
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                  Редактирование сообщения
+                </Typography>
+                <IconButton size="small" onClick={cancelEdit} title="Отмена">
+                  <Close fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
+
             <Box sx={{ p: 1.5, display: 'flex', gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+              <IconButton
+                onClick={(e) => setEmojiAnchor(e.currentTarget)}
+                disabled={sending || !activeThreadId}
+                title="Смайлы"
+              >
+                <EmojiEmotions />
+              </IconButton>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Сообщение…"
+                placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение…'}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
+                  if (e.key === 'Escape' && editingId) {
+                    e.preventDefault();
+                    cancelEdit();
+                    return;
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSend();
@@ -505,6 +657,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                 multiline
                 maxRows={4}
                 disabled={sending || !activeThreadId}
+                inputRef={inputRef}
               />
               <Button
                 variant="contained"
@@ -512,12 +665,41 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                 disabled={sending || !draft.trim() || !activeThreadId}
                 sx={{ minWidth: 48 }}
               >
-                {sending ? <CircularProgress size={20} color="inherit" /> : <Send />}
+                {sending ? <CircularProgress size={20} color="inherit" /> : editingId ? <Edit /> : <Send />}
               </Button>
             </Box>
           </>
         )}
       </Box>
+
+      <Popover
+        open={Boolean(emojiAnchor)}
+        anchorEl={emojiAnchor}
+        onClose={() => setEmojiAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Box
+          sx={{
+            p: 1,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(8, 1fr)',
+            gap: 0.5,
+            maxWidth: 280,
+          }}
+        >
+          {EMOJI_LIST.map((emoji) => (
+            <IconButton
+              key={emoji}
+              size="small"
+              onClick={() => insertEmoji(emoji)}
+              sx={{ fontSize: 20, lineHeight: 1 }}
+            >
+              {emoji}
+            </IconButton>
+          ))}
+        </Box>
+      </Popover>
 
       {error && (
         <Chip

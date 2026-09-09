@@ -15,6 +15,7 @@ export interface ChatSocketMessage {
   authorTesterId?: string | null;
   authorName: string;
   createdAt: string;
+  editedAt?: string | null;
 }
 
 /**
@@ -25,13 +26,16 @@ export function useChatSocket(opts: {
   threadId: string | null;
   enabled?: boolean;
   onMessage: (msg: ChatSocketMessage) => void;
+  onMessageUpdated?: (msg: ChatSocketMessage) => void;
   onPresence?: (payload: { key: string; online: boolean }) => void;
 }): void {
-  const { token, threadId, enabled = true, onMessage, onPresence } = opts;
+  const { token, threadId, enabled = true, onMessage, onMessageUpdated, onPresence } = opts;
   const socketRef = useRef<Socket | null>(null);
   const onMessageRef = useRef(onMessage);
+  const onMessageUpdatedRef = useRef(onMessageUpdated);
   const onPresenceRef = useRef(onPresence);
   onMessageRef.current = onMessage;
+  onMessageUpdatedRef.current = onMessageUpdated;
   onPresenceRef.current = onPresence;
   const joinedRef = useRef<string | null>(null);
 
@@ -47,6 +51,10 @@ export function useChatSocket(opts: {
 
     socket.on('chat:message', (payload: ChatSocketMessage) => {
       onMessageRef.current(payload);
+    });
+
+    socket.on('chat:message:updated', (payload: ChatSocketMessage) => {
+      onMessageUpdatedRef.current?.(payload);
     });
 
     socket.on('chat:presence', (payload: { key: string; online: boolean }) => {
