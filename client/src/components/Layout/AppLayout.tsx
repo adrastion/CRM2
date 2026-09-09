@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSuperAdminAuth } from '../../contexts/SuperAdminAuthContext';
+import { useTesterAuth } from '../../contexts/TesterAuthContext';
 import DashboardShell, {
   ShellNavItem,
   GlobalSearchResults,
@@ -13,6 +14,7 @@ import SalaryPayoutBanner from '../SalaryPayoutBanner';
 import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwitcher';
 import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
+import { useChatUnreadBadge } from '../../hooks/useChatUnreadBadge';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -32,6 +34,7 @@ const navigationItems: Array<{
   onboarding?: string;
 }> = [
   { label: 'Панель управления', path: '/dashboard', iconName: 'dashboard', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'dashboard', onboarding: 'dashboard' },
+  { label: 'Чаты', path: '/chats', iconName: 'chats', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'chats' },
   { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'clients', onboarding: 'clients-nav' },
   { label: 'Сотрудники', path: '/trainers', iconName: 'staff', roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
   { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER'], tabKey: 'trainerEarnings' },
@@ -58,6 +61,7 @@ const ROLE_LABELS: Record<string, string> = {
 const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   const { user, tenant, logout } = useAuth();
   const { superAdmin, logout: logoutSuperAdmin } = useSuperAdminAuth();
+  const { tester, logout: logoutTester } = useTesterAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -65,6 +69,19 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     Boolean(superAdmin && localStorage.getItem('superAdminToken')) &&
     (location.pathname.startsWith('/admin/dashboard') ||
       location.pathname.startsWith('/admin/support-hub'));
+
+  const isTesterRoute =
+    Boolean(tester && localStorage.getItem('testerToken')) &&
+    location.pathname.startsWith('/tester');
+
+  const isPlatformShell = isSuperAdminRoute || isTesterRoute;
+
+  const schoolToken = !isPlatformShell ? localStorage.getItem('token') : null;
+  const chatUnread = useChatUnreadBadge({
+    mode: 'staff',
+    token: schoolToken,
+    enabled: Boolean(schoolToken && user),
+  });
 
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem('visibleTabs');
@@ -77,13 +94,39 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!isSuperAdminRoute && !isTesterRoute) return;
+    // Пока в панели SA/Tester — периодически проверяем, что сессия ещё действительна
+    // (отвязка инвалидирует JWT через sessionVersion).
+    const ping = async () => {
+      try {
+        if (isSuperAdminRoute) {
+          await apiService.listPlatformChangelog();
+        } else {
+          await apiService.listPlatformChangelog();
+        }
+      } catch {
+        /* 401 interceptor сделает kick */
+      }
+    };
+    const timer = window.setInterval(ping, 15000);
+    const onFocus = () => {
+      void ping();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [isSuperAdminRoute, isTesterRoute]);
+
+  useEffect(() => {
     const handler = (event: CustomEvent) => setVisibleTabs(event.detail.visibleTabs);
     window.addEventListener('tabsVisibilityChange', handler as EventListener);
     return () => window.removeEventListener('tabsVisibilityChange', handler as EventListener);
   }, []);
 
   useEffect(() => {
-    if (isSuperAdminRoute) return;
+    if (isPlatformShell) return;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     const q = searchValue.trim();
     if (q.length < 2) {
@@ -105,21 +148,30 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [searchValue, isSuperAdminRoute]);
+  }, [searchValue, isPlatformShell]);
 
   const handleLogout = () => {
+    const nextDestination = logoutCurrentAccount();
+    if (nextDestination) {
+      // Полный reload — контексты подхватят другой аккаунт из localStorage
+      window.location.assign(nextDestination);
+      return;
+    }
     if (isSuperAdminRoute) {
       logoutSuperAdmin();
+    } else if (isTesterRoute) {
+      logoutTester();
     } else {
       logout();
     }
-    logoutCurrentAccount();
     navigate('/auth', { replace: true });
   };
 
   const handleAddAccount = () => {
     if (isSuperAdminRoute) {
       logoutSuperAdmin();
+    } else if (isTesterRoute) {
+      logoutTester();
     } else {
       logout();
     }
@@ -154,44 +206,62 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onClick: () => navigate('/admin/support-hub'),
         },
       ]
-    : navigationItems
-        .filter((item) => {
-          if (!item.roles.includes(user?.role || '')) return false;
-          if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
-          return true;
-        })
-        .map((item) => ({
-          key: item.path,
-          label: item.label,
-          iconName: item.iconName,
-          dataOnboarding: item.onboarding,
-          onClick: () => navigate(item.path),
-        }));
+    : isTesterRoute
+      ? [
+          {
+            key: '/tester/dashboard',
+            label: 'Панель тестировщика',
+            iconName: 'dashboard',
+            onClick: () => navigate('/tester/dashboard'),
+          },
+        ]
+      : navigationItems
+          .filter((item) => {
+            if (!item.roles.includes(user?.role || '')) return false;
+            if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
+            return true;
+          })
+          .map((item) => ({
+            key: item.path,
+            label: item.label,
+            iconName: item.iconName,
+            dataOnboarding: item.onboarding,
+            onClick: () => navigate(item.path),
+            ...(item.path === '/chats' && chatUnread > 0 ? { badge: chatUnread } : {}),
+          }));
 
   const userName = isSuperAdminRoute
     ? [superAdmin?.lastName, superAdmin?.firstName].filter(Boolean).join(' ') ||
       superAdmin?.email ||
       'Супер-админ'
-    : user
-      ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
-      : '';
+    : isTesterRoute
+      ? [tester?.lastName, tester?.firstName].filter(Boolean).join(' ') ||
+        tester?.email ||
+        'Тестировщик'
+      : user
+        ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
+        : '';
 
   const userRole = isSuperAdminRoute
     ? 'Супер-админ'
-    : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
+    : isTesterRoute
+      ? 'Тестировщик'
+      : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
 
   const activeKey = isSuperAdminRoute
     ? location.pathname.startsWith('/admin/support-hub')
       ? '/admin/support-hub'
       : '/admin/dashboard'
-    : location.pathname.startsWith('/schedule')
-      ? '/schedule'
-      : location.pathname;
+    : isTesterRoute
+      ? '/tester/dashboard'
+      : location.pathname.startsWith('/schedule')
+        ? '/schedule'
+        : location.pathname;
 
   return (
     <Box>
-      {!isSuperAdminRoute && <TelegramBanner />}
-      {!isSuperAdminRoute && <SalaryPayoutBanner />}
+      {!isPlatformShell && <TelegramBanner />}
+      {!isPlatformShell && <SalaryPayoutBanner />}
       <DashboardShell
         pageTitle={pageTitle}
         navItems={navItems}
@@ -200,7 +270,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         userRole={userRole}
         onLogout={handleLogout}
         onAddAccount={handleAddAccount}
-        hideSearch={isSuperAdminRoute}
+        hideSearch={isPlatformShell}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         searchResults={searchResults}

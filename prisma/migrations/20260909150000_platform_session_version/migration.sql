@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "super_admins" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "testers" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 0;

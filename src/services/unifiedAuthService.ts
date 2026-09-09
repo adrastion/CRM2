@@ -31,6 +31,7 @@ export type AccountType =
   | 'MARKETER'
   | 'PROMO_CODE_ADMIN'
   | 'SUPER_ADMIN'
+  | 'TESTER'
   | 'PLATFORM_STAFF';
 
 /** Клиентские роли — им показывается личный кабинет ученика/родителя. */
@@ -95,11 +96,14 @@ export interface SessionPayload {
   marketer?: Record<string, unknown>;
   admin?: Record<string, unknown>;
   superAdmin?: Record<string, unknown>;
+  tester?: Record<string, unknown>;
   staff?: Record<string, unknown>;
   /** Подтверждён ли аккаунт (только клиенты/родители). */
   isAccountApproved?: boolean;
-  /** Связанная сессия школа ↔ супер-админ (для свитчера аккаунтов). */
+  /** Связанная сессия школа ↔ супер-админ / тестировщик (для свитчера аккаунтов). */
   linkedSession?: Omit<SessionPayload, 'linkedSession'>;
+  /** Доп. связанные сессии (например OWNER ↔ SA и OWNER ↔ Tester одновременно). */
+  linkedSessions?: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>>;
 }
 
 export interface SelectionRequired {
@@ -225,7 +229,7 @@ export class UnifiedAuthService {
 
     const tenantSelect = { select: { id: true, name: true, subdomain: true, isActive: true } };
 
-    const [users, clients, parents, marketers, promoAdmins, superAdmin, platformStaff] =
+    const [users, clients, parents, marketers, promoAdmins, superAdmin, tester, platformStaff] =
       await Promise.all([
         prisma.user.findMany({
           where: email ? { email } : { id: { in: userIds } },
@@ -255,6 +259,7 @@ export class UnifiedAuthService {
           include: { tenant: tenantSelect },
         }),
         email ? prisma.superAdmin.findUnique({ where: { email } }) : Promise.resolve(null),
+        email ? prisma.tester.findUnique({ where: { email } }) : Promise.resolve(null),
         email ? prisma.platformStaffUser.findUnique({ where: { email } }) : Promise.resolve(null),
       ]);
 
@@ -338,6 +343,17 @@ export class UnifiedAuthService {
         hasPassword: Boolean(superAdmin.password),
         isAccountApproved: true,
         passwordHash: superAdmin.password,
+      });
+    }
+
+    if (tester && tester.isActive) {
+      accounts.push({
+        accountType: 'TESTER',
+        id: tester.id,
+        displayName: fullName([tester.lastName, tester.firstName]),
+        hasPassword: Boolean(tester.password),
+        isAccountApproved: true,
+        passwordHash: tester.password,
       });
     }
 
@@ -556,33 +572,56 @@ export class UnifiedAuthService {
     return { requiresSelection: false, ...session };
   }
 
-  /** Если OWNER ↔ SuperAdmin связаны — добавить вторую сессию в ответ. */
+  /** Если OWNER ↔ SuperAdmin / Tester связаны — добавить связанные сессии в ответ. */
   private static async withLinkedSession(
     session: SessionPayload,
     sign: (payload: object) => string
   ): Promise<SessionPayload> {
+    const links: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>> = [];
+
     if (session.accountType === 'TENANT_USER' && session.user?.id) {
-      const linked = await prisma.superAdmin.findFirst({
-        where: { linkedUserId: String(session.user.id), isActive: true },
-      });
-      if (linked) {
-        return {
-          ...session,
-          linkedSession: {
-            accountType: 'SUPER_ADMIN',
-            token: sign({
-              userId: linked.id,
-              email: linked.email,
-              type: 'SUPER_ADMIN',
-            }),
-            superAdmin: {
-              id: linked.id,
-              email: linked.email,
-              firstName: linked.firstName,
-              lastName: linked.lastName,
-            },
+      const userId = String(session.user.id);
+      const [linkedSa, linkedTester] = await Promise.all([
+        prisma.superAdmin.findFirst({
+          where: { linkedUserId: userId, isActive: true },
+        }),
+        prisma.tester.findFirst({
+          where: { linkedUserId: userId, isActive: true },
+        }),
+      ]);
+      if (linkedSa) {
+        links.push({
+          accountType: 'SUPER_ADMIN',
+          token: sign({
+            userId: linkedSa.id,
+            email: linkedSa.email,
+            type: 'SUPER_ADMIN',
+            sv: linkedSa.sessionVersion,
+          }),
+          superAdmin: {
+            id: linkedSa.id,
+            email: linkedSa.email,
+            firstName: linkedSa.firstName,
+            lastName: linkedSa.lastName,
           },
-        };
+        });
+      }
+      if (linkedTester) {
+        links.push({
+          accountType: 'TESTER',
+          token: sign({
+            userId: linkedTester.id,
+            email: linkedTester.email,
+            type: 'TESTER',
+            sv: linkedTester.sessionVersion,
+          }),
+          tester: {
+            id: linkedTester.id,
+            email: linkedTester.email,
+            firstName: linkedTester.firstName,
+            lastName: linkedTester.lastName,
+          },
+        });
       }
     }
 
@@ -593,34 +632,67 @@ export class UnifiedAuthService {
       });
       const user = sa?.linkedUser;
       if (user && user.isActive) {
-        return {
-          ...session,
-          linkedSession: {
-            accountType: 'TENANT_USER',
-            token: sign({
-              userId: user.id,
-              email: user.email,
-              role: user.role,
-              tenantId: user.tenantId,
-            }),
-            tenant: toTenantBrief(user.tenant),
-            user: {
-              id: user.id,
-              email: user.email,
-              emailVerified: user.emailVerified,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              middleName: user.middleName,
-              phone: user.phone,
-              role: user.role,
-              tenantId: user.tenantId,
-            },
+        links.push({
+          accountType: 'TENANT_USER',
+          token: sign({
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenantId,
+          }),
+          tenant: toTenantBrief(user.tenant),
+          user: {
+            id: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            middleName: user.middleName,
+            phone: user.phone,
+            role: user.role,
+            tenantId: user.tenantId,
           },
-        };
+        });
       }
     }
 
-    return session;
+    if (session.accountType === 'TESTER' && session.tester?.id) {
+      const tester = await prisma.tester.findUnique({
+        where: { id: String(session.tester.id) },
+        include: { linkedUser: { include: { tenant: true } } },
+      });
+      const user = tester?.linkedUser;
+      if (user && user.isActive) {
+        links.push({
+          accountType: 'TENANT_USER',
+          token: sign({
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenantId,
+          }),
+          tenant: toTenantBrief(user.tenant),
+          user: {
+            id: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            middleName: user.middleName,
+            phone: user.phone,
+            role: user.role,
+            tenantId: user.tenantId,
+          },
+        });
+      }
+    }
+
+    if (links.length === 0) return session;
+    return {
+      ...session,
+      linkedSession: links[0],
+      ...(links.length > 1 ? { linkedSessions: links } : {}),
+    };
   }
 
   /**
@@ -796,12 +868,44 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'SUPER_ADMIN',
-          token: sign({ userId: superAdmin.id, email: superAdmin.email, type: 'SUPER_ADMIN' }),
+          token: sign({
+            userId: superAdmin.id,
+            email: superAdmin.email,
+            type: 'SUPER_ADMIN',
+            sv: superAdmin.sessionVersion,
+          }),
           superAdmin: {
             id: superAdmin.id,
             email: superAdmin.email,
             firstName: superAdmin.firstName,
             lastName: superAdmin.lastName,
+          },
+        };
+        break;
+      }
+
+      case 'TESTER': {
+        const tester = await prisma.tester.findUnique({ where: { id: account.id } });
+        if (!tester) throw unauthorized('Аккаунт не найден');
+
+        await prisma.tester.update({
+          where: { id: tester.id },
+          data: { lastLogin: new Date() },
+        });
+
+        session = {
+          accountType: 'TESTER',
+          token: sign({
+            userId: tester.id,
+            email: tester.email,
+            type: 'TESTER',
+            sv: tester.sessionVersion,
+          }),
+          tester: {
+            id: tester.id,
+            email: tester.email,
+            firstName: tester.firstName,
+            lastName: tester.lastName,
           },
         };
         break;
@@ -841,5 +945,66 @@ export class UnifiedAuthService {
     }
 
     return this.withLinkedSession(session, sign);
+  }
+
+  /**
+   * Актуальные связанные сессии SA/Tester для школьного пользователя (OWNER),
+   * чтобы свитчер обновлялся без повторного входа.
+   */
+  static async getLinkedSessionsForUser(userId: string): Promise<{
+    linkedSessions: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>>;
+  }> {
+    const secret = jwtSecret();
+    const expiresIn = SESSION_TTL;
+    const sign = (payload: object) => jwt.sign(payload, secret, { expiresIn } as SignOptions);
+
+    const [linkedSa, linkedTester] = await Promise.all([
+      prisma.superAdmin.findFirst({
+        where: { linkedUserId: userId, isActive: true },
+      }),
+      prisma.tester.findFirst({
+        where: { linkedUserId: userId, isActive: true },
+      }),
+    ]);
+
+    const linkedSessions: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>> = [];
+
+    if (linkedSa) {
+      linkedSessions.push({
+        accountType: 'SUPER_ADMIN',
+        token: sign({
+          userId: linkedSa.id,
+          email: linkedSa.email,
+          type: 'SUPER_ADMIN',
+          sv: linkedSa.sessionVersion,
+        }),
+        superAdmin: {
+          id: linkedSa.id,
+          email: linkedSa.email,
+          firstName: linkedSa.firstName,
+          lastName: linkedSa.lastName,
+        },
+      });
+    }
+
+    if (linkedTester) {
+      linkedSessions.push({
+        accountType: 'TESTER',
+        token: sign({
+          userId: linkedTester.id,
+          email: linkedTester.email,
+          type: 'TESTER',
+          sv: linkedTester.sessionVersion,
+        }),
+        tester: {
+          id: linkedTester.id,
+          email: linkedTester.email,
+          firstName: linkedTester.firstName,
+          lastName: linkedTester.lastName,
+        },
+      });
+    }
+
+    return { linkedSessions };
   }
 }

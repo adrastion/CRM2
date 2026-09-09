@@ -19,6 +19,14 @@ import {
   clientGetSupportMessages,
   clientPostSupportMessage,
 } from '../controllers/supportTicketController';
+import {
+  clientEnsureThread,
+  clientGetMessages,
+  clientListThreads,
+  clientMarkRead,
+  clientPostMessage,
+  clientUnreadTotal,
+} from '../controllers/chatController';
 
 const router = Router();
 
@@ -43,6 +51,14 @@ router.post('/support/tickets', authenticateClient, clientCreateSupportTicket);
 router.get('/support/tickets', authenticateClient, clientListSupportTickets);
 router.get('/support/tickets/:ticketId/messages', authenticateClient, clientGetSupportMessages);
 router.post('/support/tickets/:ticketId/messages', authenticateClient, clientPostSupportMessage);
+
+// Внутришкольные чаты
+router.get('/chats/threads', authenticateClient, clientListThreads);
+router.get('/chats/unread-total', authenticateClient, clientUnreadTotal);
+router.post('/chats/threads/ensure', authenticateClient, clientEnsureThread);
+router.get('/chats/threads/:id/messages', authenticateClient, clientGetMessages);
+router.post('/chats/threads/:id/messages', authenticateClient, clientPostMessage);
+router.post('/chats/threads/:id/read', authenticateClient, clientMarkRead);
 
 export default router;
 

@@ -51,6 +51,7 @@ model Tenant {
   users                   User[]
   supportTickets          SupportTicket[]
   trainerSalaryLedgers    TrainerSalaryLedger[]
+  chatThreads             ChatThread[]
 
   @@map("tenants")
 }
@@ -92,6 +93,7 @@ model User {
   trainer       Trainer?
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   linkedSuperAdmin SuperAdmin?
+  linkedTester     Tester?
 
   @@unique([tenantId, email])
   @@map("users")
@@ -202,6 +204,7 @@ model Client {
   transactions             Transaction[]
   financeOperations        FinanceOperation[]
   supportTickets           SupportTicket[] @relation("ClientSupportTickets")
+  chatThreads              ChatThread[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, firstName, lastName])
@@ -352,6 +355,7 @@ model Trainer {
   transactions         Transaction[]
   financeOperations    FinanceOperation[]
   notificationSettings TrainerNotificationSettings?
+  chatThreads          ChatThread[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, userId])
@@ -461,6 +465,7 @@ model Group {
   payments                  Payment[]
   financeOperations         FinanceOperation[]
   schoolEvents              SchoolEvent[]
+  chatThreads               ChatThread[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, branchId])
@@ -1052,6 +1057,8 @@ model SuperAdmin {
   lastLogin          DateTime?
   /// OWNER школы, которому выдан доступ супер-админа (переключение аккаунтов).
   linkedUserId       String?                      @unique
+  /// Инкремент при отвязке — инвалидирует выданные JWT.
+  sessionVersion     Int                          @default(0)
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
   linkedUser         User?                        @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
@@ -1062,8 +1069,40 @@ model SuperAdmin {
   grantLogs          SubscriptionGrantLog[]
   pushSubscriptions  SuperAdminPushSubscription[]
   devNotes           SuperAdminDevNote[]
+  changelogEntries   PlatformChangelogEntry[]
 
   @@map("super_admins")
+}
+
+model Tester {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  firstName      String
+  lastName       String
+  isActive       Boolean   @default(true)
+  lastLogin      DateTime?
+  linkedUserId   String?   @unique
+  /// Инкремент при отвязке — инвалидирует выданные JWT.
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  linkedUser     User?     @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+
+  @@map("testers")
+}
+
+model PlatformChangelogEntry {
+  id          String     @id @default(cuid())
+  title       String
+  body        String     @db.Text
+  createdById String
+  createdBy   SuperAdmin @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([createdAt])
+  @@map("platform_changelog_entries")
 }
 
 enum DevNoteStatus {
@@ -1341,4 +1380,76 @@ model DesignerCallRecording {
   @@index([expiresAt])
   @@index([ticketId])
   @@map("designer_call_recordings")
+}
+
+/// Внутришкольные и платформенные чаты
+
+enum ChatThreadType {
+  CLIENT_ADMIN
+  CLIENT_TRAINER
+  GROUP
+  TRAINER_ADMIN
+  TRAINERS
+  PLATFORM_TESTERS
+  SUPER_ADMINS
+}
+
+model ChatThread {
+  id            String         @id @default(cuid())
+  /// null для платформенных бесед (PLATFORM_TESTERS / SUPER_ADMINS)
+  tenantId      String?
+  type          ChatThreadType
+  /// Глобально уникальный ключ (для TRAINERS — trainers:{tenantId})
+  threadKey     String         @unique
+  clientId      String?
+  trainerId     String?
+  groupId       String?
+  lastMessageAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client?        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trainer       Trainer?       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  group         Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  messages      ChatMessage[]
+  reads         ChatThreadRead[]
+
+  @@index([tenantId, type])
+  @@index([tenantId, lastMessageAt])
+  @@index([type])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id               String     @id @default(cuid())
+  threadId         String
+  tenantId         String?
+  body             String     @db.Text
+  /// CLIENT | PARENT | USER | SUPER_ADMIN | TESTER
+  authorType       String
+  authorClientId   String?
+  authorParentId   String?
+  authorUserId     String?
+  authorSuperAdminId String?
+  authorTesterId   String?
+  createdAt        DateTime   @default(now())
+  thread           ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatThreadRead {
+  id         String     @id @default(cuid())
+  threadId   String
+  /// CLIENT | PARENT | USER | SUPER_ADMIN | TESTER
+  readerType String
+  readerId   String
+  lastReadAt DateTime   @default(now())
+  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, readerType, readerId])
+  @@index([readerType, readerId])
+  @@map("chat_thread_reads")
 }

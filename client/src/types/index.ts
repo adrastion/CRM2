@@ -49,6 +49,11 @@ export type UnifiedStaffLoginResponse =
       token: string;
     }
   | {
+      accountType: 'TESTER';
+      tester: { id: string; email: string; firstName: string; lastName: string };
+      token: string;
+    }
+  | {
       accountType: 'PLATFORM_STAFF';
       staff: { id: string; email: string; firstName: string; lastName: string; role: string; mustChangePassword?: boolean };
       token: string;
@@ -66,6 +71,7 @@ export type AccountType =
   | 'MARKETER'
   | 'PROMO_CODE_ADMIN'
   | 'SUPER_ADMIN'
+  | 'TESTER'
   | 'PLATFORM_STAFF';
 
 export type IdentifierType = 'phone' | 'email';
@@ -110,10 +116,13 @@ export interface UnifiedSession {
   marketer?: any;
   admin?: any;
   superAdmin?: any;
+  tester?: any;
   staff?: { id: string; email: string; firstName: string; lastName: string; role: string; mustChangePassword?: boolean };
   isAccountApproved?: boolean;
-  /** Связанная сессия школа ↔ супер-админ. */
-  linkedSession?: Omit<UnifiedSession, 'requiresSelection' | 'linkedSession'>;
+  /** Связанная сессия школа ↔ супер-админ / тестировщик. */
+  linkedSession?: Omit<UnifiedSession, 'requiresSelection' | 'linkedSession' | 'linkedSessions'>;
+  /** Несколько связанных слотов (OWNER ↔ SA и OWNER ↔ Tester). */
+  linkedSessions?: Array<Omit<UnifiedSession, 'requiresSelection' | 'linkedSession' | 'linkedSessions'>>;
 }
 
 /** Нужен выбор организации/роли. */

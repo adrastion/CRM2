@@ -69,6 +69,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
     userId: superAdmin.id,
     email: superAdmin.email,
     type: 'SUPER_ADMIN',
+    sv: superAdmin.sessionVersion,
   });
 
   // Update last login

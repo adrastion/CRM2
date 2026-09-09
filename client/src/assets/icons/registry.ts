@@ -11,6 +11,7 @@ import finance from './nav/finance.svg';
 import tariffs from './nav/tariffs.svg';
 import issuedTariffs from './nav/issued-tariffs.svg';
 import faq from './nav/faq.svg';
+import chats from './nav/chats.svg';
 import knowledgeBase from './nav/knowledge-base.svg';
 import settings from './nav/settings.svg';
 
@@ -49,6 +50,7 @@ export type NavIconName =
   | 'issued-tariffs'
   | 'settings'
   | 'faq'
+  | 'chats'
   | 'knowledge-base'
   | 'earnings';
 
@@ -83,6 +85,7 @@ export const navIcons: Record<NavIconName, string> = {
   'issued-tariffs': issuedTariffs,
   settings,
   faq,
+  chats,
   'knowledge-base': knowledgeBase,
   earnings: finance,
 };

@@ -3,6 +3,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
+import { isSessionVersionValid } from '../utils/sessionVersion';
 
 /**
  * Доступ к панели платформы: супер-админ или персонал платформы.
@@ -68,7 +69,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
       where: { id: decoded.userId },
     });
 
-    if (!superAdmin || !superAdmin.isActive) {
+    if (!superAdmin || !superAdmin.isActive || !isSessionVersionValid(decoded, superAdmin.sessionVersion)) {
       res.status(401).json({
         success: false,
         error: 'Invalid or inactive super admin'
@@ -134,7 +135,11 @@ export const authenticatePlatformViewer = asyncHandler(async (
 
   if (decoded.type === 'SUPER_ADMIN') {
     const superAdmin = await prisma.superAdmin.findUnique({ where: { id: decoded.userId } });
-    if (!superAdmin || !superAdmin.isActive) {
+    if (
+      !superAdmin ||
+      !superAdmin.isActive ||
+      !isSessionVersionValid(decoded, superAdmin.sessionVersion)
+    ) {
       res.status(401).json({ success: false, error: 'Invalid or inactive super admin' });
       return;
     }

@@ -60,6 +60,9 @@ import {
   NoteAlt,
   AdminPanelSettings,
   LinkOff,
+  BugReport,
+  Chat as ChatIcon,
+  Campaign,
 } from '@mui/icons-material';
 import type {
   SubscriptionPlanItem,
@@ -106,6 +109,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
 import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
+import {
+  SuperAdminPlatformChatsTab,
+  SuperAdminPlatformChangelogTab,
+} from '../components/SuperAdminPlatformTabs';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -532,6 +539,31 @@ const AdminDashboard: React.FC = () => {
       await loadAllTenants();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Не удалось отвязать супер-админа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLinkTenantTester = async (tenantId: string) => {
+    try {
+      setSubmitting(true);
+      await apiService.linkTenantOwnerAsTester(tenantId);
+      await loadAllTenants();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось сделать тестировщиком');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUnlinkTenantTester = async (tenantId: string) => {
+    if (!window.confirm('Отвязать OWNER этой школы от тестировщика?')) return;
+    try {
+      setSubmitting(true);
+      await apiService.unlinkTenantOwnerTester(tenantId);
+      await loadAllTenants();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось отвязать тестировщика');
     } finally {
       setSubmitting(false);
     }
@@ -1462,6 +1494,8 @@ const AdminDashboard: React.FC = () => {
           <Tab icon={<People />} label="Маркетологи" />
           <Tab icon={<MemoryIcon />} label="Нагрузка сервера" />
           <Tab icon={<NoteAlt />} label="Разработка" />
+          <Tab icon={<ChatIcon />} label="Чаты" />
+          <Tab icon={<Campaign />} label="Изменения" />
         </Tabs>
       </Paper>
 
@@ -2352,6 +2386,14 @@ const AdminDashboard: React.FC = () => {
                                 sx={{ ml: 0.5 }}
                               />
                             )}
+                            {tenant.isTesterLinked && (
+                              <Chip
+                                label="Тестировщик"
+                                color="info"
+                                size="small"
+                                sx={{ ml: 0.5 }}
+                              />
+                            )}
                           </TableCell>
                           <TableCell>
                             <IconButton
@@ -2380,6 +2422,28 @@ const AdminDashboard: React.FC = () => {
                                 disabled={submitting}
                                 onClick={() => handleUnlinkTenantSuperAdmin(tenant.id)}
                                 title="Отвязать супер-админа"
+                              >
+                                <LinkOff />
+                              </IconButton>
+                            )}
+                            {tenant.ownerId && !tenant.isTesterLinked && (
+                              <IconButton
+                                size="small"
+                                color="info"
+                                disabled={submitting}
+                                onClick={() => handleLinkTenantTester(tenant.id)}
+                                title="Сделать тестировщиком (OWNER)"
+                              >
+                                <BugReport />
+                              </IconButton>
+                            )}
+                            {tenant.isTesterLinked && (
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                disabled={submitting}
+                                onClick={() => handleUnlinkTenantTester(tenant.id)}
+                                title="Отвязать тестировщика"
                               >
                                 <LinkOff />
                               </IconButton>
@@ -3070,6 +3134,10 @@ const AdminDashboard: React.FC = () => {
       {tabValue === 8 && <ServerLoadMonitoringTab />}
 
       {tabValue === 9 && <SuperAdminDevNotesTab />}
+
+      {tabValue === 10 && <SuperAdminPlatformChatsTab />}
+
+      {tabValue === 11 && <SuperAdminPlatformChangelogTab />}
 
       {/* Диалог создания расхода */}
       <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>

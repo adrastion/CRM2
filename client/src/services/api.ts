@@ -19,6 +19,11 @@ import {
   LogFileContentResponse,
 } from '../types';
 import { apiCache, generateCacheKey } from '../utils/apiCache';
+import {
+  fallbackToSchoolAccount,
+  getActiveAccountId,
+  removeSavedAccount,
+} from '../utils/accountSwitcher';
 
 class ApiService {
   private api: AxiosInstance;
@@ -37,6 +42,7 @@ class ApiService {
       (config) => {
         // Check for super admin token first (for admin dashboard routes)
         const superAdminToken = localStorage.getItem('superAdminToken');
+        const testerToken = localStorage.getItem('testerToken');
         const platformStaffToken = localStorage.getItem('platformStaffToken');
         const promoCodeAdminToken = localStorage.getItem('promoCodeAdminToken');
         const marketerToken = localStorage.getItem('marketerToken');
@@ -45,6 +51,8 @@ class ApiService {
         
         if (superAdminToken) {
           config.headers.Authorization = `Bearer ${superAdminToken}`;
+        } else if (testerToken) {
+          config.headers.Authorization = `Bearer ${testerToken}`;
         } else if (platformStaffToken && (config.url?.includes('/platform-staff/') || config.url?.includes('/platform-staff/auth/'))) {
           config.headers.Authorization = `Bearer ${platformStaffToken}`;
         } else if (promoCodeAdminToken) {
@@ -101,6 +109,9 @@ class ApiService {
           const isSuperAdminRoute = url.includes('/super-admin/') || 
                                     url.includes('/admin-dashboard') ||
                                     localStorage.getItem('superAdminToken');
+
+          const isPlatformRoute =
+            url.includes('/platform/') || localStorage.getItem('testerToken');
           
           // Check if it's a marketer route (marketers/me/stats, or any /marketers route with marketer token)
           const isMarketerRoute = url.includes('/marketers/me/') || 
@@ -111,10 +122,20 @@ class ApiService {
                                         url.includes('/referral-links') ||
                                         (url.includes('/marketers/') && !localStorage.getItem('marketerToken') && localStorage.getItem('promoCodeAdminToken'));
           
-          if (isSuperAdminRoute) {
+          if (isSuperAdminRoute && localStorage.getItem('superAdminToken')) {
+            const activeId = getActiveAccountId();
+            if (activeId?.startsWith('SUPER_ADMIN:')) removeSavedAccount(activeId);
             localStorage.removeItem('superAdminToken');
             localStorage.removeItem('superAdmin');
-            window.location.href = '/auth';
+            const schoolDest = fallbackToSchoolAccount();
+            window.location.href = schoolDest || '/auth';
+          } else if (isPlatformRoute && localStorage.getItem('testerToken') && !localStorage.getItem('superAdminToken')) {
+            const activeId = getActiveAccountId();
+            if (activeId?.startsWith('TESTER:')) removeSavedAccount(activeId);
+            localStorage.removeItem('testerToken');
+            localStorage.removeItem('tester');
+            const schoolDest = fallbackToSchoolAccount();
+            window.location.href = schoolDest || '/auth';
           } else if (isMarketerRoute) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
@@ -234,6 +255,12 @@ class ApiService {
   async getProfile(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/auth/profile');
     return response.data.data;
+  }
+
+  /** Актуальные SA/Tester сессии, привязанные к текущему школьному пользователю. */
+  async getLinkedSessions(): Promise<{ linkedSessions: any[] }> {
+    const response = await this.api.get<ApiResponse>('/auth/linked-sessions');
+    return response.data.data || { linkedSessions: [] };
   }
 
   async updateProfile(data: any): Promise<any> {
@@ -1757,6 +1784,20 @@ class ApiService {
     return response.data.data;
   }
 
+  async linkTenantOwnerAsTester(tenantId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/link-tester`
+    );
+    return response.data.data;
+  }
+
+  async unlinkTenantOwnerTester(tenantId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/link-tester`
+    );
+    return response.data.data;
+  }
+
   async saveDashboardPreset(data: {
     id?: string;
     name: string;
@@ -2070,6 +2111,137 @@ class ApiService {
 
   async superAdminCreatePlatformStaffUser(payload: { email: string; role: 'SUPPORT' | 'DESIGNER' | 'SECURITY'; firstName: string; lastName: string }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/super-admin/support/platform-staff/users', payload);
+    return response.data.data;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Внутришкольные чаты                                                */
+  /* ------------------------------------------------------------------ */
+
+  async listChatThreads(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/chats/threads');
+    return response.data.data || [];
+  }
+
+  async getChatUnreadTotal(): Promise<{ total: number }> {
+    const response = await this.api.get<ApiResponse>('/chats/unread-total');
+    return response.data.data || { total: 0 };
+  }
+
+  async ensureChatThread(data: {
+    type: string;
+    clientId?: string;
+    trainerId?: string;
+    groupId?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/chats/threads/ensure', data);
+    return response.data.data;
+  }
+
+  async getChatMessages(threadId: string, params?: { before?: string; limit?: number }): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/chats/threads/${threadId}/messages`, { params });
+    return response.data.data;
+  }
+
+  async sendChatMessage(threadId: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/messages`, { body });
+    return response.data.data;
+  }
+
+  async markChatRead(threadId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/read`, {});
+    return response.data.data;
+  }
+
+  async clientListChatThreads(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/client-auth/chats/threads');
+    return response.data.data || [];
+  }
+
+  async clientGetChatUnreadTotal(): Promise<{ total: number }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/chats/unread-total');
+    return response.data.data || { total: 0 };
+  }
+
+  async clientEnsureChatThread(data: {
+    type: string;
+    clientId?: string;
+    trainerId?: string;
+    groupId?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/chats/threads/ensure', data);
+    return response.data.data;
+  }
+
+  async clientGetChatMessages(threadId: string, params?: { before?: string; limit?: number }): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/client-auth/chats/threads/${threadId}/messages`, {
+      params,
+    });
+    return response.data.data;
+  }
+
+  async clientSendChatMessage(threadId: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/client-auth/chats/threads/${threadId}/messages`, {
+      body,
+    });
+    return response.data.data;
+  }
+
+  async clientMarkChatRead(threadId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/client-auth/chats/threads/${threadId}/read`, {});
+    return response.data.data;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Платформенные чаты и changelog                                     */
+  /* ------------------------------------------------------------------ */
+
+  async listPlatformChatThreads(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/platform/chats/threads');
+    return response.data.data || [];
+  }
+
+  async ensurePlatformChatThread(data: { type: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform/chats/threads/ensure', data);
+    return response.data.data;
+  }
+
+  async getPlatformChatMessages(threadId: string, params?: { before?: string; limit?: number }): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/platform/chats/threads/${threadId}/messages`, {
+      params,
+    });
+    return response.data.data;
+  }
+
+  async sendPlatformChatMessage(threadId: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/platform/chats/threads/${threadId}/messages`, {
+      body,
+    });
+    return response.data.data;
+  }
+
+  async markPlatformChatRead(threadId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/platform/chats/threads/${threadId}/read`, {});
+    return response.data.data;
+  }
+
+  async listPlatformChangelog(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/platform/changelog');
+    return response.data.data || [];
+  }
+
+  async createPlatformChangelog(data: { title: string; body: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform/changelog', data);
+    return response.data.data;
+  }
+
+  async updatePlatformChangelog(id: string, data: { title?: string; body?: string }): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/platform/changelog/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlatformChangelog(id: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(`/platform/changelog/${id}`);
     return response.data.data;
   }
 }

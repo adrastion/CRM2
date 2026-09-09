@@ -43,6 +43,8 @@ function accountSecondary(a: PublicAccount): string | undefined {
     parts.push('Админ промокодов');
   } else if (a.accountType === 'SUPER_ADMIN') {
     parts.push('Супер-администратор');
+  } else if (a.accountType === 'TESTER') {
+    parts.push('Тестировщик');
   } else if (a.accountType === 'PLATFORM_STAFF') {
     parts.push(ROLE_LABELS[a.role || ''] || 'Персонал платформы');
   } else if (a.role) {

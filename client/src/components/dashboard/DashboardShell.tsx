@@ -41,6 +41,8 @@ export interface ShellNavItem {
   onClick?: () => void;
   /** Значение атрибута data-onboarding — интерактивное обучение ищет пункты по нему. */
   dataOnboarding?: string;
+  /** Счётчик непрочитанных (например, чаты). 0 / undefined — скрыть. */
+  badge?: number;
 }
 
 export interface GlobalSearchResultItem {
@@ -129,6 +131,36 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
     upsertFromActiveStorage();
     setSavedAccounts(listSavedAccounts());
     setActiveAccountId(getActiveAccountId());
+  }, [menuAnchor]);
+
+  // Авто-синхронизация SA/Tester в свитчере при привязке/отвязке без повторного входа
+  React.useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!localStorage.getItem('token') || !localStorage.getItem('user')) return;
+      try {
+        const { syncLinkedPlatformAccounts } = await import('../../utils/authSession');
+        const result = await syncLinkedPlatformAccounts();
+        if (cancelled || result.kickedTo) return;
+        if (result.changed || menuAnchor) {
+          setSavedAccounts(listSavedAccounts());
+          setActiveAccountId(getActiveAccountId());
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    run();
+    const onFocus = () => {
+      void run();
+    };
+    window.addEventListener('focus', onFocus);
+    const timer = window.setInterval(run, 20000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(timer);
+    };
   }, [menuAnchor]);
 
   React.useEffect(() => {
@@ -275,10 +307,36 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             )}
             <Typography
               component="span"
-              sx={{ fontSize: typography.label, fontWeight: active ? 600 : 500, lineHeight: 1.25 }}
+              sx={{
+                flex: 1,
+                fontSize: typography.label,
+                fontWeight: active ? 600 : 500,
+                lineHeight: 1.25,
+                minWidth: 0,
+              }}
             >
               {item.label}
             </Typography>
+            {typeof item.badge === 'number' && item.badge > 0 && (
+              <Box
+                component="span"
+                sx={{
+                  flexShrink: 0,
+                  minWidth: 18,
+                  height: 18,
+                  px: item.badge > 9 ? 0.6 : 0,
+                  borderRadius: 999,
+                  bgcolor: active ? 'rgba(255,255,255,0.95)' : '#E53935',
+                  color: active ? colors.primary : '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  lineHeight: '18px',
+                  textAlign: 'center',
+                }}
+              >
+                {item.badge > 99 ? '99+' : item.badge}
+              </Box>
+            )}
           </Box>
         );
       })}

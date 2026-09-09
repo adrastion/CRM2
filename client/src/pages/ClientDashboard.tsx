@@ -9,6 +9,7 @@ import { logoutCurrentAccount, prepareAddAccount } from '../utils/accountSwitche
 import AthleteCard from '../components/athlete/AthleteCard';
 import ClientCalendarPlan from '../components/client/ClientCalendarPlan';
 import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
+import ChatWorkspace from '../components/chat/ChatWorkspace';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
@@ -19,10 +20,12 @@ import AthleteSwitcher from '../components/dashboard/AthleteSwitcher';
 import DesignIcon from '../components/common/DesignIcon';
 import { NavIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
+import { useChatUnreadBadge } from '../hooks/useChatUnreadBadge';
 
 /** Пункты меню личного кабинета клиента. */
 const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
   { key: 'dashboard', label: 'Панель управления', iconName: 'dashboard' },
+  { key: 'chats', label: 'Чаты', iconName: 'chats' },
   { key: 'card', label: 'Карточка спортсмена', iconName: 'clients' },
   { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
   { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
@@ -75,6 +78,12 @@ const ClientDashboard: React.FC = () => {
   const [verifyNotice, setVerifyNotice] = React.useState('');
   const [verifyError, setVerifyError] = React.useState('');
   const [emailVerifiedLocal, setEmailVerifiedLocal] = React.useState<boolean | null>(null);
+  const clientToken = localStorage.getItem('clientToken');
+  const chatUnread = useChatUnreadBadge({
+    mode: 'client',
+    token: clientToken,
+    enabled: Boolean(clientToken),
+  });
 
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
@@ -97,8 +106,8 @@ const ClientDashboard: React.FC = () => {
         if (cancelled) return;
         const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
         if (status === 401) {
-          logoutCurrentAccount();
-          navigate('/auth', { replace: true });
+          const nextDestination = logoutCurrentAccount();
+          window.location.assign(nextDestination || '/auth');
           return;
         }
         setError(message);
@@ -113,8 +122,8 @@ const ClientDashboard: React.FC = () => {
   }, [navigate, switchClientId]);
 
   const handleLogout = () => {
-    logoutCurrentAccount();
-    navigate('/auth', { replace: true });
+    const nextDestination = logoutCurrentAccount();
+    window.location.assign(nextDestination || '/auth');
   };
 
   const handleAddAccount = () => {
@@ -231,12 +240,15 @@ const ClientDashboard: React.FC = () => {
     label: item.label,
     icon: <DesignIcon category="nav" name={item.iconName} size={34} />,
     iconName: item.iconName,
-    disabled: pending,
-    onClick: pending
-      ? undefined
-      : ['dashboard', 'card', 'plan', 'payments'].includes(item.key)
-        ? () => setActiveKey(item.key)
-        : undefined,
+    // Чаты доступны и до подтверждения аккаунта (связь с администрацией)
+    disabled: pending && item.key !== 'chats' && item.key !== 'dashboard',
+    onClick:
+      pending && item.key !== 'chats' && item.key !== 'dashboard'
+        ? undefined
+        : ['dashboard', 'card', 'plan', 'payments', 'chats'].includes(item.key)
+          ? () => setActiveKey(item.key)
+          : undefined,
+    ...(item.key === 'chats' && chatUnread > 0 ? { badge: chatUnread } : {}),
   }));
 
   const marks = data.monthEvents.map((e) => ({
@@ -455,7 +467,9 @@ const ClientDashboard: React.FC = () => {
         ? 'Календарный план'
         : activeKey === 'payments'
           ? 'Платежи'
-          : 'Панель управления';
+          : activeKey === 'chats'
+            ? 'Чаты'
+            : 'Панель управления';
 
   const cardContent = (
     <AthleteCard mode="client" clientId={currentAthleteId || undefined} />
@@ -464,6 +478,37 @@ const ClientDashboard: React.FC = () => {
   const planContent = <ClientCalendarPlan clientId={currentAthleteId || undefined} />;
   const paymentsContent = <ClientPaymentsPanel clientId={currentAthleteId || undefined} />;
 
+  const chatSelf = (() => {
+    if (data.userType === 'parent' && data.parent?.id) {
+      return { kind: 'PARENT' as const, id: data.parent.id };
+    }
+    if (data.client?.id) {
+      return { kind: 'CLIENT' as const, id: data.client.id };
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('client') || '{}');
+      if (stored?.id) {
+        return {
+          kind: (localStorage.getItem('userType') === 'parent' ? 'PARENT' : 'CLIENT') as
+            | 'PARENT'
+            | 'CLIENT',
+          id: stored.id,
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+    return { kind: 'CLIENT' as const, id: '' };
+  })();
+
+  const chatsContent = (
+    <ChatWorkspace
+      mode="client"
+      socketToken={localStorage.getItem('clientToken')}
+      self={chatSelf}
+    />
+  );
+
   const mainContent =
     activeKey === 'card'
       ? cardContent
@@ -471,7 +516,9 @@ const ClientDashboard: React.FC = () => {
         ? planContent
         : activeKey === 'payments'
           ? paymentsContent
-          : content;
+          : activeKey === 'chats'
+            ? chatsContent
+            : content;
 
   return (
     <DashboardShell
@@ -485,7 +532,7 @@ const ClientDashboard: React.FC = () => {
       onAddAccount={handleAddAccount}
       hideSearch
     >
-      {pending ? (
+      {pending && activeKey !== 'chats' ? (
         <Box sx={{ position: 'relative' }}>
           <Box
             aria-hidden
@@ -518,6 +565,7 @@ const ClientDashboard: React.FC = () => {
             </Typography>
             <Typography sx={{ fontSize: typography.label, color: colors.textMuted, textAlign: 'center', mt: 1, maxWidth: 420 }}>
               После одобрения администратором откроется полный доступ к карточке и расписанию.
+              Написать в администрацию можно во вкладке «Чаты».
             </Typography>
           </Box>
         </Box>

@@ -583,6 +583,7 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
           firstName: true,
           lastName: true,
           linkedSuperAdmin: { select: { id: true } },
+          linkedTester: { select: { id: true } },
         },
         take: 1,
       },
@@ -638,6 +639,8 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
         : null,
       linkedSuperAdminId: owner?.linkedSuperAdmin?.id ?? null,
       isSuperAdminLinked: Boolean(owner?.linkedSuperAdmin?.id),
+      linkedTesterId: owner?.linkedTester?.id ?? null,
+      isTesterLinked: Boolean(owner?.linkedTester?.id),
       subscription: sub
         ? {
             planType: sub.planType,
@@ -2832,7 +2835,11 @@ export const unlinkTenantOwnerSuperAdmin = asyncHandler(async (
 
   await prisma.superAdmin.update({
     where: { id: linked.id },
-    data: { linkedUserId: null },
+    data: {
+      linkedUserId: null,
+      isActive: false,
+      sessionVersion: { increment: 1 },
+    },
   });
 
   await createAuditLog({
@@ -2849,5 +2856,156 @@ export const unlinkTenantOwnerSuperAdmin = asyncHandler(async (
   res.json({
     success: true,
     data: { tenantId, ownerId: owner.id, unlinkedSuperAdminId: linked.id },
+  });
+});
+
+/**
+ * Привязать OWNER школы к тестировщику.
+ * POST /admin-dashboard/tenants/:tenantId/link-tester
+ */
+export const linkTenantOwnerAsTester = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const superAdmin = (req as any).superAdmin;
+  const { tenantId } = req.params;
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    res.status(404).json({ success: false, error: 'Школа не найдена' });
+    return;
+  }
+
+  const owner = await prisma.user.findFirst({
+    where: { tenantId, role: 'OWNER', isActive: true },
+  });
+  if (!owner) {
+    res.status(400).json({ success: false, error: 'У школы нет активного OWNER' });
+    return;
+  }
+
+  const alreadyLinked = await prisma.tester.findFirst({
+    where: { linkedUserId: owner.id },
+  });
+  if (alreadyLinked) {
+    res.status(400).json({
+      success: false,
+      error: 'OWNER уже привязан к тестировщику',
+      data: { linkedTesterId: alreadyLinked.id },
+    });
+    return;
+  }
+
+  let linked: { id: string; email: string; created: boolean };
+
+  const byEmail = await prisma.tester.findUnique({ where: { email: owner.email } });
+  if (byEmail) {
+    if (byEmail.linkedUserId && byEmail.linkedUserId !== owner.id) {
+      res.status(400).json({
+        success: false,
+        error: 'Тестировщик с этим email уже привязан к другому пользователю',
+      });
+      return;
+    }
+    const updated = await prisma.tester.update({
+      where: { id: byEmail.id },
+      data: { linkedUserId: owner.id, isActive: true },
+    });
+    linked = { id: updated.id, email: updated.email, created: false };
+  } else {
+    const created = await prisma.tester.create({
+      data: {
+        email: owner.email,
+        password: owner.password,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        linkedUserId: owner.id,
+        isActive: true,
+      },
+    });
+    linked = { id: created.id, email: created.email, created: true };
+  }
+
+  await createAuditLog({
+    superAdminId: superAdmin?.id,
+    action: 'link_tenant_owner_tester',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: linked.created
+      ? `Создан тестировщик и привязан OWNER школы «${tenant.name}» (${owner.email})`
+      : `OWNER школы «${tenant.name}» (${owner.email}) привязан к тестировщику`,
+    newValue: { tenantId, ownerId: owner.id, linkedTesterId: linked.id },
+    ipAddress: getIpAddress(req),
+    userAgent: getUserAgent(req),
+  });
+
+  res.json({
+    success: true,
+    data: {
+      tenantId,
+      ownerId: owner.id,
+      ownerEmail: owner.email,
+      linkedTesterId: linked.id,
+      created: linked.created,
+    },
+  });
+});
+
+/**
+ * Отвязать OWNER от тестировщика.
+ * DELETE /admin-dashboard/tenants/:tenantId/link-tester
+ */
+export const unlinkTenantOwnerTester = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const superAdmin = (req as any).superAdmin;
+  const { tenantId } = req.params;
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    res.status(404).json({ success: false, error: 'Школа не найдена' });
+    return;
+  }
+
+  const owner = await prisma.user.findFirst({
+    where: { tenantId, role: 'OWNER', isActive: true },
+  });
+  if (!owner) {
+    res.status(400).json({ success: false, error: 'У школы нет активного OWNER' });
+    return;
+  }
+
+  const linked = await prisma.tester.findFirst({
+    where: { linkedUserId: owner.id },
+  });
+  if (!linked) {
+    res.status(400).json({ success: false, error: 'OWNER не привязан к тестировщику' });
+    return;
+  }
+
+  await prisma.tester.update({
+    where: { id: linked.id },
+    data: {
+      linkedUserId: null,
+      isActive: false,
+      sessionVersion: { increment: 1 },
+    },
+  });
+
+  await createAuditLog({
+    superAdminId: superAdmin?.id,
+    action: 'unlink_tenant_owner_tester',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: `Отвязан тестировщик от OWNER школы «${tenant.name}» (${owner.email})`,
+    oldValue: { tenantId, ownerId: owner.id, linkedTesterId: linked.id },
+    ipAddress: getIpAddress(req),
+    userAgent: getUserAgent(req),
+  });
+
+  res.json({
+    success: true,
+    data: { tenantId, ownerId: owner.id, unlinkedTesterId: linked.id },
   });
 });

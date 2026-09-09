@@ -43,7 +43,10 @@ import platformStaffRoutes from './routes/platformStaffRoutes';
 import superAdminSupportRoutes from './routes/superAdminSupportRoutes';
 import supportRequesterRoutes from './routes/supportRequesterRoutes';
 import searchRoutes from './routes/search';
+import chatRoutes from './routes/chat';
+import platformRoutes from './routes/platform';
 import { attachSupportCallSocket } from './services/supportCallSocket';
+import { attachChatNamespace } from './services/chatSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
@@ -167,13 +170,16 @@ app.use('/api/platform-staff/auth', platformStaffAuthRoutes);
 app.use('/api/platform-staff', platformStaffRoutes);
 app.use('/api/super-admin/support', superAdminSupportRoutes);
 app.use('/api/support', supportRequesterRoutes);
+app.use('/api/chats', chatRoutes);
+app.use('/api/platform', platformRoutes);
 
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
 const httpServer = http.createServer(app);
-attachSupportCallSocket(httpServer);
+const io = attachSupportCallSocket(httpServer);
+attachChatNamespace(io);
 
 // Start server
 httpServer.listen(PORT, () => {

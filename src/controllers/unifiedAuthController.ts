@@ -12,6 +12,7 @@ const ACCOUNT_TYPES: AccountType[] = [
   'MARKETER',
   'PROMO_CODE_ADMIN',
   'SUPER_ADMIN',
+  'TESTER',
   'PLATFORM_STAFF',
 ];
 
@@ -92,6 +93,19 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
 export const selectAccount = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { selectionToken, accountType, accountId } = req.body;
   const result = await UnifiedAuthService.selectAccount(selectionToken, accountType, accountId);
+  res.json({ success: true, data: result });
+});
+
+/**
+ * Актуальные linked-сессии SA/Tester для текущего школьного пользователя.
+ */
+export const getLinkedSessions = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  const result = await UnifiedAuthService.getLinkedSessionsForUser(userId);
   res.json({ success: true, data: result });
 });
 

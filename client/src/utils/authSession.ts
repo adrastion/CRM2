@@ -3,7 +3,13 @@ import {
   captureActiveSessionKeys,
   upsertFromActiveStorage,
   upsertSavedAccountFromSession,
+  removeLinkedSlotsForUser,
+  removeSavedAccount,
+  fallbackToSchoolAccount,
+  getActiveAccountId,
+  listSavedAccounts,
 } from './accountSwitcher';
+import { apiService } from '../services/api';
 
 /**
  * Флаг подтверждения клиентского аккаунта школой.
@@ -45,6 +51,8 @@ export function clearAllAuthStorage(): void {
     'promoCodeAdminTenant',
     'superAdminToken',
     'superAdmin',
+    'testerToken',
+    'tester',
     'platformStaffToken',
     'platformStaff',
   ];
@@ -106,6 +114,12 @@ function writeSessionKeys(session: SessionLike): string {
       destination = '/admin/dashboard';
       break;
 
+    case 'TESTER':
+      localStorage.setItem('testerToken', session.token);
+      localStorage.setItem('tester', JSON.stringify(session.tester));
+      destination = '/tester/dashboard';
+      break;
+
     case 'PLATFORM_STAFF':
       localStorage.setItem('platformStaffToken', session.token);
       localStorage.setItem('platformStaff', JSON.stringify(session.staff));
@@ -131,7 +145,7 @@ function restoreSessionKeys(keys: Record<string, string>): void {
 /**
  * Записывает сессию в localStorage в формате, который ожидают
  * существующие контексты и middleware, и возвращает маршрут для перехода.
- * Если есть linkedSession (OWNER ↔ супер-админ) — оба слота попадают в свитчер.
+ * Если есть linkedSession / linkedSessions (OWNER ↔ SA / Tester) — слоты в свитчере.
  */
 export function applyUnifiedSession(session: UnifiedSession): string {
   clearAllAuthStorage();
@@ -139,17 +153,112 @@ export function applyUnifiedSession(session: UnifiedSession): string {
   const destination = writeSessionKeys(session);
   upsertSavedAccountFromSession(session);
 
-  if (session.linkedSession) {
+  const links =
+    session.linkedSessions && session.linkedSessions.length > 0
+      ? session.linkedSessions
+      : session.linkedSession
+        ? [session.linkedSession]
+        : [];
+
+  const linkedFromUserId =
+    session.accountType === 'TENANT_USER' && session.user?.id
+      ? String(session.user.id)
+      : undefined;
+
+  if (links.length > 0) {
     const primaryKeys = captureActiveSessionKeys();
-    clearAllAuthStorage();
-    writeSessionKeys(session.linkedSession);
-    upsertFromActiveStorage();
+    for (const link of links) {
+      clearAllAuthStorage();
+      writeSessionKeys(link);
+      upsertFromActiveStorage(
+        linkedFromUserId && (link.accountType === 'SUPER_ADMIN' || link.accountType === 'TESTER')
+          ? { linkedFromUserId }
+          : undefined
+      );
+    }
     clearAllAuthStorage();
     restoreSessionKeys(primaryKeys);
     upsertFromActiveStorage();
   }
 
   return destination;
+}
+
+/**
+ * Подтянуть SA/Tester в свитчер по текущей школьной сессии (без повторного логина).
+ * При отвязке — убрать слоты; если активен отозванный аккаунт — вернуться в школу.
+ */
+export async function syncLinkedPlatformAccounts(): Promise<{
+  changed: boolean;
+  kickedTo?: string;
+}> {
+  const schoolToken = localStorage.getItem('token');
+  const userRaw = localStorage.getItem('user');
+  if (!schoolToken || !userRaw) {
+    return { changed: false };
+  }
+
+  let userId: string | null = null;
+  try {
+    userId = JSON.parse(userRaw)?.id || null;
+  } catch {
+    return { changed: false };
+  }
+  if (!userId) return { changed: false };
+
+  // Запрос должен идти с school token — временно приоритетнее SA/Tester в interceptor нет
+  // если school token активен в localStorage как `token` и нет superAdminToken...
+  // Когда OWNER в школе, superAdminToken отсутствует в active keys. OK.
+  let linkedSessions: UnifiedSession[] = [];
+  try {
+    const data = await apiService.getLinkedSessions();
+    linkedSessions = (data?.linkedSessions || []) as UnifiedSession[];
+  } catch {
+    return { changed: false };
+  }
+
+  const keepIds = new Set<string>();
+  const primaryKeys = captureActiveSessionKeys();
+
+  for (const link of linkedSessions) {
+    if (link.accountType !== 'SUPER_ADMIN' && link.accountType !== 'TESTER') continue;
+    const id =
+      link.accountType === 'SUPER_ADMIN'
+        ? `SUPER_ADMIN:${link.superAdmin?.id}`
+        : `TESTER:${link.tester?.id}`;
+    if (!id.endsWith(':undefined') && !id.endsWith(':')) keepIds.add(id);
+
+    clearAllAuthStorage();
+    writeSessionKeys(link as Omit<UnifiedSession, 'requiresSelection'>);
+    upsertFromActiveStorage({ linkedFromUserId: userId });
+  }
+
+  clearAllAuthStorage();
+  restoreSessionKeys(primaryKeys);
+  upsertFromActiveStorage();
+
+  const before = listSavedAccounts().map((s) => s.id).sort().join(',');
+  removeLinkedSlotsForUser(userId, keepIds);
+  const after = listSavedAccounts().map((s) => s.id).sort().join(',');
+
+  const activeId = getActiveAccountId();
+  if (
+    activeId &&
+    (activeId.startsWith('SUPER_ADMIN:') || activeId.startsWith('TESTER:')) &&
+    !keepIds.has(activeId)
+  ) {
+    removeSavedAccount(activeId);
+    const dest = fallbackToSchoolAccount();
+    if (dest) {
+      window.location.assign(dest);
+      return { changed: true, kickedTo: dest };
+    }
+    clearAllAuthStorage();
+    window.location.assign('/auth');
+    return { changed: true, kickedTo: '/auth' };
+  }
+
+  return { changed: before !== after };
 }
 
 /** Есть ли хоть одна активная сессия. */
@@ -160,6 +269,7 @@ export function hasAnySession(): boolean {
       localStorage.getItem('marketerToken') ||
       localStorage.getItem('promoCodeAdminToken') ||
       localStorage.getItem('superAdminToken') ||
+      localStorage.getItem('testerToken') ||
       localStorage.getItem('platformStaffToken')
   );
 }
@@ -169,6 +279,7 @@ export function currentSessionDestination(): string | null {
   if (localStorage.getItem('token')) return '/dashboard';
   if (localStorage.getItem('clientToken')) return '/client/dashboard';
   if (localStorage.getItem('superAdminToken')) return '/admin/dashboard';
+  if (localStorage.getItem('testerToken')) return '/tester/dashboard';
   if (localStorage.getItem('platformStaffToken')) return '/platform-staff/desk';
   if (localStorage.getItem('promoCodeAdminToken')) return '/admin/promo-codes';
   if (localStorage.getItem('marketerToken')) return '/marketer/panel';

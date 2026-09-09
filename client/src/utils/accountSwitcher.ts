@@ -24,6 +24,8 @@ export const AUTH_STORAGE_KEYS = [
   'promoCodeAdminTenant',
   'superAdminToken',
   'superAdmin',
+  'testerToken',
+  'tester',
   'platformStaffToken',
   'platformStaff',
 ] as const;
@@ -37,6 +39,11 @@ export interface SavedAccountSlot {
   updatedAt: number;
   /** Снимок значений localStorage для восстановления сессии. */
   keys: Record<string, string>;
+  /**
+   * Id школьного User, от которого авто-добавлен SA/Tester.
+   * Нужен, чтобы убрать слот при отвязке без повторного логина.
+   */
+  linkedFromUserId?: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -72,6 +79,7 @@ function activeDestination(): string {
   if (localStorage.getItem('token')) return '/dashboard';
   if (localStorage.getItem('clientToken')) return '/client/dashboard';
   if (localStorage.getItem('superAdminToken')) return '/admin/dashboard';
+  if (localStorage.getItem('testerToken')) return '/tester/dashboard';
   if (localStorage.getItem('platformStaffToken')) {
     const staff = safeParse<{ mustChangePassword?: boolean }>(localStorage.getItem('platformStaff'));
     return staff?.mustChangePassword ? '/platform-staff/change-password' : '/platform-staff/desk';
@@ -146,6 +154,11 @@ export function getActiveAccountId(): string | null {
   const superAdmin = safeParse<{ id: string }>(localStorage.getItem('superAdmin'));
   if (localStorage.getItem('superAdminToken') && superAdmin?.id) {
     return `SUPER_ADMIN:${superAdmin.id}`;
+  }
+
+  const tester = safeParse<{ id: string }>(localStorage.getItem('tester'));
+  if (localStorage.getItem('testerToken') && tester?.id) {
+    return `TESTER:${tester.id}`;
   }
 
   const staff = safeParse<{ id: string }>(localStorage.getItem('platformStaff'));
@@ -238,6 +251,19 @@ function metaFromActiveStorage(): Pick<
     };
   }
 
+  if (accountType === 'TESTER') {
+    const tester = safeParse<{ firstName?: string; lastName?: string; email?: string }>(
+      localStorage.getItem('tester')
+    );
+    return {
+      id,
+      accountType,
+      displayName: personName([tester?.lastName, tester?.firstName]) || tester?.email || 'Тестировщик',
+      subtitle: 'Тестировщик',
+      destination,
+    };
+  }
+
   if (accountType === 'PLATFORM_STAFF') {
     const staff = safeParse<{ firstName?: string; lastName?: string; email?: string; role?: string }>(
       localStorage.getItem('platformStaff')
@@ -255,14 +281,23 @@ function metaFromActiveStorage(): Pick<
 }
 
 /** Сохраняет / обновляет слот по текущей активной сессии в localStorage. */
-export function upsertFromActiveStorage(): SavedAccountSlot | null {
+export function upsertFromActiveStorage(extra?: {
+  linkedFromUserId?: string;
+}): SavedAccountSlot | null {
   const meta = metaFromActiveStorage();
   if (!meta) return null;
+
+  const existingSlot = listSavedAccounts().find((a) => a.id === meta.id);
 
   const slot: SavedAccountSlot = {
     ...meta,
     updatedAt: Date.now(),
     keys: captureActiveSessionKeys(),
+    ...(extra?.linkedFromUserId
+      ? { linkedFromUserId: extra.linkedFromUserId }
+      : existingSlot?.linkedFromUserId
+        ? { linkedFromUserId: existingSlot.linkedFromUserId }
+        : {}),
   };
 
   const existing = listSavedAccounts();
@@ -304,11 +339,26 @@ export function switchToAccount(id: string): void {
   window.location.assign(slot.destination || '/auth');
 }
 
-/** Выйти только из текущего: убрать слот, очистить активную сессию. */
-export function logoutCurrentAccount(): void {
+/**
+ * Выйти только из текущего аккаунта.
+ * Если в реестре остались другие — активирует самый свежий и возвращает destination.
+ * Иначе очищает активную сессию и возвращает null (нужен /auth).
+ */
+export function logoutCurrentAccount(): string | null {
   const activeId = getActiveAccountId();
   if (activeId) removeSavedAccount(activeId);
+
+  const remaining = listSavedAccounts().sort((a, b) => b.updatedAt - a.updatedAt);
   clearActiveAuthKeys();
+
+  if (remaining.length === 0) return null;
+
+  const next = remaining[0];
+  for (const [key, value] of Object.entries(next.keys)) {
+    localStorage.setItem(key, value);
+  }
+  upsertFromActiveStorage();
+  return next.destination || '/auth';
 }
 
 /**
@@ -318,4 +368,28 @@ export function logoutCurrentAccount(): void {
 export function prepareAddAccount(): void {
   upsertFromActiveStorage();
   clearActiveAuthKeys();
+}
+
+/** Удалить авто-привязанные SA/Tester слоты для школьного userId (кроме keepIds). */
+export function removeLinkedSlotsForUser(userId: string, keepIds?: Set<string>): void {
+  const next = listSavedAccounts().filter((slot) => {
+    if (slot.linkedFromUserId !== userId) return true;
+    if (keepIds && keepIds.has(slot.id)) return true;
+    return false;
+  });
+  writeSavedAccounts(next);
+}
+
+/**
+ * Переключиться на школьный слот после отзыва платформенного аккаунта.
+ */
+export function fallbackToSchoolAccount(): string | null {
+  const school = listSavedAccounts().find((a) => a.accountType === 'TENANT_USER');
+  if (!school) return null;
+  clearActiveAuthKeys();
+  for (const [key, value] of Object.entries(school.keys)) {
+    localStorage.setItem(key, value);
+  }
+  upsertFromActiveStorage();
+  return school.destination || '/dashboard';
 }

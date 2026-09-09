@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthContext';
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
+import { TesterAuthProvider, useTesterAuth } from './contexts/TesterAuthContext';
 import { PlatformStaffAuthProvider, usePlatformStaffAuth } from './contexts/PlatformStaffAuthContext';
 import { TelegramBannerProvider } from './contexts/TelegramBannerContext';
 import AppLayout from './components/Layout/AppLayout';
@@ -44,6 +45,8 @@ const PlatformStaffChangePassword = lazy(() => import('./pages/PlatformStaffChan
 const ClientRegister = lazy(() => import('./pages/ClientRegister'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
 const ParentRegister = lazy(() => import('./pages/ParentRegister'));
+const Chats = lazy(() => import('./pages/Chats'));
+const TesterDashboard = lazy(() => import('./pages/TesterDashboard'));
 
 const appTheme = createAppTheme();
 
@@ -168,6 +171,16 @@ const ProtectedPromoCodeAdminRoute: React.FC<{ children: React.ReactNode }> = ({
 // Protected Super Admin Route Component
 const ProtectedSuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useSuperAdminAuth();
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
+};
+
+const ProtectedTesterRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useTesterAuth();
 
   if (isLoading) {
     return <PageLoader />;
@@ -397,6 +410,16 @@ const AppContent: React.FC = () => {
           }
         />
         <Route
+          path="/chats"
+          element={
+            <ProtectedRoute>
+              <AppLayout pageTitle="Чаты">
+                <Chats />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/competitions"
           element={<Navigate to="/schedule?tab=competitions" replace />}
         />
@@ -461,6 +484,16 @@ const AppContent: React.FC = () => {
                 <SuperAdminSupportHub />
               </AppLayout>
             </ProtectedSuperAdminRoute>
+          }
+        />
+        <Route
+          path="/tester/dashboard"
+          element={
+            <ProtectedTesterRoute>
+              <AppLayout pageTitle="Панель тестировщика">
+                <TesterDashboard />
+              </AppLayout>
+            </ProtectedTesterRoute>
           }
         />
         <Route path="/platform-staff/login" element={<Navigate to="/auth" replace />} />
@@ -530,11 +563,13 @@ const App: React.FC = () => {
         <MarketerAuthProvider>
           <PromoCodeAdminAuthProvider>
           <SuperAdminAuthProvider>
+            <TesterAuthProvider>
             <PlatformStaffAuthProvider>
             <TelegramBannerProvider>
               <AppContent />
             </TelegramBannerProvider>
             </PlatformStaffAuthProvider>
+            </TesterAuthProvider>
           </SuperAdminAuthProvider>
           </PromoCodeAdminAuthProvider>
         </MarketerAuthProvider>

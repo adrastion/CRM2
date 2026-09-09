@@ -14,6 +14,8 @@ import {
   getTenantGrantHistory,
   linkTenantOwnerAsSuperAdmin,
   unlinkTenantOwnerSuperAdmin,
+  linkTenantOwnerAsTester,
+  unlinkTenantOwnerTester,
   getExpenseCategories,
   createExpenseCategory,
   getAnalyticsByPeriod,
@@ -118,6 +120,8 @@ router.put('/tenants/:tenantId/subscription/end-date', updateTenantSubscriptionE
 router.get('/tenants/:tenantId/grant-history', getTenantGrantHistory);
 router.post('/tenants/:tenantId/link-super-admin', linkTenantOwnerAsSuperAdmin);
 router.delete('/tenants/:tenantId/link-super-admin', unlinkTenantOwnerSuperAdmin);
+router.post('/tenants/:tenantId/link-tester', linkTenantOwnerAsTester);
+router.delete('/tenants/:tenantId/link-tester', unlinkTenantOwnerTester);
 
 // Массовое обновление аккаунтов
 router.post('/tenants/bulk', bulkUpdateTenants);

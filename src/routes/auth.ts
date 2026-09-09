@@ -30,6 +30,7 @@ import {
   setupPassword,
   login as unifiedLogin,
   selectAccount,
+  getLinkedSessions,
   validateIdentify,
   validateUnifiedLogin,
   validateSetupPassword,
@@ -80,6 +81,7 @@ router.post('/email/verify', validateEmailVerifyCode, verifyEmailCode);
 router.use(authenticate);
 
 router.get('/profile', getProfile);
+router.get('/linked-sessions', getLinkedSessions);
 router.put('/profile', validateUpdateProfile, updateProfile);
 router.post('/change-password', validateChangePassword, changePassword);
 router.post('/change-email', validateChangeEmail, changeEmail);
