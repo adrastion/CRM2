@@ -1073,6 +1073,7 @@ model SuperAdmin {
   pushSubscriptions  SuperAdminPushSubscription[]
   devNotes           SuperAdminDevNote[]
   changelogEntries   PlatformChangelogEntry[]
+  plannerEvents      PlatformCalendarEvent[]
 
   @@map("super_admins")
 }
@@ -1126,6 +1127,35 @@ model SuperAdminDevNote {
 
   @@index([status, updatedAt])
   @@map("super_admin_dev_notes")
+}
+
+/// Единица интервала повтора для планировщика платформы (NONE = разовое).
+enum PlatformEventIntervalUnit {
+  NONE
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+/// Календарь супер-админа: аренда сервера, домен и др. (без школьных событий).
+model PlatformCalendarEvent {
+  id            String                    @id @default(cuid())
+  title         String
+  notes         String?                   @db.Text
+  startAt       DateTime
+  allDay        Boolean                   @default(true)
+  intervalUnit  PlatformEventIntervalUnit @default(NONE)
+  intervalCount Int                       @default(1)
+  seriesEndAt   DateTime?
+  createdById   String
+  createdBy     SuperAdmin                @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([startAt])
+  @@index([intervalUnit, startAt])
+  @@map("platform_calendar_events")
 }
 
 model DashboardPreset {

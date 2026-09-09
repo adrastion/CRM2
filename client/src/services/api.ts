@@ -1770,6 +1770,62 @@ class ApiService {
     await this.api.delete(`/admin-dashboard/dev-notes/${id}`);
   }
 
+  async getPlannerEvents(params: { from: string; to: string }): Promise<{
+    from: string;
+    to: string;
+    occurrences: Array<{
+      occurrenceAt: string;
+      event: {
+        id: string;
+        title: string;
+        notes?: string | null;
+        startAt: string;
+        allDay: boolean;
+        intervalUnit: 'NONE' | 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
+        intervalCount: number;
+        seriesEndAt?: string | null;
+        createdBy?: { id: string; firstName: string; lastName: string; email: string };
+      };
+    }>;
+    series: any[];
+  }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/planner/events', { params });
+    return response.data.data;
+  }
+
+  async createPlannerEvent(data: {
+    title: string;
+    notes?: string | null;
+    startAt: string;
+    allDay?: boolean;
+    intervalUnit?: string;
+    intervalCount?: number;
+    seriesEndAt?: string | null;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/planner/events', data);
+    return response.data.data;
+  }
+
+  async updatePlannerEvent(
+    id: string,
+    data: {
+      title?: string;
+      notes?: string | null;
+      startAt?: string;
+      allDay?: boolean;
+      intervalUnit?: string;
+      intervalCount?: number;
+      seriesEndAt?: string | null;
+    }
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/planner/events/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlannerEvent(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/planner/events/${id}`);
+  }
+
   async linkTenantOwnerAsSuperAdmin(tenantId: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(
       `/admin-dashboard/tenants/${tenantId}/link-super-admin`

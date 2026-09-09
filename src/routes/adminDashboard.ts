@@ -44,6 +44,12 @@ import {
   deleteDevNote,
 } from '../controllers/superAdminDevNoteController';
 import {
+  listPlannerEvents,
+  createPlannerEvent,
+  updatePlannerEvent,
+  deletePlannerEvent,
+} from '../controllers/superAdminPlannerController';
+import {
   getLogFileInfo,
   readLogFile,
   downloadLogFile,
@@ -131,6 +137,12 @@ router.get('/dev-notes', listDevNotes);
 router.post('/dev-notes', createDevNote);
 router.put('/dev-notes/:id', updateDevNote);
 router.delete('/dev-notes/:id', deleteDevNote);
+
+// Планировщик платформы (календарь SA)
+router.get('/planner/events', listPlannerEvents);
+router.post('/planner/events', createPlannerEvent);
+router.put('/planner/events/:id', updatePlannerEvent);
+router.delete('/planner/events/:id', deletePlannerEvent);
 
 // Категории расходов
 router.get('/expense-categories', getExpenseCategories);

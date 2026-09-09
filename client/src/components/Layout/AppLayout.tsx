@@ -69,6 +69,7 @@ const SA_DASHBOARD_SECTIONS: Array<{
   { section: 'tariffs', label: 'Управление тарифами', iconName: 'tariffs' },
   { section: 'marketers', label: 'Маркетологи', iconName: 'clients' },
   { section: 'server-load', label: 'Нагрузка сервера', iconName: 'settings' },
+  { section: 'planner', label: 'Планировщик', iconName: 'schedule' },
   { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
   { section: 'chats', label: 'Чаты', iconName: 'chats' },
   { section: 'changelog', label: 'Изменения', iconName: 'issued-tariffs' },
