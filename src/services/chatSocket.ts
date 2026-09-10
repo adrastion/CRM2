@@ -44,14 +44,49 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
   }
 
   if (decoded.type === 'client' && decoded.clientId && decoded.tenantId) {
-    return resolveClientActor({ clientId: decoded.clientId, tenantId: decoded.tenantId });
+    const client = await prisma.client.findUnique({
+      where: { id: decoded.clientId },
+      select: { id: true, tenantId: true, isActive: true, sessionVersion: true },
+    });
+    if (
+      !client ||
+      !client.isActive ||
+      client.tenantId !== decoded.tenantId ||
+      !isSessionVersionValid(decoded, client.sessionVersion)
+    ) {
+      return null;
+    }
+    return resolveClientActor({ clientId: client.id, tenantId: client.tenantId });
   }
   if (decoded.type === 'parent' && decoded.parentId && decoded.tenantId) {
-    return resolveClientActor({ parentId: decoded.parentId, tenantId: decoded.tenantId });
+    const parent = await prisma.parent.findUnique({
+      where: { id: decoded.parentId },
+      select: { id: true, tenantId: true, sessionVersion: true },
+    });
+    if (
+      !parent ||
+      parent.tenantId !== decoded.tenantId ||
+      !isSessionVersionValid(decoded, parent.sessionVersion)
+    ) {
+      return null;
+    }
+    return resolveClientActor({ parentId: parent.id, tenantId: parent.tenantId });
   }
 
   if (decoded.userId && decoded.tenantId && !decoded.type) {
-    return resolveStaffActor(decoded.userId, decoded.tenantId);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, tenantId: true, isActive: true, sessionVersion: true },
+    });
+    if (
+      !user ||
+      !user.isActive ||
+      user.tenantId !== decoded.tenantId ||
+      !isSessionVersionValid(decoded, user.sessionVersion)
+    ) {
+      return null;
+    }
+    return resolveStaffActor(user.id, user.tenantId);
   }
 
   return null;

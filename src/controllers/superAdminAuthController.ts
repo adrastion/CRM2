@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
+import { maybeSetAuthCookies } from '../middleware/authCookies';
 
 /**
  * Login super admin
@@ -28,7 +30,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (!superAdmin) {
     res.status(401).json({
       success: false,
-      error: 'Invalid credentials'
+      error: LOGIN_FAILED_MESSAGE
     });
     return;
   }
@@ -36,7 +38,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (!superAdmin.isActive) {
     res.status(401).json({
       success: false,
-      error: 'Account is deactivated'
+      error: 'Аккаунт деактивирован'
     });
     return;
   }
@@ -46,7 +48,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (!isPasswordValid) {
     res.status(401).json({
       success: false,
-      error: 'Invalid credentials'
+      error: LOGIN_FAILED_MESSAGE
     });
     return;
   }
@@ -108,6 +110,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
     };
   }
 
+  maybeSetAuthCookies(res, { token });
   res.json({
     success: true,
     data: {

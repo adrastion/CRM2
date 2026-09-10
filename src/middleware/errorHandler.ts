@@ -80,15 +80,24 @@ export const errorHandler = (
     return;
   }
 
-  // Authentication errors - проверяем сообщение об ошибке
-  if (error.message === 'Аккаунт не существует' || error.message === 'Неверный пароль' || 
-      error.message.toLowerCase().includes('аккаунт не существует') || 
-      error.message.toLowerCase().includes('неверный пароль') ||
-      error.message === 'Invalid credentials' || error.message === 'Account is deactivated' ||
-      error.message === 'Tenant account is deactivated') {
+  // Authentication errors — нейтральное сообщение (не раскрываем существование аккаунта)
+  if (
+    error.message === 'Аккаунт не существует' ||
+    error.message === 'Неверный пароль' ||
+    error.message === 'Неверный логин или пароль' ||
+    error.message.toLowerCase().includes('аккаунт не существует') ||
+    error.message.toLowerCase().includes('неверный пароль') ||
+    error.message.toLowerCase().includes('неверный логин или пароль') ||
+    error.message === 'Invalid credentials' ||
+    error.message === 'Account is deactivated' ||
+    error.message === 'Tenant account is deactivated'
+  ) {
+    const isDeactivated =
+      error.message === 'Account is deactivated' ||
+      error.message === 'Tenant account is deactivated';
     res.status(401).json({
       success: false,
-      error: error.message
+      error: isDeactivated ? 'Аккаунт деактивирован' : 'Неверный логин или пароль',
     });
     return;
   }

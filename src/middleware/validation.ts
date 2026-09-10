@@ -34,7 +34,8 @@ export const validate = (schema: Joi.ObjectSchema) => {
   return (req: Request, res: Response<ApiResponse>, next: NextFunction): void => {
     const { error, value } = schema.validate(req.body, { 
       abortEarly: false,
-      convert: true // Enable automatic type conversion
+      convert: true,
+      stripUnknown: true,
     });
     
     if (error) {
@@ -44,8 +45,8 @@ export const validate = (schema: Joi.ObjectSchema) => {
         value: detail.context?.value
       }));
 
-      console.error('Validation error:', errorMessages);
-      console.error('Request body:', JSON.stringify(req.body, null, 2));
+      // Не логируем тело запроса целиком (пароли / PII)
+      console.error('Validation error:', errorMessages.map((e) => ({ field: e.field, message: e.message })));
 
       res.status(400).json({
         success: false,
@@ -124,9 +125,9 @@ export const clientSchemas = {
     gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
     address: Joi.string().max(500).optional().allow('', null),
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
-    birthCertificate: Joi.string().optional().allow('', null), // Фото/документ свидетельства о рождении (base64)
+    birthCertificate: Joi.string().optional().allow('', null), // data URL → диск на сервере
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
-    medicalCertificate: Joi.string().optional().allow('', null), // Фото/документ справки (base64)
+    medicalCertificate: Joi.string().optional().allow('', null), // data URL → диск на сервере
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),
@@ -168,9 +169,9 @@ export const clientSchemas = {
     gender: Joi.string().valid('male', 'female', 'other').optional().allow('', null),
     address: Joi.string().max(500).optional().allow('', null),
     birthCertificateNumber: Joi.string().max(100).optional().allow('', null),
-    birthCertificate: Joi.string().optional().allow('', null), // Фото/документ свидетельства о рождении (base64)
+    birthCertificate: Joi.string().optional().allow('', null), // data URL → диск на сервере
     medicalCertificateNumber: Joi.string().max(100).optional().allow('', null),
-    medicalCertificate: Joi.string().optional().allow('', null), // Фото/документ справки (base64)
+    medicalCertificate: Joi.string().optional().allow('', null), // data URL → диск на сервере
     schoolOrKindergarten: Joi.string().max(200).optional().allow('', null),
     photo: Joi.string().optional().allow('', null),
     weight: Joi.number().min(0).max(500).optional().allow(null),

@@ -89,6 +89,8 @@ model User {
   isActive      Boolean   @default(true)
   emailVerified Boolean   @default(false)
   lastLogin     DateTime?
+  /// Инкремент при смене пароля / деактивации — инвалидирует выданные JWT.
+  sessionVersion Int      @default(0)
   tenantId      String
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -167,7 +169,9 @@ model Client {
   medicalCertificateNumber String?
   schoolOrKindergarten     String?
   balance                  Decimal                  @default(0)
+  /// Относительный путь в uploads/ (раньше мог быть data URL / base64)
   birthCertificate         String?
+  /// Относительный путь в uploads/ (раньше мог быть data URL / base64)
   medicalCertificate       String?
   weight                   Decimal?
   /// Спортивная дисциплина (вид спорта)
@@ -195,6 +199,8 @@ model Client {
   accountApprovedAt        DateTime? // Дата подтверждения
   accountApprovedBy        String? // Кто подтвердил (userId)
   lastLogin                DateTime? // Последний вход
+  /// Инкремент при смене пароля / деактивации — инвалидирует JWT ЛК.
+  sessionVersion           Int                      @default(0)
   achievements             Achievement[]
   attendances              Attendance[]
   clientMemberships        ClientMembership[]
@@ -286,6 +292,8 @@ model Parent {
   accountApprovedAt        DateTime? // Дата подтверждения
   accountApprovedBy        String? // Кто подтвердил (userId)
   lastLogin                DateTime? // Последний вход
+  /// Инкремент при смене пароля — инвалидирует JWT ЛК родителя.
+  sessionVersion           Int       @default(0)
   client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supportTickets   SupportTicket[] @relation("ParentSupportTickets")

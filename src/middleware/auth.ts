@@ -2,6 +2,8 @@ import { prisma } from '../lib/prisma';
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, JWTPayload, ApiResponse } from '../types';
+import { isSessionVersionValid } from '../utils/sessionVersion';
+import { readAccessTokenFromCookie } from './authCookies';
 
 /**
  * Middleware to verify JWT token and authenticate user
@@ -13,16 +15,21 @@ export const authenticate = async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token: string | undefined;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else {
+      token = readAccessTokenFromCookie(req);
+    }
+
+    if (!token) {
       res.status(401).json({
         success: false,
         error: 'Access token is required'
       });
       return;
     }
-
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
     if (!process.env.JWT_SECRET) {
       res.status(500).json({
@@ -41,7 +48,11 @@ export const authenticate = async (
       include: { tenant: true }
     });
 
-    if (!user || !user.isActive) {
+    if (
+      !user ||
+      !user.isActive ||
+      !isSessionVersionValid(decoded, user.sessionVersion)
+    ) {
       res.status(401).json({
         success: false,
         error: 'Invalid or inactive user'
@@ -127,9 +138,10 @@ export const requireOwnerAdminOrTrainer = authorize('OWNER', 'ADMIN', 'TRAINER')
 
 /**
  * Middleware to check tenant access
+ * @deprecated Prefer JWT req.tenantId + stripClientTenantFields; do not trust body tenantId.
  */
 export const checkTenantAccess = (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction): void => {
-  const requestedTenantId = req.params.tenantId || req.body.tenantId || req.query.tenantId;
+  const requestedTenantId = req.params.tenantId || req.query.tenantId;
   
   if (requestedTenantId && requestedTenantId !== req.tenantId) {
     res.status(403).json({

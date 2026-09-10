@@ -51,6 +51,7 @@ class ApiService {
     this.api = axios.create({
       baseURL: process.env.REACT_APP_API_URL || '/api',
       timeout: 10000,
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -82,6 +83,14 @@ class ApiService {
           config.headers.Authorization = `Bearer ${clientToken}`;
         } else if (regularToken) {
           config.headers.Authorization = `Bearer ${regularToken}`;
+        }
+
+        // CSRF double-submit при cookie-сессии без Bearer
+        if (!config.headers.Authorization && typeof document !== 'undefined') {
+          const match = document.cookie.match(/(?:^|;\s*)crm_csrf=([^;]+)/);
+          if (match?.[1]) {
+            config.headers['X-CSRF-Token'] = decodeURIComponent(match[1]);
+          }
         }
         return config;
       },
@@ -1910,14 +1919,40 @@ class ApiService {
       birthCertificateNumber: string | null;
       medicalCertificate: boolean;
       medicalCertificateNumber: string | null;
-      birthCertificateDataUrl: string | null;
-      medicalCertificateDataUrl: string | null;
     };
   }> {
     const response = await this.api.get<ApiResponse>(
       `/client-auth/clients/${clientId}/contracts`
     );
     return response.data.data;
+  }
+
+  async downloadClientCertificate(
+    clientId: string,
+    kind: 'birth' | 'medical'
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(`/clients/${clientId}/certificates/${kind}/download`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const fallback = kind === 'birth' ? 'birth-certificate' : 'medical-certificate';
+    const filename = parseContentDispositionFilename(disposition, fallback);
+    return { blob: response.data, filename };
+  }
+
+  async clientDownloadCertificate(
+    clientId: string,
+    kind: 'birth' | 'medical'
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(
+      `/client-auth/clients/${clientId}/certificates/${kind}/download`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const fallback = kind === 'birth' ? 'birth-certificate' : 'medical-certificate';
+    const filename = parseContentDispositionFilename(disposition, fallback);
+    return { blob: response.data, filename };
   }
 
   async clientDownloadContract(
@@ -2326,6 +2361,18 @@ class ApiService {
   async superAdminListDesignerRecordings(): Promise<any> {
     const response = await this.api.get<ApiResponse>('/super-admin/support/recordings');
     return response.data.data;
+  }
+
+  async superAdminDownloadDesignerRecording(
+    id: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(`/super-admin/support/recordings/${id}/download`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `recording-${id}.webm`);
+    return { blob: response.data, filename };
   }
 
   async superAdminDeleteDesignerRecording(id: string): Promise<void> {

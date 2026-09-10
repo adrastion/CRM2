@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  security-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+      - name: Audit root (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci --ignore-scripts
+      - name: Audit client (high+)
+        working-directory: client
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  typecheck:
+    name: Typecheck server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit -p tsconfig.json

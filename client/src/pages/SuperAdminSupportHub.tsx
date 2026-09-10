@@ -13,9 +13,17 @@ import {
   Button,
   TextField,
   Chip,
-  Link,
 } from '@mui/material';
 import { apiService } from '../services/api';
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const SuperAdminSupportHub: React.FC = () => {
   const [tab, setTab] = useState(0);
@@ -75,9 +83,10 @@ const SuperAdminSupportHub: React.FC = () => {
     loadKnowledge();
   };
 
-  const apiBase =
-    (process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.replace(/\/api\/?$/, '')) ||
-    (typeof window !== 'undefined' ? window.location.origin : '');
+  const downloadRecording = async (id: string) => {
+    const { blob, filename } = await apiService.superAdminDownloadDesignerRecording(id);
+    triggerBlobDownload(blob, filename);
+  };
 
   return (
     <Box sx={{ p: 2 }}>
@@ -199,9 +208,9 @@ const SuperAdminSupportHub: React.FC = () => {
                         : '—')}
                   </TableCell>
                   <TableCell>
-                    <Link href={`${apiBase}/uploads/${r.storagePath}`} target="_blank" rel="noreferrer">
+                    <Button size="small" onClick={() => downloadRecording(r.id)}>
                       Скачать
-                    </Link>
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <Button size="small" color="error" onClick={async () => {

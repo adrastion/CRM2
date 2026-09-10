@@ -32,16 +32,18 @@ import {
   clientListContracts,
   clientDownloadContract,
   clientDownloadAddendum,
+  clientDownloadCertificate,
 } from '../controllers/clientContractController';
+import { loginRateLimiter } from '../middleware/loginRateLimit';
 
 const router = Router();
 
 // Публичные маршруты
-router.post('/find', findClientsForRegistration);
-router.post('/register', registerClient);
-router.post('/login', loginClient);
-router.post('/parent/find', findParentsForRegistration);
-router.post('/parent/register', registerParent);
+router.post('/find', loginRateLimiter, findClientsForRegistration);
+router.post('/register', loginRateLimiter, registerClient);
+router.post('/login', loginRateLimiter, loginClient);
+router.post('/parent/find', loginRateLimiter, findParentsForRegistration);
+router.post('/parent/register', loginRateLimiter, registerParent);
 
 // Защищенные маршруты
 router.get('/profile', authenticateClient, getClientProfile);
@@ -51,8 +53,13 @@ router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
 router.get('/dashboard', authenticateClient, getClientDashboard);
 
-// Документы (договоры)
+// Документы (договоры + личные сертификаты)
 router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);
+router.get(
+  '/clients/:clientId/certificates/:kind/download',
+  authenticateClient,
+  clientDownloadCertificate
+);
 router.get(
   '/clients/:clientId/contracts/:contractId/download',
   authenticateClient,

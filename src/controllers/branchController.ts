@@ -130,7 +130,14 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
 
     const updatedBranch = await prisma.branch.update({
       where: { id },
-      data: req.body
+      data: {
+        name: req.body.name,
+        address: req.body.address,
+        phone: req.body.phone,
+        email: req.body.email,
+        description: req.body.description,
+        isActive: req.body.isActive,
+      }
     });
 
     res.json({

@@ -3,6 +3,7 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS } from '../constants/security';
 
 /**
  * Get all marketers with pagination
@@ -147,7 +148,7 @@ export const createMarketer = asyncHandler(async (req: AuthenticatedRequest, res
   }
 
   // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   const marketer = await prisma.marketer.create({
     data: {

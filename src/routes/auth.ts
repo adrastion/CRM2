@@ -49,21 +49,30 @@ import {
   validateEmailVerifyCode,
 } from '../controllers/emailAuthController';
 import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
+import { loginRateLimiter } from '../middleware/loginRateLimit';
+import { ensureCsrfCookie } from '../middleware/authCookies';
 
 const router = Router();
 
+router.get('/csrf', ensureCsrfCookie);
+
 // Единая авторизация: один идентификатор (телефон ИЛИ email) для всех ролей
-router.post('/identify', validateIdentify, identify);
-router.post('/setup-password', validateSetupPassword, setupPassword);
-router.post('/unified-login', validateUnifiedLogin, unifiedLogin);
-router.post('/select-account', validateSelectAccount, selectAccount);
+router.post('/identify', loginRateLimiter, validateIdentify, identify);
+router.post('/setup-password', loginRateLimiter, validateSetupPassword, setupPassword);
+router.post('/unified-login', loginRateLimiter, validateUnifiedLogin, unifiedLogin);
+router.post('/select-account', loginRateLimiter, validateSelectAccount, selectAccount);
 
 // Public routes
 router.post('/register', validateRegister, register);
-router.post('/login', validateLogin, login);
-router.post('/unified-staff-login', validateLogin, unifiedStaffLogin);
-router.post('/marketer/login', validateMarketerLogin, marketerLogin);
-router.post('/promo-code-admin/login', validatePromoCodeAdminLogin, promoCodeAdminLogin);
+router.post('/login', loginRateLimiter, validateLogin, login);
+router.post('/unified-staff-login', loginRateLimiter, validateLogin, unifiedStaffLogin);
+router.post('/marketer/login', loginRateLimiter, validateMarketerLogin, marketerLogin);
+router.post(
+  '/promo-code-admin/login',
+  loginRateLimiter,
+  validatePromoCodeAdminLogin,
+  promoCodeAdminLogin
+);
 
 // Сброс пароля по коду (User / Client / Parent)
 router.post('/password-reset/request', validatePasswordResetRequest, requestPasswordResetCode);

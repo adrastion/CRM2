@@ -2,6 +2,8 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
+import { prisma } from '../lib/prisma';
+import { isSessionVersionValid } from '../utils/sessionVersion';
 
 export type SupportRequester =
   | { kind: 'TENANT_USER'; id: string; email?: string; tenantId: string }
@@ -12,7 +14,13 @@ export type SupportRequesterRequest = {
   supportRequester?: SupportRequester;
 };
 
-type AnyJwt = Record<string, unknown> & { userId?: string; email?: string; tenantId?: string; type?: string };
+type AnyJwt = Record<string, unknown> & {
+  userId?: string;
+  email?: string;
+  tenantId?: string;
+  type?: string;
+  sv?: number;
+};
 
 /**
  * Accepts JWTs for tenant user / marketer / promo-code-admin.
@@ -57,6 +65,30 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
         ? 'PROMO_CODE_ADMIN'
         : 'TENANT_USER';
 
+  if (kind === 'TENANT_USER') {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, tenantId: true, isActive: true, sessionVersion: true, email: true },
+    });
+    if (
+      !user ||
+      !user.isActive ||
+      user.tenantId !== tenantId ||
+      !isSessionVersionValid(decoded, user.sessionVersion)
+    ) {
+      res.status(401).json({ success: false, error: 'Invalid or inactive user' });
+      return;
+    }
+    (req as SupportRequesterRequest).supportRequester = {
+      kind,
+      id: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+    };
+    next();
+    return;
+  }
+
   (req as SupportRequesterRequest).supportRequester = {
     kind,
     id: userId,
@@ -66,4 +98,3 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
 
   next();
 });
-

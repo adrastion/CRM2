@@ -1,6 +1,6 @@
 /**
- * Проверка версии сессии платформенного аккаунта (SuperAdmin / Tester).
- * JWT без sv считаем версией 0 (обратная совместимость до первой отвязки).
+ * Проверка версии сессии (SuperAdmin / Tester / User / Client / Parent).
+ * JWT без sv считаем версией 0 (обратная совместимость до первой инвалидации).
  */
 export function isSessionVersionValid(
   decoded: { sv?: number } | null | undefined,

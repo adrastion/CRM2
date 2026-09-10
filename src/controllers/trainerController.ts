@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { AuthService } from '../services/authService';
 import bcrypt from 'bcrypt';
+import { BCRYPT_ROUNDS } from '../constants/security';
 import {
   SALARY_SCHEMES,
   SalaryScheme,
@@ -236,7 +237,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const user = await prisma.user.create({
       data: {
@@ -355,9 +356,10 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       userUpdateData.email = normalizedEmail;
     }
 
-    // Если указан новый пароль, хешируем его
+    // Если указан новый пароль, хешируем его и отзываем старые сессии
     if (password && password.trim() !== '') {
-      userUpdateData.password = await bcrypt.hash(password, 12);
+      userUpdateData.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      userUpdateData.sessionVersion = { increment: 1 };
     }
 
     await prisma.user.update({

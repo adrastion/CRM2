@@ -301,6 +301,10 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const updateData: any = { ...req.body };
+    delete updateData.tenantId;
+    delete updateData.id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
     
     // Преобразуем schedule в JSON строку, если это массив
     if (updateData.schedule !== undefined) {

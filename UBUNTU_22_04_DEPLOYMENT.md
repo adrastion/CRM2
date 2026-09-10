@@ -270,6 +270,8 @@ UPLOAD_PATH="./uploads"
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
+LOGIN_RATE_LIMIT_WINDOW_MS=900000
+LOGIN_RATE_LIMIT_MAX=20
 
 # CORS (укажите ваш домен)
 CORS_ORIGIN="https://yourdomain.com"
@@ -280,7 +282,14 @@ CORS_ORIGIN="https://yourdomain.com"
 ```bash
 # Сгенерировать случайный ключ
 openssl rand -base64 32
+# или: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
+
+Чеклист перед запуском в прод:
+- [ ] `JWT_SECRET` уникальный, ≥32 символов, не из `env.example`
+- [ ] `CORS_ORIGIN` только ваш фронтовый домен (HTTPS)
+- [ ] `LOGIN_RATE_LIMIT_MAX` задан (по умолчанию 20 за 15 мин на IP)
+- [ ] Публичная раздача `/uploads` отключена — файлы только через auth download
 
 ### 4. Настройка базы данных
 

@@ -6,8 +6,8 @@ import { badRequest, unauthorized } from '../utils/httpError';
 import { EmailOtpService, OtpAccountType } from './emailOtpService';
 import { emailService } from './emailService';
 import { PublicAccount } from './unifiedAuthService';
+import { BCRYPT_ROUNDS } from '../constants/security';
 
-const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_TTL = '15m';
 const NEUTRAL_MSG =
   'Если аккаунт с этим email существует, мы отправили код на почту';
@@ -215,17 +215,17 @@ export class PasswordResetService {
     if (otpType === 'user') {
       await prisma.user.update({
         where: { id: params.accountId },
-        data: { password: hash },
+        data: { password: hash, sessionVersion: { increment: 1 } },
       });
     } else if (otpType === 'client') {
       await prisma.client.update({
         where: { id: params.accountId },
-        data: { password: hash },
+        data: { password: hash, sessionVersion: { increment: 1 } },
       });
     } else {
       await prisma.parent.update({
         where: { id: params.accountId },
-        data: { password: hash },
+        data: { password: hash, sessionVersion: { increment: 1 } },
       });
     }
 

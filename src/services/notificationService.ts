@@ -142,7 +142,7 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
         });
 
         if (trainings.length === 0) {
-          console.log(`[Notifications] No trainings found for trainer ${trainer.user?.email}`);
+          console.log(`[Notifications] No trainings found for trainer ${trainer.id}`);
           continue;
         }
 
@@ -166,7 +166,7 @@ export async function sendDailyTrainingNotifications(): Promise<void> {
           console.error(`[Notifications] Error sending push notification:`, error);
         }
 
-        console.log(`[Notifications] Daily notification for trainer ${trainer.user?.email}:`);
+        console.log(`[Notifications] Daily notification for trainer ${trainer.id}:`);
         console.log(message);
 
       } catch (error) {
@@ -275,7 +275,7 @@ export async function sendTrainingReminders(): Promise<void> {
             console.error(`[Notifications] Error sending push reminder:`, error);
           }
 
-          console.log(`[Notifications] Reminder for trainer ${trainer.user?.email}:`);
+          console.log(`[Notifications] Reminder for trainer ${trainer.id}:`);
           console.log(message);
         }
 

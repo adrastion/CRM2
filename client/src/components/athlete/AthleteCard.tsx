@@ -166,9 +166,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
       weightCategory: data.weightCategory,
       athleteStatus: data.athleteStatus || 'active',
       birthCertificateNumber: data.birthCertificateNumber,
-      birthCertificate: data.birthCertificate,
       medicalCertificateNumber: data.medicalCertificateNumber,
-      medicalCertificate: data.medicalCertificate,
       passportSeries: data.passportSeries,
       passportNumber: data.passportNumber,
       passportIssueDate: data.passportIssueDate,
@@ -213,9 +211,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         weightCategory: draft.weightCategory || null,
         athleteStatus: draft.athleteStatus || 'active',
         birthCertificateNumber: draft.birthCertificateNumber || null,
-        birthCertificate: draft.birthCertificate || null,
         medicalCertificateNumber: draft.medicalCertificateNumber || null,
-        medicalCertificate: draft.medicalCertificate || null,
         passportSeries: draft.passportSeries || null,
         passportNumber: draft.passportNumber || null,
         passportIssueDate: draft.passportIssueDate || null,
@@ -224,6 +220,12 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         passportBirthPlace: draft.passportBirthPlace || null,
         parents: parentsPayload,
       };
+      if ('birthCertificate' in draft) {
+        payload.birthCertificate = draft.birthCertificate || null;
+      }
+      if ('medicalCertificate' in draft) {
+        payload.medicalCertificate = draft.medicalCertificate || null;
+      }
       await apiService.updateClient(data.id, payload);
       setSnack('Сохранено');
       setEditing(false);

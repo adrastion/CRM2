@@ -335,9 +335,12 @@ export interface Client {
   gender?: string;
   address?: string;
   birthCertificateNumber?: string;
-  birthCertificate?: string; // Фото/документ свидетельства о рождении (base64)
+  /** Локальный data URL при загрузке; с API не приходит */
+  birthCertificate?: string;
   medicalCertificateNumber?: string;
-  medicalCertificate?: string; // Фото/документ справки (base64)
+  medicalCertificate?: string;
+  hasBirthCertificate?: boolean;
+  hasMedicalCertificate?: boolean;
   schoolOrKindergarten?: string;
   emergencyContact?: string;
   emergencyPhone?: string;
@@ -823,9 +826,9 @@ export interface CreateClientForm {
   gender?: string;
   address?: string;
   birthCertificateNumber?: string;
-  birthCertificate?: string; // Фото/документ свидетельства о рождении (base64)
+  birthCertificate?: string;
   medicalCertificateNumber?: string;
-  medicalCertificate?: string; // Фото/документ справки (base64)
+  medicalCertificate?: string;
   schoolOrKindergarten?: string;
   // Родители
   parents?: ParentForm[];

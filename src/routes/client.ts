@@ -32,6 +32,7 @@ import {
   staffUploadAddendum,
   staffDownloadAddendum,
   staffDeleteAddendum,
+  staffDownloadCertificate,
 } from '../controllers/clientContractController';
 import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
 
@@ -70,6 +71,11 @@ router.put('/:id', requireOwnerAdminOrTrainer, validateUpdateClient, updateClien
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteClient);
 
 router.get('/:id/contracts', requireOwnerAdminOrTrainer, staffListContracts);
+router.get(
+  '/:id/certificates/:kind/download',
+  requireOwnerAdminOrTrainer,
+  staffDownloadCertificate
+);
 router.post(
   '/:id/contracts',
   requireOwnerOrAdmin,

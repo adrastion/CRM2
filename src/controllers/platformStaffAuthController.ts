@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
+import { maybeSetAuthCookies } from '../middleware/authCookies';
 
 export const platformStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
@@ -15,12 +17,12 @@ export const platformStaffLogin = asyncHandler(async (req: Request, res: Respons
     where: { email: email.toLowerCase().trim() },
   });
   if (!staff || !staff.isActive) {
-    res.status(401).json({ success: false, error: 'Invalid credentials' });
+    res.status(401).json({ success: false, error: LOGIN_FAILED_MESSAGE });
     return;
   }
   const ok = await bcrypt.compare(password, staff.password);
   if (!ok) {
-    res.status(401).json({ success: false, error: 'Invalid credentials' });
+    res.status(401).json({ success: false, error: LOGIN_FAILED_MESSAGE });
     return;
   }
   const jwtSecret = process.env.JWT_SECRET;
@@ -37,6 +39,7 @@ export const platformStaffLogin = asyncHandler(async (req: Request, res: Respons
     where: { id: staff.id },
     data: { lastLogin: new Date() },
   });
+  maybeSetAuthCookies(res, { token });
   res.json({
     success: true,
     data: {
@@ -69,7 +72,7 @@ export const platformStaffChangePassword = asyncHandler(async (req: any, res: Re
     res.status(401).json({ success: false, error: 'Неверный пароль' });
     return;
   }
-  const hashed = await bcrypt.hash(newPassword, 12);
+  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await prisma.platformStaffUser.update({
     where: { id: staff.id },
     data: {

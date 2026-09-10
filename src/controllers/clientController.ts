@@ -12,6 +12,10 @@ import {
   assignClientToTrial,
   cleanupExpiredTrialMemberships,
 } from '../services/trialMembershipService';
+import {
+  resolveCertificateUpdate,
+  sanitizeClientCertificateFields,
+} from '../utils/clientCertificates';
 
 /**
  * Approve parent account registration
@@ -255,7 +259,7 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     });
 
     return {
-      ...clientSafe,
+      ...sanitizeClientCertificateFields(clientSafe as any),
       parents: parentsSafe,
       hasPassword: Boolean(password),
       password: undefined,
@@ -348,7 +352,7 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
   res.json({
     success: true,
     data: {
-      ...clientSafe,
+      ...sanitizeClientCertificateFields(clientSafe as any),
       parents: parentsSafe,
       hasPassword: Boolean(password),
       password: undefined,
@@ -372,14 +376,16 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     return;
   }
 
-  // Извлекаем родителей из данных клиента
-  const { parents, ...clientFields } = clientData;
+  // Извлекаем родителей и сертификаты (data URL → диск после create)
+  const { parents, birthCertificate, medicalCertificate, ...clientFields } = clientData as any;
 
   // Преобразуем dateOfBirth в правильный формат DateTime
   const processedData = {
     ...clientFields,
     tenantId,
-    dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined
+    dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
+    birthCertificate: null as string | null,
+    medicalCertificate: null as string | null,
   };
 
   // Создаем родителей без токенов подтверждения
@@ -392,7 +398,7 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   }) : undefined;
 
   // Создаем клиента вместе с родителями
-  const client = await prisma.client.create({
+  let client = await prisma.client.create({
     data: {
       ...processedData,
       parents: parentsData ? {
@@ -405,9 +411,43 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     }
   });
 
+  try {
+    const birthPath = resolveCertificateUpdate(
+      tenantId,
+      client.id,
+      'birth',
+      birthCertificate,
+      null
+    );
+    const medicalPath = resolveCertificateUpdate(
+      tenantId,
+      client.id,
+      'medical',
+      medicalCertificate,
+      null
+    );
+    if (birthPath || medicalPath) {
+      client = await prisma.client.update({
+        where: { id: client.id },
+        data: {
+          ...(birthPath !== undefined ? { birthCertificate: birthPath } : {}),
+          ...(medicalPath !== undefined ? { medicalCertificate: medicalPath } : {}),
+        },
+        include: { parents: true, tenant: true },
+      });
+    }
+  } catch (e: any) {
+    console.error('Certificate save on create failed:', e);
+    res.status(400).json({
+      success: false,
+      error: e?.message || 'Не удалось сохранить файл документа',
+    });
+    return;
+  }
+
   res.status(201).json({
     success: true,
-    data: client,
+    data: sanitizeClientCertificateFields(client as any),
     message: 'Client created successfully'
   });
 });
@@ -434,7 +474,7 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   }
 
   // Извлекаем родителей из данных обновления
-  const { parents, ...clientFields } = updateData;
+  const { parents, birthCertificate, medicalCertificate, ...clientFields } = updateData as any;
 
   // Преобразуем dateOfBirth в правильный формат DateTime
   const processedData: any = {
@@ -458,6 +498,39 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   }
   if (!processedData.personalDiscountType) {
     processedData.personalDiscountValue = null;
+  }
+
+  try {
+    if (birthCertificate !== undefined) {
+      processedData.birthCertificate = resolveCertificateUpdate(
+        tenantId!,
+        id,
+        'birth',
+        birthCertificate,
+        existingClient.birthCertificate
+      );
+      if (processedData.birthCertificate === undefined) {
+        delete processedData.birthCertificate;
+      }
+    }
+    if (medicalCertificate !== undefined) {
+      processedData.medicalCertificate = resolveCertificateUpdate(
+        tenantId!,
+        id,
+        'medical',
+        medicalCertificate,
+        existingClient.medicalCertificate
+      );
+      if (processedData.medicalCertificate === undefined) {
+        delete processedData.medicalCertificate;
+      }
+    }
+  } catch (e: any) {
+    res.status(400).json({
+      success: false,
+      error: e?.message || 'Не удалось сохранить файл документа',
+    });
+    return;
   }
 
   // Если есть родители, обновляем их
@@ -494,7 +567,7 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   res.json({
     success: true,
-    data: client,
+    data: sanitizeClientCertificateFields(client as any),
     message: 'Client updated successfully'
   });
 });
@@ -616,6 +689,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
       isAccountApproved: false,
       accountApprovedAt: null,
       accountApprovedBy: null,
+      sessionVersion: { increment: 1 },
     }
   });
 
@@ -647,7 +721,7 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   await prisma.client.update({
     where: { id },
-    data: { isActive: false }
+    data: { isActive: false, sessionVersion: { increment: 1 } }
   });
 
   res.json({

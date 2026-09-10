@@ -3,6 +3,7 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS } from '../constants/security';
 
 /**
  * Get all promo code admins with pagination
@@ -115,7 +116,7 @@ export const createPromoCodeAdmin = asyncHandler(async (req: AuthenticatedReques
   }
 
   // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   const admin = await prisma.promoCodeAdmin.create({
     data: {
@@ -197,7 +198,7 @@ export const updatePromoCodeAdmin = asyncHandler(async (req: AuthenticatedReques
 
   // Hash password if provided
   if (password) {
-    updateData.password = await bcrypt.hash(password, 10);
+    updateData.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
   }
 
   const admin = await prisma.promoCodeAdmin.update({

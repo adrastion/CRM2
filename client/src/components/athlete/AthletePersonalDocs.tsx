@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Box,
   Button,
-  Chip,
   Link,
   Stack,
   TextField,
@@ -12,6 +11,7 @@ import { DescriptionOutlined, LockOutlined } from '@mui/icons-material';
 import { colors, radii, typography } from '../../theme/tokens';
 import { AthleteCardData, AthleteCardMode } from './athleteCardTypes';
 import { formatDateRu } from './athleteCardUtils';
+import { apiService } from '../../services/api';
 
 interface Props {
   data: AthleteCardData;
@@ -23,12 +23,22 @@ interface Props {
   onFileUpload?: (field: 'birthCertificate' | 'medicalCertificate', base64: string) => void;
 }
 
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const FileCard: React.FC<{
   title: string;
   present: boolean;
   href?: string | null;
+  onDownload?: () => void;
   meta?: string;
-}> = ({ title, present, href, meta }) => (
+}> = ({ title, present, href, onDownload, meta }) => (
   <Box
     sx={{
       p: 1.5,
@@ -45,6 +55,16 @@ const FileCard: React.FC<{
     </Box>
     {present && href ? (
       <Link href={href} target="_blank" rel="noopener" sx={{ fontSize: typography.hint }}>
+        Открыть / скачать
+      </Link>
+    ) : present && onDownload ? (
+      <Link
+        component="button"
+        type="button"
+        underline="hover"
+        onClick={onDownload}
+        sx={{ fontSize: typography.hint }}
+      >
         Открыть / скачать
       </Link>
     ) : (
@@ -88,8 +108,16 @@ const AthletePersonalDocs: React.FC<Props> = ({
   }
 
   const address = editing ? draft.address ?? data.address : data.address;
-  const birthFile = draft.birthCertificate ?? data.birthCertificate;
-  const medicalFile = draft.medicalCertificate ?? data.medicalCertificate;
+  const birthDraft = draft.birthCertificate;
+  const medicalDraft = draft.medicalCertificate;
+  const hasBirth =
+    Boolean(birthDraft) ||
+    Boolean(data.hasBirthCertificate) ||
+    Boolean(data.birthCertificateNumber);
+  const hasMedical =
+    Boolean(medicalDraft) ||
+    Boolean(data.hasMedicalCertificate) ||
+    Boolean(data.medicalCertificateNumber);
   const hasPassport = Boolean(
     data.passportSeries || data.passportNumber || draft.passportSeries || draft.passportNumber
   );
@@ -108,6 +136,19 @@ const AthletePersonalDocs: React.FC<Props> = ({
       reader.readAsDataURL(file);
     };
     input.click();
+  };
+
+  const downloadExisting = async (kind: 'birth' | 'medical') => {
+    if (!data.id) return;
+    try {
+      const { blob, filename } =
+        mode === 'client'
+          ? await apiService.clientDownloadCertificate(data.id, kind)
+          : await apiService.downloadClientCertificate(data.id, kind);
+      triggerBlobDownload(blob, filename);
+    } catch {
+      /* ignore — host shows snack if needed */
+    }
   };
 
   return (
@@ -135,7 +176,7 @@ const AthletePersonalDocs: React.FC<Props> = ({
             value={draft.address ?? data.address ?? ''}
             onChange={(e) => onDraftChange({ address: e.target.value })}
           />
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
             <TextField
               size="small"
               label="№ свидетельства о рождении"
@@ -144,10 +185,19 @@ const AthletePersonalDocs: React.FC<Props> = ({
               onChange={(e) => onDraftChange({ birthCertificateNumber: e.target.value })}
             />
             <Button variant="outlined" size="small" onClick={() => pickFile('birthCertificate')}>
-              Файл свидетельства
+              {birthDraft || data.hasBirthCertificate ? 'Заменить файл' : 'Файл свидетельства'}
             </Button>
+            {(birthDraft || data.hasBirthCertificate) && (
+              <Button
+                size="small"
+                color="error"
+                onClick={() => onDraftChange({ birthCertificate: '' })}
+              >
+                Удалить
+              </Button>
+            )}
           </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
             <TextField
               size="small"
               label="№ справки"
@@ -156,8 +206,17 @@ const AthletePersonalDocs: React.FC<Props> = ({
               onChange={(e) => onDraftChange({ medicalCertificateNumber: e.target.value })}
             />
             <Button variant="outlined" size="small" onClick={() => pickFile('medicalCertificate')}>
-              Файл справки
+              {medicalDraft || data.hasMedicalCertificate ? 'Заменить файл' : 'Файл справки'}
             </Button>
+            {(medicalDraft || data.hasMedicalCertificate) && (
+              <Button
+                size="small"
+                color="error"
+                onClick={() => onDraftChange({ medicalCertificate: '' })}
+              >
+                Удалить
+              </Button>
+            )}
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <TextField
@@ -190,14 +249,28 @@ const AthletePersonalDocs: React.FC<Props> = ({
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <FileCard
               title="Свидетельство о рождении"
-              present={Boolean(birthFile || data.birthCertificateNumber)}
-              href={birthFile}
+              present={hasBirth}
+              href={typeof birthDraft === 'string' && birthDraft.startsWith('data:') ? birthDraft : null}
+              onDownload={
+                !birthDraft && data.hasBirthCertificate
+                  ? () => downloadExisting('birth')
+                  : undefined
+              }
               meta={data.birthCertificateNumber ? `№ ${data.birthCertificateNumber}` : undefined}
             />
             <FileCard
               title="Справка"
-              present={Boolean(medicalFile || data.medicalCertificateNumber)}
-              href={medicalFile}
+              present={hasMedical}
+              href={
+                typeof medicalDraft === 'string' && medicalDraft.startsWith('data:')
+                  ? medicalDraft
+                  : null
+              }
+              onDownload={
+                !medicalDraft && data.hasMedicalCertificate
+                  ? () => downloadExisting('medical')
+                  : undefined
+              }
               meta={data.medicalCertificateNumber ? `№ ${data.medicalCertificateNumber}` : undefined}
             />
             <FileCard
@@ -211,7 +284,7 @@ const AthletePersonalDocs: React.FC<Props> = ({
               }
             />
           </Stack>
-          {!birthFile && !medicalFile && !hasPassport && !address && (
+          {!hasBirth && !hasMedical && !hasPassport && !address && (
             <Typography sx={{ mt: 1.5, fontSize: typography.label, color: colors.textEmpty }}>
               Документы не загружены
             </Typography>

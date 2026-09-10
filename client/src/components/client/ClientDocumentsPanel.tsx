@@ -42,9 +42,8 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
     birthCertificateNumber: string | null;
     medicalCertificate: boolean;
     medicalCertificateNumber: string | null;
-    birthCertificateDataUrl: string | null;
-    medicalCertificateDataUrl: string | null;
   } | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +63,46 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
     load();
   }, [load]);
 
+  const downloadPersonal = async (kind: 'birth' | 'medical') => {
+    setDownloading(kind);
+    try {
+      const { blob, filename } = await apiService.clientDownloadCertificate(clientId, kind);
+      triggerBlobDownload(blob, filename);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось скачать файл');
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const downloadContract = async (contractId: string, name: string) => {
+    setDownloading(contractId);
+    try {
+      const { blob, filename } = await apiService.clientDownloadContract(clientId, contractId);
+      triggerBlobDownload(blob, filename || name);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось скачать договор');
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const downloadAddendum = async (contractId: string, addendumId: string, name: string) => {
+    setDownloading(addendumId);
+    try {
+      const { blob, filename } = await apiService.clientDownloadContractAddendum(
+        clientId,
+        contractId,
+        addendumId
+      );
+      triggerBlobDownload(blob, filename || name);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось скачать доп. соглашение');
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" p={4}>
@@ -80,140 +119,122 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
         </Typography>
       )}
 
-      <Panel title="Договоры и доп. соглашения">
+      <Panel title="Договоры">
         {contracts.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography sx={{ fontSize: typography.hint, color: colors.textEmpty }}>
             Договоры пока не загружены школой
           </Typography>
         ) : (
-          contracts.map((c) => (
-            <Box
-              key={c.id}
-              sx={{
-                mb: 2,
-                pb: 2,
-                borderBottom: `1px solid ${colors.divider}`,
-                '&:last-child': { borderBottom: 'none', mb: 0, pb: 0 },
-              }}
-            >
-              <Box display="flex" alignItems="center" gap={1}>
-                <PictureAsPdf color="error" />
-                <Box flex={1} minWidth={0}>
-                  <Typography fontWeight={600}>{c.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {c.originalName} · {formatSize(c.sizeBytes || 0)}
-                  </Typography>
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={async () => {
-                    try {
-                      const { blob, filename } = await apiService.clientDownloadContract(
-                        clientId,
-                        c.id
-                      );
-                      triggerBlobDownload(blob, filename || c.originalName);
-                    } catch (e: any) {
-                      setError(e?.response?.data?.error || 'Ошибка скачивания');
-                    }
-                  }}
-                  title="Скачать"
-                >
-                  <Download />
-                </IconButton>
-              </Box>
-              {(c.addenda || []).length > 0 && (
-                <Box mt={1} pl={2}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontSize: typography.hint }}
+          <Box display="flex" flexDirection="column" gap={1.5}>
+            {contracts.map((c) => (
+              <Box
+                key={c.id}
+                sx={{
+                  borderBottom: `1px solid ${colors.divider}`,
+                  pb: 1.5,
+                }}
+              >
+                <Box display="flex" alignItems="center" gap={1}>
+                  <PictureAsPdf color="error" fontSize="small" />
+                  <Box flex={1} minWidth={0}>
+                    <Typography sx={{ fontWeight: 600, fontSize: typography.label }} noWrap>
+                      {c.title}
+                    </Typography>
+                    <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
+                      {c.originalName}
+                      {c.sizeBytes != null ? ` · ${formatSize(c.sizeBytes)}` : ''}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    disabled={downloading === c.id}
+                    onClick={() => downloadContract(c.id, c.originalName || 'contract.pdf')}
+                    aria-label="Скачать договор"
                   >
-                    Доп. соглашения
-                  </Typography>
-                  {c.addenda.map((a: any) => (
-                    <Box key={a.id} display="flex" alignItems="center" gap={1} mt={0.5}>
-                      <Typography variant="body2" sx={{ flex: 1 }} noWrap>
+                    <Download fontSize="small" />
+                  </IconButton>
+                </Box>
+                {(c.addenda || []).map((a: any) => (
+                  <Box key={a.id} display="flex" alignItems="center" gap={1} pl={3} mt={0.75}>
+                    <DescriptionOutlined fontSize="small" sx={{ color: colors.textHint }} />
+                    <Box flex={1} minWidth={0}>
+                      <Typography sx={{ fontSize: typography.hint }} noWrap>
                         {a.title}
                       </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={async () => {
-                          try {
-                            const { blob, filename } =
-                              await apiService.clientDownloadContractAddendum(
-                                clientId,
-                                c.id,
-                                a.id
-                              );
-                            triggerBlobDownload(blob, filename || a.originalName);
-                          } catch (e: any) {
-                            setError(e?.response?.data?.error || 'Ошибка скачивания');
-                          }
-                        }}
-                      >
-                        <Download fontSize="small" />
-                      </IconButton>
                     </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          ))
+                    <IconButton
+                      size="small"
+                      disabled={downloading === a.id}
+                      onClick={() =>
+                        downloadAddendum(c.id, a.id, a.originalName || 'addendum.pdf')
+                      }
+                      aria-label="Скачать доп. соглашение"
+                    >
+                      <Download fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            ))}
+          </Box>
         )}
       </Panel>
 
       <Panel title="Личные документы">
         {!personalDocs?.birthCertificate && !personalDocs?.medicalCertificate ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography sx={{ fontSize: typography.hint, color: colors.textEmpty }}>
             Личные документы не загружены
           </Typography>
         ) : (
           <Box display="flex" flexDirection="column" gap={1.5}>
             {personalDocs?.birthCertificate && (
               <Box display="flex" alignItems="center" gap={1}>
-                <DescriptionOutlined color="primary" />
+                <DescriptionOutlined sx={{ color: colors.primary }} />
                 <Box flex={1}>
-                  <Typography fontWeight={600}>Свидетельство о рождении</Typography>
+                  <Typography sx={{ fontWeight: 600, fontSize: typography.label }}>
+                    Свидетельство о рождении
+                  </Typography>
                   {personalDocs.birthCertificateNumber && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
                       № {personalDocs.birthCertificateNumber}
                     </Typography>
                   )}
                 </Box>
-                {personalDocs.birthCertificateDataUrl && (
-                  <Link
-                    href={personalDocs.birthCertificateDataUrl}
-                    target="_blank"
-                    rel="noopener"
-                    underline="hover"
-                  >
-                    Открыть
-                  </Link>
-                )}
+                <Link
+                  component="button"
+                  type="button"
+                  underline="hover"
+                  disabled={downloading === 'birth'}
+                  onClick={() => downloadPersonal('birth')}
+                  sx={{ fontSize: typography.hint }}
+                >
+                  Скачать
+                </Link>
               </Box>
             )}
             {personalDocs?.medicalCertificate && (
               <Box display="flex" alignItems="center" gap={1}>
-                <DescriptionOutlined color="primary" />
+                <DescriptionOutlined sx={{ color: colors.primary }} />
                 <Box flex={1}>
-                  <Typography fontWeight={600}>Медицинская справка</Typography>
+                  <Typography sx={{ fontWeight: 600, fontSize: typography.label }}>
+                    Медицинская справка
+                  </Typography>
                   {personalDocs.medicalCertificateNumber && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
                       № {personalDocs.medicalCertificateNumber}
                     </Typography>
                   )}
                 </Box>
-                {personalDocs.medicalCertificateDataUrl && (
-                  <Link
-                    href={personalDocs.medicalCertificateDataUrl}
-                    target="_blank"
-                    rel="noopener"
-                    underline="hover"
-                  >
-                    Открыть
-                  </Link>
-                )}
+                <Link
+                  component="button"
+                  type="button"
+                  underline="hover"
+                  disabled={downloading === 'medical'}
+                  onClick={() => downloadPersonal('medical')}
+                  sx={{ fontSize: typography.hint }}
+                >
+                  Скачать
+                </Link>
               </Box>
             )}
           </Box>

@@ -5,6 +5,7 @@ import path from 'path';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
+import { absoluteUploadPath, contentDispositionAttachment, safeUnlink } from '../utils/fileStorage';
 
 /** Клиенты / родители: техподдержка или дизайн (горячая линия). */
 const CLIENT_TICKET_CHANNELS = ['SUPPORT', 'DESIGNER'] as const;
@@ -733,7 +734,42 @@ export const superAdminListCallRecordings = asyncHandler(async (_req: any, res: 
       recordedBy: { select: { firstName: true, lastName: true, email: true } },
     },
   });
-  res.json({ success: true, data: { recordings } });
+  // Не отдаём storagePath клиенту — скачивание только через auth endpoint.
+  const data = recordings.map(({ storagePath: _sp, ...rest }) => rest);
+  res.json({ success: true, data: { recordings: data } });
+});
+
+/**
+ * GET /super-admin/support/recordings/:id/download — только SA JWT.
+ */
+export const superAdminDownloadCallRecording = asyncHandler(async (req: any, res: Response) => {
+  const { id } = req.params;
+  const rec = await prisma.designerCallRecording.findUnique({ where: { id } });
+  if (!rec) {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  if (rec.expiresAt && rec.expiresAt.getTime() < Date.now()) {
+    res.status(410).json({ success: false, error: 'Запись истекла' });
+    return;
+  }
+
+  let abs: string;
+  try {
+    abs = absoluteUploadPath(rec.storagePath);
+  } catch {
+    res.status(400).json({ success: false, error: 'Invalid path' });
+    return;
+  }
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ success: false, error: 'Файл отсутствует на диске' });
+    return;
+  }
+
+  const baseName = path.basename(rec.storagePath) || `recording-${rec.id}.webm`;
+  res.setHeader('Content-Type', rec.mimeType || 'application/octet-stream');
+  res.setHeader('Content-Disposition', contentDispositionAttachment(baseName));
+  fs.createReadStream(abs).pipe(res);
 });
 
 export const superAdminListKnowledgeArticles = asyncHandler(async (_req: any, res: Response<ApiResponse>) => {
@@ -772,10 +808,7 @@ export const superAdminDeleteCallRecording = asyncHandler(async (req: any, res: 
     res.status(404).json({ success: false, error: 'Not found' });
     return;
   }
-  const abs = path.join(process.cwd(), 'uploads', rec.storagePath);
-  if (fs.existsSync(abs)) {
-    fs.unlinkSync(abs);
-  }
+  safeUnlink(rec.storagePath);
   await prisma.designerCallRecording.delete({ where: { id } });
   res.json({ success: true, data: {} });
 });
@@ -787,14 +820,7 @@ export async function cleanupExpiredDesignerRecordings(): Promise<number> {
   });
   let n = 0;
   for (const rec of expired) {
-    const abs = path.join(process.cwd(), 'uploads', rec.storagePath);
-    if (fs.existsSync(abs)) {
-      try {
-        fs.unlinkSync(abs);
-      } catch {
-        /* ignore */
-      }
-    }
+    safeUnlink(rec.storagePath);
     await prisma.designerCallRecording.delete({ where: { id: rec.id } });
     n += 1;
   }

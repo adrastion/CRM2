@@ -529,6 +529,11 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
 
     // If status changed to 'paid' and paidAt is not set, set it to now
     const updateData: any = { ...req.body };
+    delete updateData.tenantId;
+    delete updateData.id;
+    delete updateData.clientId;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
     const statusChangedToPaid = req.body.status === 'paid' && payment.status !== 'paid';
     
     if (req.body.status === 'paid' && !payment.paidAt) {

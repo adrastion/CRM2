@@ -4,6 +4,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
+import { sanitizeClientCertificateFields } from '../utils/clientCertificates';
+import { maybeSetAuthCookies } from '../middleware/authCookies';
 
 function normalizePhone(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -134,8 +137,7 @@ export const findClientsForRegistration = async (req: Request, res: Response<Api
           firstName: client.firstName,
           lastName: client.lastName,
           middleName: client.middleName,
-          phone: client.phone,
-          email: client.email
+          // PII (phone/email) не отдаём в публичном поиске — только для выбора школы
         });
       }
     });
@@ -206,7 +208,7 @@ export const registerClient = async (req: Request, res: Response<ApiResponse>) =
     }
 
     // Хешируем пароль
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // Обновляем клиента: добавляем пароль, но не подтверждаем аккаунт
     await prisma.client.update({
@@ -315,7 +317,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!parent) {
         return res.status(401).json({
           success: false,
-          error: 'Клиент или родитель не найден'
+          error: LOGIN_FAILED_MESSAGE
         });
       }
 
@@ -327,7 +329,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!client.password) {
         return res.status(401).json({
           success: false,
-          error: 'Клиент не зарегистрирован'
+          error: LOGIN_FAILED_MESSAGE
         });
       }
 
@@ -335,7 +337,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
-          error: 'Неверный пароль'
+          error: LOGIN_FAILED_MESSAGE
         });
       }
 
@@ -349,14 +351,22 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
         data: { lastLogin: new Date() }
       });
 
+      if (!process.env.JWT_SECRET) {
+        return res.status(500).json({
+          success: false,
+          error: 'JWT_SECRET is not configured'
+        });
+      }
+
       // Генерируем JWT токен
       const token = jwt.sign(
         {
           clientId: client.id,
           tenantId: client.tenantId,
-          type: 'client'
+          type: 'client',
+          sv: client.sessionVersion,
         },
-        process.env.JWT_SECRET || 'your-secret-key',
+        process.env.JWT_SECRET,
         { expiresIn: '30d' }
       );
 
@@ -367,6 +377,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
         });
       }
 
+      maybeSetAuthCookies(res, { token });
       return res.json({
         success: true,
         data: {
@@ -398,7 +409,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!parent.password) {
         return res.status(401).json({
           success: false,
-          error: 'Родитель не зарегистрирован'
+          error: LOGIN_FAILED_MESSAGE
         });
       }
 
@@ -406,7 +417,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
-          error: 'Неверный пароль'
+          error: LOGIN_FAILED_MESSAGE
         });
       }
 
@@ -420,14 +431,22 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
         data: { lastLogin: new Date() }
       });
 
+      if (!process.env.JWT_SECRET) {
+        return res.status(500).json({
+          success: false,
+          error: 'JWT_SECRET is not configured'
+        });
+      }
+
       // Генерируем JWT токен для родителя
       const token = jwt.sign(
         {
           parentId: parent.id,
           tenantId: parent.tenantId,
-          type: 'parent'
+          type: 'parent',
+          sv: parent.sessionVersion,
         },
-        process.env.JWT_SECRET || 'your-secret-key',
+        process.env.JWT_SECRET,
         { expiresIn: '30d' }
       );
 
@@ -438,6 +457,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
         });
       }
 
+      maybeSetAuthCookies(res, { token });
       return res.json({
         success: true,
         data: {
@@ -909,8 +929,6 @@ export const findParentsForRegistration = asyncHandler(async (req: Request, res:
         tenantsMap.get(tenant.id).parents.push({
           id: parent.id,
           fullName: parent.fullName,
-          phone: parent.phone,
-          email: parent.email,
           client: {
             id: client.id,
             firstName: client.firstName,
@@ -988,7 +1006,7 @@ export const registerParent = asyncHandler(async (req: Request, res: Response<Ap
     }
 
     // Хешируем пароль
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // Обновляем родителя: добавляем пароль, но не подтверждаем аккаунт
     await prisma.parent.update({
@@ -1168,7 +1186,7 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
   return res.json({
     success: true,
     data: {
-      ...safe,
+      ...sanitizeClientCertificateFields(safe as any),
       parents: parentsSafe,
       password: undefined,
       standards: client.clientStandards,

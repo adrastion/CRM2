@@ -9,8 +9,7 @@ import {
   phoneTail,
 } from '../utils/identifier';
 import { HttpError, badRequest, unauthorized } from '../utils/httpError';
-
-const BCRYPT_ROUNDS = 12;
+import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 
 /** Время жизни токена выбора аккаунта между шагами «пароль» → «выбор организации». */
 const SELECTION_TOKEN_TTL = '10m';
@@ -473,7 +472,7 @@ export class UnifiedAuthService {
 
     const accounts = await this.findAccounts(rawIdentifier);
     if (accounts.length === 0) {
-      throw unauthorized('Аккаунт не найден в базе спортивной школы', 'identifier');
+      throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
     }
 
     const withPassword = accounts.filter((a) => a.hasPassword && a.passwordHash);
@@ -490,7 +489,7 @@ export class UnifiedAuthService {
     }
 
     if (matched.length === 0) {
-      throw unauthorized('Неверный пароль', 'password');
+      throw unauthorized(LOGIN_FAILED_MESSAGE, 'password');
     }
 
     return this.completeLogin(rawIdentifier, matched, rememberMe);
@@ -726,6 +725,7 @@ export class UnifiedAuthService {
             email: user.email,
             role: user.role,
             tenantId: user.tenantId,
+            sv: user.sessionVersion,
           }),
           tenant: toTenantBrief(user.tenant),
           user: {
@@ -754,7 +754,12 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'CLIENT',
-          token: sign({ clientId: client.id, tenantId: client.tenantId, type: 'client' }),
+          token: sign({
+            clientId: client.id,
+            tenantId: client.tenantId,
+            type: 'client',
+            sv: client.sessionVersion,
+          }),
           tenant: toTenantBrief(client.tenant),
           client: {
             id: client.id,
@@ -786,7 +791,12 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'PARENT',
-          token: sign({ parentId: parent.id, tenantId: parent.tenantId, type: 'parent' }),
+          token: sign({
+            parentId: parent.id,
+            tenantId: parent.tenantId,
+            type: 'parent',
+            sv: parent.sessionVersion,
+          }),
           tenant: toTenantBrief(parent.tenant),
           parent: {
             id: parent.id,

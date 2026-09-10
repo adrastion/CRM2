@@ -5,6 +5,7 @@ import { User } from '@prisma/client';
 import { JWTPayload, CreateClientData } from '../types';
 import { HttpError } from '../utils/httpError';
 import { PasswordResetService } from './passwordResetService';
+import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 
 export class AuthService {
   /**
@@ -83,7 +84,7 @@ export class AuthService {
     const normalizedEmail = data.email.toLowerCase().trim();
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(data.password, 12);
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
     // Create tenant and user in transaction
     // Email уникален только внутри школы — тот же email может быть тренером в другой школе
@@ -164,7 +165,7 @@ export class AuthService {
     });
 
     if (candidates.length === 0) {
-      throw new Error('Аккаунт не существует');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     const matched: typeof candidates = [];
@@ -180,7 +181,7 @@ export class AuthService {
       if (!anyActive) {
         throw new Error('Account is deactivated');
       }
-      throw new Error('Неверный пароль');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     if (matched.length > 1) {
@@ -232,7 +233,7 @@ export class AuthService {
     });
 
     if (!admin) {
-      throw new Error('Аккаунт не существует');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     if (!admin.isActive) {
@@ -246,7 +247,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, admin.password);
     if (!isPasswordValid) {
-      throw new Error('Неверный пароль');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     // Generate JWT token for promo code admin
@@ -296,7 +297,7 @@ export class AuthService {
     });
 
     if (!marketer) {
-      throw new Error('Аккаунт не существует');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     if (!marketer.isActive) {
@@ -310,7 +311,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, marketer.password);
     if (!isPasswordValid) {
-      throw new Error('Неверный пароль');
+      throw new Error(LOGIN_FAILED_MESSAGE);
     }
 
     // Generate JWT token for marketer
@@ -356,7 +357,7 @@ export class AuthService {
       return { accountType: 'TENANT_USER' as const, ...result };
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : '';
-      if (m !== 'Аккаунт не существует') throw e;
+      if (m !== LOGIN_FAILED_MESSAGE) throw e;
     }
 
     try {
@@ -364,7 +365,7 @@ export class AuthService {
       return { accountType: 'MARKETER' as const, ...result };
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : '';
-      if (m !== 'Аккаунт не существует') throw e;
+      if (m !== LOGIN_FAILED_MESSAGE) throw e;
     }
 
     try {
@@ -372,7 +373,7 @@ export class AuthService {
       return { accountType: 'PROMO_CODE_ADMIN' as const, ...result };
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : '';
-      if (m !== 'Аккаунт не существует') throw e;
+      if (m !== LOGIN_FAILED_MESSAGE) throw e;
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -386,7 +387,7 @@ export class AuthService {
       }
       const isPasswordValid = await bcrypt.compare(password, superAdmin.password);
       if (!isPasswordValid) {
-        throw new Error('Неверный пароль');
+        throw new Error(LOGIN_FAILED_MESSAGE);
       }
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
@@ -427,7 +428,7 @@ export class AuthService {
       }
       const ok = await bcrypt.compare(password, staff.password);
       if (!ok) {
-        throw new Error('Неверный пароль');
+        throw new Error(LOGIN_FAILED_MESSAGE);
       }
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
@@ -461,7 +462,7 @@ export class AuthService {
       };
     }
 
-    throw new Error('Аккаунт не существует');
+    throw new Error(LOGIN_FAILED_MESSAGE);
   }
 
   /**
@@ -492,7 +493,7 @@ export class AuthService {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(data.password, 12);
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
     // Create user
     const user = await prisma.user.create({
@@ -550,12 +551,12 @@ export class AuthService {
     }
 
     // Hash new password
-    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+    const hashedNewPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
-    // Update password
+    // Update password — сбрасываем старые сессии
     await prisma.user.update({
       where: { id: userId },
-      data: { password: hashedNewPassword }
+      data: { password: hashedNewPassword, sessionVersion: { increment: 1 } }
     });
 
     return { message: 'Password changed successfully' };
@@ -623,7 +624,8 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       role: user.role,
-      tenantId: user.tenantId
+      tenantId: user.tenantId,
+      sv: user.sessionVersion,
     };
 
     return jwt.sign(payload, process.env.JWT_SECRET!, {
@@ -746,19 +748,23 @@ export class AuthService {
     return deletedUser;
   }
 
-  static async updateUserById(userId: string, data: {
-    firstName?: string;
-    lastName?: string;
-    middleName?: string;
-    phone?: string;
-    email?: string;
-    password?: string;
-    role?: string;
-    tenantId?: string;
-  }) {
-    // Get current user to check role change
-    const currentUser = await prisma.user.findUnique({
-      where: { id: userId },
+  static async updateUserById(
+    userId: string,
+    data: {
+      firstName?: string;
+      lastName?: string;
+      middleName?: string;
+      phone?: string;
+      email?: string;
+      password?: string;
+      role?: string;
+      tenantId?: string;
+    },
+    callerTenantId: string
+  ) {
+    // Get current user to check role change — только внутри школы вызывающего
+    const currentUser = await prisma.user.findFirst({
+      where: { id: userId, tenantId: callerTenantId },
       include: { trainer: true }
     });
 
@@ -791,7 +797,8 @@ export class AuthService {
     }
 
     if (data.password) {
-      updateData.password = await bcrypt.hash(data.password, 12);
+      updateData.password = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+      updateData.sessionVersion = { increment: 1 };
     }
 
     // Handle role change
@@ -822,7 +829,7 @@ export class AuthService {
 
       // If changing from ADMIN to TRAINER, create trainer record
       if (currentUser.role === 'ADMIN' && data.role === 'TRAINER') {
-        const tenantId = data.tenantId || currentUser.tenantId;
+        const tenantId = currentUser.tenantId;
         if (!currentUser.trainer) {
           await prisma.trainer.create({
             data: {

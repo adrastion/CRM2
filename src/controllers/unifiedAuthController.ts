@@ -4,6 +4,7 @@ import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validate } from '../middleware/validation';
 import { UnifiedAuthService, AccountType } from '../services/unifiedAuthService';
+import { maybeSetAuthCookies } from '../middleware/authCookies';
 
 const ACCOUNT_TYPES: AccountType[] = [
   'TENANT_USER',
@@ -75,6 +76,7 @@ export const identify = asyncHandler(async (req: Request, res: Response<ApiRespo
 export const setupPassword = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { identifier, password, rememberMe } = req.body;
   const result = await UnifiedAuthService.setupPassword(identifier, password, rememberMe);
+  maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result, message: 'Пароль создан' });
 });
 
@@ -84,6 +86,7 @@ export const setupPassword = asyncHandler(async (req: Request, res: Response<Api
 export const login = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { identifier, password, rememberMe } = req.body;
   const result = await UnifiedAuthService.login(identifier, password, rememberMe);
+  maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result });
 });
 
@@ -93,6 +96,7 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
 export const selectAccount = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { selectionToken, accountType, accountId } = req.body;
   const result = await UnifiedAuthService.selectAccount(selectionToken, accountType, accountId);
+  maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result });
 });
 

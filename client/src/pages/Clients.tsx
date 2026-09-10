@@ -314,10 +314,12 @@ const Clients: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter used for file input
   const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
   const [birthCertificatePreview, setBirthCertificatePreview] = useState<string | null>(null);
+  const [keepBirthCertificate, setKeepBirthCertificate] = useState(false);
   const birthCertificateInputRef = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter used for file input
   const [medicalCertificateFile, setMedicalCertificateFile] = useState<File | null>(null);
   const [medicalCertificatePreview, setMedicalCertificatePreview] = useState<string | null>(null);
+  const [keepMedicalCertificate, setKeepMedicalCertificate] = useState(false);
   const medicalCertificateInputRef = useRef<HTMLInputElement>(null);
   const [trialEnabled, setTrialEnabled] = useState(false);
   const [trialTrainingId, setTrialTrainingId] = useState('');
@@ -567,7 +569,7 @@ const Clients: React.FC = () => {
 
     try {
       const { groupIds, ...clientData } = formData;
-      const dataToSend = {
+      const dataToSend: any = {
         ...clientData,
         weight: clientData.weight ? parseFloat(clientData.weight) : null,
         // Преобразуем пустые строки паспорта в null
@@ -578,6 +580,8 @@ const Clients: React.FC = () => {
         passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
         passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
       };
+      if (!dataToSend.birthCertificate) delete dataToSend.birthCertificate;
+      if (!dataToSend.medicalCertificate) delete dataToSend.medicalCertificate;
       const createdClient = await apiService.createClient(dataToSend);
 
       let trialGroupId: string | null = null;
@@ -639,8 +643,10 @@ const Clients: React.FC = () => {
       setPhotoFile(null);
       setBirthCertificatePreview(null);
       setBirthCertificateFile(null);
+      setKeepBirthCertificate(false);
       setMedicalCertificatePreview(null);
       setMedicalCertificateFile(null);
+      setKeepMedicalCertificate(false);
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
       }
@@ -732,9 +738,9 @@ const Clients: React.FC = () => {
       gender: client.gender || '',
       address: client.address || '',
       birthCertificateNumber: client.birthCertificateNumber || '',
-      birthCertificate: client.birthCertificate || '',
+      birthCertificate: '',
       medicalCertificateNumber: client.medicalCertificateNumber || '',
-      medicalCertificate: client.medicalCertificate || '',
+      medicalCertificate: '',
       schoolOrKindergarten: client.schoolOrKindergarten || '',
       photo: client.photo || '',
       weight: client.weight ? String(client.weight) : '',
@@ -752,10 +758,12 @@ const Clients: React.FC = () => {
     });
     setPhotoPreview(client.photo || null);
     setPhotoFile(null);
-    setBirthCertificatePreview(client.birthCertificate || null);
+    setBirthCertificatePreview(null);
     setBirthCertificateFile(null);
-    setMedicalCertificatePreview(client.medicalCertificate || null);
+    setKeepBirthCertificate(Boolean(client.hasBirthCertificate));
+    setMedicalCertificatePreview(null);
     setMedicalCertificateFile(null);
+    setKeepMedicalCertificate(Boolean(client.hasMedicalCertificate));
     setFormErrors({});
     currentErrorsRef.current = {};
     shouldPreventCloseRef.current = false;
@@ -943,7 +951,7 @@ const Clients: React.FC = () => {
     
     try {
       const { groupIds, ...clientData } = formData;
-      const dataToSend = {
+      const dataToSend: any = {
         ...clientData,
         weight: clientData.weight ? parseFloat(clientData.weight) : null,
         // Преобразуем пустые строки паспорта в null
@@ -954,6 +962,20 @@ const Clients: React.FC = () => {
         passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
         passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
       };
+      if (formData.birthCertificate) {
+        dataToSend.birthCertificate = formData.birthCertificate;
+      } else if (keepBirthCertificate) {
+        delete dataToSend.birthCertificate;
+      } else {
+        dataToSend.birthCertificate = null;
+      }
+      if (formData.medicalCertificate) {
+        dataToSend.medicalCertificate = formData.medicalCertificate;
+      } else if (keepMedicalCertificate) {
+        delete dataToSend.medicalCertificate;
+      } else {
+        dataToSend.medicalCertificate = null;
+      }
       await apiService.updateClient(editingClient.id, dataToSend);
       
       // Обновляем группы клиента
@@ -1018,8 +1040,10 @@ const Clients: React.FC = () => {
       setPhotoFile(null);
       setBirthCertificatePreview(null);
       setBirthCertificateFile(null);
+      setKeepBirthCertificate(false);
       setMedicalCertificatePreview(null);
       setMedicalCertificateFile(null);
+      setKeepMedicalCertificate(false);
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
       }
@@ -1778,6 +1802,7 @@ const Clients: React.FC = () => {
                     const file = e.target.files?.[0];
                     if (file) {
                       setBirthCertificateFile(file);
+                      setKeepBirthCertificate(false);
                       const reader = new FileReader();
                       reader.onloadend = () => {
                         setBirthCertificatePreview(reader.result as string);
@@ -1820,12 +1845,53 @@ const Clients: React.FC = () => {
                           e.stopPropagation();
                           setBirthCertificatePreview(null);
                           setBirthCertificateFile(null);
+                          setKeepBirthCertificate(false);
                           setFormData(prev => ({ ...prev, birthCertificate: '' }));
                           if (birthCertificateInputRef.current) {
                             birthCertificateInputRef.current.value = '';
                           }
                         }}
                         sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : keepBirthCertificate && editingClient ? (
+                    <Box sx={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        Файл загружен на сервер
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={async () => {
+                          try {
+                            const { blob, filename } = await apiService.downloadClientCertificate(
+                              editingClient.id,
+                              'birth'
+                            );
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {
+                            setSnackbarMessage('Не удалось скачать файл');
+                            setSnackbarOpen(true);
+                          }
+                        }}
+                        sx={{ mr: 1 }}
+                      >
+                        Скачать
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setKeepBirthCertificate(false);
+                          setFormData((prev) => ({ ...prev, birthCertificate: '' }));
+                        }}
                       >
                         Удалить
                       </Button>
@@ -1859,6 +1925,7 @@ const Clients: React.FC = () => {
                     const file = e.target.files?.[0];
                     if (file) {
                       setMedicalCertificateFile(file);
+                      setKeepMedicalCertificate(false);
                       const reader = new FileReader();
                       reader.onloadend = () => {
                         setMedicalCertificatePreview(reader.result as string);
@@ -1901,12 +1968,53 @@ const Clients: React.FC = () => {
                           e.stopPropagation();
                           setMedicalCertificatePreview(null);
                           setMedicalCertificateFile(null);
+                          setKeepMedicalCertificate(false);
                           setFormData(prev => ({ ...prev, medicalCertificate: '' }));
                           if (medicalCertificateInputRef.current) {
                             medicalCertificateInputRef.current.value = '';
                           }
                         }}
                         sx={{ mt: 1 }}
+                      >
+                        Удалить
+                      </Button>
+                    </Box>
+                  ) : keepMedicalCertificate && editingClient ? (
+                    <Box sx={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        Файл загружен на сервер
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={async () => {
+                          try {
+                            const { blob, filename } = await apiService.downloadClientCertificate(
+                              editingClient.id,
+                              'medical'
+                            );
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {
+                            setSnackbarMessage('Не удалось скачать файл');
+                            setSnackbarOpen(true);
+                          }
+                        }}
+                        sx={{ mr: 1 }}
+                      >
+                        Скачать
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setKeepMedicalCertificate(false);
+                          setFormData((prev) => ({ ...prev, medicalCertificate: '' }));
+                        }}
                       >
                         Удалить
                       </Button>

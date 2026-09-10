@@ -127,6 +127,8 @@ SMTP_USER="your-email@gmail.com"
 SMTP_PASS="your-app-password"
 FROM_EMAIL="noreply@martialartscrm.com"
 CORS_ORIGIN="http://localhost:3000"
+LOGIN_RATE_LIMIT_MAX=20
+LOGIN_RATE_LIMIT_WINDOW_MS=900000
 
 # Яндекс Почта (пример): создайте пароль приложения в настройках Яндекса
 # SMTP_HOST=smtp.yandex.ru
@@ -141,6 +143,7 @@ CRON_SCHEDULE="0 0 * * *"  # Расписание для ежемесячных 
 CRON_TIMEZONE="Europe/Moscow"  # Часовой пояс для cron-задач
 ```
 
+> **Безопасность:** `JWT_SECRET` на проде должен быть длинным случайным (≥32 символа), уникальным для окружения. Не коммитьте `.env`. Для генерации: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 ### 5. Запуск миграций и сидов
 ```bash
 # Генерация Prisma клиента
@@ -433,11 +436,14 @@ PUT  /api/admin-dashboard/settings - Настройки (резерв средс
 - **CLIENT** - Клиент (доступ к личному кабинету)
 
 ### Безопасность
-- JWT токены с истечением срока действия
-- Хеширование паролей с bcrypt
-- Валидация всех входных данных
-- Защита от XSS, CSRF, SQL-инъекций
-- Rate limiting для API
+- JWT токены с истечением срока действия; `sessionVersion` отзывает сессии при смене пароля
+- Хеширование паролей с bcrypt (12 rounds)
+- Rate limiting на логин и API
+- httpOnly cookie `crm_access_token` + CSRF double-submit (`crm_csrf` / `X-CSRF-Token`) при cookie-сессии; Bearer из localStorage остаётся для multi-account switcher
+- Жёсткий CSP на API (helmet), `stripUnknown` в Joi, запрет mass-assignment `tenantId`
+- Файлы (договоры, свидетельства/справки) только через auth download — не в JSON и не через публичный `/uploads`
+- Логи без email/телефонов/JWT; CI: `npm audit` (`.github/workflows/ci.yml`)
+- Миграция старых base64 сертификатов: `npx ts-node scripts/migrate-client-certificates-to-disk.ts`
 
 ## 📊 База данных
 
@@ -482,12 +488,23 @@ npm run build:client
 ```env
 NODE_ENV=production
 DATABASE_URL="your-production-database-url"
-JWT_SECRET="your-production-jwt-secret"
+JWT_SECRET="длинный-случайный-ключ-минимум-32-символа"
+JWT_EXPIRES_IN="7d"
+LOGIN_RATE_LIMIT_MAX=20
+LOGIN_RATE_LIMIT_WINDOW_MS=900000
 SMTP_HOST="your-smtp-host"
 SMTP_USER="your-smtp-user"
 SMTP_PASS="your-smtp-password"
 CORS_ORIGIN="https://your-domain.com"
 ```
+
+Чеклист перед продом:
+- [ ] `JWT_SECRET` уникальный, ≥32 символов, не из `env.example`
+- [ ] `JWT_EXPIRES_IN` задан (для staff рекомендуется `1d`; ЛК клиента — отдельно до 30d)
+- [ ] `CORS_ORIGIN` только ваш фронтовый домен
+- [ ] HTTPS перед API (`COOKIE_SECURE` / HSTS включены)
+- [ ] `AUTH_COOKIE_ENABLED=true` при same-origin / reverse-proxy `/api`
+- [ ] Публичный `/uploads` отключён (файлы только через auth download)
 
 ## 🤝 Вклад в проект
 

@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -11,6 +12,9 @@ import cron from 'node-cron';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { csrfProtection } from './middleware/authCookies';
+import { stripClientTenantFields } from './middleware/tenantGuard';
+import { redactString } from './utils/safeLog';
 import authRoutes from './routes/auth';
 import clientAuthRoutes from './routes/clientAuth';
 import tenantRoutes from './routes/tenant';
@@ -80,10 +84,29 @@ const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1);
 
 // Security middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        // API отдаёт JSON; скрипты/стили не нужны. Отчёты CSP не ломают SPA (она на другом origin).
+      },
+    },
+    referrerPolicy: { policy: 'no-referrer' },
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 15552000, includeSubDomains: true }
+        : false,
+  })
+);
 
+app.use(cookieParser());
+app.use(csrfProtection);
 // Rate limiting - увеличенные лимиты для поддержки batch операций
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
@@ -106,7 +129,7 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-CSRF-Token'],
   exposedHeaders: ['Content-Disposition'],
 }));
 
@@ -117,15 +140,23 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression middleware
 app.use(compression());
 
-// Logging middleware
+// Logging middleware (без PII / токенов в URL)
+morgan.token('safe-url', (req) => {
+  const url = (req as any).originalUrl || req.url || '';
+  return redactString(String(url));
+});
 if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
+  app.use(morgan(':method :safe-url :status :response-time ms'));
 } else {
-  app.use(morgan('combined'));
+  app.use(
+    morgan(
+      ':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length]'
+    )
+  );
 }
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Static files — публичная раздача /uploads отключена (P0).
+// Файлы отдаются только через authenticated download endpoints.
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -137,32 +168,34 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
+// API routes — школьные роуты снимают client-supplied tenantId из body
+const schoolTenantGuard = stripClientTenantFields;
+
 app.use('/api/auth', authRoutes);
 app.use('/api/client-auth', clientAuthRoutes);
-app.use('/api/tenant', tenantRoutes);
-app.use('/api/branches', branchRoutes);
-app.use('/api/halls', hallRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/trainers', trainerRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/search', searchRoutes);
-app.use('/api/memberships', membershipRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/finance', financeRoutes);
-app.use('/api/trainings', trainingRoutes);
-app.use('/api/attendances', attendanceRoutes);
-app.use('/api/competitions', competitionRoutes);
-app.use('/api/school-events', schoolEventRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/promo-codes', promoCodeRoutes);
-app.use('/api/referral-links', referralLinkRoutes);
-app.use('/api/marketers', marketerRoutes);
-app.use('/api/promo-code-admins', promoCodeAdminRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/client-memberships', clientMembershipRoutes);
-app.use('/api/standards', standardRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/tenant', schoolTenantGuard, tenantRoutes);
+app.use('/api/branches', schoolTenantGuard, branchRoutes);
+app.use('/api/halls', schoolTenantGuard, hallRoutes);
+app.use('/api/clients', schoolTenantGuard, clientRoutes);
+app.use('/api/trainers', schoolTenantGuard, trainerRoutes);
+app.use('/api/groups', schoolTenantGuard, groupRoutes);
+app.use('/api/search', schoolTenantGuard, searchRoutes);
+app.use('/api/memberships', schoolTenantGuard, membershipRoutes);
+app.use('/api/payments', schoolTenantGuard, paymentRoutes);
+app.use('/api/finance', schoolTenantGuard, financeRoutes);
+app.use('/api/trainings', schoolTenantGuard, trainingRoutes);
+app.use('/api/attendances', schoolTenantGuard, attendanceRoutes);
+app.use('/api/competitions', schoolTenantGuard, competitionRoutes);
+app.use('/api/school-events', schoolTenantGuard, schoolEventRoutes);
+app.use('/api/reports', schoolTenantGuard, reportRoutes);
+app.use('/api/promo-codes', schoolTenantGuard, promoCodeRoutes);
+app.use('/api/referral-links', schoolTenantGuard, referralLinkRoutes);
+app.use('/api/marketers', schoolTenantGuard, marketerRoutes);
+app.use('/api/promo-code-admins', schoolTenantGuard, promoCodeAdminRoutes);
+app.use('/api/settings', schoolTenantGuard, settingsRoutes);
+app.use('/api/client-memberships', schoolTenantGuard, clientMembershipRoutes);
+app.use('/api/standards', schoolTenantGuard, standardRoutes);
+app.use('/api/subscriptions', schoolTenantGuard, subscriptionRoutes);
 app.use('/api/super-admin/auth', superAdminAuthRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
 app.use('/api/push-notifications', pushNotificationRoutes);

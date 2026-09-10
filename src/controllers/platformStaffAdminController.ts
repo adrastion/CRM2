@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
+import { BCRYPT_ROUNDS } from '../constants/security';
 
 function generateOneTimePassword(): string {
   // 12 chars base64url without ambiguous symbols is overkill; keep readable but random
@@ -40,7 +41,7 @@ export const superAdminCreatePlatformStaffUser = asyncHandler(async (req: Reques
   }
 
   const oneTimePassword = generateOneTimePassword();
-  const hashed = await bcrypt.hash(oneTimePassword, 12);
+  const hashed = await bcrypt.hash(oneTimePassword, BCRYPT_ROUNDS);
 
   const created = await prisma.platformStaffUser.create({
     data: {

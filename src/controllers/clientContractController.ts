@@ -6,6 +6,13 @@ import { AuthenticatedRequest, ApiResponse } from '../types';
 import { ClientRequest } from '../middleware/clientAuth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { absoluteUploadPath, safeUnlink, decodeUploadOriginalName, contentDispositionAttachment } from '../utils/fileStorage';
+import {
+  absoluteCertificatePath,
+  downloadNameForKind,
+  migrateCertificateValueIfNeeded,
+  mimeFromStoragePath,
+  type CertificateKind,
+} from '../utils/clientCertificates';
 
 const PDF_MIME = 'application/pdf';
 
@@ -346,10 +353,123 @@ export const clientListContracts = asyncHandler(
           birthCertificateNumber: profile?.birthCertificateNumber || null,
           medicalCertificate: Boolean(profile?.medicalCertificate),
           medicalCertificateNumber: profile?.medicalCertificateNumber || null,
-          birthCertificateDataUrl: profile?.birthCertificate || null,
-          medicalCertificateDataUrl: profile?.medicalCertificate || null,
         },
       },
+    });
+  }
+);
+
+async function streamClientCertificate(
+  res: Response,
+  args: {
+    tenantId: string;
+    clientId: string;
+    kind: CertificateKind;
+    value: string | null | undefined;
+  }
+) {
+  const migrated = migrateCertificateValueIfNeeded(
+    args.tenantId,
+    args.clientId,
+    args.kind,
+    args.value
+  );
+  if (migrated.changed) {
+    await prisma.client.update({
+      where: { id: args.clientId },
+      data:
+        args.kind === 'birth'
+          ? { birthCertificate: migrated.path }
+          : { medicalCertificate: migrated.path },
+    });
+  }
+  if (!migrated.path) {
+    res.status(404).json({ success: false, error: 'Файл не загружен' });
+    return;
+  }
+  const abs = absoluteCertificatePath(migrated.path);
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ success: false, error: 'Файл отсутствует на диске' });
+    return;
+  }
+  const filename = downloadNameForKind(args.kind, migrated.path);
+  res.setHeader('Content-Type', mimeFromStoragePath(migrated.path));
+  res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
+  fs.createReadStream(abs).pipe(res);
+}
+
+/**
+ * GET /clients/:id/certificates/:kind/download  kind = birth | medical
+ */
+export const staffDownloadCertificate = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const tenantId = req.tenantId!;
+    const clientId = String(req.params.id);
+    const kindRaw = String(req.params.kind || '').toLowerCase();
+    const kind: CertificateKind | null =
+      kindRaw === 'birth' || kindRaw === 'medical' ? kindRaw : null;
+    if (!kind) {
+      res.status(400).json({ success: false, error: 'kind: birth | medical' });
+      return;
+    }
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        birthCertificate: true,
+        medicalCertificate: true,
+      },
+    });
+    if (!client) {
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
+      return;
+    }
+    await streamClientCertificate(res, {
+      tenantId: client.tenantId,
+      clientId: client.id,
+      kind,
+      value: kind === 'birth' ? client.birthCertificate : client.medicalCertificate,
+    });
+  }
+);
+
+/**
+ * GET /client-auth/clients/:clientId/certificates/:kind/download
+ */
+export const clientDownloadCertificate = asyncHandler(
+  async (req: ClientRequest, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const kindRaw = String(req.params.kind || '').toLowerCase();
+    const kind: CertificateKind | null =
+      kindRaw === 'birth' || kindRaw === 'medical' ? kindRaw : null;
+    if (!kind) {
+      res.status(400).json({ success: false, error: 'kind: birth | medical' });
+      return;
+    }
+    const access = await assertClientAccess(req, clientId);
+    if (!access) {
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
+      return;
+    }
+    const client = await prisma.client.findFirst({
+      where: { id: access.id, tenantId: access.tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        birthCertificate: true,
+        medicalCertificate: true,
+      },
+    });
+    if (!client) {
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
+      return;
+    }
+    await streamClientCertificate(res, {
+      tenantId: client.tenantId,
+      clientId: client.id,
+      kind,
+      value: kind === 'birth' ? client.birthCertificate : client.medicalCertificate,
     });
   }
 );

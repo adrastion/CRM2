@@ -4,6 +4,7 @@ import { AuthService } from '../services/authService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validate, validateQuery, phoneSchema } from '../middleware/validation';
 import Joi from 'joi';
+import { clearSessionCookies, maybeSetAuthCookies } from '../middleware/authCookies';
 
 /** Без проверки списка TLD — иначе Joi отклоняет служебные адреса (*.local и т.п.). */
 const loginEmail = Joi.string().email({ tlds: { allow: false } }).required();
@@ -78,7 +79,7 @@ const changeEmailSchema = Joi.object({
  */
 export const register = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const result = await AuthService.registerTenant(req.body);
-  
+  maybeSetAuthCookies(res, result);
   res.status(201).json({
     success: true,
     data: result,
@@ -92,7 +93,7 @@ export const register = asyncHandler(async (req: Request, res: Response<ApiRespo
 export const login = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
   const result = await AuthService.login(email, password);
-  
+  maybeSetAuthCookies(res, result);
   res.json({
     success: true,
     data: result,
@@ -107,7 +108,7 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
 export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
   const result = await AuthService.unifiedStaffLogin(email, password);
-
+  maybeSetAuthCookies(res, result);
   res.json({
     success: true,
     data: result,
@@ -121,7 +122,7 @@ export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response
 export const marketerLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
   const result = await AuthService.marketerLogin(email, password);
-  
+  maybeSetAuthCookies(res, result);
   res.json({
     success: true,
     data: result,
@@ -136,7 +137,7 @@ export const marketerLogin = asyncHandler(async (req: Request, res: Response<Api
 export const promoCodeAdminLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
   const result = await AuthService.promoCodeAdminLogin(email, password);
-  
+  maybeSetAuthCookies(res, result);
   res.json({
     success: true,
     data: result,
@@ -275,9 +276,9 @@ export const updateUserById = asyncHandler(async (req: AuthenticatedRequest, res
   const { id } = req.params;
   const updateData = {
     ...req.body,
-    tenantId: req.tenantId // Добавляем tenantId для создания Trainer при смене роли
   };
-  const result = await AuthService.updateUserById(id, updateData);
+  delete (updateData as any).tenantId;
+  const result = await AuthService.updateUserById(id, updateData, req.tenantId!);
   
   res.json({
     success: true,
@@ -364,6 +365,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response<Api
  * Logout user (client-side token removal)
  */
 export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  clearSessionCookies(res);
   res.json({
     success: true,
     message: 'Logout successful'

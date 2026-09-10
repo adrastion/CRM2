@@ -14,6 +14,8 @@ export interface JWTPayload {
   email: string;
   role: string;
   tenantId: string;
+  /** Версия сессии; при несовпадении с User.sessionVersion токен отклоняется */
+  sv?: number;
   iat?: number;
   exp?: number;
 }

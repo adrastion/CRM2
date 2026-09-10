@@ -6,6 +6,7 @@ import {
   superAdminGetSupportMessages,
   superAdminPostSupportMessage,
   superAdminListCallRecordings,
+  superAdminDownloadCallRecording,
   superAdminListKnowledgeArticles,
   superAdminCreateKnowledgeArticle,
   superAdminDeleteCallRecording,
@@ -18,6 +19,7 @@ router.get('/tickets', superAdminListSupportTickets);
 router.get('/tickets/:ticketId', superAdminGetSupportMessages);
 router.post('/tickets/:ticketId/messages', superAdminPostSupportMessage);
 router.get('/recordings', superAdminListCallRecordings);
+router.get('/recordings/:id/download', superAdminDownloadCallRecording);
 router.delete('/recordings/:id', superAdminDeleteCallRecording);
 router.get('/knowledge', superAdminListKnowledgeArticles);
 router.post('/knowledge', superAdminCreateKnowledgeArticle);
