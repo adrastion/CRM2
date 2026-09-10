@@ -9,7 +9,6 @@ import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/Pr
 import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdminAuthContext';
 import { TesterAuthProvider, useTesterAuth } from './contexts/TesterAuthContext';
 import { PlatformStaffAuthProvider, usePlatformStaffAuth } from './contexts/PlatformStaffAuthContext';
-import { TelegramBannerProvider } from './contexts/TelegramBannerContext';
 import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
@@ -594,9 +593,7 @@ const App: React.FC = () => {
           <SuperAdminAuthProvider>
             <TesterAuthProvider>
             <PlatformStaffAuthProvider>
-            <TelegramBannerProvider>
               <AppContent />
-            </TelegramBannerProvider>
             </PlatformStaffAuthProvider>
             </TesterAuthProvider>
           </SuperAdminAuthProvider>

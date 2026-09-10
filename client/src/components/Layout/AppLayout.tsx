@@ -9,7 +9,6 @@ import DashboardShell, {
   GlobalSearchResults,
   GlobalSearchResultItem,
 } from '../dashboard/DashboardShell';
-import TelegramBanner from '../TelegramBanner';
 import SalaryPayoutBanner from '../SalaryPayoutBanner';
 import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwitcher';
 import { NavIconName } from '../../assets/icons/registry';
@@ -299,7 +298,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
 
   return (
     <Box>
-      {!isPlatformShell && <TelegramBanner />}
       {!isPlatformShell && <SalaryPayoutBanner />}
       <DashboardShell
         pageTitle={resolvedPageTitle}
