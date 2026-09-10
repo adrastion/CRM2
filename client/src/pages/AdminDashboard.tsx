@@ -98,6 +98,7 @@ import {
   SuperAdminPlatformChatsTab,
   SuperAdminPlatformChangelogTab,
 } from '../components/SuperAdminPlatformTabs';
+import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -111,6 +112,7 @@ const SA_SECTIONS = [
   'tariffs',
   'marketers',
   'server-load',
+  'notifications',
   'planner',
   'development',
   'chats',
@@ -2866,6 +2868,18 @@ const AdminDashboard: React.FC = () => {
 
       {/* Вкладка: Нагрузка сервера */}
       {section === 'server-load' && <ServerLoadMonitoringTab />}
+
+      {section === 'notifications' && (
+        <Box sx={{ maxWidth: 720 }}>
+          <Typography variant="h5" gutterBottom>
+            Уведомления
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Чаты и публикации в «Изменения». Алерты нагрузки сервера настраиваются во вкладке «Нагрузка сервера».
+          </Typography>
+          <NotificationSettingsPanel actor="superAdmin" showChangelog />
+        </Box>
+      )}
 
       {section === 'planner' && <SuperAdminPlannerTab />}
 

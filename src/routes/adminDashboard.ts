@@ -71,6 +71,10 @@ import {
   getSuperAdminPushSubscriptionStatus,
 } from '../controllers/serverMetricsController';
 import {
+  getSuperAdminNotificationPrefs,
+  updateSuperAdminNotificationPrefs,
+} from '../controllers/notificationPrefsController';
+import {
   authenticateSuperAdmin,
   authenticatePlatformViewer,
   requirePlatformWrite,
@@ -202,5 +206,8 @@ router.get('/server-metrics/vapid-key', getServerMetricsVapidKey);
 router.post('/server-metrics/push/subscribe', subscribeSuperAdminPush);
 router.post('/server-metrics/push/unsubscribe', unsubscribeSuperAdminPush);
 router.get('/server-metrics/push/status', getSuperAdminPushSubscriptionStatus);
+
+router.get('/notification-prefs', getSuperAdminNotificationPrefs);
+router.put('/notification-prefs', updateSuperAdminNotificationPrefs);
 
 export default router;

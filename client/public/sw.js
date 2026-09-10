@@ -38,6 +38,12 @@ self.addEventListener('notificationclick', function(event) {
     url = '/schedule';
   } else if (data && data.type === 'server_load_critical') {
     url = data.url || '/admin/dashboard';
+  } else if (data && data.type === 'chat_message') {
+    url = data.url || '/chats';
+  } else if (data && data.type === 'platform_changelog') {
+    url = data.url || '/admin/dashboard?section=changelog';
+  } else if (data && data.url) {
+    url = data.url;
   }
 
   event.waitUntil(

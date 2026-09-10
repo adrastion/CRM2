@@ -471,7 +471,7 @@ model TrainerNotificationSettings {
 
 model PushSubscription {
   id        String   @id @default(cuid())
-  userId    String // ID пользователя (тренера)
+  userId    String // ID пользователя (тренера / OWNER / ADMIN)
   endpoint  String // URL endpoint для отправки уведомлений
   p256dh    String // Публичный ключ
   auth      String // Auth secret
@@ -481,6 +481,51 @@ model PushSubscription {
 
   @@unique([userId, endpoint])
   @@map("push_subscriptions")
+}
+
+/// Предпочтения уведомлений (чаты, changelog, расписание доставки).
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  /// USER | CLIENT | PARENT | SUPER_ADMIN | TESTER
+  actorType            String
+  actorId              String
+  chatMessagesEnabled  Boolean  @default(true)
+  changelogEnabled     Boolean  @default(true)
+  pushMasterEnabled    Boolean  @default(true)
+  /// ALWAYS | WINDOW — только для школьного staff (USER)
+  scheduleMode         String   @default("ALWAYS")
+  /// Начало разрешённого окна (минуты от полуночи), при WINDOW
+  windowStartMinutes   Int?
+  /// Конец разрешённого окна (минуты от полуночи), при WINDOW
+  windowEndMinutes     Int?
+  /// CSV дней недели 1-7 (пн=1); null = каждый день
+  daysOfWeek           String?
+  timezone             String   @default("Europe/Moscow")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([actorType, actorId])
+  @@index([actorType, actorId])
+  @@map("notification_preferences")
+}
+
+/// Web Push для ЛК клиента / родителя
+model PortalPushSubscription {
+  id        String   @id @default(cuid())
+  clientId  String?
+  parentId  String?
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, endpoint])
+  @@unique([parentId, endpoint])
+  @@index([clientId])
+  @@index([parentId])
+  @@map("portal_push_subscriptions")
 }
 
 model Group {
@@ -1149,8 +1194,25 @@ model Tester {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   linkedUser     User?     @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+  pushSubscriptions TesterPushSubscription[]
 
   @@map("testers")
+}
+
+/// Web Push подписки тестировщиков
+model TesterPushSubscription {
+  id        String   @id @default(cuid())
+  testerId  String
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tester    Tester   @relation(fields: [testerId], references: [id], onDelete: Cascade)
+
+  @@unique([testerId, endpoint])
+  @@map("tester_push_subscriptions")
 }
 
 model PlatformChangelogEntry {

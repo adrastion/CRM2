@@ -25,6 +25,19 @@ import {
   removeSavedAccount,
 } from '../utils/accountSwitcher';
 
+export type NotificationPrefs = {
+  actorType: string;
+  actorId: string;
+  chatMessagesEnabled: boolean;
+  changelogEnabled: boolean;
+  pushMasterEnabled: boolean;
+  scheduleMode: 'ALWAYS' | 'WINDOW';
+  windowStartMinutes: number | null;
+  windowEndMinutes: number | null;
+  daysOfWeek: string | null;
+  timezone: string;
+};
+
 /** Разбор Content-Disposition: предпочитаем filename*=UTF-8''… (кириллица). */
 function parseContentDispositionFilename(
   disposition: string | undefined,
@@ -562,6 +575,97 @@ class ApiService {
 
   async getUserPushSubscriptions(): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/push-notifications/subscriptions');
+    return response.data.data;
+  }
+
+  // Notification preferences (chat / changelog / schedule)
+  async getSchoolNotificationPrefs(): Promise<NotificationPrefs> {
+    const response = await this.api.get<ApiResponse>('/notification-prefs');
+    return response.data.data;
+  }
+
+  async updateSchoolNotificationPrefs(data: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+    const response = await this.api.put<ApiResponse>('/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async getPortalNotificationPrefs(): Promise<NotificationPrefs> {
+    const response = await this.api.get<ApiResponse>('/client-auth/notification-prefs');
+    return response.data.data;
+  }
+
+  async updatePortalNotificationPrefs(data: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+    const response = await this.api.put<ApiResponse>('/client-auth/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async getPortalPushVapidKey(): Promise<string | null> {
+    const response = await this.api.get<ApiResponse>('/client-auth/push/vapid-key');
+    return response.data.data?.publicKey || null;
+  }
+
+  async subscribePortalPush(subscription: any, userAgent?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/push/subscribe', {
+      subscription,
+      userAgent,
+    });
+    return response.data;
+  }
+
+  async unsubscribePortalPush(endpoint: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/push/unsubscribe', {
+      endpoint,
+    });
+    return response.data;
+  }
+
+  async getPortalPushStatus(): Promise<{ subscribed: boolean; count: number }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/push/status');
+    return response.data.data;
+  }
+
+  async getSuperAdminNotificationPrefs(): Promise<NotificationPrefs> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/notification-prefs');
+    return response.data.data;
+  }
+
+  async updateSuperAdminNotificationPrefs(data: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async getTesterNotificationPrefs(): Promise<NotificationPrefs> {
+    const response = await this.api.get<ApiResponse>('/platform/tester/notification-prefs');
+    return response.data.data;
+  }
+
+  async updateTesterNotificationPrefs(data: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+    const response = await this.api.put<ApiResponse>('/platform/tester/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async getTesterPushVapidKey(): Promise<string | null> {
+    const response = await this.api.get<ApiResponse>('/platform/tester/push/vapid-key');
+    return response.data.data?.publicKey || null;
+  }
+
+  async subscribeTesterPush(subscription: any, userAgent?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform/tester/push/subscribe', {
+      subscription,
+      userAgent,
+    });
+    return response.data;
+  }
+
+  async unsubscribeTesterPush(endpoint: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/platform/tester/push/unsubscribe', {
+      endpoint,
+    });
+    return response.data;
+  }
+
+  async getTesterPushStatus(): Promise<{ subscribed: boolean; count: number }> {
+    const response = await this.api.get<ApiResponse>('/platform/tester/push/status');
     return response.data.data;
   }
 

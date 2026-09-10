@@ -11,6 +11,7 @@ import ClientCalendarPlan from '../components/client/ClientCalendarPlan';
 import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
 import ClientDocumentsPanel from '../components/client/ClientDocumentsPanel';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
+import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
@@ -31,6 +32,7 @@ const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
   { key: 'documents', label: 'Документы', iconName: 'faq' },
   { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
   { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
+  { key: 'notifications', label: 'Уведомления', iconName: 'settings' },
 ];
 
 const RUB = new Intl.NumberFormat('ru-RU', {
@@ -242,12 +244,27 @@ const ClientDashboard: React.FC = () => {
     label: item.label,
     icon: <DesignIcon category="nav" name={item.iconName} size={34} />,
     iconName: item.iconName,
-    // Чаты доступны и до подтверждения аккаунта (связь с администрацией)
-    disabled: pending && item.key !== 'chats' && item.key !== 'dashboard',
+    // Чаты и уведомления доступны и до подтверждения аккаунта
+    disabled:
+      pending &&
+      item.key !== 'chats' &&
+      item.key !== 'dashboard' &&
+      item.key !== 'notifications',
     onClick:
-      pending && item.key !== 'chats' && item.key !== 'dashboard'
+      pending &&
+      item.key !== 'chats' &&
+      item.key !== 'dashboard' &&
+      item.key !== 'notifications'
         ? undefined
-        : ['dashboard', 'card', 'plan', 'payments', 'chats'].includes(item.key)
+        : [
+              'dashboard',
+              'card',
+              'documents',
+              'plan',
+              'payments',
+              'chats',
+              'notifications',
+            ].includes(item.key)
           ? () => setActiveKey(item.key)
           : undefined,
     ...(item.key === 'chats' && chatUnread > 0 ? { badge: chatUnread } : {}),
@@ -473,7 +490,9 @@ const ClientDashboard: React.FC = () => {
             ? 'Платежи'
             : activeKey === 'chats'
               ? 'Чаты'
-              : 'Панель управления';
+              : activeKey === 'notifications'
+                ? 'Уведомления'
+                : 'Панель управления';
 
   const cardContent = (
     <AthleteCard mode="client" clientId={currentAthleteId || undefined} />
@@ -519,6 +538,12 @@ const ClientDashboard: React.FC = () => {
     />
   );
 
+  const notificationsContent = (
+    <Box sx={{ maxWidth: 720 }}>
+      <NotificationSettingsPanel actor="portal" />
+    </Box>
+  );
+
   const mainContent =
     activeKey === 'card'
       ? cardContent
@@ -530,7 +555,9 @@ const ClientDashboard: React.FC = () => {
             ? paymentsContent
             : activeKey === 'chats'
               ? chatsContent
-              : content;
+              : activeKey === 'notifications'
+                ? notificationsContent
+                : content;
 
   return (
     <DashboardShell
@@ -544,7 +571,7 @@ const ClientDashboard: React.FC = () => {
       onAddAccount={handleAddAccount}
       hideSearch
     >
-      {pending && activeKey !== 'chats' ? (
+      {pending && activeKey !== 'chats' && activeKey !== 'notifications' ? (
         <Box sx={{ position: 'relative' }}>
           <Box
             aria-hidden

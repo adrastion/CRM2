@@ -1067,6 +1067,23 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
     }
   }
 
+  // Browser push fan-out (async; do not block the response)
+  void (async () => {
+    try {
+      const { notifyChatMessagePush } = await import('./actorPushService');
+      const peerKeys = await resolvePeerPresenceKeys(thread, actor);
+      await notifyChatMessagePush({
+        peerKeys,
+        threadId: thread.id,
+        tenantId: thread.tenantId,
+        authorName,
+        preview: body,
+      });
+    } catch (e) {
+      console.error('chat push notify error', e);
+    }
+  })();
+
   return payload;
 }
 

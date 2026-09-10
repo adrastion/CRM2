@@ -32,6 +32,15 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
       createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
     },
   });
+  void import('../services/actorPushService')
+    .then(({ notifyChangelogPush }) =>
+      notifyChangelogPush({
+        title: entry.title,
+        authorSuperAdminId: superAdmin.id,
+        entryId: entry.id,
+      })
+    )
+    .catch((e) => console.error('changelog push notify error', e));
   res.json({ success: true, data: entry });
 });
 

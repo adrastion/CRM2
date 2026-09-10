@@ -10,6 +10,7 @@ import {
   Divider,
 } from '@mui/material';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
+import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 import { useTesterAuth } from '../contexts/TesterAuthContext';
 import { apiService } from '../services/api';
 
@@ -63,6 +64,7 @@ const TesterDashboard: React.FC = () => {
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>
           <Tab label="Чаты" />
           <Tab label="Изменения" />
+          <Tab label="Уведомления" />
         </Tabs>
       </Paper>
 
@@ -105,6 +107,15 @@ const TesterDashboard: React.FC = () => {
               </Paper>
             ))
           )}
+        </Box>
+      )}
+
+      {tab === 2 && (
+        <Box sx={{ maxWidth: 720 }}>
+          <Typography variant="h6" gutterBottom>
+            Уведомления
+          </Typography>
+          <NotificationSettingsPanel actor="tester" showChangelog />
         </Box>
       )}
     </Box>

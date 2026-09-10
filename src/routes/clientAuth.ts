@@ -35,6 +35,14 @@ import {
   clientDownloadCertificate,
 } from '../controllers/clientContractController';
 import { loginRateLimiter } from '../middleware/loginRateLimit';
+import {
+  getPortalNotificationPrefs,
+  updatePortalNotificationPrefs,
+  getSharedVapidKey,
+  subscribePortalPush,
+  unsubscribePortalPush,
+  portalPushStatus,
+} from '../controllers/notificationPrefsController';
 
 const router = Router();
 
@@ -52,6 +60,13 @@ router.get('/athlete-card', authenticateClient, getAthleteCard);
 router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
 router.get('/dashboard', authenticateClient, getClientDashboard);
+
+router.get('/notification-prefs', authenticateClient, getPortalNotificationPrefs);
+router.put('/notification-prefs', authenticateClient, updatePortalNotificationPrefs);
+router.get('/push/vapid-key', authenticateClient, getSharedVapidKey);
+router.post('/push/subscribe', authenticateClient, subscribePortalPush);
+router.post('/push/unsubscribe', authenticateClient, unsubscribePortalPush);
+router.get('/push/status', authenticateClient, portalPushStatus);
 
 // Документы (договоры + личные сертификаты)
 router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);

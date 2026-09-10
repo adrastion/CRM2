@@ -15,6 +15,15 @@ import {
   listPlatformChangelog,
   updatePlatformChangelog,
 } from '../controllers/platformChangelogController';
+import { authenticateTester } from '../middleware/testerAuth';
+import {
+  getTesterNotificationPrefs,
+  updateTesterNotificationPrefs,
+  getSharedVapidKey,
+  subscribeTesterPush,
+  unsubscribeTesterPush,
+  testerPushStatus,
+} from '../controllers/notificationPrefsController';
 
 const router = Router();
 
@@ -33,5 +42,12 @@ router.get('/changelog', authenticateSuperAdminOrTester, listPlatformChangelog);
 router.post('/changelog', authenticateSuperAdmin, createPlatformChangelog);
 router.put('/changelog/:id', authenticateSuperAdmin, updatePlatformChangelog);
 router.delete('/changelog/:id', authenticateSuperAdmin, deletePlatformChangelog);
+
+router.get('/tester/notification-prefs', authenticateTester, getTesterNotificationPrefs);
+router.put('/tester/notification-prefs', authenticateTester, updateTesterNotificationPrefs);
+router.get('/tester/push/vapid-key', authenticateTester, getSharedVapidKey);
+router.post('/tester/push/subscribe', authenticateTester, subscribeTesterPush);
+router.post('/tester/push/unsubscribe', authenticateTester, unsubscribeTesterPush);
+router.get('/tester/push/status', authenticateTester, testerPushStatus);
 
 export default router;

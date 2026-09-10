@@ -42,7 +42,7 @@ import { setHours, setMinutes } from 'date-fns';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
-import { subscribeToPushNotifications, unsubscribeFromPushNotifications, checkPushSubscriptionStatus, checkNotificationPermission } from '../utils/pushNotifications';
+import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -70,6 +70,10 @@ const Settings: React.FC = () => {
   const { user, updateUser } = useAuth();
   const canEditFinanceSettings = canEditSchoolFinanceSettings(user?.role);
   const canEditSchoolSettings = isOwnerOrAdmin(user?.role);
+  const showNotificationsTab =
+    user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER';
+  const notificationsTabIndex = 2;
+  const interfaceTabIndex = showNotificationsTab ? 3 : 2;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,9 +125,6 @@ const Settings: React.FC = () => {
     timezone: 'UTC',
   });
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [pushSubscribed, setPushSubscribed] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
-  const [showPushBanner, setShowPushBanner] = useState(true);
 
   const handleRestartOnboarding = async () => {
     try {
@@ -193,12 +194,9 @@ const Settings: React.FC = () => {
           setVisibleTabs(defaultTabs);
         }
 
-        // Загрузить настройки уведомлений для тренеров
+        // Загрузить настройки уведомлений для тренеров (дайджест тренировок)
         if (user?.role === 'TRAINER') {
           await loadNotificationSettings();
-          // Проверяем статус подписки на push
-          const isSubscribed = await checkPushSubscriptionStatus();
-          setPushSubscribed(isSubscribed);
         }
       } catch (err: any) {
         console.error('Error loading settings:', err);
@@ -248,13 +246,6 @@ const Settings: React.FC = () => {
         reminderBeforeMinutes: notificationSettingsData.reminderBeforeMinutes || 30,
         timezone: notificationSettingsData.timezone || 'UTC',
       });
-
-      // Проверяем статус подписки на push и разрешение
-      const isSubscribed = await checkPushSubscriptionStatus();
-      const permission = checkNotificationPermission();
-      setPushSubscribed(isSubscribed);
-      // Показываем плашку только если не подписан или разрешение не granted
-      setShowPushBanner(!isSubscribed || permission !== 'granted');
     } catch (err: any) {
       console.error('Error loading notification settings:', err);
     } finally {
@@ -299,72 +290,6 @@ const Settings: React.FC = () => {
       setSaving(false);
     }
   };
-
-  const handleSubscribePush = async () => {
-    try {
-      setSubscribing(true);
-      setError(null);
-      const success = await subscribeToPushNotifications();
-      if (success) {
-        setPushSubscribed(true);
-        setShowPushBanner(false); // Скрываем плашку после успешной подписки
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
-      } else {
-        setError('Не удалось подписаться на уведомления. Проверьте разрешения браузера.');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка подписки на уведомления');
-      console.error('Error subscribing to push:', err);
-    } finally {
-      setSubscribing(false);
-    }
-  };
-
-  const handleUnsubscribePush = async () => {
-    try {
-      setSubscribing(true);
-      setError(null);
-      const success = await unsubscribeFromPushNotifications();
-      if (success) {
-        setPushSubscribed(false);
-        setShowPushBanner(true); // Показываем плашку после отписки
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка отписки от уведомлений');
-      console.error('Error unsubscribing from push:', err);
-    } finally {
-      setSubscribing(false);
-    }
-  };
-
-  // Периодическая проверка статуса разрешения (на случай, если пользователь изменил настройки в браузере)
-  useEffect(() => {
-    if (user?.role !== 'TRAINER') return;
-
-    const checkPermission = () => {
-      const permission = checkNotificationPermission();
-      const shouldShow = !pushSubscribed || permission !== 'granted';
-      setShowPushBanner(shouldShow);
-      
-      // Если разрешение отозвано, обновляем статус подписки
-      if (permission !== 'granted' && pushSubscribed) {
-        checkPushSubscriptionStatus().then(isSubscribed => {
-          setPushSubscribed(isSubscribed);
-        });
-      }
-    };
-
-    // Проверяем при загрузке
-    checkPermission();
-
-    // Проверяем каждые 5 секунд (на случай изменения настроек браузера)
-    const interval = setInterval(checkPermission, 5000);
-
-    return () => clearInterval(interval);
-  }, [user, pushSubscribed]);
 
   const handleSaveSettings = async () => {
     try {
@@ -581,7 +506,7 @@ const Settings: React.FC = () => {
           >
             <Tab label="Расписание" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
             <Tab label="Аккаунт" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-            {user?.role === 'TRAINER' && (
+            {showNotificationsTab && (
               <Tab label="Уведомления" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
             )}
             <Tab label="Интерфейс" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
@@ -934,192 +859,118 @@ const Settings: React.FC = () => {
             </Grid>
           </TabPanel>
 
-          {/* Настройки уведомлений (только для тренеров) */}
-          {user?.role === 'TRAINER' && (
-            <TabPanel value={tabValue} index={2}>
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-                  Настройки уведомлений
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                  Настройте уведомления о тренировках
-                </Typography>
+          {/* Настройки уведомлений */}
+          {showNotificationsTab && (
+            <TabPanel value={tabValue} index={notificationsTabIndex}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                Настройки уведомлений
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Браузерные уведомления о чатах и расписание доставки
+              </Typography>
+              <NotificationSettingsPanel
+                actor="school"
+                showSchedule={user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER'}
+              />
 
-                {/* Подписка на push уведомления - показываем только если нужно */}
-                {showPushBanner && (
-                  <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3, backgroundColor: pushSubscribed ? 'warning.light' : 'info.light' }}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        flexDirection: { xs: 'column', sm: 'row' },
-                        alignItems: { xs: 'stretch', sm: 'center' },
-                        justifyContent: 'space-between',
-                        gap: 2,
-                        mb: 2,
-                      }}
-                    >
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="subtitle1" fontWeight="medium">
-                          Push уведомления на устройство
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {checkNotificationPermission() === 'denied'
-                            ? 'Уведомления отключены в настройках браузера. Включите их, чтобы получать push уведомления.'
-                            : pushSubscribed
-                            ? 'Вы подписаны, но уведомления отключены в браузере. Включите их в настройках браузера.'
-                            : 'Подпишитесь на push уведомления, чтобы получать их прямо на ваше устройство.'}
-                        </Typography>
-                      </Box>
-                      <Button
-                        variant={pushSubscribed ? "outlined" : "contained"}
-                        color={pushSubscribed ? "error" : "primary"}
-                        onClick={pushSubscribed ? handleUnsubscribePush : handleSubscribePush}
-                        disabled={subscribing || checkNotificationPermission() === 'denied'}
-                        sx={{ width: { xs: '100%', sm: 'auto' }, flexShrink: 0, textTransform: 'none' }}
-                      >
-                        {subscribing ? 'Обработка...' : pushSubscribed ? 'Отписаться' : 'Подписаться'}
-                      </Button>
-                    </Box>
-                  </Paper>
-                )}
-
-                <Grid container spacing={3}>
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Notifications sx={{ mr: 1, color: 'primary.main' }} />
-                        <Typography variant="subtitle1" fontWeight="medium">
-                          Уведомления о всех тренировках
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Получайте ежедневное уведомление о всех тренировках на выбранное время
-                      </Typography>
-                      
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={notificationSettings.allTrainingsEnabled}
-                            onChange={(e) => setNotificationSettings(prev => ({ ...prev, allTrainingsEnabled: e.target.checked }))}
-                            color="primary"
-                          />
-                        }
-                        label="Включить ежедневные уведомления"
-                        sx={{ mb: 2 }}
-                      />
-
-                      {notificationSettings.allTrainingsEnabled && (
-                        <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <TimePicker
-                            label="Время уведомления"
-                            value={notificationSettings.allTrainingsTime}
-                            onChange={(newTime) => setNotificationSettings(prev => ({ ...prev, allTrainingsTime: newTime }))}
-                            ampm={false}
-                            format="HH:mm"
-                            slotProps={{
-                              textField: {
-                                fullWidth: true,
-                              },
-                            }}
-                          />
-                          <FormControl fullWidth>
-                            <InputLabel>Период уведомлений</InputLabel>
-                            <Select
-                              value={notificationSettings.notificationPeriod}
-                              label="Период уведомлений"
-                              onChange={(e) => setNotificationSettings(prev => ({ ...prev, notificationPeriod: e.target.value as 'tomorrow' | 'week' | 'month' }))}
-                            >
-                              <MenuItem value="tomorrow">На завтра</MenuItem>
-                              <MenuItem value="week">На неделю</MenuItem>
-                              <MenuItem value="month">На месяц</MenuItem>
-                            </Select>
-                          </FormControl>
-                          <FormControl fullWidth>
-                            <InputLabel>Часовой пояс</InputLabel>
-                            <Select
-                              value={notificationSettings.timezone}
-                              label="Часовой пояс"
-                              onChange={(e) => setNotificationSettings(prev => ({ ...prev, timezone: e.target.value }))}
-                            >
-                              <MenuItem value="UTC">UTC (Всемирное координированное время)</MenuItem>
-                              <MenuItem value="Europe/Moscow">Europe/Moscow (Москва, UTC+3)</MenuItem>
-                              <MenuItem value="Europe/Kiev">Europe/Kiev (Киев, UTC+2)</MenuItem>
-                              <MenuItem value="Europe/Minsk">Europe/Minsk (Минск, UTC+3)</MenuItem>
-                              <MenuItem value="Europe/Kaliningrad">Europe/Kaliningrad (Калининград, UTC+2)</MenuItem>
-                              <MenuItem value="Europe/Samara">Europe/Samara (Самара, UTC+4)</MenuItem>
-                              <MenuItem value="Asia/Yekaterinburg">Asia/Yekaterinburg (Екатеринбург, UTC+5)</MenuItem>
-                              <MenuItem value="Asia/Omsk">Asia/Omsk (Омск, UTC+6)</MenuItem>
-                              <MenuItem value="Asia/Krasnoyarsk">Asia/Krasnoyarsk (Красноярск, UTC+7)</MenuItem>
-                              <MenuItem value="Asia/Irkutsk">Asia/Irkutsk (Иркутск, UTC+8)</MenuItem>
-                              <MenuItem value="Asia/Yakutsk">Asia/Yakutsk (Якутск, UTC+9)</MenuItem>
-                              <MenuItem value="Asia/Vladivostok">Asia/Vladivostok (Владивосток, UTC+10)</MenuItem>
-                              <MenuItem value="Asia/Magadan">Asia/Magadan (Магадан, UTC+11)</MenuItem>
-                              <MenuItem value="Asia/Kamchatka">Asia/Kamchatka (Камчатка, UTC+12)</MenuItem>
-                              <MenuItem value="America/New_York">America/New_York (Нью-Йорк, UTC-5)</MenuItem>
-                              <MenuItem value="America/Chicago">America/Chicago (Чикаго, UTC-6)</MenuItem>
-                              <MenuItem value="America/Denver">America/Denver (Денвер, UTC-7)</MenuItem>
-                              <MenuItem value="America/Los_Angeles">America/Los_Angeles (Лос-Анджелес, UTC-8)</MenuItem>
-                              <MenuItem value="Europe/London">Europe/London (Лондон, UTC+0)</MenuItem>
-                              <MenuItem value="Europe/Paris">Europe/Paris (Париж, UTC+1)</MenuItem>
-                              <MenuItem value="Europe/Berlin">Europe/Berlin (Берлин, UTC+1)</MenuItem>
-                              <MenuItem value="Asia/Tokyo">Asia/Tokyo (Токио, UTC+9)</MenuItem>
-                              <MenuItem value="Asia/Shanghai">Asia/Shanghai (Шанхай, UTC+8)</MenuItem>
-                              <MenuItem value="Asia/Dubai">Asia/Dubai (Дубай, UTC+4)</MenuItem>
-                              <MenuItem value="Australia/Sydney">Australia/Sydney (Сидней, UTC+10)</MenuItem>
-                            </Select>
-                          </FormControl>
+              {user?.role === 'TRAINER' && (
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <Typography variant="h6" gutterBottom sx={{ mt: 4, mb: 2 }}>
+                    Уведомления о тренировках
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Дайджест тренировок (отдельно от чатов)
+                  </Typography>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Notifications sx={{ mr: 1, color: 'primary.main' }} />
+                          <Typography variant="subtitle1" fontWeight="medium">
+                            Уведомления о всех тренировках
+                          </Typography>
                         </Box>
-                      )}
-                    </Paper>
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Notifications sx={{ mr: 1, color: 'primary.main' }} />
-                        <Typography variant="subtitle1" fontWeight="medium">
-                          Напоминания перед тренировкой
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Получайте ежедневное уведомление о всех тренировках на выбранное время
                         </Typography>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Получайте напоминание о предстоящей тренировке за указанное время до начала
-                      </Typography>
-                      
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={notificationSettings.reminderEnabled}
-                            onChange={(e) => setNotificationSettings(prev => ({ ...prev, reminderEnabled: e.target.checked }))}
-                            color="primary"
-                          />
-                        }
-                        label="Включить напоминания"
-                        sx={{ mb: 2 }}
-                      />
-
-                      {notificationSettings.reminderEnabled && (
-                        <Box sx={{ mt: 2 }}>
-                          <TextField
-                            fullWidth
-                            label="За сколько минут напоминать"
-                            type="number"
-                            value={notificationSettings.reminderBeforeMinutes}
-                            onChange={(e) => {
-                              const value = parseInt(e.target.value);
-                              if (!isNaN(value) && value >= 0) {
-                                setNotificationSettings(prev => ({ ...prev, reminderBeforeMinutes: value }));
-                              }
-                            }}
-                            inputProps={{ min: 0 }}
-                            helperText="Например: 30 (за 30 минут до начала тренировки)"
-                          />
-                        </Box>
-                      )}
-                    </Paper>
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={notificationSettings.allTrainingsEnabled}
+                              onChange={(e) => setNotificationSettings(prev => ({ ...prev, allTrainingsEnabled: e.target.checked }))}
+                              color="primary"
+                            />
+                          }
+                          label="Включить ежедневные уведомления"
+                        />
+                        {notificationSettings.allTrainingsEnabled && (
+                          <Box sx={{ mt: 2 }}>
+                            <TimePicker
+                              label="Время уведомления"
+                              value={notificationSettings.allTrainingsTime}
+                              onChange={(newValue) => setNotificationSettings(prev => ({ ...prev, allTrainingsTime: newValue }))}
+                              slotProps={{ textField: { fullWidth: true, sx: { mb: 2 } } }}
+                            />
+                            <FormControl fullWidth sx={{ mb: 2 }}>
+                              <InputLabel>Период</InputLabel>
+                              <Select
+                                value={notificationSettings.notificationPeriod}
+                                label="Период"
+                                onChange={(e) => setNotificationSettings(prev => ({ ...prev, notificationPeriod: e.target.value as 'tomorrow' | 'week' | 'month' }))}
+                              >
+                                <MenuItem value="tomorrow">На завтра</MenuItem>
+                                <MenuItem value="week">На неделю</MenuItem>
+                                <MenuItem value="month">На месяц</MenuItem>
+                              </Select>
+                            </FormControl>
+                            <FormControl fullWidth>
+                              <InputLabel>Часовой пояс</InputLabel>
+                              <Select
+                                value={notificationSettings.timezone}
+                                label="Часовой пояс"
+                                onChange={(e) => setNotificationSettings(prev => ({ ...prev, timezone: e.target.value }))}
+                              >
+                                <MenuItem value="UTC">UTC</MenuItem>
+                                <MenuItem value="Europe/Moscow">Europe/Moscow</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Box>
+                        )}
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={notificationSettings.reminderEnabled}
+                              onChange={(e) => setNotificationSettings(prev => ({ ...prev, reminderEnabled: e.target.checked }))}
+                              color="primary"
+                            />
+                          }
+                          label="Напоминание перед тренировкой"
+                        />
+                        {notificationSettings.reminderEnabled && (
+                          <Box sx={{ mt: 2 }}>
+                            <TextField
+                              fullWidth
+                              label="За сколько минут напоминать"
+                              type="number"
+                              value={notificationSettings.reminderBeforeMinutes}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                if (!isNaN(value) && value >= 0) {
+                                  setNotificationSettings(prev => ({ ...prev, reminderBeforeMinutes: value }));
+                                }
+                              }}
+                              inputProps={{ min: 0 }}
+                              helperText="Например: 30 (за 30 минут до начала тренировки)"
+                            />
+                          </Box>
+                        )}
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12}>
                       <Button
                         variant="contained"
                         startIcon={<Save />}
@@ -1127,17 +978,17 @@ const Settings: React.FC = () => {
                         disabled={saving || loadingNotifications}
                         sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                       >
-                        {saving ? 'Сохранение...' : 'Сохранить настройки уведомлений'}
+                        {saving ? 'Сохранение...' : 'Сохранить настройки тренировок'}
                       </Button>
-                    </Box>
+                    </Grid>
                   </Grid>
-                </Grid>
-              </LocalizationProvider>
+                </LocalizationProvider>
+              )}
             </TabPanel>
           )}
 
           {/* Настройки интерфейса */}
-          <TabPanel value={tabValue} index={user?.role === 'TRAINER' ? 3 : 2}>
+          <TabPanel value={tabValue} index={interfaceTabIndex}>
             <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
               Настройки интерфейса
             </Typography>
