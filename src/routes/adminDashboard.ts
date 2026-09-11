@@ -75,6 +75,10 @@ import {
   updateSuperAdminNotificationPrefs,
 } from '../controllers/notificationPrefsController';
 import {
+  getAdminMaintenance,
+  updateAdminMaintenance,
+} from '../controllers/maintenanceController';
+import {
   authenticateSuperAdmin,
   authenticatePlatformViewer,
   requirePlatformWrite,
@@ -209,5 +213,8 @@ router.get('/server-metrics/push/status', getSuperAdminPushSubscriptionStatus);
 
 router.get('/notification-prefs', getSuperAdminNotificationPrefs);
 router.put('/notification-prefs', updateSuperAdminNotificationPrefs);
+
+router.get('/maintenance', getAdminMaintenance);
+router.put('/maintenance', updateAdminMaintenance);
 
 export default router;

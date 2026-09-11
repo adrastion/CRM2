@@ -1076,6 +1076,8 @@ model SuperAdminSettings {
   alertLoadPerCore    Float         @default(1)
   alertCooldownMinutes Int          @default(15)
   lastAlertAt         DateTime?
+  /// Режим технических работ: сайт недоступен всем, кроме супер-админа
+  maintenanceMode     Boolean       @default(false)
   budgetLimits        BudgetLimit[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt

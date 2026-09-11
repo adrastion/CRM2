@@ -92,6 +92,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
 import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
+import SuperAdminMaintenanceTab from './SuperAdminMaintenanceTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 import SuperAdminPlannerTab from './SuperAdminPlannerTab';
 import {
@@ -112,6 +113,7 @@ const SA_SECTIONS = [
   'tariffs',
   'marketers',
   'server-load',
+  'maintenance',
   'notifications',
   'planner',
   'development',
@@ -2868,6 +2870,8 @@ const AdminDashboard: React.FC = () => {
 
       {/* Вкладка: Нагрузка сервера */}
       {section === 'server-load' && <ServerLoadMonitoringTab />}
+
+      {section === 'maintenance' && <SuperAdminMaintenanceTab />}
 
       {section === 'notifications' && (
         <Box sx={{ maxWidth: 720 }}>

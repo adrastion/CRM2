@@ -605,22 +605,36 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           >
             {savedAccounts.map((account) => {
               const isActive = account.id === activeAccountId;
+              const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
+              const blockedByMaintenance =
+                maintenanceOn &&
+                account.accountType !== 'SUPER_ADMIN' &&
+                Boolean(localStorage.getItem('superAdminToken'));
               return (
                 <MenuItem
                   key={account.id}
                   selected={isActive}
-                  disabled={isActive}
+                  disabled={isActive || blockedByMaintenance}
                   onClick={() => {
                     setMenuAnchor(null);
-                    if (!isActive) switchToAccount(account.id);
+                    if (!isActive && !blockedByMaintenance) switchToAccount(account.id);
                   }}
+                  title={
+                    blockedByMaintenance
+                      ? 'Во время техобслуживания доступен только супер-админ'
+                      : undefined
+                  }
                 >
                   <ListItemIcon sx={{ minWidth: 36 }}>
                     {isActive ? <Check fontSize="small" /> : null}
                   </ListItemIcon>
                   <ListItemText
                     primary={account.displayName}
-                    secondary={account.subtitle || undefined}
+                    secondary={
+                      blockedByMaintenance
+                        ? 'Недоступно (техобслуживание)'
+                        : account.subtitle || undefined
+                    }
                     primaryTypographyProps={{
                       noWrap: true,
                       sx: { maxWidth: 200, fontWeight: isActive ? 700 : 500 },

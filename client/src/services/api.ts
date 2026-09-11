@@ -123,6 +123,25 @@ class ApiService {
           return Promise.reject(error);
         }
         
+        if (error.response?.status === 503 && error.response?.data?.code === 'MAINTENANCE') {
+          if (!localStorage.getItem('superAdminToken')) {
+            sessionStorage.setItem('maintenanceMode', '1');
+            window.dispatchEvent(
+              new CustomEvent('maintenance-mode', {
+                detail: {
+                  enabled: true,
+                  message: error.response?.data?.error || '',
+                },
+              })
+            );
+            const path = window.location.pathname;
+            if (path !== '/auth' && path !== '/maintenance') {
+              window.location.href = '/maintenance';
+            }
+          }
+          return Promise.reject(error);
+        }
+
         if (error.response?.status === 401) {
           // Token expired or invalid
           const url = error.config?.url || '';
@@ -666,6 +685,21 @@ class ApiService {
 
   async getTesterPushStatus(): Promise<{ subscribed: boolean; count: number }> {
     const response = await this.api.get<ApiResponse>('/platform/tester/push/status');
+    return response.data.data;
+  }
+
+  async getMaintenanceStatus(): Promise<{ enabled: boolean; message: string }> {
+    const response = await this.api.get<ApiResponse>('/maintenance/status');
+    return response.data.data;
+  }
+
+  async getAdminMaintenance(): Promise<{ enabled: boolean; message: string }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/maintenance');
+    return response.data.data;
+  }
+
+  async updateAdminMaintenance(enabled: boolean): Promise<{ enabled: boolean; message: string }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/maintenance', { enabled });
     return response.data.data;
   }
 

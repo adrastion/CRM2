@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { createAppTheme } from './theme/muiTheme';
 import { CssBaseline, Box, CircularProgress } from '@mui/material';
@@ -32,6 +32,7 @@ const Finance = lazy(() => import('./pages/Finance'));
 const Memberships = lazy(() => import('./pages/Memberships'));
 const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const Maintenance = lazy(() => import('./pages/Maintenance'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
 const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
 const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
@@ -224,6 +225,68 @@ const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ 
   return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 };
 
+/**
+ * Пока включено техобслуживание — не-SA видят заглушку (кроме /auth для входа SA).
+ */
+const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const [checking, setChecking] = React.useState(true);
+  const [enabled, setEnabled] = React.useState(
+    () => sessionStorage.getItem('maintenanceMode') === '1'
+  );
+  const [message, setMessage] = React.useState(
+    'На сайте сейчас технические работы. Сервис временно недоступен. Попробуйте позже.'
+  );
+  const isSa = Boolean(localStorage.getItem('superAdminToken'));
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await apiService.getMaintenanceStatus();
+        if (cancelled) return;
+        setEnabled(Boolean(status?.enabled));
+        if (status?.message) setMessage(status.message);
+        if (status?.enabled) sessionStorage.setItem('maintenanceMode', '1');
+        else sessionStorage.removeItem('maintenanceMode');
+      } catch {
+        /* ignore — leave session flag */
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+
+    const onEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      setEnabled(true);
+      if (detail.message) setMessage(String(detail.message));
+      sessionStorage.setItem('maintenanceMode', '1');
+    };
+    window.addEventListener('maintenance-mode', onEvent as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('maintenance-mode', onEvent as EventListener);
+    };
+  }, []);
+
+  if (checking && !enabled) {
+    return <PageLoader />;
+  }
+
+  if (enabled && !isSa) {
+    if (location.pathname === '/auth') {
+      return <>{children}</>;
+    }
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <Maintenance message={message} />
+      </Suspense>
+    );
+  }
+
+  return <>{children}</>;
+};
+
 // Main App Component
 const AppContent: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -299,6 +362,7 @@ const AppContent: React.FC = () => {
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
     <Router>
+      <MaintenanceGate>
       <SupportFAB />
       {!onboardingLoading && user?.role === 'OWNER' && (
         <InteractiveOnboarding
@@ -310,6 +374,7 @@ const AppContent: React.FC = () => {
       )}
       <Suspense fallback={<PageLoader />}>
       <Routes>
+        <Route path="/maintenance" element={<Maintenance />} />
         {/* Unified auth — единый вход для всех ролей (Figma) */}
         <Route path="/auth" element={<Auth />} />
         <Route path="/login" element={<Navigate to="/auth" replace />} />
@@ -579,6 +644,7 @@ const AppContent: React.FC = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
+      </MaintenanceGate>
     </Router>
     </ThemeProvider>
   );

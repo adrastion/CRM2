@@ -50,6 +50,8 @@ import searchRoutes from './routes/search';
 import chatRoutes from './routes/chat';
 import platformRoutes from './routes/platform';
 import notificationPrefsRoutes from './routes/notificationPrefs';
+import maintenanceRoutes from './routes/maintenance';
+import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
 import { attachChatNamespace } from './services/chatSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
@@ -169,9 +171,13 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Режим техобслуживания: 503 для всех, кроме SUPER_ADMIN (+ allowlist)
+app.use(maintenanceMiddleware);
+
 // API routes — школьные роуты снимают client-supplied tenantId из body
 const schoolTenantGuard = stripClientTenantFields;
 
+app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/client-auth', clientAuthRoutes);
 app.use('/api/tenant', schoolTenantGuard, tenantRoutes);
