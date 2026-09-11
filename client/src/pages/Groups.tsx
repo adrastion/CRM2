@@ -34,6 +34,7 @@ import {
   useMediaQuery,
   useTheme,
   Stack,
+  ButtonBase,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import { Add, Edit, Delete, People, CalendarToday } from '@mui/icons-material';
@@ -53,6 +54,49 @@ import {
   salarySchemeHint,
   normalizeSalaryScheme,
 } from '../utils/salarySchemes';
+import { colors, typography } from '../theme/tokens';
+
+function trainerDisplayName(trainer?: Trainer | null): string {
+  if (!trainer?.user) return '—';
+  return `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim();
+}
+
+/** Soft chip like ClientsList «Группа» column */
+const SoftFieldChip: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
+  <ButtonBase
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick();
+    }}
+    sx={{
+      bgcolor: colors.primarySoft,
+      color: colors.primary,
+      px: 1.5,
+      py: 0.5,
+      borderRadius: '10px',
+      fontWeight: 600,
+      fontSize: typography.hint,
+      textAlign: 'center',
+      maxWidth: '100%',
+      lineHeight: 1.2,
+    }}
+  >
+    <Typography
+      component="span"
+      sx={{
+        fontWeight: 600,
+        fontSize: 'inherit',
+        color: 'inherit',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        maxWidth: 160,
+      }}
+    >
+      {label}
+    </Typography>
+  </ButtonBase>
+);
 
 const Groups: React.FC = () => {
   const navigate = useNavigate();
@@ -71,6 +115,12 @@ const Groups: React.FC = () => {
   const [trainingDialog, setTrainingDialog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [fieldEdit, setFieldEdit] = useState<{
+    group: Group;
+    field: 'branch' | 'trainer';
+  } | null>(null);
+  const [fieldEditValue, setFieldEditValue] = useState('');
+  const [fieldEditSaving, setFieldEditSaving] = useState(false);
   const [shouldCreatePaymentsAfterSchedule, setShouldCreatePaymentsAfterSchedule] = useState(false); // Флаг для создания платежей после создания графика
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
@@ -474,6 +524,39 @@ const Groups: React.FC = () => {
       salaryRate: group.salaryRate != null ? String(group.salaryRate) : '',
     });
     setEditDialog(true);
+  };
+
+  const openFieldEdit = (group: Group, field: 'branch' | 'trainer') => {
+    setFieldEdit({ group, field });
+    setFieldEditValue(field === 'branch' ? group.branchId : group.trainerId);
+  };
+
+  const closeFieldEdit = () => {
+    setFieldEdit(null);
+    setFieldEditValue('');
+    setFieldEditSaving(false);
+  };
+
+  const saveFieldEdit = async () => {
+    if (!fieldEdit || !fieldEditValue) return;
+    setFieldEditSaving(true);
+    try {
+      const payload =
+        fieldEdit.field === 'branch'
+          ? { branchId: fieldEditValue }
+          : { trainerId: fieldEditValue };
+      await apiService.updateGroup(fieldEdit.group.id, payload);
+      await fetchData();
+      closeFieldEdit();
+      setSnackbarMessage(
+        fieldEdit.field === 'branch' ? 'Филиал обновлён' : 'Тренер обновлён'
+      );
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setFieldEditSaving(false);
+    }
   };
 
   const handleUpdateGroup = async () => {
@@ -1125,9 +1208,16 @@ const Groups: React.FC = () => {
                         size="small"
                       />
                     </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {[group.branch?.name, trainerName].filter(Boolean).join(' · ') || 'Филиал/тренер не указаны'}
-                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1, alignItems: 'center' }}>
+                      <SoftFieldChip
+                        label={group.branch?.name || '—'}
+                        onClick={() => openFieldEdit(group, 'branch')}
+                      />
+                      <SoftFieldChip
+                        label={trainerName || '—'}
+                        onClick={() => openFieldEdit(group, 'trainer')}
+                      />
+                    </Box>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
                       <Chip label={`Участников: ${memberCount}`} size="small" variant="outlined" />
                       {group.maxMembers != null && (
@@ -1261,12 +1351,20 @@ const Groups: React.FC = () => {
                         {group.description || '-'}
                       </TableCell>
                   <TableCell>
-                        {group.branch?.name || '-'}
+                        <SoftFieldChip
+                          label={group.branch?.name || '—'}
+                          onClick={() => openFieldEdit(group, 'branch')}
+                        />
                   </TableCell>
                   <TableCell>
-                        {group.trainer?.user 
-                          ? `${group.trainer.user.lastName} ${group.trainer.user.firstName} ${group.trainer.user.middleName || ''}`.trim()
-                          : '-'}
+                        <SoftFieldChip
+                          label={
+                            group.trainer?.user
+                              ? trainerDisplayName(group.trainer)
+                              : '—'
+                          }
+                          onClick={() => openFieldEdit(group, 'trainer')}
+                        />
                   </TableCell>
                       <TableCell>{group.maxMembers || '-'}</TableCell>
                   <TableCell>
@@ -2912,6 +3010,46 @@ const Groups: React.FC = () => {
           </Button>
           <Button onClick={handleCreateBranchFromGroup} variant="contained">
             Создать филиал
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Быстрая смена филиала / тренера */}
+      <Dialog open={Boolean(fieldEdit)} onClose={closeFieldEdit} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {fieldEdit?.field === 'branch' ? 'Изменить филиал' : 'Изменить тренера'}
+          {fieldEdit ? `: ${fieldEdit.group.name}` : ''}
+        </DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>{fieldEdit?.field === 'branch' ? 'Филиал' : 'Тренер'}</InputLabel>
+            <Select
+              value={fieldEditValue}
+              label={fieldEdit?.field === 'branch' ? 'Филиал' : 'Тренер'}
+              onChange={(e) => setFieldEditValue(e.target.value)}
+            >
+              {fieldEdit?.field === 'branch'
+                ? branches.map((branch) => (
+                    <MenuItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </MenuItem>
+                  ))
+                : trainers.map((trainer) => (
+                    <MenuItem key={trainer.id} value={trainer.id}>
+                      {trainerDisplayName(trainer)}
+                    </MenuItem>
+                  ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeFieldEdit}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={saveFieldEdit}
+            disabled={!fieldEditValue || fieldEditSaving}
+          >
+            {fieldEditSaving ? 'Сохранение…' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

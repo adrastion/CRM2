@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Button,
+  ButtonBase,
   Chip,
   IconButton,
   Link,
@@ -33,6 +34,8 @@ interface Props {
   draft: Partial<AthleteCardData>;
   onDraftChange: (patch: Partial<AthleteCardData>) => void;
   onPhotoChange?: (base64: string) => void;
+  /** Staff: быстрая смена групп (как на вкладке «Клиенты»). */
+  onGroupClick?: () => void;
 }
 
 const AthleteProfileHeader: React.FC<Props> = ({
@@ -42,6 +45,7 @@ const AthleteProfileHeader: React.FC<Props> = ({
   draft,
   onDraftChange,
   onPhotoChange,
+  onGroupClick,
 }) => {
   const meta = deriveSecondaryMeta(data);
   const name = fullName(editing ? { ...data, ...draft } : data);
@@ -294,7 +298,46 @@ const AthleteProfileHeader: React.FC<Props> = ({
           }}
         >
           <MetaItem label="Тренер" value={meta.trainerLabel} />
-          <MetaItem label="Группа" value={meta.groupLabel} />
+          <Box>
+            <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>Группа</Typography>
+            {mode === 'staff' && onGroupClick ? (
+              <ButtonBase
+                onClick={onGroupClick}
+                sx={{
+                  mt: 0.25,
+                  bgcolor: colors.primarySoft,
+                  color: colors.primary,
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                  fontSize: typography.label,
+                  textAlign: 'left',
+                  maxWidth: '100%',
+                  lineHeight: 1.2,
+                }}
+              >
+                <Typography
+                  component="span"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: 'inherit',
+                    color: 'inherit',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: 220,
+                  }}
+                >
+                  {meta.groupLabel}
+                </Typography>
+              </ButtonBase>
+            ) : (
+              <Typography sx={{ fontSize: typography.label, color: colors.textMuted, fontWeight: 600 }}>
+                {meta.groupLabel}
+              </Typography>
+            )}
+          </Box>
           <MetaItem label="Филиал" value={meta.branchLabel} />
         </Box>
       </Box>

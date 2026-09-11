@@ -18,6 +18,7 @@ import {
   Close,
 } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import { Group } from '../../types';
 import { colors, typography } from '../../theme/tokens';
 import { AthleteCardProps, AthleteCardData } from './athleteCardTypes';
 import { buildCalendarEvents, fullName } from './athleteCardUtils';
@@ -28,6 +29,7 @@ import AthleteCompetitionResults from './AthleteCompetitionResults';
 import AthletePersonalDocs from './AthletePersonalDocs';
 import AthleteContracts from './AthleteContracts';
 import AthleteParents from './AthleteParents';
+import ClientGroupsDialog from '../client/ClientGroupsDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { isOwnerOrAdmin } from '../../utils/roles';
 
@@ -118,6 +120,8 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   const [moreAnchor, setMoreAnchor] = React.useState<null | HTMLElement>(null);
   const [removeParentIdx, setRemoveParentIdx] = React.useState<number | null>(null);
   const [addStandardToken, setAddStandardToken] = React.useState(0);
+  const [groupsDialog, setGroupsDialog] = React.useState(false);
+  const [groupsCatalog, setGroupsCatalog] = React.useState<Group[]>([]);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -383,6 +387,32 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         draft={draft}
         onDraftChange={patchDraft}
         onPhotoChange={(base64) => patchDraft({ photo: base64 })}
+        onGroupClick={
+          mode === 'staff'
+            ? async () => {
+                try {
+                  const res = await apiService.getGroups({ limit: 1000, page: 1 });
+                  setGroupsCatalog(res.data || []);
+                } catch (e) {
+                  console.error(e);
+                  setGroupsCatalog([]);
+                }
+                setGroupsDialog(true);
+              }
+            : undefined
+        }
+      />
+
+      <ClientGroupsDialog
+        open={groupsDialog}
+        client={data}
+        groups={groupsCatalog}
+        onClose={() => setGroupsDialog(false)}
+        onChanged={async () => {
+          await reload();
+        }}
+        onError={(message) => setError(message)}
+        onSuccessMessage={(message) => setSnack(message)}
       />
 
       <AthleteStandardsAccordion
