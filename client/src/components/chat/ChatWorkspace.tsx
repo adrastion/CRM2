@@ -31,6 +31,7 @@ export interface ChatThreadItem {
   clientId: string | null;
   trainerId: string | null;
   groupId: string | null;
+  staffTaskId?: string | null;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
   unreadCount: number;
@@ -40,6 +41,7 @@ export interface ChatThreadItem {
     clientId?: string;
     trainerId?: string;
     groupId?: string;
+    staffTaskId?: string;
   };
 }
 
@@ -67,6 +69,8 @@ interface ChatWorkspaceProps {
     kind: 'USER' | 'CLIENT' | 'PARENT' | 'SUPER_ADMIN' | 'TESTER';
     id: string;
   };
+  /** Открыть тред после загрузки списка (например ?threadId=). */
+  initialThreadId?: string | null;
 }
 
 const PRESENCE_LABEL: Record<PresenceStatus, string> = {
@@ -131,7 +135,7 @@ function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
 /**
  * Двухколоночный UI чатов: список бесед + лента.
  */
-const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }) => {
+const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, initialThreadId }) => {
   const [threads, setThreads] = useState<ChatThreadItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState('');
@@ -244,6 +248,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
       setLoadingMessages(false);
     }
   };
+
+  const initialOpenedRef = useRef(false);
+  useEffect(() => {
+    if (initialOpenedRef.current || loadingList || !initialThreadId || !threads.length) return;
+    const target = threads.find((t) => t.id === initialThreadId);
+    if (target) {
+      initialOpenedRef.current = true;
+      void openThread(target);
+    }
+  }, [initialThreadId, loadingList, threads]);
 
   const onSocketMessage = useCallback(
     (msg: ChatSocketMessage) => {
@@ -498,6 +512,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                   key={t.threadKey}
                   selected={t.threadKey === selectedKey}
                   onClick={() => openThread(t)}
+                  sx={
+                    t.type === 'STAFF_TASK'
+                      ? {
+                          borderLeft: `3px solid ${colors.primary}`,
+                          bgcolor: selectedKey === t.threadKey ? undefined : 'rgba(25, 118, 210, 0.06)',
+                        }
+                      : undefined
+                  }
                 >
                   <ListItemText
                     primary={
@@ -506,6 +528,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self }
                         <Typography fontWeight={t.unreadCount ? 700 : 500} noWrap>
                           {t.title}
                         </Typography>
+                        {t.type === 'STAFF_TASK' && (
+                          <Chip size="small" label="Задача" color="primary" variant="outlined" />
+                        )}
                         {t.unreadCount > 0 && (
                           <Badge badgeContent={t.unreadCount} color="primary" />
                         )}

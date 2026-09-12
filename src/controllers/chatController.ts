@@ -23,6 +23,7 @@ const VALID_TYPES = new Set<string>([
   'GROUP',
   'TRAINER_ADMIN',
   'TRAINERS',
+  'STAFF_TASK',
 ]);
 
 function parseEnsureBody(body: any): EnsureThreadInput {
@@ -35,6 +36,7 @@ function parseEnsureBody(body: any): EnsureThreadInput {
     clientId: body?.clientId ? String(body.clientId) : undefined,
     trainerId: body?.trainerId ? String(body.trainerId) : undefined,
     groupId: body?.groupId ? String(body.groupId) : undefined,
+    staffTaskId: body?.staffTaskId ? String(body.staffTaskId) : undefined,
   };
 }
 

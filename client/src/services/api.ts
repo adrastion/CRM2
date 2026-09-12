@@ -40,6 +40,7 @@ export type NotificationPrefs = {
   paymentsEnabled?: boolean;
   trainingRemindersEnabled?: boolean;
   scheduleChangesEnabled?: boolean;
+  taskRemindersEnabled?: boolean;
   scheduleMode: 'ALWAYS' | 'WINDOW';
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -715,6 +716,84 @@ class ApiService {
 
   async publishSchoolOffer(data: { title: string; body: string; url?: string | null }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/school-offers', data);
+    return response.data.data;
+  }
+
+  async listStaffNotes(visibility?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/staff-workspace/notes', {
+      params: visibility ? { visibility } : undefined,
+    });
+    return response.data.data || [];
+  }
+
+  async createStaffNote(data: { title: string; body: string; visibility: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/staff-workspace/notes', data);
+    return response.data.data;
+  }
+
+  async updateStaffNote(
+    id: string,
+    data: Partial<{ title: string; body: string; visibility: string }>
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/staff-workspace/notes/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteStaffNote(id: string): Promise<void> {
+    await this.api.delete(`/staff-workspace/notes/${id}`);
+  }
+
+  async listStaffWorkspaceUsers(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/staff-workspace/users');
+    return response.data.data || [];
+  }
+
+  async listStaffTasks(status?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/staff-workspace/tasks', {
+      params: status ? { status } : undefined,
+    });
+    return response.data.data || [];
+  }
+
+  async createStaffTask(data: {
+    title: string;
+    body: string;
+    dueAt?: string | null;
+    assigneeIds: string[];
+    createChat?: boolean;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/staff-workspace/tasks', data);
+    return response.data.data;
+  }
+
+  async updateStaffTask(
+    id: string,
+    data: Partial<{
+      title: string;
+      body: string;
+      dueAt: string | null;
+      assigneeIds: string[];
+      status: string;
+      createChat: boolean;
+    }>
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/staff-workspace/tasks/${id}`, data);
+    return response.data.data;
+  }
+
+  async updateStaffTaskStatus(id: string, status: string): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(`/staff-workspace/tasks/${id}/status`, {
+      status,
+    });
+    return response.data.data;
+  }
+
+  async deleteStaffTask(id: string): Promise<void> {
+    await this.api.delete(`/staff-workspace/tasks/${id}`);
+  }
+
+  async ensureStaffTaskChat(taskId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/staff-workspace/tasks/${taskId}/chat`);
     return response.data.data;
   }
 

@@ -26,6 +26,7 @@ export interface EnsureThreadInput {
   clientId?: string;
   trainerId?: string;
   groupId?: string;
+  staffTaskId?: string;
 }
 
 export interface ThreadListItem {
@@ -37,6 +38,7 @@ export interface ThreadListItem {
   clientId: string | null;
   trainerId: string | null;
   groupId: string | null;
+  staffTaskId?: string | null;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
   unreadCount: number;
@@ -77,6 +79,9 @@ export function threadKeyFor(input: EnsureThreadInput, tenantId?: string | null)
     case 'TRAINERS':
       if (!tenantId) throw badRequest('tenantId обязателен для TRAINERS');
       return `trainers:${tenantId}`;
+    case 'STAFF_TASK':
+      if (!input.staffTaskId) throw badRequest('staffTaskId обязателен');
+      return `staff_task:${input.staffTaskId}`;
     case 'PLATFORM_TESTERS':
       return 'platform_testers';
     case 'SUPER_ADMINS':
@@ -173,6 +178,7 @@ export async function canAccessThread(
     clientId: string | null;
     trainerId: string | null;
     groupId: string | null;
+    staffTaskId?: string | null;
   }
 ): Promise<boolean> {
   if (thread.type === 'PLATFORM_TESTERS') {
@@ -236,9 +242,27 @@ export async function canAccessThread(
     case 'TRAINERS': {
       return isTrainer;
     }
+    case 'STAFF_TASK': {
+      if (school.kind !== 'USER' || !thread.staffTaskId) return false;
+      return canAccessStaffTask(school.userId, school.tenantId, thread.staffTaskId);
+    }
     default:
       return false;
   }
+}
+
+async function canAccessStaffTask(
+  userId: string,
+  tenantId: string,
+  taskId: string
+): Promise<boolean> {
+  const task = await prisma.staffTask.findFirst({
+    where: { id: taskId, tenantId },
+    include: { assignees: { select: { userId: true } } },
+  });
+  if (!task) return false;
+  if (task.createdByUserId === userId) return true;
+  return task.assignees.some((a) => a.userId === userId);
 }
 
 async function assertCanEnsure(actor: ChatActor, input: EnsureThreadInput): Promise<void> {
@@ -291,6 +315,14 @@ async function assertCanEnsure(actor: ChatActor, input: EnsureThreadInput): Prom
       if (isTrainer) return;
       throw forbidden('Только для тренеров');
     }
+    case 'STAFF_TASK': {
+      if (school.kind !== 'USER' || !input.staffTaskId) {
+        throw badRequest('staffTaskId обязателен');
+      }
+      const ok = await canAccessStaffTask(school.userId, school.tenantId, input.staffTaskId);
+      if (!ok) throw forbidden('Нет доступа к чату задачи');
+      return;
+    }
     default:
       throw badRequest('Неизвестный тип чата');
   }
@@ -324,6 +356,7 @@ export async function ensureThread(actor: ChatActor, input: EnsureThreadInput) {
       clientId: input.clientId || null,
       trainerId: input.trainerId || null,
       groupId: input.groupId || null,
+      staffTaskId: input.staffTaskId || null,
     },
     include: {
       client: { select: { id: true, firstName: true, lastName: true, middleName: true } },
@@ -334,8 +367,15 @@ export async function ensureThread(actor: ChatActor, input: EnsureThreadInput) {
         },
       },
       group: { select: { id: true, name: true } },
+      staffTask: { select: { id: true, title: true } },
     },
   });
+}
+
+/** Создать/получить чат по задаче сотрудника. */
+export async function ensureStaffTaskThread(actor: ChatActor, taskId: string) {
+  if (actor.kind !== 'USER') throw forbidden('Нет доступа');
+  return ensureThread(actor, { type: 'STAFF_TASK', staffTaskId: taskId });
 }
 
 function titleForCandidate(
@@ -344,6 +384,7 @@ function titleForCandidate(
     clientName?: string;
     trainerName?: string;
     groupName?: string;
+    taskTitle?: string;
   },
   actor: ChatActor
 ): { title: string; subtitle: string } {
@@ -386,6 +427,11 @@ function titleForCandidate(
       return { title: 'Администрация', subtitle: 'Администрация' };
     case 'TRAINERS':
       return { title: 'Тренеры', subtitle: 'Общая беседа тренеров' };
+    case 'STAFF_TASK':
+      return {
+        title: meta.taskTitle || 'Задача',
+        subtitle: 'Задача',
+      };
     default:
       return { title: 'Чат', subtitle: '' };
   }
@@ -719,6 +765,7 @@ export async function listThreadsForActor(actor: ChatActor): Promise<ThreadListI
         clientId: c.clientId || null,
         trainerId: c.trainerId || null,
         groupId: c.groupId || null,
+        staffTaskId: null,
         lastMessageAt: thread.lastMessageAt?.toISOString() || null,
         lastMessagePreview: preview,
         unreadCount,
@@ -735,11 +782,60 @@ export async function listThreadsForActor(actor: ChatActor): Promise<ThreadListI
         clientId: c.clientId || null,
         trainerId: c.trainerId || null,
         groupId: c.groupId || null,
+        staffTaskId: null,
         lastMessageAt: null,
         lastMessagePreview: null,
         unreadCount: 0,
         ensurePayload,
         presenceStatus,
+      });
+    }
+  }
+
+  // Чаты по задачам сотрудников (только реально созданные)
+  if (actor.kind === 'USER') {
+    const taskThreads = await prisma.chatThread.findMany({
+      where: {
+        tenantId,
+        type: 'STAFF_TASK',
+        staffTaskId: { not: null },
+        OR: [
+          { staffTask: { createdByUserId: actor.userId } },
+          { staffTask: { assignees: { some: { userId: actor.userId } } } },
+        ],
+      },
+      include: {
+        staffTask: { select: { id: true, title: true } },
+      },
+    });
+
+    for (const thread of taskThreads) {
+      if (items.some((i) => i.threadKey === thread.threadKey)) continue;
+      const taskTitle = thread.staffTask?.title || 'Задача';
+      const { title, subtitle } = titleForCandidate(
+        'STAFF_TASK',
+        { taskTitle },
+        actor
+      );
+      const [preview, unreadCount] = await Promise.all([
+        lastPreview(thread.id),
+        unreadForThread(thread.id, thread.lastMessageAt, actor),
+      ]);
+      items.push({
+        id: thread.id,
+        type: 'STAFF_TASK',
+        threadKey: thread.threadKey,
+        title,
+        subtitle,
+        clientId: null,
+        trainerId: null,
+        groupId: null,
+        staffTaskId: thread.staffTaskId,
+        lastMessageAt: thread.lastMessageAt?.toISOString() || null,
+        lastMessagePreview: preview,
+        unreadCount,
+        ensurePayload: { type: 'STAFF_TASK', staffTaskId: thread.staffTaskId || undefined },
+        presenceStatus: null,
       });
     }
   }
@@ -1308,6 +1404,7 @@ export async function resolvePeerPresenceKeys(
     clientId: string | null;
     trainerId: string | null;
     groupId: string | null;
+    staffTaskId?: string | null;
   },
   author: ChatActor
 ): Promise<string[]> {
@@ -1396,6 +1493,19 @@ export async function resolvePeerPresenceKeys(
           select: { userId: true },
         });
         for (const t of trainers) keys.add(presenceKeyUser(t.userId));
+        break;
+      }
+      case 'STAFF_TASK': {
+        if (thread.staffTaskId) {
+          const task = await prisma.staffTask.findFirst({
+            where: { id: thread.staffTaskId, tenantId },
+            include: { assignees: { select: { userId: true } } },
+          });
+          if (task) {
+            keys.add(presenceKeyUser(task.createdByUserId));
+            for (const a of task.assignees) keys.add(presenceKeyUser(a.userId));
+          }
+        }
         break;
       }
       default:

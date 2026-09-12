@@ -53,6 +53,8 @@ model Tenant {
   trainerSalaryLedgers    TrainerSalaryLedger[]
   chatThreads             ChatThread[]
   clientContracts         ClientContract[]
+  staffNotes              StaffNote[]
+  staffTasks              StaffTask[]
 
   @@map("tenants")
 }
@@ -101,6 +103,9 @@ model User {
   linkedTester     Tester?
   uploadedContracts ClientContract[]
   uploadedAddenda   ClientContractAddendum[]
+  staffNotesAuthored StaffNote[] @relation("StaffNoteAuthor")
+  staffTasksCreated  StaffTask[] @relation("StaffTaskCreator")
+  staffTaskAssignments StaffTaskAssignee[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -513,6 +518,8 @@ model NotificationPreference {
   trainingRemindersEnabled Boolean @default(true)
   /// Перенос / отмена тренировки (CLIENT/PARENT)
   scheduleChangesEnabled Boolean @default(true)
+  /// Напоминания о дедлайнах задач (school USER)
+  taskRemindersEnabled Boolean @default(true)
   /// ALWAYS | WINDOW — только для школьного staff (USER)
   scheduleMode         String   @default("ALWAYS")
   /// Начало разрешённого окна (минуты от полуночи), при WINDOW
@@ -1613,6 +1620,62 @@ model DesignerCallRecording {
   @@map("designer_call_recordings")
 }
 
+/// Личные и общие заметки сотрудников школы.
+model StaffNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  authorUserId String
+  /// PERSONAL | SHARED
+  visibility   String
+  title        String
+  body         String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author       User     @relation("StaffNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, visibility])
+  @@index([authorUserId, visibility])
+  @@map("staff_notes")
+}
+
+/// Задачи, которые OWNER назначает сотрудникам.
+model StaffTask {
+  id                 String              @id @default(cuid())
+  tenantId           String
+  createdByUserId    String
+  title              String
+  body               String              @db.Text
+  dueAt              DateTime?
+  /// OPEN | DONE | CANCELLED
+  status             String              @default("OPEN")
+  remindBeforeSentAt DateTime?
+  overdueNotifiedAt  DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy          User                @relation("StaffTaskCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  chatThread         ChatThread?
+  assignees          StaffTaskAssignee[]
+
+  @@index([tenantId, status, dueAt])
+  @@index([createdByUserId])
+  @@map("staff_tasks")
+}
+
+model StaffTaskAssignee {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  createdAt DateTime @default(now())
+  task      StaffTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@map("staff_task_assignees")
+}
+
 /// Внутришкольные и платформенные чаты
 
 enum ChatThreadType {
@@ -1623,6 +1686,7 @@ enum ChatThreadType {
   TRAINERS
   PLATFORM_TESTERS
   SUPER_ADMINS
+  STAFF_TASK
 }
 
 model ChatThread {
@@ -1635,6 +1699,8 @@ model ChatThread {
   clientId      String?
   trainerId     String?
   groupId       String?
+  /// Связь с задачей сотрудника (для STAFF_TASK)
+  staffTaskId   String?        @unique
   lastMessageAt DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -1642,6 +1708,7 @@ model ChatThread {
   client        Client?        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   trainer       Trainer?       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   group         Group?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  staffTask     StaffTask?     @relation(fields: [staffTaskId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
   reads         ChatThreadRead[]
 

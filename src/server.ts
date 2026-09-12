@@ -44,6 +44,7 @@ import schoolEventRoutes from './routes/schoolEvent';
 import pushNotificationRoutes from './routes/pushNotifications';
 import notificationPrefsRoutes from './routes/notificationPrefs';
 import notificationsRoutes from './routes/notifications';
+import staffWorkspaceRoutes from './routes/staffWorkspace';
 import platformStaffAuthRoutes from './routes/platformStaffAuthRoutes';
 import platformStaffRoutes from './routes/platformStaffRoutes';
 import superAdminSupportRoutes from './routes/superAdminSupportRoutes';
@@ -62,6 +63,7 @@ import {
   sendClientTrainingReminders,
   sendDailyAbsenceDigest,
 } from './services/notificationDomainHooks';
+import { processStaffTaskDeadlineNotifications } from './services/staffTaskDeadlineService';
 import {
   collectAndStoreSample,
   cleanupOldMetricSamples,
@@ -213,6 +215,7 @@ app.use('/api/admin-dashboard', adminDashboardRoutes);
 app.use('/api/push-notifications', pushNotificationRoutes);
 app.use('/api/notification-prefs', notificationPrefsRoutes);
 app.use('/api/notifications', schoolTenantGuard, notificationsRoutes);
+app.use('/api/staff-workspace', schoolTenantGuard, staffWorkspaceRoutes);
 app.use('/api/platform-staff/auth', platformStaffAuthRoutes);
 app.use('/api/platform-staff', platformStaffRoutes);
 app.use('/api/super-admin/support', superAdminSupportRoutes);
@@ -274,6 +277,7 @@ httpServer.listen(PORT, () => {
     try {
       await sendTrainingReminders();
       await sendClientTrainingReminders(60);
+      await processStaffTaskDeadlineNotifications();
     } catch (error) {
       console.error('[Cron] Error in training reminders:', error);
     }

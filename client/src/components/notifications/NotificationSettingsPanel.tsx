@@ -146,6 +146,7 @@ const NotificationSettingsPanel: React.FC<Props> = ({
         paymentsEnabled: prefs.paymentsEnabled,
         trainingRemindersEnabled: prefs.trainingRemindersEnabled,
         scheduleChangesEnabled: prefs.scheduleChangesEnabled,
+        taskRemindersEnabled: prefs.taskRemindersEnabled,
       };
       if (showChangelog) {
         body.changelogEnabled = prefs.changelogEnabled;
@@ -379,6 +380,19 @@ const NotificationSettingsPanel: React.FC<Props> = ({
               />
             }
             label="Зарплата (начисление / выплата)"
+          />
+        )}
+        {actor === 'school' && (
+          <FormControlLabel
+            sx={{ display: 'block' }}
+            control={
+              <Switch
+                checked={prefs.taskRemindersEnabled !== false}
+                onChange={(_, v) => patchLocal({ taskRemindersEnabled: v })}
+                color="primary"
+              />
+            }
+            label="Напоминания о дедлайнах задач"
           />
         )}
         {actor === 'portal' && (

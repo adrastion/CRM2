@@ -468,6 +468,8 @@ const Settings: React.FC = () => {
 
   const tabLabels: { [key: string]: string } = {
     dashboard: 'Панель управления',
+    chats: 'Чаты',
+    staffWorkspace: 'Заметки и задачи',
     clients: 'Клиенты',
     clientCategories: 'Категории клиентов',
     trainers: 'Тренеры',

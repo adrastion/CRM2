@@ -17,7 +17,8 @@ export type NotificationEventType =
   | 'salary'
   | 'payment'
   | 'training_reminder'
-  | 'schedule_change';
+  | 'schedule_change'
+  | 'task_reminder';
 
 export type ScheduleMode = 'ALWAYS' | 'WINDOW';
 
@@ -35,6 +36,7 @@ export type NotificationPrefsDTO = {
   paymentsEnabled: boolean;
   trainingRemindersEnabled: boolean;
   scheduleChangesEnabled: boolean;
+  taskRemindersEnabled: boolean;
   scheduleMode: ScheduleMode;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -54,6 +56,7 @@ const DEFAULTS = {
   paymentsEnabled: true,
   trainingRemindersEnabled: true,
   scheduleChangesEnabled: true,
+  taskRemindersEnabled: true,
   scheduleMode: 'ALWAYS' as ScheduleMode,
   windowStartMinutes: null as number | null,
   windowEndMinutes: null as number | null,
@@ -75,6 +78,7 @@ function toDto(row: {
   paymentsEnabled: boolean;
   trainingRemindersEnabled: boolean;
   scheduleChangesEnabled: boolean;
+  taskRemindersEnabled: boolean;
   scheduleMode: string;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -95,6 +99,7 @@ function toDto(row: {
     paymentsEnabled: row.paymentsEnabled,
     trainingRemindersEnabled: row.trainingRemindersEnabled,
     scheduleChangesEnabled: row.scheduleChangesEnabled,
+    taskRemindersEnabled: row.taskRemindersEnabled,
     scheduleMode: (row.scheduleMode === 'WINDOW' ? 'WINDOW' : 'ALWAYS') as ScheduleMode,
     windowStartMinutes: row.windowStartMinutes,
     windowEndMinutes: row.windowEndMinutes,
@@ -127,6 +132,7 @@ export type NotificationPrefsUpdate = Partial<{
   paymentsEnabled: boolean;
   trainingRemindersEnabled: boolean;
   scheduleChangesEnabled: boolean;
+  taskRemindersEnabled: boolean;
   scheduleMode: ScheduleMode;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -170,6 +176,7 @@ const BOOL_FIELDS: Array<keyof NotificationPrefsUpdate> = [
   'paymentsEnabled',
   'trainingRemindersEnabled',
   'scheduleChangesEnabled',
+  'taskRemindersEnabled',
 ];
 
 export async function updateNotificationPrefs(
@@ -281,6 +288,7 @@ export function canReceivePushNow(
     if (prefs.actorType !== 'USER' && !prefs.trainingRemindersEnabled) return false;
   }
   if (eventType === 'schedule_change' && !prefs.scheduleChangesEnabled) return false;
+  if (eventType === 'task_reminder' && !prefs.taskRemindersEnabled) return false;
 
   const applySchedule = opts?.applySchedule === true;
   if (!applySchedule || prefs.scheduleMode !== 'WINDOW') return true;
