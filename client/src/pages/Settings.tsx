@@ -478,6 +478,7 @@ const Settings: React.FC = () => {
     groups: 'Группы',
     branches: 'Филиалы',
     schedule: 'Расписание',
+    trainingPlan: 'Тренировочный план',
     memberships: 'Абонементы',
     payments: 'Платежи',
     finance: 'Финансы',

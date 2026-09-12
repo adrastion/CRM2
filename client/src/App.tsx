@@ -49,6 +49,7 @@ const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
 const ParentRegister = lazy(() => import('./pages/ParentRegister'));
 const Chats = lazy(() => import('./pages/Chats'));
 const StaffWorkspace = lazy(() => import('./pages/StaffWorkspace'));
+const TrainingPlan = lazy(() => import('./pages/TrainingPlan'));
 const TesterDashboard = lazy(() => import('./pages/TesterDashboard'));
 
 const appTheme = createAppTheme();
@@ -529,6 +530,16 @@ const AppContent: React.FC = () => {
                 <StaffWorkspace />
               </AppLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training-plan"
+          element={
+            <RoleRoute roles={['OWNER', 'TRAINER']}>
+              <AppLayout pageTitle="Тренировочный план">
+                <TrainingPlan />
+              </AppLayout>
+            </RoleRoute>
           }
         />
         <Route

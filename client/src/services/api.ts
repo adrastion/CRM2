@@ -797,6 +797,135 @@ class ApiService {
     return response.data.data;
   }
 
+  // ——— Training plan ———
+  async listTrainingPlanGroups(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/training-plan/groups');
+    return response.data.data || [];
+  }
+
+  async listExercises(q?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/training-plan/exercises', {
+      params: q ? { q } : undefined,
+    });
+    return response.data.data || [];
+  }
+
+  async createExercise(data: { title: string; description?: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/training-plan/exercises', data);
+    return response.data.data;
+  }
+
+  async updateExercise(id: string, data: Partial<{ title: string; description: string }>): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/training-plan/exercises/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteExercise(id: string): Promise<void> {
+    await this.api.delete(`/training-plan/exercises/${id}`);
+  }
+
+  async uploadExerciseMedia(exerciseId: string, file: File): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post<ApiResponse>(
+      `/training-plan/exercises/${exerciseId}/media`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async deleteExerciseMedia(exerciseId: string, mediaId: string): Promise<void> {
+    await this.api.delete(`/training-plan/exercises/${exerciseId}/media/${mediaId}`);
+  }
+
+  async getExerciseMediaBlob(mediaId: string): Promise<Blob> {
+    const response = await this.api.get(`/training-plan/media/${mediaId}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async listWorkoutTemplates(kind?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/training-plan/templates', {
+      params: kind ? { kind } : undefined,
+    });
+    return response.data.data || [];
+  }
+
+  async createWorkoutTemplate(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/training-plan/templates', data);
+    return response.data.data;
+  }
+
+  async updateWorkoutTemplate(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/training-plan/templates/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteWorkoutTemplate(id: string): Promise<void> {
+    await this.api.delete(`/training-plan/templates/${id}`);
+  }
+
+  async listTrainingCycles(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/training-plan/cycles');
+    return response.data.data || [];
+  }
+
+  async createTrainingCycle(data: {
+    title?: string | null;
+    dateFrom: string;
+    dateTo: string;
+    groupIds: string[];
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/training-plan/cycles', data);
+    return response.data.data;
+  }
+
+  async previewTrainingCycleDraft(data: {
+    dateFrom: string;
+    dateTo: string;
+    groupIds: string[];
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/training-plan/cycles/preview', data);
+    return response.data.data;
+  }
+
+  async getTrainingCycle(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/training-plan/cycles/${id}`);
+    return response.data.data;
+  }
+
+  async deleteTrainingCycle(id: string): Promise<void> {
+    await this.api.delete(`/training-plan/cycles/${id}`);
+  }
+
+  async getSessionPlanByTraining(trainingId: string): Promise<any | null> {
+    const response = await this.api.get<ApiResponse>(
+      `/training-plan/session-plans/by-training/${trainingId}`
+    );
+    return response.data.data;
+  }
+
+  async upsertSessionPlan(trainingId: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/training-plan/session-plans/${trainingId}`,
+      data
+    );
+    return response.data.data;
+  }
+
+  async applyTemplateToSession(
+    trainingId: string,
+    data: { templateId: string; section: string; cycleId?: string; replace?: boolean }
+  ): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/training-plan/session-plans/${trainingId}/apply-template`,
+      data
+    );
+    return response.data.data;
+  }
+
   async getTesterPushVapidKey(): Promise<string | null> {
     const response = await this.api.get<ApiResponse>('/platform/tester/push/vapid-key');
     return response.data.data?.publicKey || null;

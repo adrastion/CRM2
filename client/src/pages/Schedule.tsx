@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -40,6 +40,7 @@ import {
   useMediaQuery,
   useTheme,
   Stack,
+  Collapse,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
@@ -56,6 +57,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Person,
+  ExpandMore,
+  ExpandLess,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
@@ -168,6 +171,9 @@ const Schedule: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [attendanceDialog, setAttendanceDialog] = useState(false);
+  const [athletesListExpanded, setAthletesListExpanded] = useState(false);
+  const [sessionPlan, setSessionPlan] = useState<any | null>(null);
+  const [sessionPlanLoading, setSessionPlanLoading] = useState(false);
   const [competitionDialog, setCompetitionDialog] = useState(false);
   const [eventDialog, setEventDialog] = useState(false);
   const [eventDetailDialog, setEventDetailDialog] = useState(false);
@@ -1221,6 +1227,8 @@ const Schedule: React.FC = () => {
 
   const handleOpenAttendanceDialog = async (training: Training) => {
     setSelectedTraining(training);
+    setAthletesListExpanded(false);
+    setSessionPlan(null);
     setAttendanceDialog(true);
     // Загружаем данные посещаемости асинхронно после открытия диалога
     try {
@@ -1233,6 +1241,19 @@ const Schedule: React.FC = () => {
     } catch (error) {
       console.error('Error fetching attendance data:', error);
       alert('Не удалось загрузить данные о посещаемости');
+    }
+
+    if (user?.role === 'OWNER' || user?.role === 'TRAINER') {
+      setSessionPlanLoading(true);
+      try {
+        const plan = await apiService.getSessionPlanByTraining(training.id);
+        setSessionPlan(plan);
+      } catch (err) {
+        console.error('Error fetching session plan:', err);
+        setSessionPlan(null);
+      } finally {
+        setSessionPlanLoading(false);
+      }
     }
   };
 
@@ -3998,6 +4019,18 @@ const Schedule: React.FC = () => {
             </Box>
           </DialogTitle>
           <DialogContent>
+            <Button
+              fullWidth
+              variant="outlined"
+              endIcon={athletesListExpanded ? <ExpandLess /> : <ExpandMore />}
+              onClick={() => setAthletesListExpanded((v) => !v)}
+              sx={{ mb: 1, justifyContent: 'space-between' }}
+            >
+              {athletesListExpanded
+                ? 'Скрыть спортсменов'
+                : `Показать спортсменов (${attendanceData.length})`}
+            </Button>
+            <Collapse in={athletesListExpanded}>
             {attendanceData.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 4 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4129,6 +4162,59 @@ const Schedule: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+            </Collapse>
+
+            {(user?.role === 'OWNER' || user?.role === 'TRAINER') && (
+              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
+                  План тренировки
+                </Typography>
+                {sessionPlanLoading ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Загрузка плана…
+                  </Typography>
+                ) : !sessionPlan || !(sessionPlan.items || []).length ? (
+                  <Typography variant="body2" color="text.secondary">
+                    План не задан.{' '}
+                    <Button component={RouterLink} to="/training-plan" size="small" sx={{ textTransform: 'none' }}>
+                      Открыть тренировочный план
+                    </Button>
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {(['WARMUP', 'MAIN'] as const).map((section) => {
+                      const items = (sessionPlan.items || []).filter(
+                        (it: any) => it.section === section
+                      );
+                      if (!items.length) return null;
+                      return (
+                        <Box key={section}>
+                          <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                            {section === 'WARMUP' ? 'Разминка' : 'Основная часть'}
+                          </Typography>
+                          {items.map((it: any) => {
+                            const meta = [
+                              it.durationSec ? `${Math.round(it.durationSec / 60)} мин` : null,
+                              it.sets ? `${it.sets}×` : null,
+                              it.reps ? `${it.reps}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ');
+                            return (
+                              <Typography key={it.id} variant="body2" color="text.secondary">
+                                • {it.exercise?.title || 'Упражнение'}
+                                {meta ? ` — ${meta}` : ''}
+                                {it.notes ? ` (${it.notes})` : ''}
+                              </Typography>
+                            );
+                          })}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </Paper>
             )}
           </DialogContent>
           <DialogActions>
