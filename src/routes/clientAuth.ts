@@ -10,8 +10,12 @@ import {
   getAthleteCard,
   getClientCalendarPlan,
   getClientPayments,
+  getPortalPaymentMethods,
+  getPortalPaymentMethodQr,
+  submitPortalPaymentReceipt,
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
+import { portalReceiptUpload } from '../controllers/paymentMethodController';
 import { getClientDashboard, getClientTrainerCard } from '../controllers/clientDashboardController';
 import {
   clientCreateSupportTicket,
@@ -63,6 +67,22 @@ router.get('/trainings', authenticateClient, getClientTrainings);
 router.get('/athlete-card', authenticateClient, getAthleteCard);
 router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
+router.get('/payment-methods', authenticateClient, getPortalPaymentMethods);
+router.get('/payment-methods/:id/qr', authenticateClient, getPortalPaymentMethodQr);
+router.post(
+  '/payments/:id/receipt',
+  authenticateClient,
+  (req, res, next) => {
+    portalReceiptUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Upload failed' });
+        return;
+      }
+      next();
+    });
+  },
+  submitPortalPaymentReceipt
+);
 router.get('/dashboard', authenticateClient, getClientDashboard);
 router.get('/trainers/:trainerId/card', authenticateClient, getClientTrainerCard);
 router.get('/notifications', authenticateClient, getPortalNotifications);

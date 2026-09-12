@@ -1477,6 +1477,62 @@ class ApiService {
     return response.data.data;
   }
 
+  async listSchoolPaymentMethods(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/finance/payment-methods');
+    return response.data.data || [];
+  }
+
+  async createSchoolPaymentMethod(form: FormData): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/finance/payment-methods', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async updateSchoolPaymentMethod(id: string, form: FormData): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/finance/payment-methods/${id}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async deleteSchoolPaymentMethod(id: string): Promise<void> {
+    await this.api.delete(`/finance/payment-methods/${id}`);
+  }
+
+  async getSchoolPaymentMethodQrBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/finance/payment-methods/${id}/qr`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async listAwaitingPaymentReceipts(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/finance/payment-receipts');
+    return response.data.data || [];
+  }
+
+  async getPaymentReceiptBlob(paymentId: string): Promise<Blob> {
+    const response = await this.api.get(`/finance/payment-receipts/${paymentId}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async confirmPaymentReceipt(paymentId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/finance/payment-receipts/${paymentId}/confirm`
+    );
+    return response.data.data;
+  }
+
+  async rejectPaymentReceipt(paymentId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/finance/payment-receipts/${paymentId}/reject`
+    );
+    return response.data.data;
+  }
+
   // Membership endpoints
   async getMemberships(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/memberships', { params, signal });
@@ -2488,6 +2544,25 @@ class ApiService {
     return response.data.data;
   }
 
+  async getSiteTrafficLive(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/site-traffic/live');
+    return response.data.data;
+  }
+
+  async getSiteTrafficSummary(range: 'day' | 'month' | 'quarter' | 'year' = 'day'): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/site-traffic/summary', {
+      params: { range },
+    });
+    return response.data.data;
+  }
+
+  async getSiteTrafficQuietHours(days = 30): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/site-traffic/quiet-hours', {
+      params: { days },
+    });
+    return response.data.data;
+  }
+
   async getServerMetricsHistory(range: '1h' | '6h' | '24h' | '7d' | '30d' = '1h'): Promise<any> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/server-metrics/history', {
       params: { range },
@@ -2615,6 +2690,40 @@ class ApiService {
       params: clientId ? { clientId } : undefined,
     });
     return (response.data.data as any[]) || [];
+  }
+
+  async getPortalPaymentMethods(clientId?: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/client-auth/payment-methods', {
+      params: clientId ? { clientId } : undefined,
+    });
+    return response.data.data;
+  }
+
+  async getPortalPaymentMethodQrBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/client-auth/payment-methods/${id}/qr`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async submitPortalPaymentReceipt(
+    paymentId: string,
+    file: File,
+    claimedAmount: number,
+    clientId?: string
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('claimedAmount', String(claimedAmount));
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/payments/${paymentId}/receipt`,
+      form,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        params: clientId ? { clientId } : undefined,
+      }
+    );
+    return response.data.data;
   }
 
   /** Данные для панели управления клиента/родителя (учитывает подтверждение школой). */

@@ -77,6 +77,12 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  const url = (req.originalUrl || req.url || '').split('?')[0];
+  if (method === 'POST' && url === '/api/site-analytics/ping') {
+    next();
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     next();

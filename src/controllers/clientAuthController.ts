@@ -1333,6 +1333,7 @@ export const getClientPayments = asyncHandler(async (req: Request, res: Response
       group: { select: { id: true, name: true } },
       branch: { select: { id: true, name: true } },
       membership: { select: { id: true, name: true } },
+      receipt: { select: { id: true } },
     },
     orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
     take: 200,
@@ -1352,10 +1353,196 @@ export const getClientPayments = asyncHandler(async (req: Request, res: Response
       paidAt: p.paidAt,
       isMonthlyPayment: p.isMonthlyPayment,
       createdAt: p.createdAt,
+      groupId: p.groupId,
+      membershipId: p.membershipId,
       groupName: p.group?.name || null,
       branchName: p.branch?.name || null,
       membershipName: p.membership?.name || null,
+      hasReceipt: Boolean(p.receipt),
     })),
+  });
+});
+
+/**
+ * Реквизиты оплаты для долгов клиента + группировка сумм.
+ * GET /api/client-auth/payment-methods?clientId=
+ */
+export const getPortalPaymentMethods = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  const { clientId, tenantId } = resolved;
+
+  const { listActivePaymentMethods, resolvePaymentMethodForPayment, serializePaymentMethod } =
+    await import('../services/paymentMethodService');
+
+  const methods = await listActivePaymentMethods(tenantId);
+  const debts = await prisma.payment.findMany({
+    where: {
+      clientId,
+      tenantId,
+      status: { in: ['pending', 'overdue'] },
+    },
+    select: {
+      id: true,
+      amount: true,
+      groupId: true,
+      membershipId: true,
+      status: true,
+    },
+  });
+
+  const buckets = new Map<
+    string,
+    { method: ReturnType<typeof serializePaymentMethod> | null; paymentIds: string[]; total: number }
+  >();
+
+  for (const debt of debts) {
+    const method = resolvePaymentMethodForPayment(methods as any, debt);
+    const key = method?.id || '__none__';
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        method: method ? serializePaymentMethod(method as any) : null,
+        paymentIds: [],
+        total: 0,
+      });
+    }
+    const b = buckets.get(key)!;
+    b.paymentIds.push(debt.id);
+    b.total += Number(debt.amount);
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      totalDebt: debts.reduce((s, d) => s + Number(d.amount), 0),
+      debtCount: debts.length,
+      groups: [...buckets.values()].map((b) => ({
+        method: b.method,
+        paymentIds: b.paymentIds,
+        total: b.total,
+      })),
+      methods: methods.map((m) => serializePaymentMethod(m as any)),
+    },
+  });
+});
+
+/**
+ * QR файл для ЛК.
+ * GET /api/client-auth/payment-methods/:id/qr
+ */
+export const getPortalPaymentMethodQr = asyncHandler(async (req: Request, res: Response) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  const { tenantId } = resolved;
+  const { id } = req.params;
+  const row = await prisma.schoolPaymentMethod.findFirst({
+    where: { id, tenantId, isActive: true },
+  });
+  if (!row?.qrStoragePath) {
+    res.status(404).json({ success: false, error: 'QR не найден' });
+    return;
+  }
+  const { absoluteUploadPath } = await import('../utils/fileStorage');
+  const fs = await import('fs');
+  const abs = absoluteUploadPath(row.qrStoragePath);
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ success: false, error: 'Файл не найден' });
+    return;
+  }
+  res.setHeader('Content-Type', row.mimeType || 'image/png');
+  res.sendFile(abs);
+});
+
+/**
+ * Подать чек об оплате.
+ * POST /api/client-auth/payments/:id/receipt  (multipart: file + claimedAmount)
+ */
+export const submitPortalPaymentReceipt = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  const { clientId, tenantId, userType } = resolved;
+  const paymentId = req.params.id;
+
+  const payment = await prisma.payment.findFirst({
+    where: {
+      id: paymentId,
+      clientId,
+      tenantId,
+      status: { in: ['pending', 'overdue'] },
+    },
+    include: { receipt: true },
+  });
+  if (!payment) {
+    return res.status(404).json({ success: false, error: 'Платёж не найден или уже оплачен' });
+  }
+
+  const claimedAmount = Number(req.body?.claimedAmount);
+  if (!Number.isFinite(claimedAmount) || claimedAmount <= 0) {
+    return res.status(400).json({ success: false, error: 'Укажите сумму оплаты' });
+  }
+
+  const file = (req as any).file as Express.Multer.File | undefined;
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'Приложите чек об оплате' });
+  }
+
+  const { safeUnlink } = await import('../utils/fileStorage');
+  const pathMod = await import('path');
+  const storagePath = pathMod
+    .join('payment-receipts', tenantId, file.filename)
+    .replace(/\\/g, '/');
+
+  if (payment.receipt) {
+    safeUnlink(payment.receipt.storagePath);
+    await prisma.paymentReceipt.delete({ where: { id: payment.receipt.id } });
+  }
+
+  const submittedByKind = userType === 'parent' ? 'parent' : 'client';
+  const submittedById =
+    userType === 'parent'
+      ? String((req as any).parent?.id || '')
+      : String((req as any).client?.id || clientId);
+
+  await prisma.paymentReceipt.create({
+    data: {
+      paymentId: payment.id,
+      storagePath,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+      claimedAmount,
+      submittedByKind,
+      submittedById,
+    },
+  });
+
+  const updated = await prisma.payment.update({
+    where: { id: payment.id },
+    data: { status: 'awaiting_confirmation' },
+  });
+
+  const { notifyFinanceChange } = await import('../services/notificationDomainHooks');
+  void notifyFinanceChange({
+    tenantId,
+    title: 'Чек на проверке',
+    body: `${claimedAmount.toLocaleString('ru-RU')} ₽`,
+    branchId: payment.branchId,
+    entityUrl: '/finance',
+  }).catch((err) => console.error('[Notifications] finance:', err));
+
+  return res.json({
+    success: true,
+    data: {
+      id: updated.id,
+      status: updated.status,
+      claimedAmount,
+    },
   });
 });
 

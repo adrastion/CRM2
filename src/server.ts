@@ -54,6 +54,7 @@ import searchRoutes from './routes/search';
 import chatRoutes from './routes/chat';
 import platformRoutes from './routes/platform';
 import maintenanceRoutes from './routes/maintenance';
+import siteAnalyticsRoutes from './routes/siteAnalytics';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
 import { attachChatNamespace } from './services/chatSocket';
@@ -71,6 +72,12 @@ import {
 } from './services/serverMetricsService';
 import { checkCriticalThresholds } from './services/serverAlertService';
 import { accrueFixedMonthlyForAllTenants } from './services/trainerSalaryService';
+import {
+  closeIdleSessions,
+  rollupSiteVisitDay,
+  cleanupOldSiteVisits,
+  mskDateString,
+} from './services/siteAnalyticsService';
 
 // Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
 const rootEnv = path.join(__dirname, '..', '.env');
@@ -186,6 +193,7 @@ app.use(maintenanceMiddleware);
 const schoolTenantGuard = stripClientTenantFields;
 
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/site-analytics', siteAnalyticsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/client-auth', clientAuthRoutes);
 app.use('/api/tenant', schoolTenantGuard, tenantRoutes);
@@ -384,6 +392,50 @@ httpServer.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow',
   });
   console.log('⏰ Server metrics retention cleanup scheduled (daily 03:30)');
+
+  // Site traffic: close idle sessions every 5 min
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await closeIdleSessions();
+    } catch (error) {
+      console.error('[Cron] Error closing idle site visits:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Site visit idle close scheduled (every 5 min)');
+
+  // Site traffic: rollup yesterday + today hourly at :10
+  cron.schedule('10 * * * *', async () => {
+    try {
+      const today = mskDateString();
+      const yesterday = mskDateString(new Date(Date.now() - 86400000));
+      await rollupSiteVisitDay(yesterday);
+      await rollupSiteVisitDay(today);
+    } catch (error) {
+      console.error('[Cron] Error rolling up site visits:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Site visit daily rollup scheduled (hourly at :10)');
+
+  // Site traffic retention daily 03:40
+  cron.schedule('40 3 * * *', async () => {
+    try {
+      const removed = await cleanupOldSiteVisits();
+      if (removed.sessions || removed.daily) {
+        console.log(
+          `[Cron] Site visit cleanup: sessions=${removed.sessions}, daily=${removed.daily}`
+        );
+      }
+    } catch (error) {
+      console.error('[Cron] Error cleaning site visits:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Site visit retention cleanup scheduled (daily 03:40)');
 });
 
 export default app;

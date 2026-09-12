@@ -67,3 +67,13 @@ export function canCreateAdminUsers(role?: string | null): boolean {
 export function canEditSchoolFinanceSettings(role?: string | null): boolean {
   return isOwner(role);
 }
+
+/** Редактирование QR и ссылок оплаты. */
+export function canEditPaymentMethods(role?: string | null): boolean {
+  return isOwner(role);
+}
+
+/** Подтверждение чеков об оплате. */
+export function canConfirmPaymentReceipts(role?: string | null): boolean {
+  return isOwnerOrAdmin(role);
+}

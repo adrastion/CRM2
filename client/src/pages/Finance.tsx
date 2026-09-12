@@ -42,6 +42,7 @@ import FinanceSummaryTable, {
   FinanceSummaryRow,
   FinanceSummarySortKey,
 } from '../components/finance/FinanceSummaryTable';
+import SchoolPaymentMethodsPanel from '../components/finance/SchoolPaymentMethodsPanel';
 import { colors, radii, typography } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
@@ -817,6 +818,8 @@ const Finance: React.FC = () => {
         >
           Финансы
         </Typography>
+
+        <SchoolPaymentMethodsPanel user={user} groups={groups} />
 
         <Tabs
           value={tab}

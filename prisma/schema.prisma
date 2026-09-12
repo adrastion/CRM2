@@ -58,6 +58,7 @@ model Tenant {
   exercises               Exercise[]
   workoutTemplates        WorkoutTemplate[]
   trainingCycles          TrainingCycle[]
+  schoolPaymentMethods    SchoolPaymentMethod[]
 
   @@map("tenants")
 }
@@ -112,6 +113,7 @@ model User {
   exercisesCreated         Exercise[]         @relation("ExerciseCreator")
   workoutTemplatesCreated  WorkoutTemplate[]  @relation("WorkoutTemplateCreator")
   trainingCyclesCreated    TrainingCycle[]    @relation("TrainingCycleCreator")
+  paymentReceiptsReviewed  PaymentReceipt[]   @relation("PaymentReceiptReviewer")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -641,6 +643,7 @@ model Group {
   schoolEvents              SchoolEvent[]
   chatThreads               ChatThread[]
   trainingCycleGroups       TrainingCycleGroup[]
+  schoolPaymentMethodGroups SchoolPaymentMethodGroup[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, branchId])
@@ -684,6 +687,7 @@ model Membership {
   clientMemberships ClientMembership[]
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments          Payment[]
+  schoolPaymentMethodMemberships SchoolPaymentMethodMembership[]
 
   @@map("memberships")
 }
@@ -735,6 +739,7 @@ model Payment {
   promoCodeUsage   PromoCodeUsage?
   transactions     Transaction[]
   financeOperations FinanceOperation[]
+  receipt          PaymentReceipt?
 
   @@index([tenantId, status])
   @@index([tenantId, clientId])
@@ -1178,6 +1183,41 @@ model ServerMetricSample {
 
   @@index([timestamp])
   @@map("server_metric_samples")
+}
+
+/// Активные/завершённые сессии посетителей SPA (heartbeat)
+model SiteVisitSession {
+  id         String    @id @default(cuid())
+  visitorId  String
+  startedAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  endedAt    DateTime?
+  lastPath   String?
+  actorHint  String? // guest | school | client | parent
+  pingCount  Int       @default(1)
+
+  @@index([lastSeenAt])
+  @@index([visitorId, startedAt])
+  @@index([endedAt, lastSeenAt])
+  @@map("site_visit_sessions")
+}
+
+/// Дневной rollup посещаемости (Europe/Moscow date)
+model SiteVisitDaily {
+  id                String   @id @default(cuid())
+  date              DateTime @db.Date
+  uniqueVisitors    Int      @default(0)
+  sessionCount      Int      @default(0)
+  totalDurationSec  Int      @default(0)
+  peakConcurrent    Int      @default(0)
+  /// JSON: массив из 24 чисел (avg concurrent по часам MSK) или {avg:[], max:[]}
+  hourlyJson        String   @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([date])
+  @@index([date])
+  @@map("site_visit_daily")
 }
 
 /// Web Push подписки супер-админов (критические алерты нагрузки)
@@ -1892,3 +1932,64 @@ model TrainingSessionPlanItem {
   @@map("training_session_plan_items")
 }
 
+
+model SchoolPaymentMethod {
+  id            String   @id @default(cuid())
+  tenantId      String
+  title         String
+  paymentUrl    String?
+  qrStoragePath String?
+  mimeType      String?
+  isDefault     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups        SchoolPaymentMethodGroup[]
+  memberships   SchoolPaymentMethodMembership[]
+
+  @@index([tenantId, isActive])
+  @@map("school_payment_methods")
+}
+
+model SchoolPaymentMethodGroup {
+  methodId String
+  groupId  String
+  method   SchoolPaymentMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  group    Group               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([methodId, groupId])
+  @@index([groupId])
+  @@map("school_payment_method_groups")
+}
+
+model SchoolPaymentMethodMembership {
+  methodId     String
+  membershipId String
+  method       SchoolPaymentMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  membership   Membership          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@id([methodId, membershipId])
+  @@index([membershipId])
+  @@map("school_payment_method_memberships")
+}
+
+model PaymentReceipt {
+  id               String    @id @default(cuid())
+  paymentId        String    @unique
+  storagePath      String
+  mimeType         String
+  originalName     String
+  claimedAmount    Decimal
+  submittedAt      DateTime  @default(now())
+  submittedByKind  String
+  submittedById    String
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  payment          Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  reviewedBy       User?     @relation("PaymentReceiptReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([submittedAt])
+  @@map("payment_receipts")
+}

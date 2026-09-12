@@ -13,6 +13,7 @@ import AppLayout from './components/Layout/AppLayout';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
+import SiteTrafficTracker from './components/SiteTrafficTracker';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
 
 // Lazy load pages for better performance
@@ -372,6 +373,7 @@ const AppContent: React.FC = () => {
       <CssBaseline />
     <Router>
       <MaintenanceGate>
+      <SiteTrafficTracker />
       <SupportFAB />
       {!onboardingLoading && user?.role === 'OWNER' && (
         <InteractiveOnboarding

@@ -40,6 +40,10 @@ function isAllowlisted(req: Request): boolean {
     return true;
   }
 
+  if (method === 'POST' && url === '/api/site-analytics/ping') {
+    return true;
+  }
+
   return false;
 }
 
