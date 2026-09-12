@@ -44,6 +44,8 @@ import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { canCreateAdminUsers, isOwner as roleIsOwner } from '../utils/roles';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
   normalizeSalaryScheme,
   salarySchemeLabel,
@@ -73,6 +75,7 @@ const emptyFormData = {
   salaryScheme: '',
   salaryRate: '',
   canViewAllGroups: false,
+  branchId: '',
 };
 
 const Trainers: React.FC = () => {
@@ -81,6 +84,7 @@ const Trainers: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const isOwner = roleIsOwner(user?.role);
+  const isSenior = Boolean(user?.isSeniorTrainer || (user?.seniorBranchIds && user.seniorBranchIds.length > 0));
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +107,8 @@ const Trainers: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState({ ...emptyFormData });
+  const [createFormBaseline, setCreateFormBaseline] = useState({ ...emptyFormData });
+  const [editFormBaseline, setEditFormBaseline] = useState({ ...emptyFormData });
 
   useEffect(() => {
     let isMounted = true;
@@ -192,15 +198,16 @@ const Trainers: React.FC = () => {
     }
   };
 
-  const handleCreateTrainer = async () => {
+  const handleCreateTrainer = async (): Promise<boolean> => {
     // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateTrainerForm(formData);
     
     if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
       setError('Пожалуйста, исправьте ошибки в форме');
       setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
       setSnackbarOpen(true);
-      return;
+      return false;
     }
 
     try {
@@ -210,7 +217,7 @@ const Trainers: React.FC = () => {
           setError('Только владелец может создавать администраторов');
           setSnackbarMessage('Только владелец может создавать администраторов');
           setSnackbarOpen(true);
-          return;
+          return false;
         }
         const { role, qualification, experience, specialization, salaryScheme, salaryRate, canViewAllGroups, ...userData } = formData;
         await apiService.createUser({
@@ -218,9 +225,17 @@ const Trainers: React.FC = () => {
           role: 'ADMIN'
         });
       } else {
+        if (isSenior && !formData.branchId) {
+          setError('Укажите филиал для нового тренера');
+          setSnackbarMessage('Укажите филиал для нового тренера');
+          setSnackbarOpen(true);
+          return false;
+        }
         // Если создаем тренера, используем API создания тренера
         await apiService.createTrainer({
           ...formData,
+          branchId: formData.branchId || undefined,
+          canViewAllGroups: isSenior ? false : formData.canViewAllGroups,
           salaryScheme:
             formData.salaryScheme === TRAINER_FIXED_MONTHLY
               ? TRAINER_FIXED_MONTHLY
@@ -244,24 +259,13 @@ const Trainers: React.FC = () => {
       setOpenDialog(false);
       setFormErrors({});
       setError('');
-      setFormData({
-        email: '',
-        password: '',
-        firstName: '',
-        lastName: '',
-        middleName: '',
-        phone: '',
-        role: 'TRAINER',
-        qualification: '',
-        experience: '',
-        specialization: '',
-        salaryScheme: '',
-        salaryRate: '',
-        canViewAllGroups: false,
-      });
+      setFormData({ ...emptyFormData });
+      setCreateFormBaseline({ ...emptyFormData });
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания сотрудника');
       console.error('Error creating employee:', err);
+      return false;
     }
   };
 
@@ -284,7 +288,7 @@ const Trainers: React.FC = () => {
     setEditingTrainer(trainer);
     setFormErrors({});
     setError('');
-    setFormData({
+    const nextForm = {
       email: trainer.user?.email || '',
       password: '',
       firstName: trainer.user?.firstName || '',
@@ -304,7 +308,10 @@ const Trainers: React.FC = () => {
           ? String((trainer as any).salaryRate ?? trainer.salaryAmount ?? '')
           : '',
       canViewAllGroups: (trainer as any).canViewAllGroups || false,
-    });
+      branchId: trainer.branches?.[0]?.branchId || '',
+    };
+    setFormData(nextForm);
+    setEditFormBaseline(nextForm);
     setEditDialog(true);
   };
 
@@ -313,7 +320,7 @@ const Trainers: React.FC = () => {
     setFormErrors({});
     setError('');
     const adminUser = admin.user || admin;
-    setFormData({
+    const nextForm = {
       ...emptyFormData,
       email: adminUser.email || '',
       firstName: adminUser.firstName || '',
@@ -321,7 +328,9 @@ const Trainers: React.FC = () => {
       middleName: adminUser.middleName || '',
       phone: adminUser.phone || '',
       role: adminUser.role || 'ADMIN',
-    });
+    };
+    setFormData(nextForm);
+    setEditFormBaseline(nextForm);
     setEditDialog(true);
   };
 
@@ -348,12 +357,13 @@ const Trainers: React.FC = () => {
     setError('');
     setEditingTrainer(null);
     setFormData({ ...emptyFormData });
+    setEditFormBaseline({ ...emptyFormData });
     setRoleConfirmDialog(false);
     setPendingRoleChange(null);
   };
 
-  const performSaveEmployee = async () => {
-    if (!editingTrainer) return;
+  const performSaveEmployee = async (): Promise<boolean> => {
+    if (!editingTrainer) return false;
 
     const userId = (editingTrainer as any).user?.id || (editingTrainer as any).id;
     const currentRole = getCurrentEmployeeRole();
@@ -450,14 +460,16 @@ const Trainers: React.FC = () => {
       resetEditForm();
       setSnackbarMessage('Изменения сохранены');
       setSnackbarOpen(true);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления сотрудника');
       console.error('Error updating employee:', err);
+      return false;
     }
   };
 
-  const handleUpdateTrainer = async () => {
-    if (!editingTrainer) return;
+  const handleUpdateTrainer = async (): Promise<boolean> => {
+    if (!editingTrainer) return false;
 
     const currentRole = getCurrentEmployeeRole();
     const newRole = formData.role;
@@ -474,7 +486,7 @@ const Trainers: React.FC = () => {
         setError('Пожалуйста, исправьте ошибки в форме');
         setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
         setSnackbarOpen(true);
-        return;
+        return false;
       }
     } else {
       const errors = validateTrainerForm(formData);
@@ -483,17 +495,17 @@ const Trainers: React.FC = () => {
         setError('Пожалуйста, исправьте ошибки в форме');
         setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
         setSnackbarOpen(true);
-        return;
+        return false;
       }
     }
 
     if (roleChanged && isOwner) {
       setPendingRoleChange(newRole);
       setRoleConfirmDialog(true);
-      return;
+      return false;
     }
 
-    await performSaveEmployee();
+    return performSaveEmployee();
   };
 
   const handleOpenBranchesDialog = async (trainer: Trainer) => {
@@ -579,6 +591,29 @@ const Trainers: React.FC = () => {
     return branches.filter(branch => !assignedBranchIds.includes(branch.id) && branch.isActive);
   };
 
+  const discardCreateForm = React.useCallback(() => {
+    setOpenDialog(false);
+    setFormErrors({});
+    setError('');
+    setFormData({ ...emptyFormData });
+    setCreateFormBaseline({ ...emptyFormData });
+  }, []);
+
+  const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
+  const editDirty = editDialog && isDirtyValue(formData, editFormBaseline);
+
+  const createUnsaved = useUnsavedClose({
+    isDirty: Boolean(createDirty),
+    onDiscard: discardCreateForm,
+    onSave: async () => handleCreateTrainer(),
+  });
+
+  const editUnsaved = useUnsavedClose({
+    isDirty: Boolean(editDirty),
+    onDiscard: resetEditForm,
+    onSave: async () => handleUpdateTrainer(),
+  });
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -623,10 +658,16 @@ const Trainers: React.FC = () => {
             if (isOwner) {
               setRoleSelectionDialog(true);
             } else {
-              setOpenDialog(true);
+              const defaultBranch =
+                isSenior && user?.seniorBranchIds?.length === 1
+                  ? user.seniorBranchIds[0]
+                  : '';
+              const initial = { ...emptyFormData, role: 'TRAINER', branchId: defaultBranch };
+              setFormData(initial);
+              setCreateFormBaseline(initial);
               setFormErrors({});
               setError('');
-              setFormData({ ...emptyFormData, role: 'TRAINER' });
+              setOpenDialog(true);
             }
           }}
           data-onboarding="add-trainer-button"
@@ -920,22 +961,12 @@ const Trainers: React.FC = () => {
                 fullWidth
                 size="large"
                 onClick={() => {
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  const initial = {
+                    ...emptyFormData,
                     role: 'TRAINER',
-                    email: '',
-                    password: '',
-                    firstName: '',
-                    lastName: '',
-                    middleName: '',
-                    phone: '',
-                    qualification: '',
-                    experience: '',
-                    specialization: '',
-      salaryScheme: '',
-      salaryRate: '',
-      canViewAllGroups: false,
-                  }));
+                  };
+                  setFormData(initial);
+                  setCreateFormBaseline(initial);
                   setRoleSelectionDialog(false);
                   setOpenDialog(true);
                   setFormErrors({});
@@ -956,22 +987,12 @@ const Trainers: React.FC = () => {
                 fullWidth
                 size="large"
                 onClick={() => {
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  const initial = {
+                    ...emptyFormData,
                     role: 'ADMIN',
-                    email: '',
-                    password: '',
-                    firstName: '',
-                    lastName: '',
-                    middleName: '',
-                    phone: '',
-                    qualification: '',
-                    experience: '',
-                    specialization: '',
-      salaryScheme: '',
-      salaryRate: '',
-      canViewAllGroups: false,
-                  }));
+                  };
+                  setFormData(initial);
+                  setCreateFormBaseline(initial);
                   setRoleSelectionDialog(false);
                   setOpenDialog(true);
                   setFormErrors({});
@@ -998,21 +1019,10 @@ const Trainers: React.FC = () => {
       {/* Диалог добавления тренера */}
       <Dialog 
         open={openDialog} 
-        onClose={(event, reason) => {
-          // Всегда проверяем ошибки перед закрытием
-          const hasErrors = Object.keys(formErrors).length > 0;
-          
-          // Если есть ошибки, не закрываем диалог
-          if (hasErrors || error) {
-            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-            setSnackbarOpen(true);
-            return;
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            createUnsaved.requestClose(reason);
           }
-          
-          // Разрешаем закрытие только если нет ошибок
-          setOpenDialog(false);
-          setFormErrors({});
-          setError('');
         }}
         maxWidth="md" 
         fullWidth
@@ -1166,6 +1176,23 @@ const Trainers: React.FC = () => {
                   />
                 </Grid>
                 )}
+                {isSenior && (
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth required>
+                      <InputLabel>Филиал</InputLabel>
+                      <Select
+                        value={formData.branchId}
+                        label="Филиал"
+                        onChange={(e) => handleInputChange('branchId', e.target.value)}
+                      >
+                        {branches.map((b) => (
+                          <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+                {!isSenior && (
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1184,6 +1211,7 @@ const Trainers: React.FC = () => {
                     </Typography>
                   </FormControl>
                 </Grid>
+                )}
               </>
             )}
           </Grid>
@@ -1193,26 +1221,7 @@ const Trainers: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              
-              // Отмена всегда закрывает форму без применения изменений
-              setOpenDialog(false);
-              setFormErrors({});
-              setError('');
-              setFormData({
-                email: '',
-                password: '',
-                firstName: '',
-                lastName: '',
-                middleName: '',
-                phone: '',
-                role: 'TRAINER',
-                qualification: '',
-                experience: '',
-                specialization: '',
-                salaryScheme: '',
-                salaryRate: '',
-                canViewAllGroups: false,
-              });
+              discardCreateForm();
             }}
             type="button"
           >
@@ -1223,19 +1232,6 @@ const Trainers: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
-              
-              // Выполняем валидацию синхронно
-              const validationErrors = validateTrainerForm(formData);
-              setFormErrors(validationErrors);
-              
-              // Если есть ошибки, показываем их и оставляем диалог открытым
-              if (Object.keys(validationErrors).length > 0) {
-                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                setSnackbarOpen(true);
-                return; // Не создаем тренера, если есть ошибки
-              }
-              
-              // Если нет ошибок, вызываем handleCreateTrainer для сохранения
               handleCreateTrainer();
             }} 
             variant="contained"
@@ -1249,14 +1245,10 @@ const Trainers: React.FC = () => {
       {/* Диалог редактирования тренера */}
       <Dialog 
         open={editDialog} 
-        onClose={(event, reason) => {
-          const hasErrors = Object.keys(formErrors).length > 0;
-          if (hasErrors || error) {
-            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-            setSnackbarOpen(true);
-            return;
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editUnsaved.requestClose(reason);
           }
-          resetEditForm();
         }}
         maxWidth="md" 
         fullWidth
@@ -1780,6 +1772,21 @@ const Trainers: React.FC = () => {
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+
+      <UnsavedChangesDialog
+        open={createUnsaved.confirmOpen}
+        saving={createUnsaved.saving}
+        onSave={createUnsaved.save}
+        onDiscard={createUnsaved.discard}
+        onStay={createUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editUnsaved.confirmOpen}
+        saving={editUnsaved.saving}
+        onSave={editUnsaved.save}
+        onDiscard={editUnsaved.discard}
+        onStay={editUnsaved.stay}
       />
     </Box>
   );

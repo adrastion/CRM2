@@ -212,7 +212,23 @@ export const getPayments = async (req: AuthenticatedRequest, res: Response) => {
       tenantId: req.tenant?.id
     };
 
-    if (branchId) {
+    if (req.user?.role === 'TRAINER') {
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        if (branchId && !seniorIds.includes(branchId as string)) {
+          res.json({
+            success: true,
+            data: [],
+            pagination: { page: Number(page), limit: Number(limit), total: 0, totalPages: 0 },
+          });
+          return;
+        }
+        where.branchId = branchId ? (branchId as string) : { in: seniorIds };
+      } else if (branchId) {
+        where.branchId = branchId as string;
+      }
+    } else if (branchId) {
       where.branchId = branchId as string;
     }
 

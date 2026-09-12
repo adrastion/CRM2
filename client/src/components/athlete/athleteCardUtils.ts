@@ -76,17 +76,20 @@ export function deriveSecondaryMeta(data: AthleteCardData) {
   const memberships = (data.groupMemberships || []).filter((gm: any) => gm.isActive !== false);
   const groups = memberships.map((gm: any) => gm.group).filter(Boolean);
   const groupNames = groups.map((g: any) => g.name).filter(Boolean);
-  const trainers = groups
-    .map((g: any) => {
-      const u = g.trainer?.user;
-      if (!u) return null;
-      return [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ');
-    })
-    .filter(Boolean) as string[];
+  const trainerMap = new Map<string, string>();
+  groups.forEach((g: any) => {
+    const trainerId = g.trainer?.id || g.trainerId;
+    const u = g.trainer?.user;
+    if (!trainerId || !u) return;
+    const name = [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ');
+    if (name) trainerMap.set(trainerId, name);
+  });
+  const trainers = Array.from(trainerMap.entries()).map(([id, name]) => ({ id, name }));
   const branches = groups.map((g: any) => g.branch?.name).filter(Boolean) as string[];
   return {
     groupLabel: groupNames.length ? groupNames.join(', ') : '—',
-    trainerLabel: trainers.length ? Array.from(new Set(trainers)).join(', ') : '—',
+    trainerLabel: trainers.length ? trainers.map((t) => t.name).join(', ') : '—',
+    trainers,
     branchLabel: branches.length ? Array.from(new Set(branches)).join(', ') : '—',
   };
 }

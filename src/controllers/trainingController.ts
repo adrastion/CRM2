@@ -1,6 +1,9 @@
 import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { notifyTrainingScheduleChange } from '../services/notificationDomainHooks';
 
 export const getTrainings = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -12,18 +15,23 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
       isCancelled: false // Исключаем отмененные тренировки
     };
 
-    // Если пользователь - тренер, проверяем права на просмотр всех групп
+    // Если пользователь - тренер: старший — тренировки своих филиалов; иначе — свои / canViewAllGroups
     if (req.user?.role === 'TRAINER') {
-      const trainer = await prisma.trainer.findFirst({
-        where: {
-          userId: req.user.id,
-          tenantId: req.tenant?.id
-        }
-      });
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        where.branchId = { in: seniorIds };
+      } else {
+        const trainer = await prisma.trainer.findFirst({
+          where: {
+            userId: req.user.id,
+            tenantId: req.tenant?.id
+          }
+        });
 
-      // Если тренер не может видеть все группы, показываем только его группы
-      if (trainer && !trainer.canViewAllGroups) {
-        where.trainerId = trainer.id;
+        if (trainer && !trainer.canViewAllGroups) {
+          where.trainerId = trainer.id;
+        }
       }
     }
 
@@ -174,6 +182,19 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       });
       return;
     }
+
+    if (req.user?.role === 'TRAINER') {
+      const { canManageBranch, getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, tenantId);
+      if (seniorIds.length > 0 && !(await canManageBranch(req.user, validData.branchId, tenantId))) {
+        res.status(403).json({
+          success: false,
+          error: 'Можно создавать тренировки только в своём филиале',
+        });
+        return;
+      }
+    }
+
     if (!validData.startTime) {
       res.status(400).json({
         success: false,
@@ -202,7 +223,10 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       const canSetSubstitute = 
         user?.role === 'OWNER' || 
         user?.role === 'ADMIN' || 
-        (user?.role === 'TRAINER' && trainer?.canViewAllGroups);
+        (user?.role === 'TRAINER' && trainer?.canViewAllGroups) ||
+        (user?.role === 'TRAINER' && validData.branchId
+          ? await (await import('../utils/branchAccess')).canManageBranch(user, validData.branchId, tenantId)
+          : false);
       
       if (!canSetSubstitute) {
         res.status(403).json({
@@ -606,10 +630,14 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
           where: { userId: user?.id, tenantId: req.tenant?.id }
         });
         
+        const branchForAccess = validData.branchId || training.branchId;
         const canSetSubstitute = 
           user?.role === 'OWNER' || 
           user?.role === 'ADMIN' || 
-          (user?.role === 'TRAINER' && trainer?.canViewAllGroups);
+          (user?.role === 'TRAINER' && trainer?.canViewAllGroups) ||
+          (user?.role === 'TRAINER' && branchForAccess
+            ? await (await import('../utils/branchAccess')).canManageBranch(user, branchForAccess, req.tenant?.id)
+            : false);
         
         if (!canSetSubstitute) {
           res.status(403).json({
@@ -724,10 +752,14 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
           where: { userId: user?.id, tenantId: req.tenant?.id }
         });
         
+        const branchForAccess = validData.branchId || training.branchId;
         const canSetSubstitute = 
           user?.role === 'OWNER' || 
           user?.role === 'ADMIN' || 
-          (user?.role === 'TRAINER' && trainer?.canViewAllGroups);
+          (user?.role === 'TRAINER' && trainer?.canViewAllGroups) ||
+          (user?.role === 'TRAINER' && branchForAccess
+            ? await (await import('../utils/branchAccess')).canManageBranch(user, branchForAccess, req.tenant?.id)
+            : false);
         
         if (!canSetSubstitute) {
           res.status(403).json({
@@ -974,6 +1006,12 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
       console.log('Final update data before Prisma:', JSON.stringify(updateData, null, 2));
       
       try {
+        const timeChanged =
+          (updateData.startTime &&
+            new Date(updateData.startTime).getTime() !== new Date(training.startTime).getTime()) ||
+          (updateData.endTime &&
+            new Date(updateData.endTime).getTime() !== new Date(training.endTime).getTime());
+
         const updatedTraining = await prisma.training.update({
           where: { id },
           data: updateData,
@@ -992,6 +1030,18 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
             }
           }
         });
+
+        if (timeChanged && req.tenant?.id) {
+          const whenLabel = format(updatedTraining.startTime, 'd MMMM, HH:mm', { locale: ru });
+          void notifyTrainingScheduleChange({
+            tenantId: req.tenant.id,
+            trainingId: updatedTraining.id,
+            groupId: updatedTraining.groupId,
+            kind: 'rescheduled',
+            whenLabel,
+            groupName: updatedTraining.group?.name,
+          }).catch((err) => console.error('[Notifications] reschedule:', err));
+        }
         
         res.json({
           success: true,
@@ -1098,6 +1148,17 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
       where: { id },
       data: { isCancelled: true }
     });
+
+    if (req.tenant?.id) {
+      const whenLabel = format(training.startTime, 'd MMMM, HH:mm', { locale: ru });
+      void notifyTrainingScheduleChange({
+        tenantId: req.tenant.id,
+        trainingId: training.id,
+        groupId: training.groupId,
+        kind: 'cancelled',
+        whenLabel,
+      }).catch((err) => console.error('[Notifications] cancel:', err));
+    }
 
     res.json({
       success: true,

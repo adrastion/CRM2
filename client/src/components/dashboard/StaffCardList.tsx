@@ -8,73 +8,105 @@ interface StaffCardListProps {
   staff: ClientDashboardStaffMember[];
   placeholder?: boolean;
   placeholderCount?: number;
+  /** Клик по карточке тренера (роль TRAINER). */
+  onTrainerClick?: (trainerId: string) => void;
 }
 
 /** Одна карточка сотрудника: роль, ФИО, телефон и фото-заглушка. */
-const StaffCard: React.FC<{ member?: ClientDashboardStaffMember; placeholder?: boolean }> = ({
-  member,
-  placeholder,
-}) => (
-  <Box
-    aria-hidden={placeholder || undefined}
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: { xs: 1.5, md: 2 },
-      p: { xs: 1.5, md: 2 },
-      borderRadius: `${radii.cell}px`,
-      bgcolor: colors.primarySoft,
-      minWidth: 0,
-    }}
-  >
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography
-        sx={{ fontSize: typography.hint, color: colors.textMuted, fontWeight: 600, mb: 0.25 }}
-      >
-        {placeholder ? '\u00A0' : member?.roleLabel}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: typography.label,
-          color: colors.text,
-          fontWeight: 600,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {placeholder ? '\u00A0' : member?.name || '—'}
-      </Typography>
-      <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-        {placeholder ? '\u00A0' : member?.phone || member?.email || '—'}
-      </Typography>
-    </Box>
-
+const StaffCard: React.FC<{
+  member?: ClientDashboardStaffMember;
+  placeholder?: boolean;
+  onClick?: () => void;
+}> = ({ member, placeholder, onClick }) => {
+  const clickable = Boolean(onClick) && !placeholder;
+  return (
     <Box
-      aria-hidden
+      aria-hidden={placeholder || undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onClick : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
       sx={{
-        width: { xs: 46, md: 58 },
-        height: { xs: 58, md: 72 },
-        borderRadius: `${radii.cell}px`,
-        bgcolor: colors.divider,
-        color: colors.textMuted,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        '& svg': { fontSize: { xs: 26, md: 32 } },
+        gap: { xs: 1.5, md: 2 },
+        p: { xs: 1.5, md: 2 },
+        borderRadius: `${radii.cell}px`,
+        bgcolor: colors.primarySoft,
+        minWidth: 0,
+        cursor: clickable ? 'pointer' : 'default',
+        transition: 'background-color 0.15s ease',
+        ...(clickable
+          ? {
+              '&:hover': { bgcolor: 'action.hover' },
+            }
+          : {}),
       }}
     >
-      <PersonOutline />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          sx={{ fontSize: typography.hint, color: colors.textMuted, fontWeight: 600, mb: 0.25 }}
+        >
+          {placeholder ? '\u00A0' : member?.roleLabel}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            color: colors.text,
+            fontWeight: 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {placeholder ? '\u00A0' : member?.name || '—'}
+        </Typography>
+        <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+          {placeholder ? '\u00A0' : member?.phone || member?.email || '—'}
+        </Typography>
+        {clickable && (
+          <Typography sx={{ fontSize: typography.hint, color: colors.primary, mt: 0.5, fontWeight: 600 }}>
+            Открыть карточку
+          </Typography>
+        )}
+      </Box>
+
+      <Box
+        aria-hidden
+        sx={{
+          width: { xs: 46, md: 58 },
+          height: { xs: 58, md: 72 },
+          borderRadius: `${radii.cell}px`,
+          bgcolor: colors.divider,
+          color: colors.textMuted,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          '& svg': { fontSize: { xs: 26, md: 32 } },
+        }}
+      >
+        <PersonOutline />
+      </Box>
     </Box>
-  </Box>
-);
+  );
+};
 
 /** Сетка карточек персонала школы (тренеры и администраторы). */
 const StaffCardList: React.FC<StaffCardListProps> = ({
   staff,
   placeholder,
   placeholderCount = 2,
+  onTrainerClick,
 }) => {
   if (placeholder) {
     return (
@@ -109,9 +141,18 @@ const StaffCardList: React.FC<StaffCardListProps> = ({
         gap: { xs: 1.5, md: 2 },
       }}
     >
-      {staff.slice(0, 4).map((member) => (
-        <StaffCard key={`${member.roleLabel}-${member.id}`} member={member} />
-      ))}
+      {staff.slice(0, 4).map((member) => {
+        const isTrainer = member.role === 'TRAINER' || member.roleLabel === 'Тренер';
+        return (
+          <StaffCard
+            key={`${member.roleLabel}-${member.id}`}
+            member={member}
+            onClick={
+              isTrainer && onTrainerClick ? () => onTrainerClick(member.id) : undefined
+            }
+          />
+        );
+      })}
     </Box>
   );
 };

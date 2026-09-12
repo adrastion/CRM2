@@ -59,6 +59,8 @@ export interface AthleteCardProps {
   /** Документы закрыты (задел RBAC). */
   docsAccess?: 'full' | 'denied';
   compact?: boolean;
+  /** Client: открыть карточку тренера. */
+  onTrainerClick?: (trainerId: string) => void;
 }
 
 export const ATHLETE_STATUS_LABELS: Record<string, string> = {

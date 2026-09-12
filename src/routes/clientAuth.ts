@@ -12,7 +12,7 @@ import {
   getClientPayments,
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
-import { getClientDashboard } from '../controllers/clientDashboardController';
+import { getClientDashboard, getClientTrainerCard } from '../controllers/clientDashboardController';
 import {
   clientCreateSupportTicket,
   clientListSupportTickets,
@@ -43,6 +43,10 @@ import {
   unsubscribePortalPush,
   portalPushStatus,
 } from '../controllers/notificationPrefsController';
+import {
+  getPortalNotifications,
+  markPortalNotificationsRead,
+} from '../controllers/inboxNotificationController';
 
 const router = Router();
 
@@ -60,6 +64,9 @@ router.get('/athlete-card', authenticateClient, getAthleteCard);
 router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
 router.get('/dashboard', authenticateClient, getClientDashboard);
+router.get('/trainers/:trainerId/card', authenticateClient, getClientTrainerCard);
+router.get('/notifications', authenticateClient, getPortalNotifications);
+router.post('/notifications/read', authenticateClient, markPortalNotificationsRead);
 
 router.get('/notification-prefs', authenticateClient, getPortalNotificationPrefs);
 router.put('/notification-prefs', authenticateClient, updatePortalNotificationPrefs);

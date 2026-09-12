@@ -7,7 +7,17 @@ export type NotificationActorType =
   | 'SUPER_ADMIN'
   | 'TESTER';
 
-export type NotificationEventType = 'chat_message' | 'platform_changelog';
+export type NotificationEventType =
+  | 'chat_message'
+  | 'platform_changelog'
+  | 'athlete_created'
+  | 'finance'
+  | 'attendance'
+  | 'offer'
+  | 'salary'
+  | 'payment'
+  | 'training_reminder'
+  | 'schedule_change';
 
 export type ScheduleMode = 'ALWAYS' | 'WINDOW';
 
@@ -17,6 +27,14 @@ export type NotificationPrefsDTO = {
   chatMessagesEnabled: boolean;
   changelogEnabled: boolean;
   pushMasterEnabled: boolean;
+  athleteCreatedEnabled: boolean;
+  financeEnabled: boolean;
+  attendanceEnabled: boolean;
+  offersEnabled: boolean;
+  salaryEnabled: boolean;
+  paymentsEnabled: boolean;
+  trainingRemindersEnabled: boolean;
+  scheduleChangesEnabled: boolean;
   scheduleMode: ScheduleMode;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -28,6 +46,14 @@ const DEFAULTS = {
   chatMessagesEnabled: true,
   changelogEnabled: true,
   pushMasterEnabled: true,
+  athleteCreatedEnabled: true,
+  financeEnabled: true,
+  attendanceEnabled: true,
+  offersEnabled: true,
+  salaryEnabled: true,
+  paymentsEnabled: true,
+  trainingRemindersEnabled: true,
+  scheduleChangesEnabled: true,
   scheduleMode: 'ALWAYS' as ScheduleMode,
   windowStartMinutes: null as number | null,
   windowEndMinutes: null as number | null,
@@ -41,6 +67,14 @@ function toDto(row: {
   chatMessagesEnabled: boolean;
   changelogEnabled: boolean;
   pushMasterEnabled: boolean;
+  athleteCreatedEnabled: boolean;
+  financeEnabled: boolean;
+  attendanceEnabled: boolean;
+  offersEnabled: boolean;
+  salaryEnabled: boolean;
+  paymentsEnabled: boolean;
+  trainingRemindersEnabled: boolean;
+  scheduleChangesEnabled: boolean;
   scheduleMode: string;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -53,6 +87,14 @@ function toDto(row: {
     chatMessagesEnabled: row.chatMessagesEnabled,
     changelogEnabled: row.changelogEnabled,
     pushMasterEnabled: row.pushMasterEnabled,
+    athleteCreatedEnabled: row.athleteCreatedEnabled,
+    financeEnabled: row.financeEnabled,
+    attendanceEnabled: row.attendanceEnabled,
+    offersEnabled: row.offersEnabled,
+    salaryEnabled: row.salaryEnabled,
+    paymentsEnabled: row.paymentsEnabled,
+    trainingRemindersEnabled: row.trainingRemindersEnabled,
+    scheduleChangesEnabled: row.scheduleChangesEnabled,
     scheduleMode: (row.scheduleMode === 'WINDOW' ? 'WINDOW' : 'ALWAYS') as ScheduleMode,
     windowStartMinutes: row.windowStartMinutes,
     windowEndMinutes: row.windowEndMinutes,
@@ -77,6 +119,14 @@ export type NotificationPrefsUpdate = Partial<{
   chatMessagesEnabled: boolean;
   changelogEnabled: boolean;
   pushMasterEnabled: boolean;
+  athleteCreatedEnabled: boolean;
+  financeEnabled: boolean;
+  attendanceEnabled: boolean;
+  offersEnabled: boolean;
+  salaryEnabled: boolean;
+  paymentsEnabled: boolean;
+  trainingRemindersEnabled: boolean;
+  scheduleChangesEnabled: boolean;
   scheduleMode: ScheduleMode;
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -108,6 +158,20 @@ function normalizeDays(raw: unknown): string | null {
   return s.length === 0 || s.length === 7 ? null : [...new Set(s)].join(',');
 }
 
+const BOOL_FIELDS: Array<keyof NotificationPrefsUpdate> = [
+  'chatMessagesEnabled',
+  'changelogEnabled',
+  'pushMasterEnabled',
+  'athleteCreatedEnabled',
+  'financeEnabled',
+  'attendanceEnabled',
+  'offersEnabled',
+  'salaryEnabled',
+  'paymentsEnabled',
+  'trainingRemindersEnabled',
+  'scheduleChangesEnabled',
+];
+
 export async function updateNotificationPrefs(
   actorType: NotificationActorType,
   actorId: string,
@@ -117,14 +181,10 @@ export async function updateNotificationPrefs(
   const allowSchedule = opts?.allowSchedule !== false;
   const data: Record<string, unknown> = {};
 
-  if (typeof patch.chatMessagesEnabled === 'boolean') {
-    data.chatMessagesEnabled = patch.chatMessagesEnabled;
-  }
-  if (typeof patch.changelogEnabled === 'boolean') {
-    data.changelogEnabled = patch.changelogEnabled;
-  }
-  if (typeof patch.pushMasterEnabled === 'boolean') {
-    data.pushMasterEnabled = patch.pushMasterEnabled;
+  for (const key of BOOL_FIELDS) {
+    if (typeof patch[key] === 'boolean') {
+      data[key] = patch[key];
+    }
   }
 
   if (allowSchedule) {
@@ -187,7 +247,6 @@ export function localTimeParts(
     return { minutes: hour * 60 + minute, dayOfWeek: map[wd] || 1 };
   } catch {
     const minutes = date.getHours() * 60 + date.getMinutes();
-    // getDay: 0=Sun … 6=Sat → 1=Mon … 7=Sun
     const js = date.getDay();
     const dayOfWeek = js === 0 ? 7 : js;
     return { minutes, dayOfWeek };
@@ -198,7 +257,6 @@ function isInWindow(minutes: number, start: number | null, end: number | null): 
   if (start == null || end == null) return true;
   if (start === end) return true;
   if (start < end) return minutes >= start && minutes < end;
-  // окно через полночь
   return minutes >= start || minutes < end;
 }
 
@@ -211,6 +269,18 @@ export function canReceivePushNow(
   if (!prefs.pushMasterEnabled) return false;
   if (eventType === 'chat_message' && !prefs.chatMessagesEnabled) return false;
   if (eventType === 'platform_changelog' && !prefs.changelogEnabled) return false;
+  if (eventType === 'athlete_created' && !prefs.athleteCreatedEnabled) return false;
+  if (eventType === 'finance' && !prefs.financeEnabled) return false;
+  if (eventType === 'attendance' && !prefs.attendanceEnabled) return false;
+  if (eventType === 'offer' && !prefs.offersEnabled) return false;
+  if (eventType === 'salary' && !prefs.salaryEnabled) return false;
+  if (eventType === 'payment' && !prefs.paymentsEnabled) return false;
+  if (eventType === 'training_reminder') {
+    // Для staff (USER) напоминания о тренировке управляются TrainerNotificationSettings,
+    // не portal-флагом trainingRemindersEnabled.
+    if (prefs.actorType !== 'USER' && !prefs.trainingRemindersEnabled) return false;
+  }
+  if (eventType === 'schedule_change' && !prefs.scheduleChangesEnabled) return false;
 
   const applySchedule = opts?.applySchedule === true;
   if (!applySchedule || prefs.scheduleMode !== 'WINDOW') return true;

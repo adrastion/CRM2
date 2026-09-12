@@ -29,21 +29,19 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  const data = event.notification.data;
+  const data = event.notification.data || {};
   let url = '/';
 
-  if (data && data.type === 'daily_training_notification') {
-    url = '/schedule';
-  } else if (data && data.type === 'training_reminder') {
-    url = '/schedule';
-  } else if (data && data.type === 'server_load_critical') {
-    url = data.url || '/admin/dashboard';
-  } else if (data && data.type === 'chat_message') {
-    url = data.url || '/chats';
-  } else if (data && data.type === 'platform_changelog') {
-    url = data.url || '/admin/dashboard?section=changelog';
-  } else if (data && data.url) {
+  if (data.url) {
     url = data.url;
+  } else if (data.type === 'daily_training_notification' || data.type === 'training_reminder') {
+    url = '/schedule';
+  } else if (data.type === 'server_load_critical') {
+    url = '/admin/dashboard';
+  } else if (data.type === 'chat_message') {
+    url = '/chats';
+  } else if (data.type === 'platform_changelog') {
+    url = '/admin/dashboard?section=changelog';
   }
 
   event.waitUntil(

@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { colors, radii, sizes, typography } from '../../theme/tokens';
 import DesignIcon from '../common/DesignIcon';
+import NotificationsBell from '../notifications/NotificationsBell';
 import { NavIconName } from '../../assets/icons/registry';
 import {
   getActiveAccountId,
@@ -71,8 +72,10 @@ interface DashboardShellProps {
   /** Имя и роль в шапке. */
   userName: string;
   userRole: string;
-  /** Количество непрочитанных уведомлений. */
+  /** Количество непрочитанных уведомлений (legacy; если передан NotificationsBell — не нужен). */
   notifications?: number;
+  /** Канал колокольчика: school CRM или ЛК клиента. */
+  notificationsChannel?: 'school' | 'portal' | null;
   onLogout: () => void;
   /** Добавить ещё один аккаунт (очистить активную сессию, оставить реестр). */
   onAddAccount?: () => void;
@@ -104,6 +107,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   userName,
   userRole,
   notifications = 0,
+  notificationsChannel = null,
   onLogout,
   onAddAccount,
   searchDisabled,
@@ -512,6 +516,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           </IconButton>
           )}
 
+          {notificationsChannel ? (
+            <NotificationsBell channel={notificationsChannel} />
+          ) : (
           <Box sx={{ position: 'relative' }}>
             <IconButton aria-label="Уведомления" size="small" sx={{ color: colors.textMuted }}>
               <NotificationsNone sx={{ fontSize: 22 }} />
@@ -540,6 +547,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               </Box>
             )}
           </Box>
+          )}
 
           <Box
             component="button"

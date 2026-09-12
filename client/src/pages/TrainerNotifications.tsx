@@ -30,7 +30,7 @@ const TrainerNotifications: React.FC = () => {
     allTrainingsEnabled: false,
     allTrainingsTime: null as Date | null,
     reminderEnabled: false,
-    reminderBeforeMinutes: 30,
+    reminderBeforeMinutes: 60,
   });
 
   useEffect(() => {
@@ -73,7 +73,7 @@ const TrainerNotifications: React.FC = () => {
         allTrainingsEnabled: notificationSettings.allTrainingsEnabled || false,
         allTrainingsTime,
         reminderEnabled: notificationSettings.reminderEnabled || false,
-        reminderBeforeMinutes: notificationSettings.reminderBeforeMinutes || 30,
+        reminderBeforeMinutes: notificationSettings.reminderBeforeMinutes || 60,
       });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка загрузки настроек уведомлений');

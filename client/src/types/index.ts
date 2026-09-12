@@ -9,6 +9,9 @@ export interface User {
   phone?: string;
   role: 'OWNER' | 'ADMIN' | 'TRAINER';
   tenantId: string;
+  /** TRAINER, назначенный старшим хотя бы одного филиала */
+  isSeniorTrainer?: boolean;
+  seniorBranchIds?: string[];
 }
 
 export interface Tenant {
@@ -233,11 +236,43 @@ export interface LogFileContentResponse {
 
 export interface ClientDashboardStaffMember {
   id: string;
+  /** Для отличия кликабельных тренеров от админов/владельца. */
+  role?: 'TRAINER' | 'ADMIN' | 'OWNER';
   /** «Тренер», «Администратор», «Владелец». */
   roleLabel: string;
   name: string;
   phone: string | null;
   email: string | null;
+}
+
+/** Карточка тренера в ЛК клиента. */
+export interface ClientTrainerCardGroupScheduleItem {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ClientTrainerCardData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string | null;
+  experience: number | null;
+  qualification?: string | null;
+  specialization?: string | null;
+  groups: Array<{
+    id: string;
+    name: string;
+    schedule: ClientTrainerCardGroupScheduleItem[];
+  }>;
+  competitionResults: Array<{
+    id: string;
+    result: string | null;
+    category?: string | null;
+    competitionName: string;
+    competitionDate: string | null;
+    clientName: string;
+  }>;
 }
 
 export interface ClientDashboardEvent {
@@ -532,6 +567,17 @@ export interface Branch {
   description?: string;
   isActive: boolean;
   tenantId: string;
+  seniorTrainerId?: string | null;
+  seniorTrainer?: {
+    id: string;
+    user?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      middleName?: string;
+      email?: string;
+    };
+  } | null;
 }
 
 // Hall Types

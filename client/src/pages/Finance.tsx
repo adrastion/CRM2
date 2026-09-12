@@ -43,6 +43,8 @@ import FinanceSummaryTable, {
   FinanceSummarySortKey,
 } from '../components/finance/FinanceSummaryTable';
 import { colors, radii, typography } from '../theme/tokens';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
   FinanceDirection,
   FinanceMembershipRow,
@@ -217,8 +219,25 @@ const Finance: React.FC = () => {
 
   const [payoutAmount, setPayoutAmount] = useState('');
   const [receiveAmount, setReceiveAmount] = useState('');
+  const [addFormBaseline, setAddFormBaseline] = useState<Record<string, unknown> | null>(null);
+  const [payoutBaseline, setPayoutBaseline] = useState('');
+  const [receiveBaseline, setReceiveBaseline] = useState('');
 
   const refsLoadedRef = useRef(false);
+
+  const addFormSnapshot = () => ({
+    formDirection,
+    formTypeCode,
+    formTitle,
+    formAmount,
+    formOccurredAt: formOccurredAt?.toISOString() ?? null,
+    formNotes,
+    newTypeName,
+    formTrainerId,
+    formClientId,
+    showTrainerPicker,
+    showClientPicker,
+  });
 
   const activeFilterChips = useMemo(() => {
     const chips: string[] = [];
@@ -388,10 +407,28 @@ const Finance: React.FC = () => {
     setSnackbar('Тип операции создан');
   };
 
-  const handleSaveOperation = async () => {
+  const discardAddForm = useCallback(() => {
+    setAddOpen(false);
+    setFormTitle('');
+    setFormAmount('');
+    setFormNotes('');
+    setFormTrainerId('');
+    setFormClientId('');
+    setShowTrainerPicker(false);
+    setShowClientPicker(false);
+    setNewTypeName('');
+    setAddFormBaseline(null);
+  }, []);
+
+  const openAddDialog = () => {
+    setAddFormBaseline(addFormSnapshot());
+    setAddOpen(true);
+  };
+
+  const handleSaveOperation = async (): Promise<boolean> => {
     if (formTypeCode === 'bonus' && !formTrainerId) {
       setError('Выберите тренера для начисления премии');
-      return;
+      return false;
     }
     if (
       formDirection === 'income' &&
@@ -399,7 +436,7 @@ const Finance: React.FC = () => {
       !formClientId
     ) {
       setError('Выберите клиента для операции');
-      return;
+      return false;
     }
     if (
       formDirection === 'expense' &&
@@ -408,7 +445,7 @@ const Finance: React.FC = () => {
       !formClientId
     ) {
       setError('Выберите клиента для начисления платежа');
-      return;
+      return false;
     }
     try {
       await apiService.createFinanceOperation({
@@ -421,18 +458,13 @@ const Finance: React.FC = () => {
         trainerId: formTrainerId || undefined,
         clientId: formClientId || undefined,
       });
-      setAddOpen(false);
-      setFormTitle('');
-      setFormAmount('');
-      setFormNotes('');
-      setFormTrainerId('');
-      setFormClientId('');
-      setShowTrainerPicker(false);
-      setShowClientPicker(false);
+      discardAddForm();
       setSnackbar('Операция сохранена');
       await loadOperations();
+      return true;
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось сохранить операцию');
+      return false;
     }
   };
 
@@ -452,12 +484,26 @@ const Finance: React.FC = () => {
     }
   };
 
-  const handlePayout = async () => {
-    if (!selectedSalary) return;
+  const discardPayoutForm = useCallback(() => {
+    setPayoutOpen(false);
+    setPayoutAmount('');
+    setPayoutBaseline('');
+    setSelectedSalary(null);
+  }, []);
+
+  const discardReceiveForm = useCallback(() => {
+    setReceiveOpen(false);
+    setReceiveAmount('');
+    setReceiveBaseline('');
+    setSelectedMembership(null);
+  }, []);
+
+  const handlePayout = async (): Promise<boolean> => {
+    if (!selectedSalary) return false;
     const increment = Number(payoutAmount);
     if (!Number.isFinite(increment) || increment <= 0) {
       setError('Введите сумму выплаты');
-      return;
+      return false;
     }
     try {
       await apiService.payoutTrainerSalary({
@@ -472,17 +518,18 @@ const Finance: React.FC = () => {
                 ? `по ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
                 : undefined,
       });
-      setPayoutOpen(false);
-      setPayoutAmount('');
+      discardPayoutForm();
       setSnackbar('Выплата сохранена');
       await Promise.all([loadSalary(), loadOperations()]);
+      return true;
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось выплатить зарплату');
+      return false;
     }
   };
 
-  const handleReceive = async () => {
-    if (!selectedMembership) return;
+  const handleReceive = async (): Promise<boolean> => {
+    if (!selectedMembership) return false;
     const normalized = String(receiveAmount)
       .trim()
       .replace(/−/g, '-')
@@ -491,12 +538,12 @@ const Finance: React.FC = () => {
     const increment = Number(normalized);
     if (!Number.isFinite(increment) || increment === 0) {
       setError('Введите сумму (можно со знаком минус для уменьшения)');
-      return;
+      return false;
     }
     const paidNow = selectedMembership.paidAmount ?? 0;
     if (increment < 0 && Math.abs(increment) > paidNow) {
       setError(`Нельзя уменьшить больше, чем выплачено (${formatMoney(paidNow)})`);
-      return;
+      return false;
     }
     try {
       await apiService.receiveMembershipPayment({
@@ -504,13 +551,14 @@ const Finance: React.FC = () => {
         clientId: selectedMembership.clientId,
         amount: increment,
       });
-      setReceiveOpen(false);
-      setReceiveAmount('');
+      discardReceiveForm();
       setSnackbar(increment < 0 ? 'Выплачено уменьшено' : 'Оплата сохранена');
       await loadMemberships();
       await loadOperations();
+      return true;
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось сохранить изменение оплаты');
+      return false;
     }
   };
 
@@ -579,6 +627,7 @@ const Finance: React.FC = () => {
         onPaidClick: () => {
           setSelectedSalary(row);
           setPayoutAmount('');
+          setPayoutBaseline('');
           setPayoutOpen(true);
         },
       })),
@@ -598,6 +647,7 @@ const Finance: React.FC = () => {
         onPaidClick: () => {
           setSelectedMembership(row);
           setReceiveAmount('');
+          setReceiveBaseline('');
           setReceiveOpen(true);
         },
       })),
@@ -664,6 +714,27 @@ const Finance: React.FC = () => {
     '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
   };
 
+  const addDirty = addOpen && addFormBaseline != null && isDirtyValue(addFormSnapshot(), addFormBaseline);
+  const addUnsaved = useUnsavedClose({
+    isDirty: Boolean(addDirty),
+    onDiscard: discardAddForm,
+    onSave: handleSaveOperation,
+  });
+
+  const payoutDirty = payoutOpen && isDirtyValue(payoutAmount, payoutBaseline);
+  const payoutUnsaved = useUnsavedClose({
+    isDirty: Boolean(payoutDirty),
+    onDiscard: discardPayoutForm,
+    onSave: handlePayout,
+  });
+
+  const receiveDirty = receiveOpen && isDirtyValue(receiveAmount, receiveBaseline);
+  const receiveUnsaved = useUnsavedClose({
+    isDirty: Boolean(receiveDirty),
+    onDiscard: discardReceiveForm,
+    onSave: handleReceive,
+  });
+
   const renderFinanceToolbar = (
     onOpenFilters: () => void,
     chips: string[],
@@ -680,7 +751,7 @@ const Finance: React.FC = () => {
         variant="contained"
         size="small"
         startIcon={<Add sx={{ fontSize: 18 }} />}
-        onClick={() => setAddOpen(true)}
+        onClick={openAddDialog}
         sx={{
           bgcolor: colors.primary,
           borderRadius: '12px',
@@ -1422,7 +1493,16 @@ const Finance: React.FC = () => {
         </Drawer>
 
         {/* Add operation */}
-        <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={addOpen}
+          onClose={(_event, reason) => {
+            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+              addUnsaved.requestClose(reason);
+            }
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle>Добавить операцию</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1551,7 +1631,7 @@ const Finance: React.FC = () => {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setAddOpen(false)} sx={{ textTransform: 'none' }}>
+            <Button onClick={discardAddForm} sx={{ textTransform: 'none' }}>
               Отмена
             </Button>
             <Button
@@ -1565,7 +1645,16 @@ const Finance: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-        <Dialog open={payoutOpen} onClose={() => setPayoutOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog
+          open={payoutOpen}
+          onClose={(_event, reason) => {
+            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+              payoutUnsaved.requestClose(reason);
+            }
+          }}
+          maxWidth="xs"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 600 }}>Введите сумму выплаты</DialogTitle>
           <DialogContent>
             <Typography sx={{ mb: 1, color: colors.textMuted }}>{selectedSalary?.trainerName}</Typography>
@@ -1582,7 +1671,7 @@ const Finance: React.FC = () => {
             />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setPayoutOpen(false)} sx={{ textTransform: 'none' }}>
+            <Button onClick={discardPayoutForm} sx={{ textTransform: 'none' }}>
               Отмена
             </Button>
             <Button
@@ -1596,7 +1685,16 @@ const Finance: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-        <Dialog open={receiveOpen} onClose={() => setReceiveOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog
+          open={receiveOpen}
+          onClose={(_event, reason) => {
+            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+              receiveUnsaved.requestClose(reason);
+            }
+          }}
+          maxWidth="xs"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 600 }}>Изменить выплачено</DialogTitle>
           <DialogContent>
             <Typography sx={{ mb: 1 }}>
@@ -1638,7 +1736,7 @@ const Finance: React.FC = () => {
             })()}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setReceiveOpen(false)} sx={{ textTransform: 'none' }}>
+            <Button onClick={discardReceiveForm} sx={{ textTransform: 'none' }}>
               Отмена
             </Button>
             <Button
@@ -1651,6 +1749,28 @@ const Finance: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <UnsavedChangesDialog
+          open={addUnsaved.confirmOpen}
+          saving={addUnsaved.saving}
+          onSave={addUnsaved.save}
+          onDiscard={addUnsaved.discard}
+          onStay={addUnsaved.stay}
+        />
+        <UnsavedChangesDialog
+          open={payoutUnsaved.confirmOpen}
+          saving={payoutUnsaved.saving}
+          onSave={payoutUnsaved.save}
+          onDiscard={payoutUnsaved.discard}
+          onStay={payoutUnsaved.stay}
+        />
+        <UnsavedChangesDialog
+          open={receiveUnsaved.confirmOpen}
+          saving={receiveUnsaved.saving}
+          onSave={receiveUnsaved.save}
+          onDiscard={receiveUnsaved.discard}
+          onStay={receiveUnsaved.stay}
+        />
 
         <Dialog open={Boolean(cancelOp)} onClose={() => setCancelOp(null)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 600 }}>Отменить операцию?</DialogTitle>

@@ -20,6 +20,8 @@ import { Add } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Membership } from '../types';
 import { colors, typography } from '../theme/tokens';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
 type FormState = {
   name: string;
@@ -51,6 +53,7 @@ const Memberships: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [formBaseline, setFormBaseline] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -70,15 +73,23 @@ const Memberships: React.FC = () => {
     load();
   }, [load]);
 
-  const openCreate = () => {
+  const discardForm = useCallback(() => {
+    setDialogOpen(false);
     setEditing(null);
     setForm(emptyForm());
+    setFormBaseline(emptyForm());
+  }, []);
+
+  const openCreate = () => {
+    const initial = emptyForm();
+    setEditing(null);
+    setForm(initial);
+    setFormBaseline(initial);
     setDialogOpen(true);
   };
 
   const openEdit = (m: Membership) => {
-    setEditing(m);
-    setForm({
+    const initial: FormState = {
       name: m.name || '',
       description: m.description || '',
       price: String(m.price ?? ''),
@@ -86,19 +97,22 @@ const Memberships: React.FC = () => {
       visits: m.visits != null ? String(m.visits) : '',
       duration: m.duration != null ? String(m.duration) : '30',
       isActive: m.isActive !== false,
-    });
+    };
+    setEditing(m);
+    setForm(initial);
+    setFormBaseline(initial);
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     if (!form.name.trim()) {
       setError('Укажите название');
-      return;
+      return false;
     }
     const price = Number(form.price);
     if (!Number.isFinite(price) || price < 0) {
       setError('Укажите корректную цену');
-      return;
+      return false;
     }
 
     const payload: Record<string, unknown> = {
@@ -112,7 +126,7 @@ const Memberships: React.FC = () => {
       const visits = parseInt(form.visits, 10);
       if (!Number.isFinite(visits) || visits <= 0) {
         setError('Укажите число посещений');
-        return;
+        return false;
       }
       payload.visits = visits;
       payload.duration = null;
@@ -120,7 +134,7 @@ const Memberships: React.FC = () => {
       const duration = parseInt(form.duration, 10);
       if (!Number.isFinite(duration) || duration <= 0) {
         setError('Укажите срок в днях');
-        return;
+        return false;
       }
       payload.duration = duration;
       payload.visits = null;
@@ -134,10 +148,12 @@ const Memberships: React.FC = () => {
       } else {
         await apiService.createMembership(payload);
       }
-      setDialogOpen(false);
+      discardForm();
       await load();
+      return true;
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось сохранить');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -152,6 +168,13 @@ const Memberships: React.FC = () => {
       setError(err?.response?.data?.error || 'Не удалось удалить (возможно, уже выдан клиентам)');
     }
   };
+
+  const formDirty = dialogOpen && isDirtyValue(form, formBaseline);
+  const formUnsaved = useUnsavedClose({
+    isDirty: Boolean(formDirty),
+    onDiscard: discardForm,
+    onSave: handleSave,
+  });
 
   return (
     <Box data-onboarding="memberships-page">
@@ -256,7 +279,16 @@ const Memberships: React.FC = () => {
         </Box>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            formUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>{editing ? 'Редактировать абонемент' : 'Новый абонемент'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -327,12 +359,20 @@ const Memberships: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Отмена</Button>
+          <Button onClick={discardForm}>Отмена</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? 'Сохранение…' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={formUnsaved.confirmOpen}
+        saving={formUnsaved.saving}
+        onSave={formUnsaved.save}
+        onDiscard={formUnsaved.discard}
+        onStay={formUnsaved.stay}
+      />
     </Box>
   );
 };

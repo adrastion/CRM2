@@ -75,6 +75,10 @@ import {
   updateSuperAdminNotificationPrefs,
 } from '../controllers/notificationPrefsController';
 import {
+  publishSchoolOffer,
+  listSchoolOffers,
+} from '../controllers/inboxNotificationController';
+import {
   getAdminMaintenance,
   updateAdminMaintenance,
 } from '../controllers/maintenanceController';
@@ -213,6 +217,9 @@ router.get('/server-metrics/push/status', getSuperAdminPushSubscriptionStatus);
 
 router.get('/notification-prefs', getSuperAdminNotificationPrefs);
 router.put('/notification-prefs', updateSuperAdminNotificationPrefs);
+
+router.get('/school-offers', listSchoolOffers);
+router.post('/school-offers', publishSchoolOffer);
 
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);

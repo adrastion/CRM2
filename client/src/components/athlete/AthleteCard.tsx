@@ -106,6 +106,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   onSaved,
   onClose,
   docsAccess = 'full',
+  onTrainerClick,
 }) => {
   const { user } = useAuth();
   const canManageContracts = mode === 'staff' && isOwnerOrAdmin(user?.role);
@@ -401,6 +402,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
               }
             : undefined
         }
+        onTrainerClick={mode === 'client' ? onTrainerClick : undefined}
       />
 
       <ClientGroupsDialog

@@ -36,6 +36,8 @@ interface Props {
   onPhotoChange?: (base64: string) => void;
   /** Staff: быстрая смена групп (как на вкладке «Клиенты»). */
   onGroupClick?: () => void;
+  /** Client: открыть карточку тренера. */
+  onTrainerClick?: (trainerId: string) => void;
 }
 
 const AthleteProfileHeader: React.FC<Props> = ({
@@ -46,6 +48,7 @@ const AthleteProfileHeader: React.FC<Props> = ({
   onDraftChange,
   onPhotoChange,
   onGroupClick,
+  onTrainerClick,
 }) => {
   const meta = deriveSecondaryMeta(data);
   const name = fullName(editing ? { ...data, ...draft } : data);
@@ -297,7 +300,37 @@ const AthleteProfileHeader: React.FC<Props> = ({
             gap: 1,
           }}
         >
-          <MetaItem label="Тренер" value={meta.trainerLabel} />
+          <Box>
+            <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>Тренер</Typography>
+            {mode === 'client' && onTrainerClick && meta.trainers.length > 0 ? (
+              <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mt: 0.25 }}>
+                {meta.trainers.map((t) => (
+                  <ButtonBase
+                    key={t.id}
+                    onClick={() => onTrainerClick(t.id)}
+                    sx={{
+                      bgcolor: colors.primarySoft,
+                      color: colors.primary,
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: '10px',
+                      fontWeight: 600,
+                      fontSize: typography.label,
+                      textAlign: 'left',
+                      maxWidth: '100%',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {t.name}
+                  </ButtonBase>
+                ))}
+              </Stack>
+            ) : (
+              <Typography sx={{ fontSize: typography.label, color: colors.textMuted, fontWeight: 600 }}>
+                {meta.trainerLabel}
+              </Typography>
+            )}
+          </Box>
           <Box>
             <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>Группа</Typography>
             {mode === 'staff' && onGroupClick ? (

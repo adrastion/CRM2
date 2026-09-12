@@ -5,7 +5,10 @@
  * ADMIN — операционное управление; финансы доступны, кроме отмены операций;
  *         может создавать только тренеров (не других администраторов).
  * TRAINER — ограниченный доступ к своим разделам.
+ * Старший тренер — TRAINER с seniorBranchIds: права ≈ ADMIN в рамках своих филиалов.
  */
+
+import type { User } from '../types';
 
 export type SchoolRole = 'OWNER' | 'ADMIN' | 'TRAINER';
 
@@ -15,6 +18,34 @@ export function isOwner(role?: string | null): boolean {
 
 export function isOwnerOrAdmin(role?: string | null): boolean {
   return role === 'OWNER' || role === 'ADMIN';
+}
+
+export function isSeniorTrainerUser(user?: Pick<User, 'role' | 'isSeniorTrainer' | 'seniorBranchIds'> | null): boolean {
+  if (!user || user.role !== 'TRAINER') return false;
+  if (user.isSeniorTrainer) return true;
+  return Array.isArray(user.seniorBranchIds) && user.seniorBranchIds.length > 0;
+}
+
+/** OWNER/ADMIN или старший тренер (доступ к admin-разделам с ограничением по филиалу). */
+export function canAccessAdminNav(user?: Pick<User, 'role' | 'isSeniorTrainer' | 'seniorBranchIds'> | null): boolean {
+  return isOwnerOrAdmin(user?.role) || isSeniorTrainerUser(user);
+}
+
+export function canAssignSeniorTrainer(user?: Pick<User, 'role'> | null): boolean {
+  return isOwnerOrAdmin(user?.role);
+}
+
+export function canCreateBranches(user?: Pick<User, 'role'> | null): boolean {
+  return isOwnerOrAdmin(user?.role);
+}
+
+export function canManageBranchUi(
+  user: Pick<User, 'role' | 'isSeniorTrainer' | 'seniorBranchIds'> | null | undefined,
+  branchId: string
+): boolean {
+  if (isOwnerOrAdmin(user?.role)) return true;
+  if (!isSeniorTrainerUser(user)) return false;
+  return (user?.seniorBranchIds || []).includes(branchId);
 }
 
 /** Отмена / удаление операций в «Финансы → Все операции». */

@@ -16,6 +16,7 @@ import {
   resolveCertificateUpdate,
   sanitizeClientCertificateFields,
 } from '../utils/clientCertificates';
+import { notifyAthleteCreated } from '../services/notificationDomainHooks';
 
 /**
  * Approve parent account registration
@@ -157,6 +158,22 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     tenantId,
     isActive: true
   };
+
+  if (req.user?.role === 'TRAINER') {
+    const { getSeniorBranchIds } = await import('../utils/branchAccess');
+    const seniorIds = await getSeniorBranchIds(req.user.id, tenantId);
+    if (seniorIds.length > 0) {
+      where.groupMemberships = {
+        some: {
+          isActive: true,
+          group: {
+            branchId: { in: seniorIds },
+            isActive: true,
+          },
+        },
+      };
+    }
+  }
 
   if (search) {
     // PostgreSQL supports case-insensitive search
@@ -444,6 +461,16 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     });
     return;
   }
+
+  void notifyAthleteCreated({
+    tenantId,
+    clientId: client.id,
+    firstName: client.firstName,
+    lastName: client.lastName,
+    middleName: (client as any).middleName,
+    createdByUserId: req.user?.id,
+    branchId: (client as any).branchId || null,
+  }).catch((err) => console.error('[Notifications] athlete_created:', err));
 
   res.status(201).json({
     success: true,

@@ -2,6 +2,9 @@ import { prisma } from '../lib/prisma';
 import { format, addMinutes, isToday, startOfDay, addDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { sendPushNotification } from './pushNotificationService';
+import { fanoutNotification } from './notificationFanout';
+
+const DEFAULT_REMINDER_MINUTES = 60;
 
 /**
  * Получить текущее время в указанном часовом поясе
@@ -194,7 +197,6 @@ export async function sendTrainingReminders(): Promise<void> {
         isActive: true,
         notificationSettings: {
           reminderEnabled: true,
-          reminderBeforeMinutes: { not: null }
         }
       },
       include: {
@@ -210,7 +212,8 @@ export async function sendTrainingReminders(): Promise<void> {
 
     for (const trainer of trainersWithReminders) {
       try {
-        const reminderMinutes = trainer.notificationSettings?.reminderBeforeMinutes;
+        const reminderMinutes =
+          trainer.notificationSettings?.reminderBeforeMinutes ?? DEFAULT_REMINDER_MINUTES;
         if (!reminderMinutes) continue;
 
         // Вычисляем время начала тренировки (текущее время + минуты напоминания)
@@ -254,25 +257,45 @@ export async function sendTrainingReminders(): Promise<void> {
         // Отправляем напоминание для каждой тренировки
         for (const training of trainings) {
           const message = formatReminderMessage(training, reminderMinutes, trainer.tenant?.name || '');
+          const groupName = training.group?.name || 'Индивидуальная тренировка';
+          const time = format(training.startTime, 'HH:mm', { locale: ru });
+          const title = `Напоминание: тренировка через ${reminderMinutes} минут`;
+          const body = `${groupName} в ${time}`;
 
-          // Отправляем push уведомление
           try {
-            const groupName = training.group?.name || 'Индивидуальная тренировка';
-            const time = format(training.startTime, 'HH:mm', { locale: ru });
-            
-            await sendPushNotification(
-              trainer.userId,
-              `Напоминание: тренировка через ${reminderMinutes} минут`,
-              `${groupName} в ${time}`,
-              {
-                type: 'training_reminder',
+            await fanoutNotification({
+              tenantId: trainer.tenantId,
+              category: 'training',
+              type: 'training_reminder',
+              title,
+              body,
+              data: {
+                url: '/schedule',
                 trainingId: training.id,
                 startTime: training.startTime.toISOString(),
-                groupName: groupName
-              }
-            );
+                groupName,
+              },
+              eventType: 'training_reminder',
+              recipients: [{ actorType: 'USER', actorId: trainer.userId }],
+            });
           } catch (error) {
             console.error(`[Notifications] Error sending push reminder:`, error);
+            try {
+              await sendPushNotification(
+                trainer.userId,
+                title,
+                body,
+                {
+                  type: 'training_reminder',
+                  trainingId: training.id,
+                  startTime: training.startTime.toISOString(),
+                  groupName,
+                  url: '/schedule',
+                }
+              );
+            } catch {
+              /* ignore */
+            }
           }
 
           console.log(`[Notifications] Reminder for trainer ${trainer.id}:`);

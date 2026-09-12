@@ -14,6 +14,7 @@ import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwit
 import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
 import { useChatUnreadBadge } from '../../hooks/useChatUnreadBadge';
+import { canAccessAdminNav } from '../../utils/roles';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -250,7 +251,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         ]
       : navigationItems
           .filter((item) => {
-            if (!item.roles.includes(user?.role || '')) return false;
+            const role = user?.role || '';
+            const roleOk =
+              item.roles.includes(role) ||
+              (canAccessAdminNav(user) && item.roles.includes('ADMIN') && !item.roles.includes('TRAINER'));
+            // «Мой заработок» остаётся и для старшего тренера
+            if (item.path === '/trainer/earnings' && role === 'TRAINER') return visibleTabs[item.tabKey!] !== false;
+            if (!roleOk) return false;
             if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
             return true;
           })
@@ -279,7 +286,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     ? 'Супер-админ'
     : isTesterRoute
       ? 'Тестировщик'
-      : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
+      : canAccessAdminNav(user) && user?.role === 'TRAINER'
+        ? 'Старший тренер'
+        : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
 
   const activeKey = isSuperAdminRoute
     ? location.pathname.startsWith('/admin/support-hub')
@@ -307,6 +316,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         activeKey={activeKey}
         userName={userName || tenant?.name || 'Профиль'}
         userRole={userRole}
+        notificationsChannel={isPlatformShell ? null : 'school'}
         onLogout={handleLogout}
         onAddAccount={handleAddAccount}
         hideSearch={isPlatformShell}

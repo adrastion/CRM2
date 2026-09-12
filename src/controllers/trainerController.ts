@@ -54,6 +54,18 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       isActive: true
     };
 
+    if (req.user?.role === 'TRAINER') {
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        trainerWhere.OR = [
+          { branches: { some: { branchId: { in: seniorIds } } } },
+          { groups: { some: { branchId: { in: seniorIds }, isActive: true } } },
+          { seniorBranches: { some: { id: { in: seniorIds } } } },
+        ];
+      }
+    }
+
     if (search) {
       trainerWhere.user = {
         OR: [
@@ -97,6 +109,15 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       shouldIncludeAdmins = includeAdmins === 'true' || includeAdmins === '1';
     } else if (typeof includeAdmins === 'boolean') {
       shouldIncludeAdmins = includeAdmins === true;
+    }
+
+    if (shouldIncludeAdmins && req.user?.role === 'TRAINER') {
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      // Старший тренер не управляет администраторами школы
+      if (seniorIds.length > 0) {
+        shouldIncludeAdmins = false;
+      }
     }
     
     if (shouldIncludeAdmins) {
@@ -204,9 +225,26 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, canViewAllGroups } = req.body;
+    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, canViewAllGroups, branchId } = req.body;
     const salary = parseSalaryFields(req.body);
     const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    let seniorBranchIds: string[] = [];
+    if (req.user?.role === 'TRAINER') {
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      seniorBranchIds = await getSeniorBranchIds(req.user.id, req.tenant.id);
+      if (seniorBranchIds.length === 0) {
+        res.status(403).json({ success: false, error: 'Insufficient permissions' });
+        return;
+      }
+      if (!branchId || !seniorBranchIds.includes(branchId)) {
+        res.status(400).json({
+          success: false,
+          error: 'Укажите филиал, которым вы управляете',
+        });
+        return;
+      }
+    }
 
     if (!normalizedEmail) {
       res.status(400).json({ success: false, error: 'Укажите email' });
@@ -263,13 +301,25 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         salaryAmount: salary.salaryAmount,
         salaryScheme: salary.salaryScheme,
         salaryRate: salary.salaryRate,
-        canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
+        canViewAllGroups:
+          seniorBranchIds.length > 0
+            ? false
+            : canViewAllGroups === true || canViewAllGroups === 'true',
         tenantId: req.tenant.id
       },
       include: {
         user: true
       }
     });
+
+    if (seniorBranchIds.length > 0 && branchId) {
+      await prisma.trainerBranch.create({
+        data: {
+          trainerId: trainer.id,
+          branchId,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -877,6 +927,7 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
           trainerId: id,
           allTrainingsEnabled: false,
           reminderEnabled: false,
+          reminderBeforeMinutes: 60,
           timezone: 'UTC'
         }
       });
@@ -990,7 +1041,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
         allTrainingsTime: allTrainingsTime !== undefined && allTrainingsTime !== null ? parseInt(allTrainingsTime) : undefined,
         allTrainingsEnabled: allTrainingsEnabled !== undefined ? Boolean(allTrainingsEnabled) : false,
         notificationPeriod: notificationPeriod || 'tomorrow',
-        reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : undefined,
+        reminderBeforeMinutes: reminderBeforeMinutes !== undefined && reminderBeforeMinutes !== null ? parseInt(reminderBeforeMinutes) : 60,
         reminderEnabled: reminderEnabled !== undefined ? Boolean(reminderEnabled) : false,
         timezone: timezone || 'UTC'
       }

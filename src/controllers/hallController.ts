@@ -139,6 +139,17 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
+    if (req.user) {
+      const { canManageBranch, isOwnerOrAdminRole, getSeniorBranchIds } = await import('../utils/branchAccess');
+      if (!isOwnerOrAdminRole(req.user.role)) {
+        const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+        if (seniorIds.length > 0 && !(await canManageBranch(req.user, branchId, req.tenant?.id))) {
+          res.status(403).json({ success: false, error: 'Нет доступа к этому филиалу' });
+          return;
+        }
+      }
+    }
+
     const tenantId = req.tenant?.id;
     if (!tenantId) {
       res.status(400).json({

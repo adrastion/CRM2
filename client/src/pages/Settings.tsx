@@ -43,6 +43,8 @@ import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -93,6 +95,7 @@ const Settings: React.FC = () => {
   const [emailPassword, setEmailPassword] = useState('');
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailFormBaseline, setEmailFormBaseline] = useState({ newEmail: '', emailPassword: '' });
 
   // Подтверждение email
   const [verifyCode, setVerifyCode] = useState('');
@@ -121,7 +124,7 @@ const Settings: React.FC = () => {
     allTrainingsTime: null as Date | null,
     notificationPeriod: 'tomorrow' as 'tomorrow' | 'week' | 'month',
     reminderEnabled: false,
-    reminderBeforeMinutes: 30,
+    reminderBeforeMinutes: 60,
     timezone: 'UTC',
   });
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -243,7 +246,7 @@ const Settings: React.FC = () => {
         allTrainingsTime,
         notificationPeriod: (notificationSettingsData.notificationPeriod || 'tomorrow') as 'tomorrow' | 'week' | 'month',
         reminderEnabled: notificationSettingsData.reminderEnabled || false,
-        reminderBeforeMinutes: notificationSettingsData.reminderBeforeMinutes || 30,
+        reminderBeforeMinutes: notificationSettingsData.reminderBeforeMinutes || 60,
         timezone: notificationSettingsData.timezone || 'UTC',
       });
     } catch (err: any) {
@@ -320,7 +323,22 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleChangeEmail = async () => {
+  const discardEmailForm = () => {
+    setEmailDialogOpen(false);
+    setNewEmail('');
+    setEmailPassword('');
+    setEmailFormBaseline({ newEmail: '', emailPassword: '' });
+  };
+
+  const openEmailDialog = () => {
+    const initial = { newEmail: '', emailPassword: '' };
+    setNewEmail('');
+    setEmailPassword('');
+    setEmailFormBaseline(initial);
+    setEmailDialogOpen(true);
+  };
+
+  const handleChangeEmail = async (): Promise<boolean> => {
     try {
       setSaving(true);
       setError(null);
@@ -339,17 +357,25 @@ const Settings: React.FC = () => {
       setVerifyNotice(null);
 
       setSuccess(true);
-      setEmailDialogOpen(false);
-      setNewEmail('');
-      setEmailPassword('');
+      discardEmailForm();
       setTimeout(() => setSuccess(false), 3000);
+      return true;
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось изменить email');
       console.error('Error changing email:', err);
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  const emailDirty =
+    emailDialogOpen && isDirtyValue({ newEmail, emailPassword }, emailFormBaseline);
+  const emailUnsaved = useUnsavedClose({
+    isDirty: Boolean(emailDirty),
+    onDiscard: discardEmailForm,
+    onSave: handleChangeEmail,
+  });
 
   const handleSendVerificationCode = async () => {
     try {
@@ -769,7 +795,7 @@ const Settings: React.FC = () => {
                   </Typography>
                   <Button
                     variant="outlined"
-                    onClick={() => setEmailDialogOpen(true)}
+                    onClick={openEmailDialog}
                     sx={{ mt: 2, width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
                   >
                     Изменить email
@@ -871,6 +897,7 @@ const Settings: React.FC = () => {
               <NotificationSettingsPanel
                 actor="school"
                 showSchedule={user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER'}
+                schoolRole={user?.role}
               />
 
               {user?.role === 'TRAINER' && (
@@ -1057,7 +1084,16 @@ const Settings: React.FC = () => {
       </Card>
 
       {/* Диалог смены email */}
-      <Dialog open={emailDialogOpen} onClose={() => setEmailDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={emailDialogOpen}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            emailUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Смена email</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1094,7 +1130,7 @@ const Settings: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEmailDialogOpen(false)}>Отмена</Button>
+          <Button onClick={discardEmailForm}>Отмена</Button>
           <Button
             onClick={handleChangeEmail}
             variant="contained"
@@ -1104,6 +1140,14 @@ const Settings: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={emailUnsaved.confirmOpen}
+        saving={emailUnsaved.saving}
+        onSave={emailUnsaved.save}
+        onDiscard={emailUnsaved.discard}
+        onStay={emailUnsaved.stay}
+      />
     </Box>
   );
 };

@@ -326,6 +326,7 @@ export const getClientDashboard = asyncHandler(
     const staff = [
       ...trainers.map((t) => ({
         id: t.id,
+        role: 'TRAINER' as const,
         roleLabel: 'Тренер',
         name: fullName([t.user?.lastName, t.user?.firstName, t.user?.middleName]),
         phone: t.user?.phone || null,
@@ -333,6 +334,7 @@ export const getClientDashboard = asyncHandler(
       })),
       ...admins.map((a) => ({
         id: a.id,
+        role: a.role === 'OWNER' ? ('OWNER' as const) : ('ADMIN' as const),
         roleLabel: a.role === 'OWNER' ? 'Владелец' : 'Администратор',
         name: fullName([a.lastName, a.firstName, a.middleName]),
         phone: a.phone || null,
@@ -492,6 +494,187 @@ export const getClientDashboard = asyncHandler(
         weekRange: { start: weekStart.toISOString(), end: weekEnd.toISOString() },
         upcomingTrainings: visible(weekTrainings).map(mapTraining),
         monthEvents: visible(monthTrainings).map(mapTraining),
+      },
+    });
+  }
+);
+
+function parseGroupSchedule(raw: string | null | undefined): Array<{
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}> {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item: any) =>
+          item &&
+          typeof item.dayOfWeek === 'number' &&
+          typeof item.startTime === 'string' &&
+          typeof item.endTime === 'string'
+      )
+      .map((item: any) => ({
+        dayOfWeek: item.dayOfWeek,
+        startTime: item.startTime,
+        endTime: item.endTime,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Карточка тренера для ЛК клиента/родителя.
+ * GET /api/client-auth/trainers/:trainerId/card?clientId=
+ */
+export const getClientTrainerCard = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const userType = req.userType;
+    const clientAuthId = req.client?.id;
+    const parentAuthId = req.parent?.id;
+    const { trainerId } = req.params;
+
+    if (!clientAuthId && !parentAuthId) {
+      throw unauthorized('Требуется авторизация');
+    }
+    if (!trainerId) {
+      res.status(400).json({ success: false, error: 'Trainer ID is required' });
+      return;
+    }
+
+    let clientId: string;
+    let tenantId: string;
+
+    if (userType === 'parent' && parentAuthId) {
+      const parent = await prisma.parent.findUnique({
+        where: { id: parentAuthId },
+        select: { id: true, clientId: true, tenantId: true },
+      });
+      if (!parent) throw unauthorized('Аккаунт не найден');
+      clientId = parent.clientId;
+      tenantId = parent.tenantId;
+    } else {
+      const client = await prisma.client.findUnique({
+        where: { id: clientAuthId as string },
+        select: { id: true, tenantId: true },
+      });
+      if (!client) throw unauthorized('Аккаунт не найден');
+      clientId = client.id;
+      tenantId = client.tenantId;
+    }
+
+    const linkedAthletes = await findLinkedAthletes(tenantId, userType, clientAuthId, parentAuthId);
+    const requestedClientId =
+      typeof req.query.clientId === 'string' && req.query.clientId.trim()
+        ? req.query.clientId.trim()
+        : null;
+    if (requestedClientId) {
+      const allowed = linkedAthletes.some((a) => a.id === requestedClientId);
+      if (!allowed) throw unauthorized('Нет доступа к выбранному спортсмену');
+      clientId = requestedClientId;
+    }
+
+    const trainer = await prisma.trainer.findFirst({
+      where: { id: trainerId, tenantId, isActive: true },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            middleName: true,
+          },
+        },
+      },
+    });
+
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
+      return;
+    }
+
+    const [tenantSettings, memberships] = await Promise.all([
+      prisma.tenantSettings.findUnique({
+        where: { tenantId },
+        select: { clientCanViewAllTrainers: true },
+      }),
+      prisma.groupMembership.findMany({
+        where: { clientId, isActive: true },
+        select: { group: { select: { trainerId: true } } },
+      }),
+    ]);
+
+    const showAllTrainers = tenantSettings?.clientCanViewAllTrainers ?? false;
+    const groupTrainerIds = memberships
+      .map((m) => m.group?.trainerId)
+      .filter((v): v is string => Boolean(v));
+
+    if (!showAllTrainers && !groupTrainerIds.includes(trainer.id)) {
+      res.status(403).json({ success: false, error: 'Нет доступа к карточке этого тренера' });
+      return;
+    }
+
+    const [groups, competitionResults] = await Promise.all([
+      prisma.group.findMany({
+        where: { trainerId: trainer.id, tenantId, isActive: true },
+        select: { id: true, name: true, schedule: true },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.competitionResult.findMany({
+        where: {
+          participant: {
+            client: {
+              groupMemberships: {
+                some: { isActive: true, group: { trainerId: trainer.id } },
+              },
+            },
+            competition: { tenantId },
+          },
+        },
+        include: {
+          competition: { select: { id: true, name: true, startDate: true } },
+          participant: {
+            include: {
+              client: {
+                select: { firstName: true, lastName: true, middleName: true },
+              },
+            },
+          },
+        },
+        orderBy: { competition: { startDate: 'desc' } },
+        take: 50,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        id: trainer.id,
+        firstName: trainer.user?.firstName || '',
+        lastName: trainer.user?.lastName || '',
+        middleName: trainer.user?.middleName || null,
+        experience: trainer.experience ?? null,
+        qualification: trainer.qualification ?? null,
+        specialization: trainer.specialization ?? null,
+        groups: groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          schedule: parseGroupSchedule(g.schedule),
+        })),
+        competitionResults: competitionResults.map((r) => ({
+          id: r.id,
+          result: r.result ?? null,
+          category: r.category ?? null,
+          competitionName: r.competition?.name || 'Соревнование',
+          competitionDate: r.competition?.startDate?.toISOString() || null,
+          clientName: fullName([
+            r.participant?.client?.lastName,
+            r.participant?.client?.firstName,
+            r.participant?.client?.middleName,
+          ]),
+        })),
       },
     });
   }

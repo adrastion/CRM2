@@ -115,9 +115,12 @@ model Branch {
   description String?
   isActive    Boolean         @default(true)
   tenantId    String
+  /// Старший тренер филиала (права ≈ ADMIN в рамках этого филиала)
+  seniorTrainerId String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  seniorTrainer Trainer?      @relation("BranchSeniorTrainer", fields: [seniorTrainerId], references: [id], onDelete: SetNull)
   groups      Group[]
   halls       Hall[]
   payments    Payment[]
@@ -127,6 +130,7 @@ model Branch {
   financeOperations FinanceOperation[]
 
   @@index([tenantId, isActive])
+  @@index([seniorTrainerId])
   @@map("branches")
 }
 
@@ -403,6 +407,7 @@ model Trainer {
   competitionTrainers  CompetitionTrainer[]
   groups               Group[]
   branches             TrainerBranch[]
+  seniorBranches       Branch[]                     @relation("BranchSeniorTrainer")
   salaryLedgers        TrainerSalaryLedger[]
   tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                 User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -483,7 +488,7 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
-/// Предпочтения уведомлений (чаты, changelog, расписание доставки).
+/// Предпочтения уведомлений (чаты, changelog, расписание доставки, категории).
 model NotificationPreference {
   id                   String   @id @default(cuid())
   /// USER | CLIENT | PARENT | SUPER_ADMIN | TESTER
@@ -492,6 +497,22 @@ model NotificationPreference {
   chatMessagesEnabled  Boolean  @default(true)
   changelogEnabled     Boolean  @default(true)
   pushMasterEnabled    Boolean  @default(true)
+  /// Новый спортсмен (OWNER/ADMIN)
+  athleteCreatedEnabled Boolean @default(true)
+  /// Финансовые изменения (OWNER/ADMIN)
+  financeEnabled       Boolean  @default(true)
+  /// Посещаемость / начало тренировки / неявки (ADMIN)
+  attendanceEnabled    Boolean  @default(true)
+  /// Предложения платформы (OWNER)
+  offersEnabled        Boolean  @default(true)
+  /// Зарплата (TRAINER)
+  salaryEnabled        Boolean  @default(true)
+  /// Оплата / задолженность (CLIENT/PARENT)
+  paymentsEnabled      Boolean  @default(true)
+  /// Напоминания о тренировках (CLIENT/PARENT)
+  trainingRemindersEnabled Boolean @default(true)
+  /// Перенос / отмена тренировки (CLIENT/PARENT)
+  scheduleChangesEnabled Boolean @default(true)
   /// ALWAYS | WINDOW — только для школьного staff (USER)
   scheduleMode         String   @default("ALWAYS")
   /// Начало разрешённого окна (минуты от полуночи), при WINDOW
@@ -507,6 +528,45 @@ model NotificationPreference {
   @@unique([actorType, actorId])
   @@index([actorType, actorId])
   @@map("notification_preferences")
+}
+
+/// Inbox колокольчика (staff / portal / platform actors).
+model InAppNotification {
+  id        String    @id @default(cuid())
+  tenantId  String?
+  /// USER | CLIENT | PARENT | SUPER_ADMIN | TESTER
+  actorType String
+  actorId   String
+  /// chat | finance | athlete | attendance | salary | training | offer | system
+  category  String
+  /// Конкретный код события
+  type      String
+  title     String
+  body      String?
+  /// JSON: url, entity ids, counts
+  data      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([actorType, actorId, readAt])
+  @@index([actorType, actorId, category, readAt])
+  @@index([tenantId, category])
+  @@map("in_app_notifications")
+}
+
+/// Предложения платформы школам («от нас») — для OWNER.
+model PlatformSchoolOffer {
+  id          String    @id @default(cuid())
+  title       String
+  body        String
+  url         String?
+  publishedAt DateTime  @default(now())
+  publishedBy String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([publishedAt])
+  @@map("platform_school_offers")
 }
 
 /// Web Push для ЛК клиента / родителя

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -100,6 +100,9 @@ import {
   SuperAdminPlatformChangelogTab,
 } from '../components/SuperAdminPlatformTabs';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import SchoolOffersPanel from '../components/notifications/SchoolOffersPanel';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -396,6 +399,42 @@ const AdminDashboard: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [editExpenseDialog, setEditExpenseDialog] = useState(false);
 
+  const emptyExpenseForm = () => ({
+    expenseAmount: '',
+    expenseDescription: '',
+    expenseCategoryId: '',
+  });
+  const emptyCategoryForm = () => ({
+    categoryName: '',
+    categoryDescription: '',
+    categoryColor: '#2196F3',
+  });
+  const emptyPaymentForm = () => ({
+    paymentMarketerId: '',
+    paymentAmount: '',
+    paymentDescription: '',
+  });
+  const emptyPlanForm = () => ({
+    code: '',
+    name: '',
+    description: '',
+    price: '',
+    isPublic: true,
+    trainers: '',
+    clients: '',
+    groups: '',
+    branches: '',
+    trainings: '',
+  });
+
+  const [expenseFormBaseline, setExpenseFormBaseline] = useState(emptyExpenseForm());
+  const [editExpenseBaseline, setEditExpenseBaseline] = useState(emptyExpenseForm());
+  const [categoryFormBaseline, setCategoryFormBaseline] = useState(emptyCategoryForm());
+  const [paymentFormBaseline, setPaymentFormBaseline] = useState(emptyPaymentForm());
+  const [editPlanBaseline, setEditPlanBaseline] = useState<Record<string, unknown> | null>(null);
+  const [createPlanBaseline, setCreatePlanBaseline] = useState(emptyPlanForm());
+  const [grantFormBaseline, setGrantFormBaseline] = useState<Record<string, unknown> | null>(null);
+
   useEffect(() => {
     loadDashboard();
     loadExpenseCategories();
@@ -597,10 +636,75 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
-  const handleCreateExpense = async () => {
+  const expenseFormSnapshot = () => ({
+    expenseAmount,
+    expenseDescription,
+    expenseCategoryId,
+  });
+
+  const categoryFormSnapshot = () => ({
+    categoryName,
+    categoryDescription,
+    categoryColor,
+  });
+
+  const paymentFormSnapshot = () => ({
+    paymentMarketerId,
+    paymentAmount,
+    paymentDescription,
+  });
+
+  const editPlanSnapshot = () => ({
+    editingPlanName,
+    editingPlanDescription,
+    editingPlanIsPublic,
+    editingPlanPrice,
+    editingPlanLimits,
+  });
+
+  const grantFormSnapshot = () => ({
+    selectedPlanType,
+    grantEndDate: grantEndDate?.toISOString() ?? null,
+    grantComment,
+  });
+
+  const discardExpenseForm = useCallback(() => {
+    setExpenseDialog(false);
+    setExpenseAmount('');
+    setExpenseDescription('');
+    setExpenseCategoryId('');
+    setExpenseFormBaseline(emptyExpenseForm());
+  }, []);
+
+  const discardEditExpenseForm = useCallback(() => {
+    setEditExpenseDialog(false);
+    setEditingExpense(null);
+    setExpenseAmount('');
+    setExpenseDescription('');
+    setExpenseCategoryId('');
+    setEditExpenseBaseline(emptyExpenseForm());
+  }, []);
+
+  const discardCategoryForm = useCallback(() => {
+    setCategoryDialog(false);
+    setCategoryName('');
+    setCategoryDescription('');
+    setCategoryColor('#2196F3');
+    setCategoryFormBaseline(emptyCategoryForm());
+  }, []);
+
+  const discardPaymentForm = useCallback(() => {
+    setPaymentDialog(false);
+    setPaymentMarketerId('');
+    setPaymentAmount('');
+    setPaymentDescription('');
+    setPaymentFormBaseline(emptyPaymentForm());
+  }, []);
+
+  const handleCreateExpense = async (): Promise<boolean> => {
     if (!expenseAmount || !expenseDescription) {
       setError('Заполните все поля');
-      return;
+      return false;
     }
 
     try {
@@ -610,25 +714,24 @@ const AdminDashboard: React.FC = () => {
         description: expenseDescription,
         categoryId: expenseCategoryId || undefined,
       });
-      setExpenseDialog(false);
-      setExpenseAmount('');
-      setExpenseDescription('');
-      setExpenseCategoryId('');
+      discardExpenseForm();
       await loadTransactions();
       await loadDashboard();
       await loadAnalytics();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания расхода');
+      return false;
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCreateCategory = async () => {
+  const handleCreateCategory = async (): Promise<boolean> => {
     if (!categoryName) {
       setError('Название категории обязательно');
-      return;
+      return false;
     }
 
     try {
@@ -638,14 +741,13 @@ const AdminDashboard: React.FC = () => {
         description: categoryDescription,
         color: categoryColor,
       });
-      setCategoryDialog(false);
-      setCategoryName('');
-      setCategoryDescription('');
-      setCategoryColor('#2196F3');
+      discardCategoryForm();
       await loadExpenseCategories();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания категории');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -675,10 +777,10 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handlePayMarketer = async () => {
+  const handlePayMarketer = async (): Promise<boolean> => {
     if (!paymentMarketerId || !paymentAmount) {
       setError('Выберите маркетолога и укажите сумму');
-      return;
+      return false;
     }
 
     try {
@@ -688,15 +790,14 @@ const AdminDashboard: React.FC = () => {
         amount: parseFloat(paymentAmount),
         description: paymentDescription || undefined,
       });
-      setPaymentDialog(false);
-      setPaymentMarketerId('');
-      setPaymentAmount('');
-      setPaymentDescription('');
+      discardPaymentForm();
       await loadTransactions();
       await loadDashboard();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка выплаты маркетологу');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -762,17 +863,23 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleEditExpense = (expense: any) => {
+    const initial = {
+      expenseAmount: expense.amount.toString(),
+      expenseDescription: expense.description,
+      expenseCategoryId: expense.categoryId || '',
+    };
     setEditingExpense(expense);
-    setExpenseAmount(expense.amount.toString());
-    setExpenseDescription(expense.description);
-    setExpenseCategoryId(expense.categoryId || '');
+    setExpenseAmount(initial.expenseAmount);
+    setExpenseDescription(initial.expenseDescription);
+    setExpenseCategoryId(initial.expenseCategoryId);
+    setEditExpenseBaseline(initial);
     setEditExpenseDialog(true);
   };
 
-  const handleUpdateExpense = async () => {
+  const handleUpdateExpense = async (): Promise<boolean> => {
     if (!editingExpense || !expenseAmount || !expenseDescription) {
       setError('Заполните все обязательные поля');
-      return;
+      return false;
     }
 
     try {
@@ -782,16 +889,14 @@ const AdminDashboard: React.FC = () => {
         description: expenseDescription,
         categoryId: expenseCategoryId || undefined,
       });
-      setEditExpenseDialog(false);
-      setEditingExpense(null);
-      setExpenseAmount('');
-      setExpenseDescription('');
-      setExpenseCategoryId('');
+      discardEditExpenseForm();
       await loadTransactions();
       await loadDashboard();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления расхода');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -908,43 +1013,63 @@ const AdminDashboard: React.FC = () => {
       branches: '',
       trainings: '',
     });
+    setEditPlanBaseline(null);
   };
 
   const resetPlanForm = () => {
-    setPlanForm({
-      code: '',
-      name: '',
-      description: '',
-      price: '',
-      isPublic: true,
-      trainers: '',
-      clients: '',
-      groups: '',
-      branches: '',
-      trainings: '',
-    });
+    setPlanForm(emptyPlanForm());
+    setCreatePlanBaseline(emptyPlanForm());
   };
 
+  const discardEditPlanForm = useCallback(() => {
+    setEditPlanDialog(false);
+    resetEditingPlanForm();
+  }, []);
+
+  const discardCreatePlanForm = useCallback(() => {
+    setCreatePlanDialog(false);
+    resetPlanForm();
+  }, []);
+
+  const discardGrantForm = useCallback(() => {
+    setPlanDialog(false);
+    setSelectedTenantId('');
+    setSelectedPlanType('');
+    setGrantEndDate(null);
+    setGrantComment('');
+    setGrantHistory([]);
+    setGrantFormBaseline(null);
+  }, []);
+
   const handleEditPlan = (plan: SubscriptionPlanItem) => {
-    setEditingPlan(plan);
-    setEditingPlanName(plan.name || '');
-    setEditingPlanDescription(plan.description || '');
-    setEditingPlanIsPublic(plan.isPublic !== false);
-    setEditingPlanPrice(plan.price == null ? '' : plan.price.toString());
-    setEditingPlanLimits({
+    const limits = {
       trainers: plan.limits.trainers === 'unlimited' ? 'unlimited' : String(plan.limits.trainers ?? ''),
       clients: plan.limits.clients === 'unlimited' ? 'unlimited' : String(plan.limits.clients ?? ''),
       groups: plan.limits.groups === 'unlimited' ? 'unlimited' : String(plan.limits.groups ?? ''),
       branches: plan.limits.branches === 'unlimited' ? 'unlimited' : String(plan.limits.branches ?? ''),
       trainings: plan.limits.trainings === 'unlimited' ? 'unlimited' : String(plan.limits.trainings ?? ''),
-    });
+    };
+    const initial = {
+      editingPlanName: plan.name || '',
+      editingPlanDescription: plan.description || '',
+      editingPlanIsPublic: plan.isPublic !== false,
+      editingPlanPrice: plan.price == null ? '' : plan.price.toString(),
+      editingPlanLimits: limits,
+    };
+    setEditingPlan(plan);
+    setEditingPlanName(initial.editingPlanName);
+    setEditingPlanDescription(initial.editingPlanDescription);
+    setEditingPlanIsPublic(initial.editingPlanIsPublic);
+    setEditingPlanPrice(initial.editingPlanPrice);
+    setEditingPlanLimits(limits);
+    setEditPlanBaseline(initial);
     setEditPlanDialog(true);
   };
 
-  const handleUpdatePlanPrice = async () => {
+  const handleUpdatePlanPrice = async (): Promise<boolean> => {
     if (!editingPlan || !editingPlanName.trim()) {
       setError('Укажите название тарифа');
-      return;
+      return false;
     }
 
     try {
@@ -960,21 +1085,22 @@ const AdminDashboard: React.FC = () => {
         limits,
         isPublic: editingPlanIsPublic,
       });
-      setEditPlanDialog(false);
-      resetEditingPlanForm();
+      discardEditPlanForm();
       await loadPlanPrices();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления тарифа');
+      return false;
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCreatePlan = async () => {
+  const handleCreatePlan = async (): Promise<boolean> => {
     if (!planForm.code.trim() || !planForm.name.trim()) {
       setError('Укажите код и название тарифа');
-      return;
+      return false;
     }
     try {
       setSubmitting(true);
@@ -994,12 +1120,13 @@ const AdminDashboard: React.FC = () => {
         limits,
         isPublic: planForm.isPublic,
       });
-      setCreatePlanDialog(false);
-      resetPlanForm();
+      discardCreatePlanForm();
       await loadPlanPrices();
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания тарифа');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -1039,13 +1166,18 @@ const AdminDashboard: React.FC = () => {
   };
 
   const openGrantDialog = async (tenant: any) => {
+    const endDate = tenant.subscription?.endDate ? new Date(tenant.subscription.endDate) : null;
+    const planType = tenant.subscription?.planType || '';
     setSelectedTenantId(tenant.id);
-    setSelectedPlanType(tenant.subscription?.planType || '');
-    setGrantEndDate(
-      tenant.subscription?.endDate ? new Date(tenant.subscription.endDate) : null
-    );
+    setSelectedPlanType(planType);
+    setGrantEndDate(endDate);
     setGrantComment('');
     setGrantHistory([]);
+    setGrantFormBaseline({
+      selectedPlanType: planType,
+      grantEndDate: endDate?.toISOString() ?? null,
+      grantComment: '',
+    });
     setPlanDialog(true);
     try {
       if (planPrices.length === 0) {
@@ -1058,8 +1190,8 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleGrantPlan = async () => {
-    if (!selectedTenantId || !selectedPlanType) return;
+  const handleGrantPlan = async (): Promise<boolean> => {
+    if (!selectedTenantId || !selectedPlanType) return false;
     setSubmitting(true);
     try {
       await apiService.updateTenantPlan(selectedTenantId, selectedPlanType, {
@@ -1068,14 +1200,11 @@ const AdminDashboard: React.FC = () => {
       });
       await loadAllTenants();
       await loadDashboard();
-      setPlanDialog(false);
-      setSelectedTenantId('');
-      setSelectedPlanType('');
-      setGrantEndDate(null);
-      setGrantComment('');
-      setGrantHistory([]);
+      discardGrantForm();
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления тарифа');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -1122,6 +1251,66 @@ const AdminDashboard: React.FC = () => {
       [widgetId]: !prev[widgetId],
     }));
   };
+
+  const expenseDirty =
+    expenseDialog && isDirtyValue(expenseFormSnapshot(), expenseFormBaseline);
+  const expenseUnsaved = useUnsavedClose({
+    isDirty: Boolean(expenseDirty),
+    onDiscard: discardExpenseForm,
+    onSave: handleCreateExpense,
+  });
+
+  const editExpenseDirty =
+    editExpenseDialog && isDirtyValue(expenseFormSnapshot(), editExpenseBaseline);
+  const editExpenseUnsaved = useUnsavedClose({
+    isDirty: Boolean(editExpenseDirty),
+    onDiscard: discardEditExpenseForm,
+    onSave: handleUpdateExpense,
+  });
+
+  const categoryDirty =
+    categoryDialog && isDirtyValue(categoryFormSnapshot(), categoryFormBaseline);
+  const categoryUnsaved = useUnsavedClose({
+    isDirty: Boolean(categoryDirty),
+    onDiscard: discardCategoryForm,
+    onSave: handleCreateCategory,
+  });
+
+  const paymentDirty =
+    paymentDialog && isDirtyValue(paymentFormSnapshot(), paymentFormBaseline);
+  const paymentUnsaved = useUnsavedClose({
+    isDirty: Boolean(paymentDirty),
+    onDiscard: discardPaymentForm,
+    onSave: handlePayMarketer,
+  });
+
+  const editPlanDirty =
+    editPlanDialog &&
+    editPlanBaseline != null &&
+    isDirtyValue(editPlanSnapshot(), editPlanBaseline);
+  const editPlanUnsaved = useUnsavedClose({
+    isDirty: Boolean(editPlanDirty),
+    onDiscard: discardEditPlanForm,
+    onSave: handleUpdatePlanPrice,
+  });
+
+  const createPlanDirty =
+    createPlanDialog && isDirtyValue(planForm, createPlanBaseline);
+  const createPlanUnsaved = useUnsavedClose({
+    isDirty: Boolean(createPlanDirty),
+    onDiscard: discardCreatePlanForm,
+    onSave: handleCreatePlan,
+  });
+
+  const grantDirty =
+    planDialog &&
+    grantFormBaseline != null &&
+    isDirtyValue(grantFormSnapshot(), grantFormBaseline);
+  const grantUnsaved = useUnsavedClose({
+    isDirty: Boolean(grantDirty),
+    onDiscard: discardGrantForm,
+    onSave: handleGrantPlan,
+  });
 
   if (loading) {
     return (
@@ -1746,14 +1935,28 @@ const AdminDashboard: React.FC = () => {
               <Button
                 variant="outlined"
                 startIcon={<Add />}
-                onClick={() => setExpenseDialog(true)}
+                onClick={() => {
+                  const initial = emptyExpenseForm();
+                  setExpenseAmount(initial.expenseAmount);
+                  setExpenseDescription(initial.expenseDescription);
+                  setExpenseCategoryId(initial.expenseCategoryId);
+                  setExpenseFormBaseline(initial);
+                  setExpenseDialog(true);
+                }}
               >
                 Создать расход
               </Button>
               <Button
                 variant="contained"
                 startIcon={<Payment />}
-                onClick={() => setPaymentDialog(true)}
+                onClick={() => {
+                  const initial = emptyPaymentForm();
+                  setPaymentMarketerId(initial.paymentMarketerId);
+                  setPaymentAmount(initial.paymentAmount);
+                  setPaymentDescription(initial.paymentDescription);
+                  setPaymentFormBaseline(initial);
+                  setPaymentDialog(true);
+                }}
                 disabled={!data?.marketers.list.length}
               >
                 Выплатить маркетологу
@@ -2661,7 +2864,9 @@ const AdminDashboard: React.FC = () => {
                 variant="contained"
                 startIcon={<Add />}
                 onClick={() => {
-                  resetPlanForm();
+                  const initial = emptyPlanForm();
+                  setPlanForm(initial);
+                  setCreatePlanBaseline(initial);
                   setCreatePlanDialog(true);
                 }}
               >
@@ -2882,6 +3087,7 @@ const AdminDashboard: React.FC = () => {
             Чаты и публикации в «Изменения». Алерты нагрузки сервера настраиваются во вкладке «Нагрузка сервера».
           </Typography>
           <NotificationSettingsPanel actor="superAdmin" showChangelog />
+          <SchoolOffersPanel />
         </Box>
       )}
 
@@ -2894,7 +3100,16 @@ const AdminDashboard: React.FC = () => {
       {section === 'changelog' && <SuperAdminPlatformChangelogTab />}
 
       {/* Диалог создания расхода */}
-      <Dialog open={expenseDialog} onClose={() => setExpenseDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={expenseDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            expenseUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Создать расход</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -2923,7 +3138,17 @@ const AdminDashboard: React.FC = () => {
               </Select>
             </FormControl>
             <Box display="flex" justifyContent="flex-end" mb={1}>
-              <Button size="small" onClick={() => setCategoryDialog(true)}>
+              <Button
+                size="small"
+                onClick={() => {
+                  const initial = emptyCategoryForm();
+                  setCategoryName(initial.categoryName);
+                  setCategoryDescription(initial.categoryDescription);
+                  setCategoryColor(initial.categoryColor);
+                  setCategoryFormBaseline(initial);
+                  setCategoryDialog(true);
+                }}
+              >
                 + Создать категорию
               </Button>
             </Box>
@@ -2939,12 +3164,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setExpenseDialog(false);
-            setExpenseAmount('');
-            setExpenseDescription('');
-            setExpenseCategoryId('');
-          }}>Отмена</Button>
+          <Button onClick={discardExpenseForm}>Отмена</Button>
           <Button
             onClick={handleCreateExpense}
             variant="contained"
@@ -2956,13 +3176,16 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования расхода */}
-      <Dialog open={editExpenseDialog} onClose={() => {
-        setEditExpenseDialog(false);
-        setEditingExpense(null);
-        setExpenseAmount('');
-        setExpenseDescription('');
-        setExpenseCategoryId('');
-      }} maxWidth="sm" fullWidth>
+      <Dialog
+        open={editExpenseDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editExpenseUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Редактировать расход</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -3002,13 +3225,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setEditExpenseDialog(false);
-            setEditingExpense(null);
-            setExpenseAmount('');
-            setExpenseDescription('');
-            setExpenseCategoryId('');
-          }}>Отмена</Button>
+          <Button onClick={discardEditExpenseForm}>Отмена</Button>
           <Button
             onClick={handleUpdateExpense}
             variant="contained"
@@ -3020,7 +3237,16 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
 
       {/* Диалог создания категории */}
-      <Dialog open={categoryDialog} onClose={() => setCategoryDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={categoryDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            categoryUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Создать категорию расходов</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -3060,12 +3286,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setCategoryDialog(false);
-            setCategoryName('');
-            setCategoryDescription('');
-            setCategoryColor('#2196F3');
-          }}>Отмена</Button>
+          <Button onClick={discardCategoryForm}>Отмена</Button>
           <Button onClick={handleCreateCategory} variant="contained" disabled={submitting || !categoryName}>
             {submitting ? <CircularProgress size={24} /> : 'Создать'}
           </Button>
@@ -3073,7 +3294,16 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
 
       {/* Диалог выплаты маркетологу */}
-      <Dialog open={paymentDialog} onClose={() => setPaymentDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={paymentDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            paymentUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Выплата маркетологу</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -3112,7 +3342,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPaymentDialog(false)}>Отмена</Button>
+          <Button onClick={discardPaymentForm}>Отмена</Button>
           <Button
             onClick={handlePayMarketer}
             variant="contained"
@@ -3124,10 +3354,16 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования тарифа */}
-      <Dialog open={editPlanDialog} onClose={() => {
-        setEditPlanDialog(false);
-        resetEditingPlanForm();
-      }} maxWidth="md" fullWidth>
+      <Dialog
+        open={editPlanDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editPlanUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>
           Редактировать тариф: {editingPlan?.name || editingPlan?.code || editingPlan?.planType}
         </DialogTitle>
@@ -3272,10 +3508,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => {
-            setEditPlanDialog(false);
-            resetEditingPlanForm();
-          }}>Отмена</Button>
+          <Button onClick={discardEditPlanForm}>Отмена</Button>
           {canWrite && editingPlan?.isActive !== false && (
             <Button color="warning" onClick={handleArchivePlan} disabled={submitting}>
               Архивировать
@@ -3299,10 +3532,16 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
 
       {/* Диалог создания тарифа */}
-      <Dialog open={createPlanDialog} onClose={() => {
-        setCreatePlanDialog(false);
-        resetPlanForm();
-      }} maxWidth="md" fullWidth>
+      <Dialog
+        open={createPlanDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            createPlanUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>Создать тариф</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -3380,10 +3619,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setCreatePlanDialog(false);
-            resetPlanForm();
-          }}>Отмена</Button>
+          <Button onClick={discardCreatePlanForm}>Отмена</Button>
           <Button
             onClick={handleCreatePlan}
             variant="contained"
@@ -3397,11 +3633,10 @@ const AdminDashboard: React.FC = () => {
       {/* Диалог изменения тарифа */}
       <Dialog
         open={planDialog}
-        onClose={() => {
-          setPlanDialog(false);
-          setGrantEndDate(null);
-          setGrantComment('');
-          setGrantHistory([]);
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            grantUnsaved.requestClose(reason);
+          }
         }}
         maxWidth="md"
         fullWidth
@@ -3505,12 +3740,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setPlanDialog(false);
-            setGrantEndDate(null);
-            setGrantComment('');
-            setGrantHistory([]);
-          }}>Отмена</Button>
+          <Button onClick={discardGrantForm}>Отмена</Button>
           {canWrite && (
             <Button
               onClick={handleGrantPlan}
@@ -3522,6 +3752,56 @@ const AdminDashboard: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={expenseUnsaved.confirmOpen}
+        saving={expenseUnsaved.saving}
+        onSave={expenseUnsaved.save}
+        onDiscard={expenseUnsaved.discard}
+        onStay={expenseUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editExpenseUnsaved.confirmOpen}
+        saving={editExpenseUnsaved.saving}
+        onSave={editExpenseUnsaved.save}
+        onDiscard={editExpenseUnsaved.discard}
+        onStay={editExpenseUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={categoryUnsaved.confirmOpen}
+        saving={categoryUnsaved.saving}
+        onSave={categoryUnsaved.save}
+        onDiscard={categoryUnsaved.discard}
+        onStay={categoryUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={paymentUnsaved.confirmOpen}
+        saving={paymentUnsaved.saving}
+        onSave={paymentUnsaved.save}
+        onDiscard={paymentUnsaved.discard}
+        onStay={paymentUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editPlanUnsaved.confirmOpen}
+        saving={editPlanUnsaved.saving}
+        onSave={editPlanUnsaved.save}
+        onDiscard={editPlanUnsaved.discard}
+        onStay={editPlanUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={createPlanUnsaved.confirmOpen}
+        saving={createPlanUnsaved.saving}
+        onSave={createPlanUnsaved.save}
+        onDiscard={createPlanUnsaved.discard}
+        onStay={createPlanUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={grantUnsaved.confirmOpen}
+        saving={grantUnsaved.saving}
+        onSave={grantUnsaved.save}
+        onDiscard={grantUnsaved.discard}
+        onStay={grantUnsaved.stay}
+      />
     </Container>
   );
 };

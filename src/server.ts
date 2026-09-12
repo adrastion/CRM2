@@ -42,6 +42,8 @@ import superAdminAuthRoutes from './routes/superAdminAuth';
 import competitionRoutes from './routes/competition';
 import schoolEventRoutes from './routes/schoolEvent';
 import pushNotificationRoutes from './routes/pushNotifications';
+import notificationPrefsRoutes from './routes/notificationPrefs';
+import notificationsRoutes from './routes/notifications';
 import platformStaffAuthRoutes from './routes/platformStaffAuthRoutes';
 import platformStaffRoutes from './routes/platformStaffRoutes';
 import superAdminSupportRoutes from './routes/superAdminSupportRoutes';
@@ -49,7 +51,6 @@ import supportRequesterRoutes from './routes/supportRequesterRoutes';
 import searchRoutes from './routes/search';
 import chatRoutes from './routes/chat';
 import platformRoutes from './routes/platform';
-import notificationPrefsRoutes from './routes/notificationPrefs';
 import maintenanceRoutes from './routes/maintenance';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
@@ -57,6 +58,10 @@ import { attachChatNamespace } from './services/chatSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
+import {
+  sendClientTrainingReminders,
+  sendDailyAbsenceDigest,
+} from './services/notificationDomainHooks';
 import {
   collectAndStoreSample,
   cleanupOldMetricSamples,
@@ -207,6 +212,7 @@ app.use('/api/super-admin/auth', superAdminAuthRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
 app.use('/api/push-notifications', pushNotificationRoutes);
 app.use('/api/notification-prefs', notificationPrefsRoutes);
+app.use('/api/notifications', schoolTenantGuard, notificationsRoutes);
 app.use('/api/platform-staff/auth', platformStaffAuthRoutes);
 app.use('/api/platform-staff', platformStaffRoutes);
 app.use('/api/super-admin/support', superAdminSupportRoutes);
@@ -267,6 +273,7 @@ httpServer.listen(PORT, () => {
   cron.schedule('* * * * *', async () => {
     try {
       await sendTrainingReminders();
+      await sendClientTrainingReminders(60);
     } catch (error) {
       console.error('[Cron] Error in training reminders:', error);
     }
@@ -280,6 +287,17 @@ httpServer.listen(PORT, () => {
       await sendDailyTrainingNotifications();
     } catch (error) {
       console.error('[Cron] Error in daily training notifications:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow'
+  });
+
+  // Сводка неявок за день — 21:00
+  cron.schedule('0 21 * * *', async () => {
+    try {
+      await sendDailyAbsenceDigest();
+    } catch (error) {
+      console.error('[Cron] Error in absence digest:', error);
     }
   }, {
     timezone: process.env.TZ || 'Europe/Moscow'

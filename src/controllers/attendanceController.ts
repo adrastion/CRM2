@@ -8,6 +8,7 @@ import {
   getActiveMembershipSummary,
 } from '../services/clientMembershipService';
 import * as XLSX from 'xlsx';
+import { notifyAttendanceMarked } from '../services/notificationDomainHooks';
 
 async function applyClientBillingForPresent(params: {
   tenantId: string;
@@ -783,6 +784,23 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     console.log(`Bulk update attendance completed. Created/updated ${results.length} attendances for training ${trainingId}`);
     if (errors.length > 0) {
       console.warn(`Errors occurred for ${errors.length} attendance records:`, errors);
+    }
+
+    if (results.length > 0) {
+      const marker = await prisma.user.findFirst({
+        where: { id: req.user?.id },
+        select: { firstName: true, lastName: true, middleName: true },
+      });
+      const trainerDisplayName =
+        [marker?.lastName, marker?.firstName].filter(Boolean).join(' ').trim() ||
+        'Тренер';
+      void notifyAttendanceMarked({
+        tenantId,
+        trainingId,
+        branchId: training.branchId,
+        markedByUserId: req.user?.id,
+        trainerDisplayName,
+      }).catch((err) => console.error('[Notifications] attendance:', err));
     }
 
     res.json({

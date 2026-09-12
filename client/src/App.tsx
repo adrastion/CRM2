@@ -118,7 +118,14 @@ const RoleRoute: React.FC<{ roles: string[]; children: React.ReactNode }> = ({ r
     return <Navigate to="/auth" replace />;
   }
 
-  if (!user || !roles.includes(user.role)) {
+  const roleOk =
+    !!user &&
+    (roles.includes(user.role) ||
+      (Boolean(user.isSeniorTrainer || (user.seniorBranchIds && user.seniorBranchIds.length > 0)) &&
+        roles.includes('ADMIN') &&
+        !roles.includes('TRAINER')));
+
+  if (!roleOk) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -93,7 +93,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Check for existing token on app load
+  // Check for existing token on app load and refresh profile (seniorBranchIds)
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
@@ -108,6 +108,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           type: 'AUTH_SUCCESS',
           payload: { user, tenant, token }
         });
+
+        apiService
+          .getProfile()
+          .then((profile) => {
+            if (!profile) return;
+            const nextUser: User = {
+              ...user,
+              ...profile,
+              tenantId: profile.tenantId || user.tenantId,
+              isSeniorTrainer: Boolean(profile.isSeniorTrainer),
+              seniorBranchIds: profile.seniorBranchIds || [],
+            };
+            localStorage.setItem('user', JSON.stringify(nextUser));
+            dispatch({ type: 'UPDATE_USER', payload: nextUser });
+            if (profile.tenant) {
+              const nextTenant = { ...tenant, ...profile.tenant };
+              localStorage.setItem('tenant', JSON.stringify(nextTenant));
+              dispatch({ type: 'UPDATE_TENANT', payload: nextTenant });
+            }
+          })
+          .catch(() => {
+            /* keep cached session */
+          });
       } catch (error) {
         console.error('Error parsing stored auth data:', error);
         localStorage.removeItem('token');

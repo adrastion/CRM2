@@ -42,6 +42,8 @@ import {
   Stack,
 } from '@mui/material';
 import { Autocomplete } from '@mui/material';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import { 
   Add, 
   CalendarToday,
@@ -108,6 +110,34 @@ interface TrainingFormData {
   originalTrainerId: string; // ID оригинального тренера (если есть замена)
   competitionConflict: boolean; // Есть ли конфликт с соревнованием
 }
+
+const createEmptyTrainingForm = (): TrainingFormData => ({
+  title: '',
+  description: '',
+  date: new Date(),
+  startTime: null,
+  endTime: null,
+  trainingType: 'group',
+  groupId: '',
+  selectedClientIds: [],
+  trainerId: '',
+  branchId: '',
+  hallId: '',
+  isRecurring: false,
+  recurrence: 'weekly',
+  daysOfWeek: [],
+  recurrenceStartDate: new Date(),
+  recurrenceEndDate: null,
+  recurrenceMode: 'days',
+  daySchedules: [],
+  dateSchedules: [],
+  price: '',
+  trainerEarningType: '',
+  trainerEarningValue: '',
+  substituteTrainerId: '',
+  originalTrainerId: '',
+  competitionConflict: false,
+});
 
 const Schedule: React.FC = () => {
   const { user } = useAuth();
@@ -183,33 +213,9 @@ const Schedule: React.FC = () => {
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60); // Длительность тренировки в минутах по умолчанию
   const [isSubmitting, setIsSubmitting] = useState(false); // Защита от двойного нажатия при создании тренировки
   const [isUpdating, setIsUpdating] = useState(false); // Индикатор обновления тренировки
-  const [formData, setFormData] = useState<TrainingFormData>({
-    title: '',
-    description: '',
-    date: new Date(),
-    startTime: null,
-    endTime: null,
-    trainingType: 'group', // По умолчанию групповая тренировка
-    groupId: '',
-    selectedClientIds: [], // Выбранные клиенты для индивидуальной тренировки
-    trainerId: '',
-    branchId: '',
-    hallId: '',
-    isRecurring: false,
-    recurrence: 'weekly',
-    daysOfWeek: [],
-    recurrenceStartDate: new Date(),
-    recurrenceEndDate: null,
-    recurrenceMode: 'days',
-    daySchedules: [],
-    dateSchedules: [],
-    price: '',
-    trainerEarningType: '',
-    trainerEarningValue: '',
-    substituteTrainerId: '',
-    originalTrainerId: '',
-    competitionConflict: false
-  });
+  const [formData, setFormData] = useState<TrainingFormData>(createEmptyTrainingForm);
+  const [createFormBaseline, setCreateFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
+  const [editFormBaseline, setEditFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
 
   const fetchData = async () => {
     try {
@@ -319,9 +325,9 @@ const Schedule: React.FC = () => {
     };
   }, []);
 
-  const handleCreateTraining = async () => {
+  const handleCreateTraining = async (): Promise<boolean> => {
     // Защита от двойного нажатия
-    if (isSubmitting) return;
+    if (isSubmitting) return false;
     
     try {
       setIsSubmitting(true);
@@ -329,35 +335,35 @@ const Schedule: React.FC = () => {
       // Проверка обязательных полей
       if (!formData.title || !formData.title.trim()) {
         alert('Пожалуйста, укажите название тренировки');
-        return;
+        return false;
       }
       // Для групповой тренировки группа обязательна, для индивидуальной - клиенты
       if (formData.trainingType === 'group') {
       if (!formData.groupId) {
         alert('Пожалуйста, выберите группу');
-        return;
+        return false;
         }
       } else {
         // Индивидуальная тренировка
         if (!formData.selectedClientIds || formData.selectedClientIds.length === 0) {
           alert('Пожалуйста, выберите хотя бы одного клиента');
-          return;
+          return false;
         }
       }
       if (!formData.trainerId) {
         alert('Пожалуйста, выберите тренера');
-        return;
+        return false;
       }
       if (!formData.branchId) {
         alert('Пожалуйста, выберите филиал');
-        return;
+        return false;
       }
 
       // Для нерегулярных тренировок проверяем дату и время
       if (!formData.isRecurring) {
       if (!formData.startTime || !formData.endTime || !formData.date) {
         alert('Пожалуйста, выберите дату, время начала и окончания');
-        return;
+        return false;
       }
       }
 
@@ -365,33 +371,33 @@ const Schedule: React.FC = () => {
         if (formData.recurrenceMode === 'days') {
           if (formData.daySchedules.length === 0) {
             alert('Пожалуйста, добавьте хотя бы один день недели с расписанием');
-        return;
+        return false;
       }
           // Проверяем, что для всех дней задано время
           for (const daySchedule of formData.daySchedules) {
             if (!daySchedule.startTime || !daySchedule.endTime) {
               alert(`Пожалуйста, укажите время для всех выбранных дней недели`);
-              return;
+              return false;
             }
           }
           if (!formData.recurrenceStartDate || !formData.recurrenceEndDate) {
             alert('Пожалуйста, выберите дату начала и окончания регулярных тренировок');
-            return;
+            return false;
           }
           if (formData.recurrenceEndDate < formData.recurrenceStartDate) {
             alert('Дата окончания не может быть раньше даты начала');
-            return;
+            return false;
           }
         } else if (formData.recurrenceMode === 'dates') {
           if (formData.dateSchedules.length === 0) {
             alert('Пожалуйста, добавьте хотя бы одну дату с расписанием');
-            return;
+            return false;
           }
           // Проверяем, что для всех дат задано время
           for (const dateSchedule of formData.dateSchedules) {
             if (!dateSchedule.startTime || !dateSchedule.endTime) {
               alert(`Пожалуйста, укажите время для всех выбранных дат`);
-              return;
+              return false;
             }
           }
         }
@@ -659,9 +665,9 @@ const Schedule: React.FC = () => {
         // Create single training
         if (!formData.date || !formData.startTime || !formData.endTime) {
           alert('Пожалуйста, выберите дату, время начала и окончания');
-          return;
+          return false;
         }
-        
+
         const baseDate = formData.date;
         const startTime = new Date(baseDate);
         startTime.setHours(formData.startTime.getHours(), formData.startTime.getMinutes());
@@ -773,6 +779,7 @@ const Schedule: React.FC = () => {
       await fetchData();
       setOpenDialog(false);
       resetForm();
+      return true;
     } catch (error: any) {
       console.error('Error creating training:', error);
       const errorMessage = error?.response?.data?.error || error?.message || 'Не удалось создать тренировку';
@@ -783,39 +790,17 @@ const Schedule: React.FC = () => {
       } else {
         alert(errorMessage);
       }
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const resetForm = () => {
-    setFormData({
-      title: '',
-      description: '',
-      date: new Date(),
-      startTime: null,
-      endTime: null,
-      trainingType: 'group',
-      groupId: '',
-      selectedClientIds: [],
-      trainerId: '',
-      branchId: '',
-      hallId: '',
-      isRecurring: false,
-      recurrence: 'weekly',
-      daysOfWeek: [],
-      recurrenceStartDate: new Date(),
-      recurrenceEndDate: null,
-      recurrenceMode: 'days',
-      daySchedules: [],
-      dateSchedules: [],
-      price: '',
-      trainerEarningType: '',
-      trainerEarningValue: '',
-      substituteTrainerId: '',
-      originalTrainerId: '',
-      competitionConflict: false
-    });
+    const empty = createEmptyTrainingForm();
+    setFormData(empty);
+    setCreateFormBaseline(empty);
+    setEditFormBaseline(empty);
     setEditingTraining(null);
   };
 
@@ -877,16 +862,27 @@ const Schedule: React.FC = () => {
       }
     }
     
-    setFormData({
+    // Загружаем залы для филиала тренировки
+    if (training.branchId) {
+      try {
+        const hallsRes = await apiService.getHalls({ branchId: training.branchId });
+        setHalls(hallsRes.data);
+      } catch (err) {
+        console.error('Error fetching halls:', err);
+        setHalls([]);
+      }
+    }
+    
+    const nextForm: TrainingFormData = {
       title: training.title || '',
       description: training.description || '',
       date: startDate,
       startTime: startDate,
       endTime: endDate,
-      trainingType: training.groupId ? 'group' : 'individual', // Определяем тип на основе наличия groupId
+      trainingType: training.groupId ? 'group' : 'individual',
       groupId: training.groupId || '',
-      selectedClientIds: [], // При редактировании клиенты загружаются отдельно через attendance
-      trainerId: training.originalTrainerId || training.trainerId || '', // Используем оригинального тренера, если есть замена
+      selectedClientIds: [],
+      trainerId: training.originalTrainerId || training.trainerId || '',
       branchId: training.branchId || '',
       hallId: training.hallId || '',
       isRecurring: training.isRecurring || false,
@@ -903,24 +899,14 @@ const Schedule: React.FC = () => {
       substituteTrainerId: training.substituteTrainerId || '',
       originalTrainerId: training.originalTrainerId || '',
       competitionConflict: false
-    });
-    
-    // Загружаем залы для филиала тренировки
-    if (training.branchId) {
-      try {
-        const hallsRes = await apiService.getHalls({ branchId: training.branchId });
-        setHalls(hallsRes.data);
-      } catch (err) {
-        console.error('Error fetching halls:', err);
-        setHalls([]);
-      }
-    }
-    
+    };
+    setFormData(nextForm);
+    setEditFormBaseline(nextForm);
     setEditDialog(true);
   };
 
-  const handleUpdateTraining = async () => {
-    if (!editingTraining || isUpdating) return;
+  const handleUpdateTraining = async (): Promise<boolean> => {
+    if (!editingTraining || isUpdating) return false;
 
     try {
       setIsUpdating(true);
@@ -928,7 +914,7 @@ const Schedule: React.FC = () => {
       if (!formData.isRecurring) {
       if (!formData.startTime || !formData.endTime || !formData.date) {
         alert('Пожалуйста, выберите дату, время начала и окончания');
-        return;
+        return false;
       }
       }
 
@@ -936,33 +922,33 @@ const Schedule: React.FC = () => {
         if (formData.recurrenceMode === 'days') {
           if (formData.daySchedules.length === 0) {
             alert('Пожалуйста, добавьте хотя бы один день недели с расписанием');
-            return;
+            return false;
           }
           // Проверяем, что для всех дней задано время
           for (const daySchedule of formData.daySchedules) {
             if (!daySchedule.startTime || !daySchedule.endTime) {
               alert(`Пожалуйста, укажите время для всех выбранных дней недели`);
-              return;
+              return false;
             }
           }
           if (!formData.recurrenceStartDate || !formData.recurrenceEndDate) {
             alert('Пожалуйста, выберите дату начала и окончания регулярных тренировок');
-            return;
+            return false;
           }
           if (formData.recurrenceEndDate < formData.recurrenceStartDate) {
             alert('Дата окончания не может быть раньше даты начала');
-            return;
+            return false;
           }
         } else if (formData.recurrenceMode === 'dates') {
           if (formData.dateSchedules.length === 0) {
             alert('Пожалуйста, добавьте хотя бы одну дату с расписанием');
-            return;
+            return false;
           }
           // Проверяем, что для всех дат задано время
           for (const dateSchedule of formData.dateSchedules) {
             if (!dateSchedule.startTime || !dateSchedule.endTime) {
               alert(`Пожалуйста, укажите время для всех выбранных дат`);
-              return;
+              return false;
             }
           }
         }
@@ -1132,7 +1118,7 @@ const Schedule: React.FC = () => {
         // Обновляем одну нерегулярную тренировку
         if (!formData.date || !formData.startTime || !formData.endTime) {
           alert('Пожалуйста, выберите дату, время начала и окончания');
-          return;
+          return false;
         }
 
       const startTime = new Date(formData.date);
@@ -1190,7 +1176,7 @@ const Schedule: React.FC = () => {
       
       setEditDialog(false);
       resetForm();
-      setIsUpdating(false);
+      return true;
     } catch (error: any) {
       console.error('Error updating training:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Не удалось обновить тренировку';
@@ -1206,9 +1192,11 @@ const Schedule: React.FC = () => {
         alert('Внимание: произошла ошибка при обновлении тренировки. Пожалуйста, обновите страницу.');
       }
       
-      setIsUpdating(false);
       // Не закрываем диалог при ошибке, чтобы пользователь мог исправить данные
       // setEditDialog(false); - убрано, чтобы диалог оставался открытым
+      return false;
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -1594,6 +1582,7 @@ const Schedule: React.FC = () => {
   };
 
   const timeSlots = generateTimeSlots();
+  const EMPTY_HOUR_HEIGHT = 10;
 
   // Группировать тренировки по времени начала для отображения в одну строку
   // Проверка, пересекаются ли два временных интервала
@@ -1682,7 +1671,31 @@ const Schedule: React.FC = () => {
   };
 
   // Вычислить реальную высоту часа на основе тренировок
+  const getOccupiedHours = (): Set<number> => {
+    const occupied = new Set<number>();
+    getTrainingsForWeek().forEach((t) => {
+      const tStart = new Date(t.startTime);
+      const tEnd = new Date(t.endTime);
+      let hour = tStart.getHours();
+      const endHour = tEnd.getHours();
+      const endsExactlyOnHour =
+        tEnd.getMinutes() === 0 && tEnd.getSeconds() === 0 && tEnd.getMilliseconds() === 0;
+      const lastHour = endsExactlyOnHour && tEnd > tStart ? endHour - 1 : endHour;
+      while (hour <= lastHour && hour < 22) {
+        if (hour >= 8) occupied.add(hour);
+        hour += 1;
+      }
+    });
+    return occupied;
+  };
+
+  const occupiedHours = getOccupiedHours();
+
   const getHourHeight = (hour: number): number => {
+    if (!occupiedHours.has(hour)) {
+      return EMPTY_HOUR_HEIGHT;
+    }
+
     let maxRowHeight = 60; // Базовая высота
     const weekTrainings = getTrainingsForWeek();
     
@@ -1752,6 +1765,8 @@ const Schedule: React.FC = () => {
     
     return maxRowHeight;
   };
+
+  const totalTimeColumnHeight = timeSlots.reduce((sum, hour) => sum + getHourHeight(hour), 0);
 
   // Вычислить позицию и высоту блока тренировки
   const getTrainingBlockStyle = (training: Training, day: Date, overlappingTrainings: Training[] = []) => {
@@ -1854,6 +1869,32 @@ const Schedule: React.FC = () => {
   };
 
   const weekDays = getWeekDays();
+
+  const discardCreateTraining = React.useCallback(() => {
+    setOpenDialog(false);
+    resetForm();
+  }, []);
+
+  const discardEditTraining = React.useCallback(() => {
+    if (isUpdating) return;
+    setEditDialog(false);
+    resetForm();
+  }, [isUpdating]);
+
+  const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
+  const editDirty = editDialog && isDirtyValue(formData, editFormBaseline);
+
+  const createUnsaved = useUnsavedClose({
+    isDirty: Boolean(createDirty),
+    onDiscard: discardCreateTraining,
+    onSave: async () => handleCreateTraining(),
+  });
+
+  const editUnsaved = useUnsavedClose({
+    isDirty: Boolean(editDirty),
+    onDiscard: discardEditTraining,
+    onSave: async () => handleUpdateTraining(),
+  });
 
   if (loading) {
     return (
@@ -2198,6 +2239,7 @@ const Schedule: React.FC = () => {
                 {timeSlots.map((hour) => {
                   // Используем функцию getHourHeight для расчета высоты строки
                   const maxRowHeight = getHourHeight(hour);
+                  const isEmpty = !occupiedHours.has(hour);
                   
                   return (
                     <Box
@@ -2208,13 +2250,21 @@ const Schedule: React.FC = () => {
                         borderBottom: 1,
                         borderColor: 'divider',
                         display: 'flex',
-                        alignItems: 'flex-start',
+                        alignItems: isEmpty ? 'center' : 'flex-start',
                         justifyContent: 'flex-end',
                         pr: 1,
-                        pt: 0.5
+                        pt: isEmpty ? 0 : 0.5
                       }}
                     >
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={
+                          isEmpty
+                            ? { fontSize: '0.65rem', opacity: 0.45, lineHeight: 1 }
+                            : undefined
+                        }
+                      >
                         {hour}:00
                       </Typography>
                     </Box>
@@ -2329,7 +2379,7 @@ const Schedule: React.FC = () => {
                     </Box>
                     
                     {/* Time slots container */}
-                    <Box sx={{ position: 'relative', minHeight: timeSlots.length * 60 }}>
+                    <Box sx={{ position: 'relative', minHeight: totalTimeColumnHeight }}>
                       {/* Hour lines - только для визуального разделения */}
                       {timeSlots.map((hour) => {
                         // Используем функцию getHourHeight для расчета высоты строки
@@ -2467,7 +2517,9 @@ const Schedule: React.FC = () => {
                 fullWidth
                 size="large"
                 onClick={() => {
-                  setFormData(prev => ({ ...prev, trainingType: 'group', groupId: '', selectedClientIds: [] }));
+                  const next = { ...formData, trainingType: 'group' as const, groupId: '', selectedClientIds: [] as string[] };
+                  setFormData(next);
+                  setCreateFormBaseline(next);
                   setTrainingTypeDialog(false);
                   setOpenDialog(true);
                 }}
@@ -2486,7 +2538,9 @@ const Schedule: React.FC = () => {
                 fullWidth
                 size="large"
                 onClick={() => {
-                  setFormData(prev => ({ ...prev, trainingType: 'individual', groupId: '', selectedClientIds: [] }));
+                  const next = { ...formData, trainingType: 'individual' as const, groupId: '', selectedClientIds: [] as string[] };
+                  setFormData(next);
+                  setCreateFormBaseline(next);
                   setTrainingTypeDialog(false);
                   setOpenDialog(true);
                 }}
@@ -2508,7 +2562,16 @@ const Schedule: React.FC = () => {
         </Dialog>
 
         {/* Create Training Dialog */}
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+        <Dialog
+          open={openDialog}
+          onClose={(_event, reason) => {
+            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+              createUnsaved.requestClose(reason);
+            }
+          }}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle>
             Создать новую тренировку
             {selectedDayForTraining && (
@@ -3168,7 +3231,7 @@ const Schedule: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenDialog(false)} disabled={isSubmitting}>Отмена</Button>
+            <Button onClick={discardCreateTraining} disabled={isSubmitting}>Отмена</Button>
             <Button onClick={handleCreateTraining} variant="contained" disabled={isSubmitting}>
               {isSubmitting ? 'Создание...' : 'Создать тренировку'}
             </Button>
@@ -3176,7 +3239,17 @@ const Schedule: React.FC = () => {
         </Dialog>
 
         {/* Edit Training Dialog */}
-        <Dialog open={editDialog} onClose={() => !isUpdating && setEditDialog(false)} maxWidth="md" fullWidth>
+        <Dialog
+          open={editDialog}
+          onClose={(_event, reason) => {
+            if (isUpdating) return;
+            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+              editUnsaved.requestClose(reason);
+            }
+          }}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle>
             Редактировать тренировку
             {isUpdating && (
@@ -3724,12 +3797,7 @@ const Schedule: React.FC = () => {
           </DialogContent>
           <DialogActions>
             <Button 
-              onClick={() => {
-                if (!isUpdating) {
-              setEditDialog(false);
-              resetForm();
-                }
-              }}
+              onClick={discardEditTraining}
               disabled={isUpdating}
             >
               Отмена
@@ -4537,6 +4605,21 @@ const Schedule: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <UnsavedChangesDialog
+          open={createUnsaved.confirmOpen}
+          saving={createUnsaved.saving}
+          onSave={createUnsaved.save}
+          onDiscard={createUnsaved.discard}
+          onStay={createUnsaved.stay}
+        />
+        <UnsavedChangesDialog
+          open={editUnsaved.confirmOpen}
+          saving={editUnsaved.saving}
+          onSave={editUnsaved.save}
+          onDiscard={editUnsaved.discard}
+          onStay={editUnsaved.stay}
+        />
       </Box>
     </LocalizationProvider>
   );

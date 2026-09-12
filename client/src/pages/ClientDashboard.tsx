@@ -19,6 +19,7 @@ import MonthCalendar, { toIso } from '../components/dashboard/MonthCalendar';
 import ScheduleList, { ScheduleRow } from '../components/dashboard/ScheduleList';
 import StaffCardList from '../components/dashboard/StaffCardList';
 import AthleteSwitcher from '../components/dashboard/AthleteSwitcher';
+import ClientTrainerCardDialog from '../components/client/ClientTrainerCardDialog';
 import DesignIcon from '../components/common/DesignIcon';
 import { NavIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
@@ -82,6 +83,7 @@ const ClientDashboard: React.FC = () => {
   const [verifyNotice, setVerifyNotice] = React.useState('');
   const [verifyError, setVerifyError] = React.useState('');
   const [emailVerifiedLocal, setEmailVerifiedLocal] = React.useState<boolean | null>(null);
+  const [trainerCardId, setTrainerCardId] = React.useState<string | null>(null);
   const clientToken = localStorage.getItem('clientToken');
   const chatUnread = useChatUnreadBadge({
     mode: 'client',
@@ -421,7 +423,11 @@ const ClientDashboard: React.FC = () => {
           placeholder={pending}
         />
         <Panel title="Персонал">
-          <StaffCardList staff={data.staff} placeholder={pending} />
+          <StaffCardList
+            staff={data.staff}
+            placeholder={pending}
+            onTrainerClick={(id) => setTrainerCardId(id)}
+          />
         </Panel>
       </Box>
 
@@ -495,7 +501,11 @@ const ClientDashboard: React.FC = () => {
                 : 'Панель управления';
 
   const cardContent = (
-    <AthleteCard mode="client" clientId={currentAthleteId || undefined} />
+    <AthleteCard
+      mode="client"
+      clientId={currentAthleteId || undefined}
+      onTrainerClick={(id) => setTrainerCardId(id)}
+    />
   );
 
   const documentsContent = currentAthleteId ? (
@@ -567,10 +577,17 @@ const ClientDashboard: React.FC = () => {
       activeKey={activeKey}
       userName={data.viewerName}
       userRole={data.userType === 'parent' ? 'Родитель' : 'Ученик'}
+      notificationsChannel="portal"
       onLogout={handleLogout}
       onAddAccount={handleAddAccount}
       hideSearch
     >
+      <ClientTrainerCardDialog
+        open={Boolean(trainerCardId)}
+        trainerId={trainerCardId}
+        clientId={currentAthleteId || null}
+        onClose={() => setTrainerCardId(null)}
+      />
       {pending && activeKey !== 'chats' && activeKey !== 'notifications' ? (
         <Box sx={{ position: 'relative' }}>
           <Box

@@ -5,6 +5,12 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { FinanceService, FinanceDirection } from '../services/financeService';
 import { accrueForPayment } from '../services/trainerSalaryService';
 import { badRequest } from '../utils/httpError';
+import {
+  notifyClientDebt,
+  notifyClientPaymentReceived,
+  notifyFinanceChange,
+  notifyTrainerSalary,
+} from '../services/notificationDomainHooks';
 
 function parseList(value: unknown): string[] | undefined {
   if (!value) return undefined;
@@ -74,6 +80,16 @@ export const listFinanceOperations = asyncHandler(async (req: AuthenticatedReque
     return;
   }
 
+  const access = await (await import('../utils/branchAccess')).resolveAccessibleBranchIds(
+    req.user!,
+    req.tenant.id,
+    parseList(req.query.branchIds)
+  );
+  if (req.user?.role === 'TRAINER' && access.branchIds.length === 0 && !access.allAccess) {
+    res.json({ success: true, data: { items: [], total: 0 } });
+    return;
+  }
+
   const data = await FinanceService.listOperations(req.tenant.id, {
     dateFrom: parseDate(req.query.dateFrom),
     dateTo: parseDate(req.query.dateTo),
@@ -83,7 +99,7 @@ export const listFinanceOperations = asyncHandler(async (req: AuthenticatedReque
     amountTo: req.query.amountTo != null ? Number(req.query.amountTo) : undefined,
     typeCodes: parseList(req.query.typeCodes),
     groupIds: parseList(req.query.groupIds),
-    branchIds: parseList(req.query.branchIds),
+    branchIds: access.allAccess ? parseList(req.query.branchIds) : access.branchIds,
     clientIds: parseList(req.query.clientIds),
     trainerIds: parseList(req.query.trainerIds),
     direction: req.query.direction as FinanceDirection | undefined,
@@ -102,6 +118,21 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     return;
   }
 
+  if (req.user?.role === 'TRAINER') {
+    const { canManageBranch, getSeniorBranchIds } = await import('../utils/branchAccess');
+    const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant.id);
+    if (seniorIds.length > 0) {
+      const branchId = req.body.branchId as string | undefined;
+      if (!branchId || !(await canManageBranch(req.user, branchId, req.tenant.id))) {
+        res.status(403).json({
+          success: false,
+          error: 'Укажите филиал, которым вы управляете',
+        });
+        return;
+      }
+    }
+  }
+
   const op = await FinanceService.createOperation(req.tenant.id, {
     direction: req.body.direction,
     typeCode: req.body.typeCode,
@@ -115,6 +146,14 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     branchId: req.body.branchId,
     createdById: req.user?.id,
   });
+
+  void notifyFinanceChange({
+    tenantId: req.tenant.id,
+    title: op.title || 'Финансовая операция',
+    body: `${op.direction === 'income' ? '+' : '−'}${Number(op.amount).toLocaleString('ru-RU')}`,
+    branchId: op.branchId,
+    excludeUserId: req.user?.id,
+  }).catch((err) => console.error('[Notifications] finance:', err));
 
   res.status(201).json({ success: true, data: op });
 });
@@ -147,6 +186,21 @@ export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest
     createdById: req.user?.id,
   });
 
+  void notifyFinanceChange({
+    tenantId: req.tenant.id,
+    title: 'Выплата зарплаты тренеру',
+    body: Number(req.body.amount).toLocaleString('ru-RU'),
+    excludeUserId: req.user?.id,
+  }).catch((err) => console.error('[Notifications] finance payout:', err));
+
+  void notifyTrainerSalary({
+    tenantId: req.tenant.id,
+    trainerId: String(req.body.trainerId),
+    kind: 'payout',
+    amount: Number(req.body.amount),
+    title: req.body.periodLabel ? String(req.body.periodLabel) : undefined,
+  }).catch((err) => console.error('[Notifications] salary payout:', err));
+
   res.status(201).json({ success: true, data: op });
 });
 
@@ -175,10 +229,16 @@ export const getMembershipFinanceSummary = asyncHandler(
       return;
     }
 
+    const access = await (await import('../utils/branchAccess')).resolveAccessibleBranchIds(
+      req.user!,
+      req.tenant.id,
+      parseList(req.query.branchIds)
+    );
+
     const data = await FinanceService.membershipSummary(req.tenant.id, {
       clientIds: parseList(req.query.clientIds),
       trainerIds: parseList(req.query.trainerIds),
-      branchIds: parseList(req.query.branchIds),
+      branchIds: access.allAccess ? parseList(req.query.branchIds) : access.branchIds,
       groupIds: parseList(req.query.groupIds),
       search: req.query.search ? String(req.query.search) : undefined,
       amountFrom: req.query.amountFrom != null ? Number(req.query.amountFrom) : undefined,
@@ -196,6 +256,22 @@ export const receiveMembershipPayment = asyncHandler(
       res.status(400).json({ success: false, error: 'Tenant ID is required' });
       return;
     }
+
+    const tenantId = req.tenant.id;
+    const notifyPaid = (paidClientId: string, paidAmount: number, branchId?: string | null) => {
+      void notifyClientPaymentReceived({
+        tenantId,
+        clientId: paidClientId,
+        amount: paidAmount,
+      }).catch((err) => console.error('[Notifications] payment:', err));
+      void notifyFinanceChange({
+        tenantId,
+        title: 'Оплата абонемента',
+        body: Number(paidAmount).toLocaleString('ru-RU'),
+        branchId,
+        excludeUserId: req.user?.id,
+      }).catch((err) => console.error('[Notifications] finance:', err));
+    };
 
     const { paymentId, clientId, amount, notes } = req.body;
     if (!paymentId && !clientId) {
@@ -216,6 +292,20 @@ export const receiveMembershipPayment = asyncHandler(
         notes: notes ?? null,
         createdById: req.user?.id,
       });
+      const debtClientId = result.payment?.clientId || clientId;
+      if (debtClientId) {
+        void notifyClientDebt({
+          tenantId: req.tenant.id,
+          clientId: String(debtClientId),
+          amount: Math.abs(result.reducedBy || increment),
+          label: 'Корректировка оплаты',
+        }).catch((err) => console.error('[Notifications] debt:', err));
+        void notifyFinanceChange({
+          tenantId: req.tenant.id,
+          title: 'Корректировка оплаты абонемента',
+          excludeUserId: req.user?.id,
+        }).catch((err) => console.error('[Notifications] finance:', err));
+      }
       res.json({ success: true, data: result, message: `Выплачено уменьшено на ${result.reducedBy}` });
       return;
     }
@@ -264,6 +354,7 @@ export const receiveMembershipPayment = asyncHandler(
       });
       await FinanceService.recordPaymentIncome(extra, clientName);
       await accrueTrainerFromPaidPayment(req.tenant.id, extra);
+      notifyPaid(targetClientId, increment, paidReference.branchId);
       res.json({ success: true, data: { payment: extra } });
       return;
     }
@@ -289,6 +380,7 @@ export const receiveMembershipPayment = asyncHandler(
       });
       await FinanceService.recordPaymentIncome(extra, clientName);
       await accrueTrainerFromPaidPayment(req.tenant.id, extra);
+      notifyPaid(targetClientId, increment);
       res.json({ success: true, data: { payment: extra } });
       return;
     }
@@ -365,6 +457,17 @@ export const receiveMembershipPayment = asyncHandler(
       await accrueTrainerFromPaidPayment(req.tenant.id, resultPayment);
     }
 
+    notifyPaid(pendingPayment.clientId, increment, pendingPayment.branchId);
+
+    // Остаток долга после частичной оплаты
+    if (increment < pendingAmt) {
+      void notifyClientDebt({
+        tenantId: req.tenant.id,
+        clientId: pendingPayment.clientId,
+        amount: pendingAmt - increment,
+      }).catch((err) => console.error('[Notifications] debt:', err));
+    }
+
     res.json({
       success: true,
       data: { payment: resultPayment },
@@ -400,6 +503,24 @@ export const updateMembershipAmount = asyncHandler(
         notes: notes ?? payment.notes,
       },
     });
+
+    if (
+      (payment.status === 'pending' || payment.status === 'overdue') &&
+      newAmount > 0
+    ) {
+      void notifyClientDebt({
+        tenantId: req.tenant.id,
+        clientId: payment.clientId,
+        amount: newAmount,
+        label: 'Обновлена сумма к оплате',
+      }).catch((err) => console.error('[Notifications] debt:', err));
+      void notifyFinanceChange({
+        tenantId: req.tenant.id,
+        title: 'Изменена сумма абонемента',
+        body: Number(newAmount).toLocaleString('ru-RU'),
+        excludeUserId: req.user?.id,
+      }).catch((err) => console.error('[Notifications] finance:', err));
+    }
 
     res.json({ success: true, data: updated });
   }

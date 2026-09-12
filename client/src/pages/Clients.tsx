@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import AthleteCard from '../components/athlete/AthleteCard';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import ClientGroupsDialog from '../components/client/ClientGroupsDialog';
 import { useSearchParams } from 'react-router-dom';
 import { validateClientForm, validateField, hasFormErrors, ClientFormData, ValidationErrors } from '../utils/clientValidation';
@@ -52,6 +54,27 @@ import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { EmojiEvents } from '@mui/icons-material';
+
+const EMPTY_CLIENT_FORM: ClientFormData = {
+  firstName: '',
+  lastName: '',
+  middleName: '',
+  email: '',
+  phone: '',
+  dateOfBirth: '',
+  gender: '',
+  address: '',
+  birthCertificateNumber: '',
+  birthCertificate: '',
+  medicalCertificateNumber: '',
+  medicalCertificate: '',
+  schoolOrKindergarten: '',
+  photo: '',
+  weight: '',
+  groupIds: [],
+  parents: [],
+};
+
 
 const Clients: React.FC = () => {
   const { user } = useAuth();
@@ -311,6 +334,9 @@ const Clients: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [createFormBaseline, setCreateFormBaseline] = useState<ClientFormData>(EMPTY_CLIENT_FORM);
+  const [editFormBaseline, setEditFormBaseline] = useState<ClientFormData>(EMPTY_CLIENT_FORM);
+
   const photoInputRef = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter used for file input
   const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
@@ -547,7 +573,7 @@ const Clients: React.FC = () => {
     };
   }, [clients, searchParams, editDialog, setSearchParams]);
 
-  const handleCreateClient = async () => {
+  const handleCreateClient = async (): Promise<boolean> => {
     // Валидация уже выполнена в onClick кнопки, поэтому здесь просто проверяем еще раз для надежности
     const errors = validateClientForm(formData);
 
@@ -555,14 +581,14 @@ const Clients: React.FC = () => {
       setError('Выберите занятие для пробной записи');
       setSnackbarMessage('Для пробного занятия нужно выбрать тренировку');
       setSnackbarOpen(true);
-      return;
+      return false;
     }
     
     if (hasFormErrors(errors)) {
       setError('Пожалуйста, исправьте ошибки в форме');
       setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
       setSnackbarOpen(true);
-      return;
+      return false;
     }
 
     try {
@@ -654,9 +680,11 @@ const Clients: React.FC = () => {
       if (medicalCertificateInputRef.current) {
         medicalCertificateInputRef.current.value = '';
       }
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка создания клиента');
       console.error('Error creating client:', err);
+      return false;
     }
   };
 
@@ -918,8 +946,8 @@ const Clients: React.FC = () => {
     }, 100);
   };
 
-  const handleUpdateClient = async () => {
-    if (!editingClient) return;
+  const handleUpdateClient = async (): Promise<boolean> => {
+    if (!editingClient) return false;
     
     // Mark all fields as touched to show all validation errors
     const allFields = ['firstName', 'lastName', 'email', 'phone', 'dateOfBirth', 'weight'];
@@ -940,7 +968,7 @@ const Clients: React.FC = () => {
     if (hasFormErrors(errors)) {
       setError('Пожалуйста, исправьте ошибки в форме перед сохранением');
       setValidFields(new Set()); // Clear valid fields if there are errors
-      return; // Don't close the form, don't save
+      return false; // Don't close the form, don't save
     }
     
     // Clear error if validation passed
@@ -1051,9 +1079,11 @@ const Clients: React.FC = () => {
       if (medicalCertificateInputRef.current) {
         medicalCertificateInputRef.current.value = '';
       }
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления клиента');
       console.error('Error updating client:', err);
+      return false;
     }
   };
 
@@ -1218,6 +1248,79 @@ const Clients: React.FC = () => {
     }
   };
 
+  const editBaselineReady = React.useRef(false);
+  React.useEffect(() => {
+    if (editDialogOpen && editingClient && !editBaselineReady.current) {
+      setEditFormBaseline(formData);
+      editBaselineReady.current = true;
+    }
+    if (!editDialogOpen) {
+      editBaselineReady.current = false;
+    }
+  }, [editDialogOpen, editingClient, formData]);
+
+  const discardCreateForm = React.useCallback(() => {
+    setOpenDialog(false);
+    setFormData({ ...EMPTY_CLIENT_FORM });
+    setCreateFormBaseline({ ...EMPTY_CLIENT_FORM });
+    setPhotoPreview(null);
+    setPhotoFile(null);
+    setBirthCertificatePreview(null);
+    setBirthCertificateFile(null);
+    setMedicalCertificatePreview(null);
+    setMedicalCertificateFile(null);
+    setEditingClient(null);
+    setFormErrors({});
+    setTouchedFields(new Set());
+    setValidFields(new Set());
+    setError('');
+    setTrialEnabled(false);
+    setTrialTrainingId('');
+  }, []);
+
+  const discardEditForm = React.useCallback(() => {
+    isCancellingRef.current = true;
+    shouldPreventCloseRef.current = false;
+    isValidatingRef.current = false;
+    editDialogStateRef.current = false;
+    setEditDialogOpen(false);
+    setEditDialog(false);
+    setEditingClient(null);
+    setFormData({ ...EMPTY_CLIENT_FORM });
+    setEditFormBaseline({ ...EMPTY_CLIENT_FORM });
+    setPhotoPreview(null);
+    setPhotoFile(null);
+    setBirthCertificatePreview(null);
+    setBirthCertificateFile(null);
+    setKeepBirthCertificate(false);
+    setMedicalCertificatePreview(null);
+    setMedicalCertificateFile(null);
+    setKeepMedicalCertificate(false);
+    setFormErrors({});
+    currentErrorsRef.current = {};
+    setTouchedFields(new Set());
+    setValidFields(new Set());
+    setError('');
+    setTimeout(() => {
+      isCancellingRef.current = false;
+    }, 100);
+  }, []);
+
+  const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
+  const editDirty = editDialogOpen && isDirtyValue(formData, editFormBaseline);
+
+  const createUnsaved = useUnsavedClose({
+    isDirty: Boolean(createDirty),
+    onDiscard: discardCreateForm,
+    onSave: async () => handleCreateClient(),
+  });
+
+  const editUnsaved = useUnsavedClose({
+    isDirty: Boolean(editDirty),
+    onDiscard: discardEditForm,
+    onSave: async () => handleUpdateClient(),
+  });
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -1226,7 +1329,7 @@ const Clients: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (error && !openDialog && !editDialogOpen) {
     return (
       <Alert severity="error" sx={{ mb: 2 }}>
         {error}
@@ -1284,6 +1387,7 @@ const Clients: React.FC = () => {
             setTouchedFields(new Set());
             setValidFields(new Set());
             setError('');
+            setCreateFormBaseline({ ...EMPTY_CLIENT_FORM });
             setOpenDialog(true);
   };
 
@@ -1434,56 +1538,10 @@ const Clients: React.FC = () => {
       {/* Диалог добавления клиента */}
       <Dialog 
         open={openDialog}
-        onClose={(event: React.SyntheticEvent, reason?: string) => {
-          // Всегда проверяем ошибки перед закрытием
-          const hasErrors = hasFormErrors(formErrors);
-          
-          // Если есть ошибки, не закрываем диалог
-          if (hasErrors) {
-            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-            setSnackbarOpen(true);
-            return;
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            createUnsaved.requestClose(reason);
           }
-          
-          // Разрешаем закрытие только если нет ошибок
-          setOpenDialog(false);
-          // Сбрасываем форму при закрытии
-          setFormData({
-            firstName: '',
-            lastName: '',
-            middleName: '',
-            email: '',
-            phone: '',
-            dateOfBirth: '',
-            gender: '',
-            address: '',
-            birthCertificateNumber: '',
-            birthCertificate: '',
-            medicalCertificateNumber: '',
-            medicalCertificate: '',
-            schoolOrKindergarten: '',
-            photo: '',
-            weight: '',
-            passportSeries: '',
-            passportNumber: '',
-            passportIssueDate: '',
-            passportIssuedBy: '',
-            passportDivisionCode: '',
-            passportBirthPlace: '',
-            groupIds: [],
-            parents: [],
-          });
-          setPhotoPreview(null);
-          setPhotoFile(null);
-          setBirthCertificatePreview(null);
-          setBirthCertificateFile(null);
-          setMedicalCertificatePreview(null);
-          setMedicalCertificateFile(null);
-          setEditingClient(null);
-          setFormErrors({});
-          setTouchedFields(new Set());
-          setValidFields(new Set());
-          setError('');
         }}
         maxWidth="md" 
         fullWidth
@@ -2285,33 +2343,7 @@ const Clients: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              
-              // Отмена всегда закрывает форму без применения изменений
-              setOpenDialog(false);
-              setFormErrors({});
-              setTouchedFields(new Set());
-              setError('');
-              setFormData({
-                firstName: '',
-                lastName: '',
-                middleName: '',
-                email: '',
-                phone: '',
-                dateOfBirth: '',
-                gender: '',
-                address: '',
-                birthCertificateNumber: '',
-                birthCertificate: '',
-                medicalCertificateNumber: '',
-                medicalCertificate: '',
-                schoolOrKindergarten: '',
-                photo: '',
-                weight: '',
-                groupIds: [],
-                parents: [],
-              });
-              setPhotoPreview(null);
-              setPhotoFile(null);
+              discardCreateForm();
               if (photoInputRef.current) {
                 photoInputRef.current.value = '';
               }
@@ -2362,135 +2394,11 @@ const Clients: React.FC = () => {
 
       {/* Диалог редактирования клиента */}
       <Dialog
-        open={editDialogOpen}
-        onClose={(event, reason) => {
-          console.log('onClose called', { reason, hasErrors: hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current), shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current, isCancelling: isCancellingRef.current });
-          
-          // Если нажата кнопка "Отмена", всегда разрешаем закрытие
-          if (isCancellingRef.current) {
-            console.log('Allowing close - cancel button clicked');
-            shouldPreventCloseRef.current = false;
-            isValidatingRef.current = false;
-            editDialogStateRef.current = false;
-            setEditDialogOpen(false);
-            setEditDialog(false);
-            setEditingClient(null);
-            // Сбрасываем форму при закрытии
-            setFormData({
-              firstName: '',
-              lastName: '',
-              middleName: '',
-              email: '',
-              phone: '',
-              dateOfBirth: '',
-              gender: '',
-              address: '',
-              birthCertificateNumber: '',
-              birthCertificate: '',
-              medicalCertificateNumber: '',
-              medicalCertificate: '',
-              schoolOrKindergarten: '',
-              photo: '',
-              weight: '',
-              passportSeries: '',
-              passportNumber: '',
-              passportIssueDate: '',
-              passportIssuedBy: '',
-              passportDivisionCode: '',
-              passportBirthPlace: '',
-              groupIds: [],
-              parents: [],
-            });
-            setPhotoPreview(null);
-            setPhotoFile(null);
-            setBirthCertificatePreview(null);
-            setBirthCertificateFile(null);
-            setMedicalCertificatePreview(null);
-            setMedicalCertificateFile(null);
-            setFormErrors({});
-            currentErrorsRef.current = {};
-            setTouchedFields(new Set());
-            setValidFields(new Set());
-            setError('');
-            return true;
+open={editDialogOpen}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editUnsaved.requestClose(reason);
           }
-          
-          // Всегда проверяем ошибки перед закрытием
-          const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-          
-          // Если есть ошибки или идет валидация, НЕ закрываем диалог
-          if (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) {
-            console.log('Preventing close due to errors or validation');
-            // Показываем ошибки в Snackbar
-            if (hasErrors) {
-              setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-              setSnackbarOpen(true);
-            }
-            // Устанавливаем флаг для предотвращения закрытия
-            shouldPreventCloseRef.current = true;
-            // НЕ закрываем диалог - оставляем его открытым
-            // Принудительно оставляем диалог открытым
-            setEditDialogOpen(true);
-            setEditDialog(true);
-            // Используем множественные таймеры для гарантии открытия
-            requestAnimationFrame(() => {
-              setEditDialogOpen(true);
-              setEditDialog(true);
-            });
-            for (let i = 0; i < 200; i++) {
-              setTimeout(() => {
-                setEditDialogOpen(true);
-                setEditDialog(true);
-              }, i * 5);
-            }
-            return false; // Возвращаем false, чтобы предотвратить закрытие
-          }
-          
-          // Разрешаем закрытие только если нет ошибок
-          console.log('Allowing close - no errors');
-          shouldPreventCloseRef.current = false;
-          editDialogStateRef.current = false;
-          setEditDialogOpen(false);
-          setEditDialog(false);
-          setEditingClient(null);
-          // Сбрасываем форму при закрытии
-          setFormData({
-            firstName: '',
-            lastName: '',
-            middleName: '',
-            email: '',
-            phone: '',
-            dateOfBirth: '',
-            gender: '',
-            address: '',
-            birthCertificateNumber: '',
-            birthCertificate: '',
-            medicalCertificateNumber: '',
-            medicalCertificate: '',
-            schoolOrKindergarten: '',
-            photo: '',
-            weight: '',
-            passportSeries: '',
-            passportNumber: '',
-            passportIssueDate: '',
-            passportIssuedBy: '',
-            passportDivisionCode: '',
-            passportBirthPlace: '',
-            groupIds: [],
-            parents: [],
-          });
-          setPhotoPreview(null);
-          setPhotoFile(null);
-          setBirthCertificatePreview(null);
-          setBirthCertificateFile(null);
-          setMedicalCertificatePreview(null);
-          setMedicalCertificateFile(null);
-          setFormErrors({});
-          currentErrorsRef.current = {};
-          setTouchedFields(new Set());
-          setValidFields(new Set());
-          setError('');
-          return true;
         }}
         maxWidth="lg"
         fullWidth
@@ -2670,18 +2578,12 @@ const Clients: React.FC = () => {
                 } catch (_) {}
               }}
               onClose={() => {
-                isCancellingRef.current = true;
-                shouldPreventCloseRef.current = false;
-                editDialogStateRef.current = false;
-                setEditDialogOpen(false);
-                setEditDialog(false);
-                setEditingClient(null);
+                discardEditForm();
                 setSearchParams((prev) => {
                   const next = new URLSearchParams(prev);
                   next.delete('clientId');
                   return next;
                 });
-                setTimeout(() => { isCancellingRef.current = false; }, 100);
               }}
             />
           )}
@@ -2942,6 +2844,22 @@ const Clients: React.FC = () => {
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+
+
+      <UnsavedChangesDialog
+        open={createUnsaved.confirmOpen}
+        saving={createUnsaved.saving}
+        onSave={createUnsaved.save}
+        onDiscard={createUnsaved.discard}
+        onStay={createUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editUnsaved.confirmOpen}
+        saving={editUnsaved.saving}
+        onSave={editUnsaved.save}
+        onDiscard={editUnsaved.discard}
+        onStay={editUnsaved.stay}
+      />
 
       <ClientGroupsDialog
         open={groupsDialog}

@@ -198,6 +198,13 @@ async function createLedgerAndUpdateBalance(params: {
         });
       }
     });
+    await notifySalaryIfCreated(true, {
+      tenantId: params.tenantId,
+      trainerId: params.trainerId,
+      kind: params.kind,
+      amount,
+      title: params.title,
+    });
     return { created: true, amount };
   } catch (err: any) {
     // Unique constraint → already accrued (idempotent)
@@ -205,6 +212,26 @@ async function createLedgerAndUpdateBalance(params: {
       return { created: false, amount: 0 };
     }
     throw err;
+  }
+}
+
+async function notifySalaryIfCreated(
+  created: boolean,
+  params: { tenantId: string; trainerId: string; kind: string; amount: number; title: string }
+) {
+  if (!created) return;
+  try {
+    const { notifyTrainerSalary } = await import('./notificationDomainHooks');
+    const isPayout = params.kind === 'payout';
+    await notifyTrainerSalary({
+      tenantId: params.tenantId,
+      trainerId: params.trainerId,
+      kind: isPayout ? 'payout' : 'accrual',
+      amount: Math.abs(params.amount),
+      title: params.title,
+    });
+  } catch (e) {
+    console.error('[Notifications] salary ledger:', e);
   }
 }
 
@@ -562,6 +589,14 @@ export async function addManualLedgerEntry(params: {
       notes: params.comment?.trim() || (kind === 'bonus' ? 'премия' : 'корректировка'),
     }).catch((err) => console.error('Finance salary accrual record failed:', err));
   }
+
+  await notifySalaryIfCreated(true, {
+    tenantId: params.tenantId,
+    trainerId: params.trainerId,
+    kind,
+    amount,
+    title,
+  });
 
   return { id: row.id, amount };
 }

@@ -12,18 +12,23 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
       isActive: true
     };
 
-    // Если пользователь - тренер, проверяем права на просмотр всех групп
+    // Если пользователь - тренер: старший видит группы своих филиалов; иначе — свои / canViewAllGroups
     if (req.user?.role === 'TRAINER') {
-      const trainer = await prisma.trainer.findFirst({
-        where: {
-          userId: req.user.id,
-          tenantId: req.tenant?.id
-        }
-      });
+      const { getSeniorBranchIds } = await import('../utils/branchAccess');
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        where.branchId = { in: seniorIds };
+      } else {
+        const trainer = await prisma.trainer.findFirst({
+          where: {
+            userId: req.user.id,
+            tenantId: req.tenant?.id
+          }
+        });
 
-      // Если тренер не может видеть все группы, показываем только его группы
-      if (trainer && !trainer.canViewAllGroups) {
-        where.trainerId = trainer.id;
+        if (trainer && !trainer.canViewAllGroups) {
+          where.trainerId = trainer.id;
+        }
       }
     }
 
@@ -149,6 +154,23 @@ export const getGroupById = async (req: AuthenticatedRequest, res: Response) => 
 
 export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const { canManageBranch, isOwnerOrAdminRole, getSeniorBranchIds } = await import('../utils/branchAccess');
+    const branchId = req.body.branchId as string | undefined;
+    if (req.user?.role === 'TRAINER') {
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        if (!branchId || !(await canManageBranch(req.user, branchId, req.tenant?.id))) {
+          res.status(403).json({
+            success: false,
+            error: 'Можно создавать группы только в своём филиале',
+          });
+          return;
+        }
+      }
+    } else if (req.user && !isOwnerOrAdminRole(req.user.role) && branchId) {
+      // no-op for other roles
+    }
+
     const groupData: any = {
       ...req.body,
       tenantId: req.tenant?.id
@@ -298,6 +320,22 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
         error: 'Group not found'
       });
       return;
+    }
+
+    const { canManageBranch, getSeniorBranchIds } = await import('../utils/branchAccess');
+    if (req.user?.role === 'TRAINER') {
+      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+      if (seniorIds.length > 0) {
+        if (!(await canManageBranch(req.user, group.branchId, req.tenant?.id))) {
+          res.status(403).json({ success: false, error: 'Нет доступа к группе этого филиала' });
+          return;
+        }
+        const nextBranchId = req.body.branchId as string | undefined;
+        if (nextBranchId && !(await canManageBranch(req.user, nextBranchId, req.tenant?.id))) {
+          res.status(403).json({ success: false, error: 'Нельзя перенести группу в чужой филиал' });
+          return;
+        }
+      }
     }
 
     const updateData: any = { ...req.body };

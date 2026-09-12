@@ -201,6 +201,12 @@ export class AuthService {
     // Generate JWT token
     const token = this.generateToken(user);
 
+    const { getSeniorAccessMeta } = await import('../utils/branchAccess');
+    const seniorMeta =
+      user.role === 'TRAINER'
+        ? await getSeniorAccessMeta(user.id, user.tenantId)
+        : { isSeniorTrainer: false, seniorBranchIds: [] as string[] };
+
     return {
       user: {
         id: user.id,
@@ -208,7 +214,9 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        tenantId: user.tenantId
+        tenantId: user.tenantId,
+        isSeniorTrainer: seniorMeta.isSeniorTrainer,
+        seniorBranchIds: seniorMeta.seniorBranchIds,
       },
       tenant: {
         id: user.tenant.id,
@@ -656,6 +664,12 @@ export class AuthService {
       throw new Error('User not found');
     }
 
+    const { getSeniorAccessMeta } = await import('../utils/branchAccess');
+    const seniorMeta =
+      user.role === 'TRAINER'
+        ? await getSeniorAccessMeta(user.id, user.tenantId)
+        : { isSeniorTrainer: false, seniorBranchIds: [] as string[], trainerId: null as string | null };
+
     return {
       id: user.id,
       email: user.email,
@@ -665,6 +679,9 @@ export class AuthService {
       phone: user.phone,
       role: user.role,
       lastLogin: user.lastLogin,
+      tenantId: user.tenantId,
+      isSeniorTrainer: seniorMeta.isSeniorTrainer,
+      seniorBranchIds: seniorMeta.seniorBranchIds,
       tenant: {
         id: user.tenant.id,
         name: user.tenant.name,

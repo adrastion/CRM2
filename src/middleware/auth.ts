@@ -136,6 +136,8 @@ export const requireOwnerOrAdmin = authorize('OWNER', 'ADMIN');
  */
 export const requireOwnerAdminOrTrainer = authorize('OWNER', 'ADMIN', 'TRAINER');
 
+export { requireOwnerAdminOrSenior } from '../utils/branchAccess';
+
 /**
  * Middleware to check tenant access
  * @deprecated Prefer JWT req.tenantId + stripClientTenantFields; do not trust body tenantId.

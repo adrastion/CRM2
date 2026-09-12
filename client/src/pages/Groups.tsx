@@ -55,6 +55,8 @@ import {
   normalizeSalaryScheme,
 } from '../utils/salarySchemes';
 import { colors, typography } from '../theme/tokens';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
 function trainerDisplayName(trainer?: Trainer | null): string {
   if (!trainer?.user) return '—';
@@ -203,6 +205,9 @@ const Groups: React.FC = () => {
   });
 
   const [formData, setFormData] = useState(emptyGroupForm);
+  const [createFormBaseline, setCreateFormBaseline] = useState(emptyGroupForm);
+  const [editFormBaseline, setEditFormBaseline] = useState(emptyGroupForm);
+  const [fieldEditBaseline, setFieldEditBaseline] = useState('');
 
   const fetchData = async () => {
     try {
@@ -275,7 +280,15 @@ const Groups: React.FC = () => {
     };
   }, []);
 
-  const handleCreateGroup = async (openTrainingDialog: boolean = false) => {
+  const handleCreateGroup = async (openTrainingDialog: boolean = false): Promise<boolean> => {
+    const validationErrors = validateGroupForm(formData);
+    setFormErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
     try {
       const groupData = {
         ...formData,
@@ -332,6 +345,7 @@ const Groups: React.FC = () => {
       setOpenDialog(false);
       setFormErrors({});
       setSelectedClientIds([]); // Очищаем выбранных клиентов
+      setCreateFormBaseline(emptyGroupForm());
       
       // Сохраняем флаг создания платежей, если группа с ежемесячной оплатой
       if (formData.isMonthlyPayment && formData.createPaymentsImmediately) {
@@ -354,6 +368,7 @@ const Groups: React.FC = () => {
       }
       
       setFormData(emptyGroupForm());
+      return true;
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания группы';
       setError(errorMessage);
@@ -364,6 +379,7 @@ const Groups: React.FC = () => {
         message: err.message,
         stack: err.stack
       });
+      return false;
     }
   };
 
@@ -504,7 +520,7 @@ const Groups: React.FC = () => {
         schedule = group.schedule;
       }
     }
-    setFormData({
+    const nextForm = {
       name: group.name || '',
       description: group.description || '',
       maxMembers: group.maxMembers?.toString() || '',
@@ -522,23 +538,28 @@ const Groups: React.FC = () => {
         ? normalizeSalaryScheme(group.salaryScheme)
         : 'per_training_person',
       salaryRate: group.salaryRate != null ? String(group.salaryRate) : '',
-    });
+    };
+    setFormData(nextForm);
+    setEditFormBaseline(nextForm);
     setEditDialog(true);
   };
 
   const openFieldEdit = (group: Group, field: 'branch' | 'trainer') => {
+    const value = field === 'branch' ? group.branchId : group.trainerId;
     setFieldEdit({ group, field });
-    setFieldEditValue(field === 'branch' ? group.branchId : group.trainerId);
+    setFieldEditValue(value);
+    setFieldEditBaseline(value);
   };
 
   const closeFieldEdit = () => {
     setFieldEdit(null);
     setFieldEditValue('');
+    setFieldEditBaseline('');
     setFieldEditSaving(false);
   };
 
-  const saveFieldEdit = async () => {
-    if (!fieldEdit || !fieldEditValue) return;
+  const saveFieldEdit = async (): Promise<boolean> => {
+    if (!fieldEdit || !fieldEditValue) return false;
     setFieldEditSaving(true);
     try {
       const payload =
@@ -552,15 +573,25 @@ const Groups: React.FC = () => {
         fieldEdit.field === 'branch' ? 'Филиал обновлён' : 'Тренер обновлён'
       );
       setSnackbarOpen(true);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Не удалось сохранить');
+      return false;
     } finally {
       setFieldEditSaving(false);
     }
   };
 
-  const handleUpdateGroup = async () => {
-    if (!editingGroup) return;
+  const handleUpdateGroup = async (): Promise<boolean> => {
+    if (!editingGroup) return false;
+
+    const validationErrors = validateGroupForm(formData);
+    setFormErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      return false;
+    }
     
     try {
       const groupData = {
@@ -584,9 +615,13 @@ const Groups: React.FC = () => {
       setEditDialog(false);
       setEditingGroup(null);
       setFormErrors({});
+      setFormData(emptyGroupForm());
+      setEditFormBaseline(emptyGroupForm());
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка обновления группы');
       console.error('Error updating group:', err);
+      return false;
     }
   };
 
@@ -1112,6 +1147,48 @@ const Groups: React.FC = () => {
     return availableClients;
   };
 
+  const discardCreateForm = React.useCallback(() => {
+    setOpenDialog(false);
+    setFormErrors({});
+    setError(null);
+    const empty = emptyGroupForm();
+    setFormData(empty);
+    setCreateFormBaseline(empty);
+    setSelectedClientIds([]);
+  }, []);
+
+  const discardEditForm = React.useCallback(() => {
+    setEditDialog(false);
+    setEditingGroup(null);
+    setFormErrors({});
+    setError(null);
+    const empty = emptyGroupForm();
+    setFormData(empty);
+    setEditFormBaseline(empty);
+  }, []);
+
+  const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
+  const editDirty = editDialog && isDirtyValue(formData, editFormBaseline);
+  const fieldEditDirty = Boolean(fieldEdit) && isDirtyValue(fieldEditValue, fieldEditBaseline);
+
+  const createUnsaved = useUnsavedClose({
+    isDirty: Boolean(createDirty),
+    onDiscard: discardCreateForm,
+    onSave: async () => handleCreateGroup(false),
+  });
+
+  const editUnsaved = useUnsavedClose({
+    isDirty: Boolean(editDirty),
+    onDiscard: discardEditForm,
+    onSave: async () => handleUpdateGroup(),
+  });
+
+  const fieldEditUnsaved = useUnsavedClose({
+    isDirty: Boolean(fieldEditDirty),
+    onDiscard: closeFieldEdit,
+    onSave: async () => saveFieldEdit(),
+  });
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -1140,10 +1217,13 @@ const Groups: React.FC = () => {
           startIcon={<Add />}
           sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => {
-            setOpenDialog(true);
+            const initial = emptyGroupForm();
+            setFormData(initial);
+            setCreateFormBaseline(initial);
+            setSelectedClientIds([]);
             setFormErrors({});
             setError(null);
-            setFormData(emptyGroupForm());
+            setOpenDialog(true);
           }}
           data-onboarding="add-group-button"
         >
@@ -1433,21 +1513,10 @@ const Groups: React.FC = () => {
       {/* Диалог добавления группы */}
       <Dialog 
         open={openDialog} 
-        onClose={(event, reason) => {
-          // Всегда проверяем ошибки перед закрытием
-          const hasErrors = Object.keys(formErrors).length > 0;
-          
-          // Если есть ошибки, не закрываем диалог
-          if (hasErrors || error) {
-            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-            setSnackbarOpen(true);
-            return;
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            createUnsaved.requestClose(reason);
           }
-          
-          // Разрешаем закрытие только если нет ошибок
-          setOpenDialog(false);
-          setFormErrors({});
-          setError(null);
         }} 
         maxWidth="md" 
         fullWidth 
@@ -1759,13 +1828,7 @@ const Groups: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              
-              // Отмена всегда закрывает форму без применения изменений
-              setOpenDialog(false);
-              setFormErrors({});
-              setError(null);
-              setFormData(emptyGroupForm());
-              setSelectedClientIds([]); // Очищаем выбранных клиентов при отмене
+              discardCreateForm();
             }}
             type="button"
           >
@@ -1776,19 +1839,6 @@ const Groups: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
-              
-              // Выполняем валидацию синхронно
-              const validationErrors = validateGroupForm(formData);
-              setFormErrors(validationErrors);
-              
-              // Если есть ошибки, показываем их и оставляем диалог открытым
-              if (Object.keys(validationErrors).length > 0) {
-                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                setSnackbarOpen(true);
-                return; // Не создаем группу, если есть ошибки
-              }
-              
-              // Если нет ошибок, вызываем handleCreateGroup для сохранения
               handleCreateGroup(false);
             }} 
             variant="outlined"
@@ -1801,19 +1851,6 @@ const Groups: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
-              
-              // Выполняем валидацию синхронно
-              const validationErrors = validateGroupForm(formData);
-              setFormErrors(validationErrors);
-              
-              // Если есть ошибки, показываем их и оставляем диалог открытым
-              if (Object.keys(validationErrors).length > 0) {
-                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                setSnackbarOpen(true);
-                return; // Не создаем группу, если есть ошибки
-              }
-              
-              // Если нет ошибок, вызываем handleCreateGroup с флагом открытия диалога тренировки
               handleCreateGroup(true);
             }} 
             variant="contained"
@@ -1828,21 +1865,10 @@ const Groups: React.FC = () => {
       {/* Диалог редактирования группы */}
       <Dialog 
         open={editDialog} 
-        onClose={(event, reason) => {
-          // Всегда проверяем ошибки перед закрытием
-          const hasErrors = Object.keys(formErrors).length > 0;
-          
-          // Если есть ошибки, не закрываем диалог
-          if (hasErrors || error) {
-            setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-            setSnackbarOpen(true);
-            return;
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editUnsaved.requestClose(reason);
           }
-          
-          // Разрешаем закрытие только если нет ошибок
-          setEditDialog(false);
-          setFormErrors({});
-          setError(null);
         }} 
         maxWidth="md" 
         fullWidth
@@ -2117,12 +2143,7 @@ const Groups: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              
-              // Отмена всегда закрывает форму без применения изменений
-              setEditDialog(false);
-              setEditingGroup(null);
-              setFormErrors({});
-              setError(null);
+              discardEditForm();
             }}
             type="button"
           >
@@ -2133,19 +2154,6 @@ const Groups: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
-              
-              // Выполняем валидацию синхронно
-              const validationErrors = validateGroupForm(formData);
-              setFormErrors(validationErrors);
-              
-              // Если есть ошибки, показываем их и оставляем диалог открытым
-              if (Object.keys(validationErrors).length > 0) {
-                setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-                setSnackbarOpen(true);
-                return; // Не обновляем группу, если есть ошибки
-              }
-              
-              // Если нет ошибок, вызываем handleUpdateGroup для сохранения
               handleUpdateGroup();
             }} 
             variant="contained"
@@ -3015,7 +3023,16 @@ const Groups: React.FC = () => {
       </Dialog>
 
       {/* Быстрая смена филиала / тренера */}
-      <Dialog open={Boolean(fieldEdit)} onClose={closeFieldEdit} maxWidth="xs" fullWidth>
+      <Dialog
+        open={Boolean(fieldEdit)}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            fieldEditUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>
           {fieldEdit?.field === 'branch' ? 'Изменить филиал' : 'Изменить тренера'}
           {fieldEdit ? `: ${fieldEdit.group.name}` : ''}
@@ -3053,6 +3070,28 @@ const Groups: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={createUnsaved.confirmOpen}
+        saving={createUnsaved.saving}
+        onSave={createUnsaved.save}
+        onDiscard={createUnsaved.discard}
+        onStay={createUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editUnsaved.confirmOpen}
+        saving={editUnsaved.saving}
+        onSave={editUnsaved.save}
+        onDiscard={editUnsaved.discard}
+        onStay={editUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={fieldEditUnsaved.confirmOpen}
+        saving={fieldEditUnsaved.saving}
+        onSave={fieldEditUnsaved.save}
+        onDiscard={fieldEditUnsaved.discard}
+        onStay={fieldEditUnsaved.stay}
+      />
 
       {/* Snackbar для отображения ошибок валидации */}
       <Snackbar

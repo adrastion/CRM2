@@ -11,6 +11,7 @@ import {
   UnifiedSession,
   AccountType,
   ClientDashboardData,
+  ClientTrainerCardData,
   PublicAccount,
   SubscriptionPlanItem,
   PublicPlanItem,
@@ -31,6 +32,14 @@ export type NotificationPrefs = {
   chatMessagesEnabled: boolean;
   changelogEnabled: boolean;
   pushMasterEnabled: boolean;
+  athleteCreatedEnabled?: boolean;
+  financeEnabled?: boolean;
+  attendanceEnabled?: boolean;
+  offersEnabled?: boolean;
+  salaryEnabled?: boolean;
+  paymentsEnabled?: boolean;
+  trainingRemindersEnabled?: boolean;
+  scheduleChangesEnabled?: boolean;
   scheduleMode: 'ALWAYS' | 'WINDOW';
   windowStartMinutes: number | null;
   windowEndMinutes: number | null;
@@ -660,6 +669,52 @@ class ApiService {
 
   async updateTesterNotificationPrefs(data: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
     const response = await this.api.put<ApiResponse>('/platform/tester/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async getSchoolNotifications(): Promise<{
+    items: any[];
+    aggregates: Array<{ category: string; title: string; count: number; latestAt: string | null; url?: string }>;
+    unreadTotal: number;
+  }> {
+    const response = await this.api.get<ApiResponse>('/notifications');
+    return response.data.data;
+  }
+
+  async markSchoolNotificationsRead(payload: {
+    ids?: string[];
+    category?: string;
+    all?: boolean;
+  }): Promise<{ count: number }> {
+    const response = await this.api.post<ApiResponse>('/notifications/read', payload);
+    return response.data.data;
+  }
+
+  async getPortalNotifications(): Promise<{
+    items: any[];
+    aggregates: Array<{ category: string; title: string; count: number; latestAt: string | null; url?: string }>;
+    unreadTotal: number;
+  }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/notifications');
+    return response.data.data;
+  }
+
+  async markPortalNotificationsRead(payload: {
+    ids?: string[];
+    category?: string;
+    all?: boolean;
+  }): Promise<{ count: number }> {
+    const response = await this.api.post<ApiResponse>('/client-auth/notifications/read', payload);
+    return response.data.data;
+  }
+
+  async listSchoolOffers(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/school-offers');
+    return response.data.data || [];
+  }
+
+  async publishSchoolOffer(data: { title: string; body: string; url?: string | null }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/school-offers', data);
     return response.data.data;
   }
 
@@ -2359,6 +2414,15 @@ class ApiService {
     const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard', {
       params: clientId ? { clientId } : undefined,
     });
+    return response.data.data!;
+  }
+
+  /** Карточка тренера в ЛК клиента/родителя. */
+  async getClientTrainerCard(trainerId: string, clientId?: string): Promise<ClientTrainerCardData> {
+    const response = await this.api.get<ApiResponse<ClientTrainerCardData>>(
+      `/client-auth/trainers/${trainerId}/card`,
+      { params: clientId ? { clientId } : undefined }
+    );
     return response.data.data!;
   }
 

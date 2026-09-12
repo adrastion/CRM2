@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
+import { authenticate, requireOwnerOrAdmin, requireOwner, requireOwnerAdminOrSenior } from '../middleware/auth';
 import {
   listFinanceTypes,
   createFinanceType,
@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
-router.use(requireOwnerOrAdmin);
+router.use(requireOwnerAdminOrSenior);
 
 router.get('/types', listFinanceTypes);
 router.post('/types', createFinanceType);
