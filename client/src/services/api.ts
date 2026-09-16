@@ -141,6 +141,7 @@ class ApiService {
           if (!localStorage.getItem('superAdminToken')) {
             sessionStorage.setItem('maintenanceMode', '1');
             sessionStorage.removeItem('testingModeAccess');
+            sessionStorage.removeItem('closedTestingMode');
             window.dispatchEvent(
               new CustomEvent('maintenance-mode', {
                 detail: {
@@ -166,6 +167,7 @@ class ApiService {
         if (error.response?.status === 503 && error.response?.data?.code === 'TESTING_MODE') {
           if (!localStorage.getItem('superAdminToken')) {
             sessionStorage.setItem('testingMode', '1');
+            sessionStorage.removeItem('closedTestingMode');
             sessionStorage.removeItem('testingModeAccess');
             window.dispatchEvent(
               new CustomEvent('maintenance-mode', {
@@ -185,6 +187,27 @@ class ApiService {
             ) {
               window.location.href = '/maintenance';
             }
+          }
+          return Promise.reject(error);
+        }
+
+        if (error.response?.status === 503 && error.response?.data?.code === 'CLOSED_TESTING') {
+          sessionStorage.setItem('closedTestingMode', '1');
+          sessionStorage.setItem('testingMode', '1');
+          sessionStorage.removeItem('testingModeAccess');
+          sessionStorage.removeItem('maintenanceMode');
+          window.dispatchEvent(
+            new CustomEvent('maintenance-mode', {
+              detail: {
+                enabled: true,
+                mode: 'closed_testing',
+                message: error.response?.data?.error || '',
+              },
+            })
+          );
+          const path = window.location.pathname;
+          if (path !== '/maintenance' && path !== '/terms' && path !== '/privacy') {
+            window.location.href = '/maintenance';
           }
           return Promise.reject(error);
         }
@@ -1042,6 +1065,7 @@ class ApiService {
   async getMaintenanceStatus(): Promise<{
     maintenance: { enabled: boolean; message: string };
     testing: { enabled: boolean; message: string };
+    closedTesting: { enabled: boolean; message: string };
     /** @deprecated use maintenance.enabled */
     enabled?: boolean;
     message?: string;
@@ -1052,16 +1076,23 @@ class ApiService {
     if (data.maintenance) {
       return {
         ...data,
+        closedTesting: data.closedTesting || { enabled: false, message: '' },
         enabled: Boolean(data.maintenance.enabled),
         message: data.maintenance.message,
       };
     }
-    return data;
+    return {
+      maintenance: { enabled: Boolean(data.enabled), message: data.message || '' },
+      testing: { enabled: false, message: '' },
+      closedTesting: { enabled: false, message: '' },
+      enabled: Boolean(data.enabled),
+      message: data.message,
+    };
   }
 
   async getMaintenanceAccess(): Promise<{
     canAccess: boolean;
-    mode: 'none' | 'maintenance' | 'testing';
+    mode: 'none' | 'maintenance' | 'testing' | 'closed_testing';
     message: string;
     isSuperAdmin: boolean;
     isAllowlisted: boolean;
@@ -1080,7 +1111,12 @@ class ApiService {
     return response.data.data;
   }
 
-  async getAdminTestingMode(): Promise<{ enabled: boolean; message: string; allowlist: string[] }> {
+  async getAdminTestingMode(): Promise<{
+    enabled: boolean;
+    message: string;
+    allowlist: string[];
+    closedTesting?: { enabled: boolean; message: string };
+  }> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/testing-mode');
     return response.data.data;
   }

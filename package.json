@@ -17,7 +17,8 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "audit:ci": "npm audit --audit-level=high"
+    "audit:ci": "npm audit --audit-level=high",
+    "closed-testing": "ts-node scripts/closed-testing.ts"
   },
   "keywords": [
     "crm",

@@ -19,8 +19,9 @@ const CookieConsentBanner: React.FC = () => {
   const onAccessStub =
     location.pathname === '/maintenance' ||
     (typeof sessionStorage !== 'undefined' &&
-      ((sessionStorage.getItem('maintenanceMode') === '1' &&
-        !localStorage.getItem('superAdminToken')) ||
+      (sessionStorage.getItem('closedTestingMode') === '1' ||
+        (sessionStorage.getItem('maintenanceMode') === '1' &&
+          !localStorage.getItem('superAdminToken')) ||
         (sessionStorage.getItem('testingMode') === '1' &&
           sessionStorage.getItem('testingModeAccess') !== '1' &&
           !localStorage.getItem('superAdminToken'))));

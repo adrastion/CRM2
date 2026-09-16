@@ -249,7 +249,7 @@ const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ 
 
 /**
  * Пока включено техобслуживание / тестирование — посторонние видят заглушку
- * (кроме /auth, /terms и /privacy).
+ * (в обычном testing — /auth разрешён; в closed testing — нет).
  */
 const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -257,18 +257,23 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [blocked, setBlocked] = React.useState(
     () =>
       sessionStorage.getItem('maintenanceMode') === '1' ||
+      sessionStorage.getItem('closedTestingMode') === '1' ||
       (sessionStorage.getItem('testingMode') === '1' &&
         sessionStorage.getItem('testingModeAccess') !== '1')
   );
   const [message, setMessage] = React.useState(
     'На сайте сейчас технические работы. Сервис временно недоступен. Попробуйте позже.'
   );
-  const [mode, setMode] = React.useState<'maintenance' | 'testing'>(() =>
-    sessionStorage.getItem('testingMode') === '1' &&
-    sessionStorage.getItem('maintenanceMode') !== '1'
-      ? 'testing'
-      : 'maintenance'
-  );
+  const [mode, setMode] = React.useState<'maintenance' | 'testing' | 'closed_testing'>(() => {
+    if (sessionStorage.getItem('closedTestingMode') === '1') return 'closed_testing';
+    if (
+      sessionStorage.getItem('testingMode') === '1' &&
+      sessionStorage.getItem('maintenanceMode') !== '1'
+    ) {
+      return 'testing';
+    }
+    return 'maintenance';
+  });
   const isSa = Boolean(localStorage.getItem('superAdminToken'));
 
   React.useEffect(() => {
@@ -280,17 +285,44 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         if (cancelled) return;
 
         const maintenanceOn = Boolean(status?.maintenance?.enabled ?? status?.enabled);
+        const closedOn = Boolean(status?.closedTesting?.enabled);
         const testingOn = Boolean(status?.testing?.enabled);
 
         if (maintenanceOn) {
           sessionStorage.setItem('maintenanceMode', '1');
           sessionStorage.removeItem('testingMode');
+          sessionStorage.removeItem('closedTestingMode');
           sessionStorage.removeItem('testingModeAccess');
           setMode('maintenance');
           setMessage(status?.maintenance?.message || status?.message || message);
           setBlocked(!isSa);
+        } else if (closedOn) {
+          sessionStorage.removeItem('maintenanceMode');
+          sessionStorage.setItem('closedTestingMode', '1');
+          sessionStorage.setItem('testingMode', '1');
+          setMode('closed_testing');
+          setMessage(status?.closedTesting?.message || message);
+          if (isSa) {
+            sessionStorage.setItem('testingModeAccess', '1');
+            setBlocked(false);
+          } else {
+            try {
+              const access = await apiService.getMaintenanceAccess();
+              if (access?.canAccess) {
+                sessionStorage.setItem('testingModeAccess', '1');
+                setBlocked(false);
+              } else {
+                sessionStorage.removeItem('testingModeAccess');
+                setBlocked(true);
+              }
+            } catch {
+              sessionStorage.removeItem('testingModeAccess');
+              setBlocked(true);
+            }
+          }
         } else if (testingOn) {
           sessionStorage.removeItem('maintenanceMode');
+          sessionStorage.removeItem('closedTestingMode');
           sessionStorage.setItem('testingMode', '1');
           setMode('testing');
           setMessage(status?.testing?.message || message);
@@ -315,6 +347,7 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         } else {
           sessionStorage.removeItem('maintenanceMode');
           sessionStorage.removeItem('testingMode');
+          sessionStorage.removeItem('closedTestingMode');
           sessionStorage.removeItem('testingModeAccess');
           setBlocked(false);
         }
@@ -327,17 +360,29 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     const onEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
-      const eventMode = detail.mode === 'testing' ? 'testing' : 'maintenance';
+      const eventMode =
+        detail.mode === 'closed_testing'
+          ? 'closed_testing'
+          : detail.mode === 'testing'
+            ? 'testing'
+            : 'maintenance';
       setMode(eventMode);
       if (detail.message) setMessage(String(detail.message));
-      if (eventMode === 'testing') {
+      if (eventMode === 'closed_testing') {
+        sessionStorage.setItem('closedTestingMode', '1');
         sessionStorage.setItem('testingMode', '1');
         sessionStorage.removeItem('testingModeAccess');
+        sessionStorage.removeItem('maintenanceMode');
+        setBlocked(true);
+      } else if (eventMode === 'testing') {
+        sessionStorage.setItem('testingMode', '1');
+        sessionStorage.removeItem('closedTestingMode');
+        sessionStorage.removeItem('testingModeAccess');
+        if (!localStorage.getItem('superAdminToken')) setBlocked(true);
       } else {
         sessionStorage.setItem('maintenanceMode', '1');
-      }
-      if (!localStorage.getItem('superAdminToken')) {
-        setBlocked(true);
+        sessionStorage.removeItem('closedTestingMode');
+        if (!localStorage.getItem('superAdminToken')) setBlocked(true);
       }
     };
     window.addEventListener('maintenance-mode', onEvent as EventListener);
@@ -358,14 +403,14 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }
 
   if (blocked && !isSa) {
-    // Регистрация партнёра/маркетолога в режиме тестирования недоступна
     if (
-      mode === 'testing' &&
-      (location.pathname === '/partner/register' || location.pathname === '/marketer/register')
+      location.pathname === '/partner/register' ||
+      location.pathname === '/marketer/register'
     ) {
-      return <Navigate to="/auth" replace />;
+      return <Navigate to={mode === 'closed_testing' ? '/maintenance' : '/auth'} replace />;
     }
-    if (location.pathname === '/auth') {
+    // В обычном testing /auth открыт; в closed testing — нет
+    if (location.pathname === '/auth' && mode !== 'closed_testing') {
       return <>{children}</>;
     }
     return (

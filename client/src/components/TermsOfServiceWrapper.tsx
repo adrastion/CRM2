@@ -16,6 +16,7 @@ const TermsOfServiceWrapper: React.FC = () => {
 
   const accessBlocked =
     sessionStorage.getItem('maintenanceMode') === '1' ||
+    sessionStorage.getItem('closedTestingMode') === '1' ||
     (sessionStorage.getItem('testingMode') === '1' &&
       sessionStorage.getItem('testingModeAccess') !== '1' &&
       !localStorage.getItem('superAdminToken'));

@@ -1392,8 +1392,10 @@ model SuperAdminSettings {
   lastAlertAt         DateTime?
   /// Режим технических работ: сайт недоступен всем, кроме супер-админа
   maintenanceMode     Boolean       @default(false)
-  /// Режим тестирования: доступ только у SA и email из allowlist
+  /// Режим тестирования: доступ только у SA и email из allowlist (вход разрешён)
   testingMode         Boolean       @default(false)
+  /// Закрытое тестирование: как testing, но вход невозможен (только CLI)
+  closedTestingMode   Boolean       @default(false)
   /// JSON-массив email (lowercase), которым разрешён доступ в режиме тестирования
   testingModeAllowlist String       @default("[]")
   /// Текст пользовательского соглашения (plain text / markdown-like)

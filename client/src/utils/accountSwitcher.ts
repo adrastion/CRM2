@@ -350,7 +350,9 @@ export async function canSwitchToSavedAccount(slot: SavedAccountSlot): Promise<b
   const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
   if (maintenanceOn) return false;
 
-  const testingOn = sessionStorage.getItem('testingMode') === '1';
+  const testingOn =
+    sessionStorage.getItem('testingMode') === '1' ||
+    sessionStorage.getItem('closedTestingMode') === '1';
   if (!testingOn) return true;
 
   const token = getSlotBearerToken(slot);
@@ -378,7 +380,7 @@ export async function switchToAccountSafe(
   const allowed = await canSwitchToSavedAccount(slot);
   if (!allowed) return 'blocked';
 
-  if (sessionStorage.getItem('testingMode') === '1') {
+  if (sessionStorage.getItem('testingMode') === '1' || sessionStorage.getItem('closedTestingMode') === '1') {
     sessionStorage.setItem('testingModeAccess', '1');
   }
 

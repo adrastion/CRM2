@@ -8,9 +8,13 @@ export const MAINTENANCE_MESSAGE =
 export const TESTING_MODE_MESSAGE =
   'Сайт сейчас в режиме тестирования. Доступ открыт только для выбранных аккаунтов.';
 
+export const CLOSED_TESTING_MODE_MESSAGE =
+  'Сайт в режиме закрытого тестирования. Вход недоступен.';
+
 type AccessCache = {
   maintenance: boolean;
   testing: boolean;
+  closedTesting: boolean;
   allowlist: string[];
   at: number;
 };
@@ -57,6 +61,7 @@ async function loadCache(): Promise<AccessCache> {
   cache = {
     maintenance: Boolean(s.maintenanceMode),
     testing: Boolean(s.testingMode),
+    closedTesting: Boolean(s.closedTestingMode),
     allowlist: parseAllowlist(s.testingModeAllowlist),
     at: Date.now(),
   };
@@ -73,6 +78,10 @@ export async function isMaintenanceMode(): Promise<boolean> {
 
 export async function isTestingMode(): Promise<boolean> {
   return (await loadCache()).testing;
+}
+
+export async function isClosedTestingMode(): Promise<boolean> {
+  return (await loadCache()).closedTesting;
 }
 
 export async function getTestingAllowlist(): Promise<string[]> {
@@ -97,12 +106,31 @@ export async function getTestingModeStatus(): Promise<{
   enabled: boolean;
   message: string;
   allowlist: string[];
+  closedTesting: { enabled: boolean; message: string };
 }> {
   const c = await loadCache();
   return {
     enabled: c.testing,
     message: TESTING_MODE_MESSAGE,
     allowlist: c.allowlist,
+    closedTesting: { enabled: c.closedTesting, message: CLOSED_TESTING_MODE_MESSAGE },
+  };
+}
+
+export async function getClosedTestingModeStatus(): Promise<{
+  enabled: boolean;
+  message: string;
+  allowlist: string[];
+  maintenance: boolean;
+  testing: boolean;
+}> {
+  const c = await loadCache();
+  return {
+    enabled: c.closedTesting,
+    message: CLOSED_TESTING_MODE_MESSAGE,
+    allowlist: c.allowlist,
+    maintenance: c.maintenance,
+    testing: c.testing,
   };
 }
 
@@ -110,11 +138,13 @@ export async function getTestingModeStatus(): Promise<{
 export async function getPublicAccessStatus(): Promise<{
   maintenance: { enabled: boolean; message: string };
   testing: { enabled: boolean; message: string };
+  closedTesting: { enabled: boolean; message: string };
 }> {
   const c = await loadCache();
   return {
     maintenance: { enabled: c.maintenance, message: MAINTENANCE_MESSAGE },
     testing: { enabled: c.testing, message: TESTING_MODE_MESSAGE },
+    closedTesting: { enabled: c.closedTesting, message: CLOSED_TESTING_MODE_MESSAGE },
   };
 }
 
@@ -125,7 +155,10 @@ export async function setMaintenanceMode(enabled: boolean): Promise<{
   const s = await ensureSettings();
   await prisma.superAdminSettings.update({
     where: { id: s.id },
-    data: { maintenanceMode: enabled },
+    data: {
+      maintenanceMode: enabled,
+      ...(enabled ? { closedTestingMode: false, testingMode: false } : {}),
+    },
   });
   clearMaintenanceCache();
   return { enabled, message: MAINTENANCE_MESSAGE };
@@ -136,9 +169,18 @@ export async function setTestingMode(params: {
   allowlist?: string[];
 }): Promise<{ enabled: boolean; message: string; allowlist: string[] }> {
   const s = await ensureSettings();
-  const data: { testingMode: boolean; testingModeAllowlist?: string } = {
+  const data: {
+    testingMode: boolean;
+    testingModeAllowlist?: string;
+    closedTestingMode?: boolean;
+    maintenanceMode?: boolean;
+  } = {
     testingMode: params.enabled,
   };
+  if (params.enabled) {
+    data.closedTestingMode = false;
+    data.maintenanceMode = false;
+  }
   if (params.allowlist !== undefined) {
     data.testingModeAllowlist = serializeAllowlist(params.allowlist);
   }
@@ -148,7 +190,33 @@ export async function setTestingMode(params: {
   });
   clearMaintenanceCache();
   const status = await getTestingModeStatus();
-  return status;
+  return {
+    enabled: status.enabled,
+    message: status.message,
+    allowlist: status.allowlist,
+  };
+}
+
+export async function setClosedTestingMode(enabled: boolean): Promise<{
+  enabled: boolean;
+  message: string;
+  allowlist: string[];
+}> {
+  const s = await ensureSettings();
+  await prisma.superAdminSettings.update({
+    where: { id: s.id },
+    data: {
+      closedTestingMode: enabled,
+      ...(enabled ? { maintenanceMode: false, testingMode: false } : {}),
+    },
+  });
+  clearMaintenanceCache();
+  const c = await loadCache();
+  return {
+    enabled: c.closedTesting,
+    message: CLOSED_TESTING_MODE_MESSAGE,
+    allowlist: c.allowlist,
+  };
 }
 
 export type TestingAccountCandidate = {

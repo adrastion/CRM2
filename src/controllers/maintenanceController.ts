@@ -122,20 +122,24 @@ export const getPublicAccessStatusHandler = asyncHandler(
   }
 );
 
-/** Можно ли текущему токену пользоваться сайтом при testing/maintenance. */
+/** Можно ли текущему токену пользоваться сайтом при testing/maintenance/closed. */
 export const getAccessCheck = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const status = await getPublicAccessStatus();
   const token = extractToken(req);
   const access = await tokenHasAccess(token);
 
   let canAccess = true;
-  let mode: 'none' | 'maintenance' | 'testing' = 'none';
+  let mode: 'none' | 'maintenance' | 'testing' | 'closed_testing' = 'none';
   let message = '';
 
   if (status.maintenance.enabled) {
     mode = 'maintenance';
     message = status.maintenance.message;
     canAccess = access.sa;
+  } else if (status.closedTesting.enabled) {
+    mode = 'closed_testing';
+    message = status.closedTesting.message;
+    canAccess = access.sa || access.allowlisted;
   } else if (status.testing.enabled) {
     mode = 'testing';
     message = status.testing.message;
@@ -152,6 +156,7 @@ export const getAccessCheck = asyncHandler(async (req: Request, res: Response<Ap
       isAllowlisted: access.allowlisted,
       maintenance: status.maintenance,
       testing: { enabled: status.testing.enabled, message: status.testing.message },
+      closedTesting: status.closedTesting,
     },
   });
 });

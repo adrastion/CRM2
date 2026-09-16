@@ -140,7 +140,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
     setActiveAccountId(getActiveAccountId());
 
     let cancelled = false;
-    const testingOn = sessionStorage.getItem('testingMode') === '1';
+    const testingOn =
+      sessionStorage.getItem('testingMode') === '1' ||
+      sessionStorage.getItem('closedTestingMode') === '1';
     const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
     if (!testingOn && !maintenanceOn) {
       setSlotAccess({});
@@ -639,7 +641,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             {savedAccounts.map((account) => {
               const isActive = account.id === activeAccountId;
               const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
-              const testingOn = sessionStorage.getItem('testingMode') === '1';
+              const testingOn =
+                sessionStorage.getItem('testingMode') === '1' ||
+                sessionStorage.getItem('closedTestingMode') === '1';
               const restricted = maintenanceOn || testingOn;
               const knownAccess = slotAccess[account.id];
               // Пока проверка не подтвердила доступ — не переключаем (кроме SA)

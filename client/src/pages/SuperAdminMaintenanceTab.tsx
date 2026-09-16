@@ -32,6 +32,7 @@ const checkboxCheckedIcon = <CheckBoxIcon fontSize="small" />;
 const SuperAdminMaintenanceTab: React.FC = () => {
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [testingEnabled, setTestingEnabled] = useState(false);
+  const [closedTestingEnabled, setClosedTestingEnabled] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<AccountOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,13 +45,17 @@ const SuperAdminMaintenanceTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [m, t, accounts] = await Promise.all([
+      const [m, t, accounts, publicStatus] = await Promise.all([
         apiService.getAdminMaintenance(),
         apiService.getAdminTestingMode(),
         apiService.getTestingAccountCandidates(),
+        apiService.getMaintenanceStatus(),
       ]);
       setMaintenanceEnabled(Boolean(m?.enabled));
       setTestingEnabled(Boolean(t?.enabled));
+      setClosedTestingEnabled(
+        Boolean(t?.closedTesting?.enabled ?? publicStatus?.closedTesting?.enabled)
+      );
       setSelectedEmails(t?.allowlist || []);
       setCandidates(accounts || []);
     } catch (e: any) {
@@ -175,6 +180,13 @@ const SuperAdminMaintenanceTab: React.FC = () => {
           {success}
         </Alert>
       )}
+      {closedTestingEnabled && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Включён режим закрытого тестирования (управляется из консоли:{' '}
+          <code>npm run closed-testing -- off</code>). Вход на сайт недоступен. Тумблеры ниже
+          заблокированы, пока режим не выключат.
+        </Alert>
+      )}
 
       <Paper sx={{ p: 3, mb: 2 }}>
         <FormControlLabel
@@ -182,7 +194,7 @@ const SuperAdminMaintenanceTab: React.FC = () => {
             <Switch
               checked={maintenanceEnabled}
               onChange={onToggleMaintenance}
-              disabled={savingMaintenance}
+              disabled={savingMaintenance || closedTestingEnabled}
               color="warning"
             />
           }
@@ -201,18 +213,20 @@ const SuperAdminMaintenanceTab: React.FC = () => {
             <Switch
               checked={testingEnabled}
               onChange={onToggleTesting}
-              disabled={savingTesting || maintenanceEnabled}
+              disabled={savingTesting || maintenanceEnabled || closedTestingEnabled}
               color="primary"
             />
           }
           label="Режим тестирования"
         />
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-          {maintenanceEnabled
-            ? 'Пока включены технические работы, режим тестирования не применяется.'
-            : testingEnabled
-              ? 'Сайт доступен только супер-админу и аккаунтам из списка ниже.'
-              : 'Режим тестирования выключен.'}
+          {closedTestingEnabled
+            ? 'Закрытое тестирование активнее обычного: вход запрещён, доступ только у уже авторизованных allowlist/SA.'
+            : maintenanceEnabled
+              ? 'Пока включены технические работы, режим тестирования не применяется.'
+              : testingEnabled
+                ? 'Сайт доступен только супер-админу и аккаунтам из списка ниже.'
+                : 'Режим тестирования выключен.'}
         </Typography>
 
         <Autocomplete
@@ -233,7 +247,7 @@ const SuperAdminMaintenanceTab: React.FC = () => {
                 o.roleLabel.toLowerCase().includes(q)
             );
           }}
-          disabled={savingTesting}
+          disabled={savingTesting || closedTestingEnabled}
           renderOption={(props, option, { selected }) => (
             <li {...props} key={option.email}>
               <Checkbox
@@ -266,7 +280,7 @@ const SuperAdminMaintenanceTab: React.FC = () => {
           <Button
             variant="outlined"
             onClick={() => void onSaveAllowlist()}
-            disabled={savingTesting}
+            disabled={savingTesting || closedTestingEnabled}
             sx={{ textTransform: 'none' }}
           >
             Сохранить список

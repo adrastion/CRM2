@@ -14,7 +14,7 @@ import { clearAllAuthStorage } from '../utils/authSession';
 
 type Props = {
   message?: string;
-  mode?: 'maintenance' | 'testing';
+  mode?: 'maintenance' | 'testing' | 'closed_testing';
 };
 
 /**
@@ -60,9 +60,19 @@ const Maintenance: React.FC<Props> = ({
     (a) => a.accountType !== 'SUPER_ADMIN' && slotAccess[a.id] !== true
   );
 
-  const title = mode === 'testing' ? 'Режим тестирования' : 'Технические работы';
+  const title =
+    mode === 'closed_testing'
+      ? 'Закрытое тестирование'
+      : mode === 'testing'
+        ? 'Режим тестирования'
+        : 'Технические работы';
+  const showLoginButton = mode !== 'closed_testing';
   const loginLabel =
     mode === 'testing' ? 'Войти разрешённым аккаунтом' : 'Вход для администратора';
+  const blockedHint =
+    mode === 'closed_testing' || mode === 'testing'
+      ? 'Остальные аккаунты недоступны (нет в списке тестирования)'
+      : 'Другие аккаунты сейчас недоступны';
 
   const onSwitch = async (id: string) => {
     setSwitchingId(id);
@@ -167,9 +177,7 @@ const Maintenance: React.FC<Props> = ({
               color: colors.textHint,
             }}
           >
-            {mode === 'testing'
-              ? 'Остальные аккаунты недоступны (нет в списке тестирования)'
-              : 'Другие аккаунты сейчас недоступны'}
+            {blockedHint}
           </Typography>
           <List
             dense
@@ -196,16 +204,18 @@ const Maintenance: React.FC<Props> = ({
       {accounts.length > 0 && <Divider sx={{ my: 3, width: '100%', maxWidth: 400 }} />}
 
       <Stack spacing={0.5} sx={{ mt: accounts.length === 0 ? 4 : 0, alignItems: 'center' }}>
-        <Button
-          variant="text"
-          onClick={() => {
-            clearAllAuthStorage();
-            navigate('/auth');
-          }}
-          sx={{ textTransform: 'none', color: colors.primary }}
-        >
-          {loginLabel}
-        </Button>
+        {showLoginButton && (
+          <Button
+            variant="text"
+            onClick={() => {
+              clearAllAuthStorage();
+              navigate('/auth');
+            }}
+            sx={{ textTransform: 'none', color: colors.primary }}
+          >
+            {loginLabel}
+          </Button>
+        )}
         <Button
           variant="text"
           onClick={() => navigate('/terms')}

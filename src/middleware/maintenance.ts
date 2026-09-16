@@ -4,9 +4,11 @@ import { prisma } from '../lib/prisma';
 import {
   isMaintenanceMode,
   isTestingMode,
+  isClosedTestingMode,
   isEmailAllowlisted,
   MAINTENANCE_MESSAGE,
   TESTING_MODE_MESSAGE,
+  CLOSED_TESTING_MODE_MESSAGE,
 } from '../services/maintenanceService';
 import { readAccessTokenFromCookie } from './authCookies';
 
@@ -108,7 +110,8 @@ function pathOnly(req: Request): string {
   return (req.originalUrl || req.url || '').split('?')[0];
 }
 
-function isAlwaysAllowlisted(req: Request): boolean {
+/** Публичные пути без проверки режима (без SA login). */
+function isPublicAlwaysAllowlisted(req: Request): boolean {
   const method = req.method.toUpperCase();
   const url = pathOnly(req);
 
@@ -117,11 +120,16 @@ function isAlwaysAllowlisted(req: Request): boolean {
   if (method === 'GET' && url === '/api/maintenance/access') return true;
   if (method === 'GET' && url === '/api/legal/terms') return true;
   if (method === 'GET' && url === '/api/legal/privacy') return true;
-  if (method === 'POST' && url === '/api/super-admin/auth/login') return true;
   if (method === 'POST' && url === '/api/site-analytics/ping') return true;
   if (method === 'GET' && url === '/api/auth/csrf') return true;
 
   return false;
+}
+
+function isSuperAdminLoginPath(req: Request): boolean {
+  const method = req.method.toUpperCase();
+  const url = pathOnly(req);
+  return method === 'POST' && url === '/api/super-admin/auth/login';
 }
 
 /** Пути входа, открытые в режиме тестирования (чтобы allowlist-аккаунты могли залогиниться). */
@@ -145,7 +153,6 @@ function isTestingLoginPath(req: Request): boolean {
   ];
   if (method === 'POST' && posts.includes(url)) return true;
 
-  // parent login might be under different path
   if (method === 'POST' && url.startsWith('/api/client-auth/') && url.endsWith('/login')) {
     return true;
   }
@@ -169,7 +176,8 @@ export async function tokenHasAccess(
 /**
  * Блокирует API:
  * - maintenance → только SUPER_ADMIN
- * - testing → SUPER_ADMIN + email из allowlist
+ * - closed testing → SA + allowlist, без login
+ * - testing → SA + allowlist, login открыт
  */
 export async function maintenanceMiddleware(
   req: Request,
@@ -177,7 +185,23 @@ export async function maintenanceMiddleware(
   next: NextFunction
 ): Promise<void> {
   try {
-    if (isAlwaysAllowlisted(req)) {
+    if (isPublicAlwaysAllowlisted(req)) {
+      next();
+      return;
+    }
+
+    const closed = await isClosedTestingMode();
+
+    // SA login открыт всегда, кроме закрытого тестирования
+    if (isSuperAdminLoginPath(req)) {
+      if (closed) {
+        res.status(503).json({
+          success: false,
+          code: 'CLOSED_TESTING',
+          error: CLOSED_TESTING_MODE_MESSAGE,
+        });
+        return;
+      }
       next();
       return;
     }
@@ -194,6 +218,21 @@ export async function maintenanceMiddleware(
         success: false,
         code: 'MAINTENANCE',
         error: MAINTENANCE_MESSAGE,
+      });
+      return;
+    }
+
+    if (closed) {
+      const token = extractToken(req);
+      const access = await tokenHasAccess(token);
+      if (access.sa || access.allowlisted) {
+        next();
+        return;
+      }
+      res.status(503).json({
+        success: false,
+        code: 'CLOSED_TESTING',
+        error: CLOSED_TESTING_MODE_MESSAGE,
       });
       return;
     }
