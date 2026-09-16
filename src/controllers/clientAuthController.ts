@@ -1328,7 +1328,12 @@ export const getClientPayments = asyncHandler(async (req: Request, res: Response
   const { clientId, tenantId } = resolved;
 
   const payments = await prisma.payment.findMany({
-    where: { clientId, tenantId },
+    where: {
+      clientId,
+      tenantId,
+      isAccrualAdjustment: false,
+      NOT: { status: 'adjustment' },
+    },
     include: {
       group: { select: { id: true, name: true } },
       branch: { select: { id: true, name: true } },
@@ -1339,6 +1344,8 @@ export const getClientPayments = asyncHandler(async (req: Request, res: Response
     take: 200,
   });
 
+  // Без технических корректировок: суммы уже отражают эффективное начисление
+  // (pending уменьшен/отменён при correctMembershipAccrual).
   return res.json({
     success: true,
     data: payments.map((p) => ({
@@ -1383,6 +1390,7 @@ export const getPortalPaymentMethods = asyncHandler(async (req: Request, res: Re
       clientId,
       tenantId,
       status: { in: ['pending', 'overdue'] },
+      isAccrualAdjustment: false,
     },
     select: {
       id: true,

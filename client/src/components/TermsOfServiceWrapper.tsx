@@ -14,7 +14,14 @@ const TermsOfServiceWrapper: React.FC = () => {
     return null; // Will be handled by Suspense
   }
 
-  if (isAuthenticated) {
+  const accessBlocked =
+    sessionStorage.getItem('maintenanceMode') === '1' ||
+    (sessionStorage.getItem('testingMode') === '1' &&
+      sessionStorage.getItem('testingModeAccess') !== '1' &&
+      !localStorage.getItem('superAdminToken'));
+
+  // При блокировке не открываем AppLayout — его API снова кидают на /maintenance
+  if (isAuthenticated && !accessBlocked) {
     return (
       <AppLayout>
         <TermsOfService />

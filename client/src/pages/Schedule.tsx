@@ -59,6 +59,7 @@ import {
   Person,
   ExpandMore,
   ExpandLess,
+  TaskAlt,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
@@ -159,6 +160,12 @@ const Schedule: React.FC = () => {
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [schoolEvents, setSchoolEvents] = useState<any[]>([]);
+  const [staffTasks, setStaffTasks] = useState<any[]>([]);
+  const [staffTaskColor, setStaffTaskColor] = useState('#6A1B9A');
+  const [showTrainings, setShowTrainings] = useState(true);
+  const [showCompetitions, setShowCompetitions] = useState(true);
+  const [showTasks, setShowTasks] = useState(true);
+  const [showEvents, setShowEvents] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -283,7 +290,7 @@ const Schedule: React.FC = () => {
         
         if (!isMounted || abortController.signal.aborted) return;
         
-        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes, eventsRes] = await Promise.all([
+        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes, eventsRes, tasksRes] = await Promise.all([
           apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
           apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
@@ -293,6 +300,15 @@ const Schedule: React.FC = () => {
           apiService.getSettings().catch(() => null), // Загружаем настройки, игнорируем ошибки если нет настроек
           apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })), // Загружаем клиентов для индивидуальных тренировок
           apiService.getSchoolEvents(undefined, abortController.signal).catch(() => []),
+          (() => {
+            const from = startOfWeek(selectedDate, { weekStartsOn: 1 });
+            from.setHours(0, 0, 0, 0);
+            const to = endOfWeek(selectedDate, { weekStartsOn: 1 });
+            to.setHours(23, 59, 59, 999);
+            return apiService
+              .listStaffTasks({ from: from.toISOString(), to: to.toISOString() })
+              .catch(() => []);
+          })(),
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
@@ -304,10 +320,14 @@ const Schedule: React.FC = () => {
         setHalls(hallsRes.data || []);
         setClients(clientsRes?.data || []);
         setSchoolEvents(eventsRes || []);
+        setStaffTasks(Array.isArray(tasksRes) ? tasksRes : []);
         
         // Устанавливаем длительность тренировки по умолчанию из настроек
         if (settingsRes?.data?.defaultTrainingDuration) {
           setDefaultTrainingDuration(settingsRes.data.defaultTrainingDuration);
+        }
+        if (settingsRes?.data?.staffTaskColor) {
+          setStaffTaskColor(settingsRes.data.staffTaskColor);
         }
       } catch (error: any) {
         // Ignore cancelled requests
@@ -330,6 +350,29 @@ const Schedule: React.FC = () => {
       abortController.abort();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadTasksForRange = async () => {
+      try {
+        const from = startOfWeek(selectedDate, { weekStartsOn: 1 });
+        from.setHours(0, 0, 0, 0);
+        const to = endOfWeek(selectedDate, { weekStartsOn: 1 });
+        to.setHours(23, 59, 59, 999);
+        const tasks = await apiService.listStaffTasks({
+          from: from.toISOString(),
+          to: to.toISOString(),
+        });
+        if (!cancelled) setStaffTasks(Array.isArray(tasks) ? tasks : []);
+      } catch {
+        if (!cancelled) setStaffTasks([]);
+      }
+    };
+    void loadTasksForRange();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate]);
 
   const handleCreateTraining = async (): Promise<boolean> => {
     // Защита от двойного нажатия
@@ -429,6 +472,10 @@ const Schedule: React.FC = () => {
         trainingData.groupId = formData.groupId;
       } else {
         trainingData.groupId = null; // Явно устанавливаем null для индивидуальных тренировок
+        const priceNum = formData.price ? parseFloat(formData.price) : NaN;
+        if (Number.isFinite(priceNum) && priceNum >= 0) {
+          trainingData.price = priceNum;
+        }
       }
 
       if (formData.isRecurring) {
@@ -1438,6 +1485,14 @@ const Schedule: React.FC = () => {
     return schoolEvents.filter((event) => isSameDay(new Date(event.startTime), date));
   };
 
+  const getTasksForDate = (date: Date) => {
+    return staffTasks.filter((task: any) => {
+      if (!task?.dueAt) return false;
+      if (task.status === 'CANCELLED') return false;
+      return isSameDay(new Date(task.dueAt), date);
+    });
+  };
+
   const openCreateEventDialog = (day?: Date | null) => {
     const base = day || selectedDate || new Date();
     const start = new Date(base);
@@ -2039,6 +2094,40 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ alignItems: 'center' }}>
+              <Chip
+                label="Тренировки"
+                size="small"
+                color={showTrainings ? 'primary' : 'default'}
+                variant={showTrainings ? 'filled' : 'outlined'}
+                onClick={() => setShowTrainings((v) => !v)}
+              />
+              <Chip
+                label="Соревнования"
+                size="small"
+                color={showCompetitions ? 'warning' : 'default'}
+                variant={showCompetitions ? 'filled' : 'outlined'}
+                onClick={() => setShowCompetitions((v) => !v)}
+              />
+              <Chip
+                label="Задачи"
+                size="small"
+                variant={showTasks ? 'filled' : 'outlined'}
+                onClick={() => setShowTasks((v) => !v)}
+                sx={
+                  showTasks
+                    ? { bgcolor: staffTaskColor, color: '#fff', '&:hover': { bgcolor: staffTaskColor, opacity: 0.9 } }
+                    : undefined
+                }
+              />
+              <Chip
+                label="События"
+                size="small"
+                color={showEvents ? 'info' : 'default'}
+                variant={showEvents ? 'filled' : 'outlined'}
+                onClick={() => setShowEvents((v) => !v)}
+              />
+            </Stack>
           </Box>
           <ToggleButtonGroup
             value={viewMode}
@@ -2096,17 +2185,18 @@ const Schedule: React.FC = () => {
         {isMobile || viewMode === 'day' ? (
           (() => {
             const day = selectedDate;
-            const dayTrainings = getTrainingsForDate(day).slice().sort(
+            const dayTrainings = (showTrainings ? getTrainingsForDate(day) : []).slice().sort(
               (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
             );
-            const dayCompetitions = getCompetitionsForDate(day);
-            const dayEvents = getSchoolEventsForDate(day);
+            const dayCompetitions = showCompetitions ? getCompetitionsForDate(day) : [];
+            const dayEvents = showEvents ? getSchoolEventsForDate(day) : [];
+            const dayTasks = showTasks ? getTasksForDate(day) : [];
             const isToday = isSameDay(day, new Date());
             return (
               <Stack spacing={1.5}>
                 <Card variant="outlined" sx={{ bgcolor: isToday ? 'action.selected' : undefined }}>
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: (dayCompetitions.length || dayEvents.length) ? 1 : 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: (dayCompetitions.length || dayEvents.length || dayTasks.length) ? 1 : 0 }}>
                       <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
                         {format(day, 'EEEE, d MMMM', { locale: ru })}
                       </Typography>
@@ -2156,6 +2246,26 @@ const Schedule: React.FC = () => {
                         onClick={() => {
                           setSelectedSchoolEvent(event);
                           setEventDetailDialog(true);
+                        }}
+                      />
+                    ))}
+                    {dayTasks.map((task: any) => (
+                      <Chip
+                        key={task.id}
+                        icon={<TaskAlt sx={{ fontSize: 14, color: '#fff !important' }} />}
+                        label={task.title}
+                        size="small"
+                        component={RouterLink}
+                        to="/staff-workspace"
+                        clickable
+                        sx={{
+                          mr: 0.5,
+                          mb: 0.5,
+                          bgcolor: staffTaskColor,
+                          color: '#fff',
+                          opacity: task.status === 'DONE' ? 0.55 : 1,
+                          textDecoration: 'none',
+                          '&:hover': { bgcolor: staffTaskColor, opacity: task.status === 'DONE' ? 0.7 : 0.9 },
                         }}
                       />
                     ))}
@@ -2296,9 +2406,10 @@ const Schedule: React.FC = () => {
               {/* Day columns */}
               {weekDays.map((day, dayIndex) => {
                 const isToday = isSameDay(day, new Date());
-                const dayTrainings = getTrainingsForDate(day);
-                const dayCompetitions = getCompetitionsForDate(day);
-                const dayEvents = getSchoolEventsForDate(day);
+                const dayTrainings = showTrainings ? getTrainingsForDate(day) : [];
+                const dayCompetitions = showCompetitions ? getCompetitionsForDate(day) : [];
+                const dayEvents = showEvents ? getSchoolEventsForDate(day) : [];
+                const dayTasks = showTasks ? getTasksForDate(day) : [];
                 const groupedTrainings = groupTrainingsByTime(dayTrainings, day);
                 
                 return (
@@ -2337,8 +2448,8 @@ const Schedule: React.FC = () => {
                         setTrainingTypeDialog(true);
                       }}
                     >
-                      {/* Competitions / events in header */}
-                      {(dayCompetitions.length > 0 || dayEvents.length > 0) && (
+                      {/* Competitions / events / tasks in header */}
+                      {(dayCompetitions.length > 0 || dayEvents.length > 0 || dayTasks.length > 0) && (
                         <Box sx={{ position: 'absolute', top: 2, left: 2, right: 2 }}>
                           {dayCompetitions.map((competition) => (
                             <Chip
@@ -2386,9 +2497,34 @@ const Schedule: React.FC = () => {
                               }}
                             />
                           ))}
+                          {dayTasks.map((task: any) => (
+                            <Chip
+                              key={task.id}
+                              icon={<TaskAlt sx={{ fontSize: 12, color: '#fff !important' }} />}
+                              label={task.title}
+                              size="small"
+                              component={RouterLink}
+                              to="/staff-workspace"
+                              clickable
+                              sx={{
+                                height: 18,
+                                fontSize: '0.6rem',
+                                bgcolor: staffTaskColor,
+                                color: '#fff',
+                                mb: 0.5,
+                                opacity: task.status === 'DONE' ? 0.55 : 1,
+                                textDecoration: 'none',
+                                '& .MuiChip-label': {
+                                  px: 0.5
+                                },
+                                '&:hover': { bgcolor: staffTaskColor },
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ))}
                         </Box>
                       )}
-                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize', mt: (dayCompetitions.length > 0 || dayEvents.length > 0) ? 2 : 0 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize', mt: (dayCompetitions.length > 0 || dayEvents.length > 0 || dayTasks.length > 0) ? 2 : 0 }}>
                         {format(day, 'EEE', { locale: ru })}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: isToday ? 'bold' : 'normal' }}>
@@ -2851,7 +2987,20 @@ const Schedule: React.FC = () => {
                     value={formData.trainerId}
                     onChange={async (e) => {
                       const trainerId = e.target.value;
-                      setFormData({ ...formData, trainerId, substituteTrainerId: '', competitionConflict: false });
+                      setFormData({
+                        ...formData,
+                        trainerId,
+                        substituteTrainerId: '',
+                        competitionConflict: false,
+                        price:
+                          formData.trainingType === 'individual'
+                            ? String(
+                                (trainers.find((t) => t.id === trainerId) as any)?.individualTrainingPrice ??
+                                  formData.price ??
+                                  ''
+                              )
+                            : formData.price,
+                      });
                       
                       // Проверяем конфликты с соревнованиями, если указаны дата и время
                       if (trainerId && formData.date && formData.startTime && formData.endTime) {
@@ -3415,7 +3564,20 @@ const Schedule: React.FC = () => {
                     value={formData.trainerId}
                     onChange={async (e) => {
                       const trainerId = e.target.value;
-                      setFormData({ ...formData, trainerId, substituteTrainerId: '', competitionConflict: false });
+                      setFormData({
+                        ...formData,
+                        trainerId,
+                        substituteTrainerId: '',
+                        competitionConflict: false,
+                        price:
+                          formData.trainingType === 'individual'
+                            ? String(
+                                (trainers.find((t) => t.id === trainerId) as any)?.individualTrainingPrice ??
+                                  formData.price ??
+                                  ''
+                              )
+                            : formData.price,
+                      });
                       
                       // Проверяем конфликты с соревнованиями, если указаны дата и время
                       if (trainerId && formData.date && formData.startTime && formData.endTime) {

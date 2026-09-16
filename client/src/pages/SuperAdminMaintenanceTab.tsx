@@ -1,22 +1,42 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
+  Button,
+  Checkbox,
   CircularProgress,
   FormControlLabel,
   Paper,
   Switch,
+  TextField,
   Typography,
 } from '@mui/material';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import { apiService } from '../services/api';
 
+type AccountOption = {
+  email: string;
+  name: string;
+  roleLabel: string;
+};
+
+const checkboxIcon = <CheckBoxOutlineBlankIcon fontSize="small" />;
+const checkboxCheckedIcon = <CheckBoxIcon fontSize="small" />;
+
 /**
- * Секция SA: включение режима технических работ.
+ * Секция SA: техобслуживание + режим тестирования.
+ * Список доступа — выбор из существующих аккаунтов платформы.
  */
 const SuperAdminMaintenanceTab: React.FC = () => {
-  const [enabled, setEnabled] = useState(false);
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [testingEnabled, setTestingEnabled] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
+  const [candidates, setCandidates] = useState<AccountOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
+  const [savingTesting, setSavingTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -24,8 +44,15 @@ const SuperAdminMaintenanceTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiService.getAdminMaintenance();
-      setEnabled(Boolean(data?.enabled));
+      const [m, t, accounts] = await Promise.all([
+        apiService.getAdminMaintenance(),
+        apiService.getAdminTestingMode(),
+        apiService.getTestingAccountCandidates(),
+      ]);
+      setMaintenanceEnabled(Boolean(m?.enabled));
+      setTestingEnabled(Boolean(t?.enabled));
+      setSelectedEmails(t?.allowlist || []);
+      setCandidates(accounts || []);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить статус');
     } finally {
@@ -37,24 +64,86 @@ const SuperAdminMaintenanceTab: React.FC = () => {
     void load();
   }, [load]);
 
-  const onToggle = async (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
-    setSaving(true);
+  const options = useMemo(() => {
+    const byEmail = new Map<string, AccountOption>();
+    for (const c of candidates) {
+      byEmail.set(c.email, c);
+    }
+    // Email из allowlist, которых уже нет в БД — оставляем в выборе
+    for (const email of selectedEmails) {
+      if (!byEmail.has(email)) {
+        byEmail.set(email, {
+          email,
+          name: email,
+          roleLabel: 'Нет в каталоге',
+        });
+      }
+    }
+    return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [candidates, selectedEmails]);
+
+  const selectedOptions = useMemo(
+    () => options.filter((o) => selectedEmails.includes(o.email)),
+    [options, selectedEmails]
+  );
+
+  const onToggleMaintenance = async (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    setSavingMaintenance(true);
     setError(null);
     setSuccess(null);
     try {
       const data = await apiService.updateAdminMaintenance(checked);
-      setEnabled(Boolean(data.enabled));
+      setMaintenanceEnabled(Boolean(data.enabled));
       if (checked) {
         sessionStorage.setItem('maintenanceMode', '1');
         setSuccess('Режим технических работ включён. Сайт недоступен всем, кроме супер-админа.');
       } else {
         sessionStorage.removeItem('maintenanceMode');
-        setSuccess('Режим технических работ выключен. Сайт снова доступен.');
+        setSuccess('Режим технических работ выключен.');
       }
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось сохранить');
     } finally {
-      setSaving(false);
+      setSavingMaintenance(false);
+    }
+  };
+
+  const onToggleTesting = async (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    setSavingTesting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const data = await apiService.updateAdminTestingMode(checked, selectedEmails);
+      setTestingEnabled(Boolean(data.enabled));
+      setSelectedEmails(data.allowlist || []);
+      if (checked) {
+        sessionStorage.setItem('testingMode', '1');
+        sessionStorage.setItem('testingModeAccess', '1');
+        setSuccess('Режим тестирования включён. Доступ только у SA и выбранных аккаунтов.');
+      } else {
+        sessionStorage.removeItem('testingMode');
+        sessionStorage.removeItem('testingModeAccess');
+        setSuccess('Режим тестирования выключен.');
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSavingTesting(false);
+    }
+  };
+
+  const onSaveAllowlist = async () => {
+    setSavingTesting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const data = await apiService.updateAdminTestingMode(testingEnabled, selectedEmails);
+      setSelectedEmails(data.allowlist || []);
+      setSuccess('Список доступов сохранён.');
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось сохранить список');
+    } finally {
+      setSavingTesting(false);
     }
   };
 
@@ -67,13 +156,13 @@ const SuperAdminMaintenanceTab: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 640 }}>
+    <Box sx={{ maxWidth: 720 }}>
       <Typography variant="h5" gutterBottom>
-        Техобслуживание
+        Техобслуживание и тестирование
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        В этом режиме сайт и API недоступны всем пользователям, кроме супер-админа. Используйте при
-        выкладке обновлений.
+        Режим технических работ полностью закрывает сайт. Режим тестирования оставляет доступ
+        супер-админу и выбранным аккаунтам.
       </Typography>
 
       {error && (
@@ -87,23 +176,102 @@ const SuperAdminMaintenanceTab: React.FC = () => {
         </Alert>
       )}
 
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 3, mb: 2 }}>
         <FormControlLabel
           control={
             <Switch
-              checked={enabled}
-              onChange={onToggle}
-              disabled={saving}
+              checked={maintenanceEnabled}
+              onChange={onToggleMaintenance}
+              disabled={savingMaintenance}
               color="warning"
             />
           }
           label="Режим технических работ"
         />
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          {enabled
-            ? 'Сейчас сайт закрыт для школ, клиентов и остальных ролей. Вы остаётесь в панели.'
-            : 'Сайт работает в обычном режиме.'}
+          {maintenanceEnabled
+            ? 'Сейчас сайт закрыт для всех, кроме супер-админа.'
+            : 'Сайт не в режиме техобслуживания.'}
         </Typography>
+      </Paper>
+
+      <Paper sx={{ p: 3 }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={testingEnabled}
+              onChange={onToggleTesting}
+              disabled={savingTesting || maintenanceEnabled}
+              color="primary"
+            />
+          }
+          label="Режим тестирования"
+        />
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+          {maintenanceEnabled
+            ? 'Пока включены технические работы, режим тестирования не применяется.'
+            : testingEnabled
+              ? 'Сайт доступен только супер-админу и аккаунтам из списка ниже.'
+              : 'Режим тестирования выключен.'}
+        </Typography>
+
+        <Autocomplete
+          multiple
+          disableCloseOnSelect
+          options={options}
+          value={selectedOptions}
+          onChange={(_, value) => setSelectedEmails(value.map((v) => v.email))}
+          getOptionLabel={(o) => `${o.name} (${o.email})`}
+          isOptionEqualToValue={(a, b) => a.email === b.email}
+          filterOptions={(opts, state) => {
+            const q = state.inputValue.trim().toLowerCase();
+            if (!q) return opts;
+            return opts.filter(
+              (o) =>
+                o.email.includes(q) ||
+                o.name.toLowerCase().includes(q) ||
+                o.roleLabel.toLowerCase().includes(q)
+            );
+          }}
+          disabled={savingTesting}
+          renderOption={(props, option, { selected }) => (
+            <li {...props} key={option.email}>
+              <Checkbox
+                icon={checkboxIcon}
+                checkedIcon={checkboxCheckedIcon}
+                style={{ marginRight: 8 }}
+                checked={selected}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" noWrap>
+                  {option.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {option.email} · {option.roleLabel}
+                </Typography>
+              </Box>
+            </li>
+          )}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Разрешённые аккаунты"
+              placeholder="Поиск по имени или email"
+              helperText="Выберите существующие аккаунты. Супер-админ всегда имеет доступ."
+            />
+          )}
+        />
+
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="outlined"
+            onClick={() => void onSaveAllowlist()}
+            disabled={savingTesting}
+            sx={{ textTransform: 'none' }}
+          >
+            Сохранить список
+          </Button>
+        </Box>
       </Paper>
     </Box>
   );

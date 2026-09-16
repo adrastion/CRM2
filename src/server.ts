@@ -54,6 +54,7 @@ import searchRoutes from './routes/search';
 import chatRoutes from './routes/chat';
 import platformRoutes from './routes/platform';
 import maintenanceRoutes from './routes/maintenance';
+import legalRoutes from './routes/legal';
 import siteAnalyticsRoutes from './routes/siteAnalytics';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
@@ -193,6 +194,7 @@ app.use(maintenanceMiddleware);
 const schoolTenantGuard = stripClientTenantFields;
 
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/legal', legalRoutes);
 app.use('/api/site-analytics', siteAnalyticsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/client-auth', clientAuthRoutes);

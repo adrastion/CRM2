@@ -322,6 +322,56 @@ export async function accrueForAttendance(params: {
 }
 
 /**
+ * Откат начисления тренеру по attendanceId (PRESENT → ABSENT без оплаты пропуска и т.п.).
+ * Идемпотентно: если записи нет — no-op.
+ */
+export async function reverseForAttendance(params: {
+  tenantId: string;
+  attendanceId: string;
+}): Promise<number> {
+  const rows = await prisma.trainerSalaryLedger.findMany({
+    where: {
+      tenantId: params.tenantId,
+      attendanceId: params.attendanceId,
+      kind: 'training_visit',
+    },
+  });
+  if (rows.length === 0) return 0;
+
+  let reversed = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      const amount = Number(row.amount);
+      await tx.trainerSalaryLedger.delete({ where: { id: row.id } });
+      if (Number.isFinite(amount) && amount !== 0) {
+        await tx.trainer.update({
+          where: { id: row.trainerId },
+          data: { balance: { decrement: amount } },
+        });
+        reversed += amount;
+      }
+    }
+
+    await tx.transaction.deleteMany({
+      where: {
+        tenantId: params.tenantId,
+        attendanceId: params.attendanceId,
+        type: 'trainer_earnings',
+      },
+    });
+
+    await tx.financeOperation.deleteMany({
+      where: {
+        tenantId: params.tenantId,
+        externalKey: `salary_accrual:attendance:${params.attendanceId}`,
+      },
+    });
+  });
+
+  return reversed;
+}
+
+/**
  * V2/V3: при оплате абонемента / месячного платежа клиентом группы тренера.
  */
 export async function accrueForPayment(params: {

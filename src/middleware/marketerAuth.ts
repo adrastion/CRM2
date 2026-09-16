@@ -59,8 +59,8 @@ export const authenticateMarketer = asyncHandler(async (
       return;
     }
 
-    // Check if tenant is active
-    if (!marketer.tenant.isActive) {
+    // Host school optional (platform marketers have tenantId null)
+    if (marketer.tenantId && marketer.tenant && !marketer.tenant.isActive) {
       res.status(401).json({
         success: false,
         error: 'Tenant account is inactive'
@@ -68,10 +68,9 @@ export const authenticateMarketer = asyncHandler(async (
       return;
     }
 
-    // Attach marketer and tenant to request
     (req as any).marketer = marketer;
-    (req as any).marketerTenant = marketer.tenant;
-    (req as any).marketerTenantId = marketer.tenantId;
+    (req as any).marketerTenant = marketer.tenant || null;
+    (req as any).marketerTenantId = marketer.tenantId || null;
 
     next();
   } catch (error) {

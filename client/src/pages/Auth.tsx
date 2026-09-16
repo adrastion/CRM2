@@ -21,6 +21,7 @@ import AuthButton from '../components/auth/AuthButton';
 import PillField from '../components/auth/PillField';
 import StepTransition from '../components/auth/StepTransition';
 import TermsCheckbox from '../components/auth/TermsCheckbox';
+import LegalConsentCheckboxes from '../components/auth/LegalConsentCheckboxes';
 import AccountSelect from '../components/auth/AccountSelect';
 import { colors, typography } from '../theme/tokens';
 
@@ -77,6 +78,7 @@ const Auth: React.FC = () => {
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [acceptTerms, setAcceptTerms] = React.useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = React.useState(false);
   const [rememberMe, setRememberMe] = React.useState(false);
 
   const [selection, setSelection] = React.useState<UnifiedSelectionRequired | null>(null);
@@ -91,14 +93,45 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [notice, setNotice] = React.useState('');
+  const [testingMode, setTestingMode] = React.useState(
+    () => sessionStorage.getItem('testingMode') === '1'
+  );
 
   // Если уже есть активная сессия — сразу уводим в нужный кабинет.
+  // Не уводим при блокировке тестирования/ТО: иначе цикл «заглушка → /auth → кабинет → заглушка».
   React.useEffect(() => {
+    const accessBlocked =
+      sessionStorage.getItem('maintenanceMode') === '1' ||
+      (sessionStorage.getItem('testingMode') === '1' &&
+        sessionStorage.getItem('testingModeAccess') !== '1' &&
+        !localStorage.getItem('superAdminToken'));
+    if (accessBlocked) return;
     if (hasAnySession()) {
       const dest = currentSessionDestination();
       if (dest) navigate(dest, { replace: true });
     }
   }, [navigate]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await apiService.getMaintenanceStatus();
+        if (cancelled) return;
+        const on = Boolean(status?.testing?.enabled);
+        setTestingMode(on);
+        if (on) sessionStorage.setItem('testingMode', '1');
+        else if (sessionStorage.getItem('testingMode') === '1' && !status?.maintenance?.enabled) {
+          sessionStorage.removeItem('testingMode');
+        }
+      } catch {
+        /* keep session flag */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const goToStep = (next: Step) => {
     setPrevStepIndex(STEP_ORDER[step]);
@@ -179,6 +212,7 @@ const Auth: React.FC = () => {
     if (password.length < 6) next.password = 'Пароль должен содержать минимум 6 символов';
     if (confirmPassword !== password) next.confirmPassword = 'Пароли не совпадают';
     if (!acceptTerms) next.acceptTerms = 'Необходимо принять условия соглашения';
+    if (!acceptPrivacy) next.acceptPrivacy = 'Необходимо согласие на обработку персональных данных';
 
     if (Object.keys(next).length > 0) {
       setErrors(next);
@@ -192,6 +226,7 @@ const Auth: React.FC = () => {
         password,
         confirmPassword,
         acceptTerms,
+        acceptPrivacy,
         rememberMe,
       });
       applySession(result);
@@ -463,9 +498,16 @@ const Auth: React.FC = () => {
         <AuthButton onClick={submitIdentify} loading={loading}>
           Войти
         </AuthButton>
-        <AuthButton variant="dark" onClick={() => navigate('/partner/register')}>
-          Стать партнером
-        </AuthButton>
+        {!testingMode && (
+          <>
+            <AuthButton variant="dark" onClick={() => navigate('/partner/register')}>
+              Стать партнером
+            </AuthButton>
+            <AuthButton variant="dark" onClick={() => navigate('/marketer/register')}>
+              Стать маркетологом
+            </AuthButton>
+          </>
+        )}
       </Box>
     </Box>
   );
@@ -503,16 +545,14 @@ const Auth: React.FC = () => {
         onEnter={submitSetupPassword}
       />
 
-      <TermsCheckbox
-        checked={acceptTerms}
-        onChange={setAcceptTerms}
-        error={Boolean(errors.acceptTerms)}
+      <LegalConsentCheckboxes
+        acceptTerms={acceptTerms}
+        acceptPrivacy={acceptPrivacy}
+        onAcceptTerms={setAcceptTerms}
+        onAcceptPrivacy={setAcceptPrivacy}
+        termsError={errors.acceptTerms}
+        privacyError={errors.acceptPrivacy}
       />
-      {errors.acceptTerms && (
-        <Typography sx={{ color: colors.danger, fontSize: typography.hint, ml: 4.5 }}>
-          {errors.acceptTerms}
-        </Typography>
-      )}
 
       {errorBanner}
       {noticeBanner}

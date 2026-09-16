@@ -27,8 +27,9 @@ import { NavIconName } from '../../assets/icons/registry';
 import {
   getActiveAccountId,
   listSavedAccounts,
-  switchToAccount,
+  switchToAccountSafe,
   upsertFromActiveStorage,
+  canSwitchToSavedAccount,
   type SavedAccountSlot,
 } from '../../utils/accountSwitcher';
 
@@ -126,6 +127,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false);
   const [savedAccounts, setSavedAccounts] = React.useState<SavedAccountSlot[]>([]);
   const [activeAccountId, setActiveAccountId] = React.useState<string | null>(null);
+  const [slotAccess, setSlotAccess] = React.useState<Record<string, boolean>>({});
   const searchWrapRef = React.useRef<HTMLDivElement | null>(null);
   const mobileSearchRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -133,8 +135,31 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
     if (!menuAnchor) return;
     // Подхватить текущую сессию, если пользователь залогинен до появления реестра
     upsertFromActiveStorage();
-    setSavedAccounts(listSavedAccounts());
+    const accounts = listSavedAccounts();
+    setSavedAccounts(accounts);
     setActiveAccountId(getActiveAccountId());
+
+    let cancelled = false;
+    const testingOn = sessionStorage.getItem('testingMode') === '1';
+    const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
+    if (!testingOn && !maintenanceOn) {
+      setSlotAccess({});
+      return;
+    }
+
+    void (async () => {
+      const next: Record<string, boolean> = {};
+      await Promise.all(
+        accounts.map(async (account) => {
+          next[account.id] = await canSwitchToSavedAccount(account);
+        })
+      );
+      if (!cancelled) setSlotAccess(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [menuAnchor]);
 
   // Авто-синхронизация SA/Tester в свитчере при привязке/отвязке без повторного входа
@@ -614,24 +639,28 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             {savedAccounts.map((account) => {
               const isActive = account.id === activeAccountId;
               const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
-              const blockedByMaintenance =
-                maintenanceOn &&
+              const testingOn = sessionStorage.getItem('testingMode') === '1';
+              const restricted = maintenanceOn || testingOn;
+              const knownAccess = slotAccess[account.id];
+              // Пока проверка не подтвердила доступ — не переключаем (кроме SA)
+              const blockedByMode =
+                restricted &&
                 account.accountType !== 'SUPER_ADMIN' &&
-                Boolean(localStorage.getItem('superAdminToken'));
+                knownAccess !== true;
+              const blockedReason = maintenanceOn
+                ? 'Во время техобслуживания доступен только супер-админ'
+                : 'Аккаунт не в списке тестирования';
               return (
                 <MenuItem
                   key={account.id}
                   selected={isActive}
-                  disabled={isActive || blockedByMaintenance}
+                  disabled={isActive || blockedByMode}
                   onClick={() => {
                     setMenuAnchor(null);
-                    if (!isActive && !blockedByMaintenance) switchToAccount(account.id);
+                    if (isActive || blockedByMode) return;
+                    void switchToAccountSafe(account.id);
                   }}
-                  title={
-                    blockedByMaintenance
-                      ? 'Во время техобслуживания доступен только супер-админ'
-                      : undefined
-                  }
+                  title={blockedByMode ? blockedReason : undefined}
                 >
                   <ListItemIcon sx={{ minWidth: 36 }}>
                     {isActive ? <Check fontSize="small" /> : null}
@@ -639,8 +668,10 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                   <ListItemText
                     primary={account.displayName}
                     secondary={
-                      blockedByMaintenance
-                        ? 'Недоступно (техобслуживание)'
+                      blockedByMode
+                        ? maintenanceOn
+                          ? 'Недоступно (техобслуживание)'
+                          : 'Недоступно (нет в списке тестирования)'
                         : account.subtitle || undefined
                     }
                     primaryTypographyProps={{
@@ -863,6 +894,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             >
               {[
                 { label: 'Пользовательское соглашение', href: '/terms' },
+                { label: 'Политика конфиденциальности', href: '/privacy' },
                 { label: 'Контакты и реквизиты', href: '/contacts' },
                 { label: 'Тарифы', href: '/pricing' },
               ].map((link, i, arr) => (

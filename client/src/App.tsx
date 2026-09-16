@@ -14,6 +14,7 @@ import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
 import SiteTrafficTracker from './components/SiteTrafficTracker';
+import CookieConsentBanner from './components/CookieConsentBanner';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
 
 // Lazy load pages for better performance
@@ -25,6 +26,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Clients = lazy(() => import('./pages/Clients'));
 const Trainers = lazy(() => import('./pages/Trainers'));
 const TrainerEarnings = lazy(() => import('./pages/TrainerEarnings'));
+const TrainerProfile = lazy(() => import('./pages/TrainerProfile'));
 const AllTrainersEarnings = lazy(() => import('./pages/AllTrainersEarnings'));
 const Groups = lazy(() => import('./pages/Groups'));
 const Branches = lazy(() => import('./pages/Branches'));
@@ -35,11 +37,21 @@ const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
+const PrivacyPolicyWrapper = lazy(() => import('./components/PrivacyPolicyWrapper'));
 const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
 const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess'));
 const AdminPromoCodes = lazy(() => import('./pages/AdminPromoCodes'));
-const MarketerPanel = lazy(() => import('./pages/MarketerPanel'));
+const MarketerRegister = lazy(() => import('./pages/MarketerRegister'));
+const MarketerDashboard = lazy(() => import('./pages/marketer/MarketerDashboard'));
+const MarketerClients = lazy(() => import('./pages/marketer/MarketerClients'));
+const MarketerClientCard = lazy(() => import('./pages/marketer/MarketerClientCard'));
+const MarketerTasks = lazy(() => import('./pages/marketer/MarketerTasks'));
+const MarketerCalendar = lazy(() => import('./pages/marketer/MarketerCalendar'));
+const MarketerChats = lazy(() => import('./pages/marketer/MarketerChats'));
+const MarketerFinance = lazy(() => import('./pages/marketer/MarketerFinance'));
+const MarketerAds = lazy(() => import('./pages/marketer/MarketerAds'));
+const ReferralLanding = lazy(() => import('./pages/ReferralLanding'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const SuperAdminSupportHub = lazy(() => import('./pages/SuperAdminSupportHub'));
@@ -236,31 +248,78 @@ const ProtectedPlatformStaffRoute: React.FC<{ children: React.ReactNode }> = ({ 
 };
 
 /**
- * Пока включено техобслуживание — не-SA видят заглушку (кроме /auth для входа SA).
+ * Пока включено техобслуживание / тестирование — посторонние видят заглушку
+ * (кроме /auth, /terms и /privacy).
  */
 const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [checking, setChecking] = React.useState(true);
-  const [enabled, setEnabled] = React.useState(
-    () => sessionStorage.getItem('maintenanceMode') === '1'
+  const [blocked, setBlocked] = React.useState(
+    () =>
+      sessionStorage.getItem('maintenanceMode') === '1' ||
+      (sessionStorage.getItem('testingMode') === '1' &&
+        sessionStorage.getItem('testingModeAccess') !== '1')
   );
   const [message, setMessage] = React.useState(
     'На сайте сейчас технические работы. Сервис временно недоступен. Попробуйте позже.'
+  );
+  const [mode, setMode] = React.useState<'maintenance' | 'testing'>(() =>
+    sessionStorage.getItem('testingMode') === '1' &&
+    sessionStorage.getItem('maintenanceMode') !== '1'
+      ? 'testing'
+      : 'maintenance'
   );
   const isSa = Boolean(localStorage.getItem('superAdminToken'));
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
+      setChecking(true);
       try {
         const status = await apiService.getMaintenanceStatus();
         if (cancelled) return;
-        setEnabled(Boolean(status?.enabled));
-        if (status?.message) setMessage(status.message);
-        if (status?.enabled) sessionStorage.setItem('maintenanceMode', '1');
-        else sessionStorage.removeItem('maintenanceMode');
+
+        const maintenanceOn = Boolean(status?.maintenance?.enabled ?? status?.enabled);
+        const testingOn = Boolean(status?.testing?.enabled);
+
+        if (maintenanceOn) {
+          sessionStorage.setItem('maintenanceMode', '1');
+          sessionStorage.removeItem('testingMode');
+          sessionStorage.removeItem('testingModeAccess');
+          setMode('maintenance');
+          setMessage(status?.maintenance?.message || status?.message || message);
+          setBlocked(!isSa);
+        } else if (testingOn) {
+          sessionStorage.removeItem('maintenanceMode');
+          sessionStorage.setItem('testingMode', '1');
+          setMode('testing');
+          setMessage(status?.testing?.message || message);
+          if (isSa) {
+            sessionStorage.setItem('testingModeAccess', '1');
+            setBlocked(false);
+          } else {
+            try {
+              const access = await apiService.getMaintenanceAccess();
+              if (access?.canAccess) {
+                sessionStorage.setItem('testingModeAccess', '1');
+                setBlocked(false);
+              } else {
+                sessionStorage.removeItem('testingModeAccess');
+                setBlocked(true);
+              }
+            } catch {
+              sessionStorage.removeItem('testingModeAccess');
+              setBlocked(true);
+            }
+          }
+        } else {
+          sessionStorage.removeItem('maintenanceMode');
+          sessionStorage.removeItem('testingMode');
+          sessionStorage.removeItem('testingModeAccess');
+          setBlocked(false);
+        }
       } catch {
-        /* ignore — leave session flag */
+        /* ignore — leave session flags */
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -268,28 +327,50 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     const onEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
-      setEnabled(true);
+      const eventMode = detail.mode === 'testing' ? 'testing' : 'maintenance';
+      setMode(eventMode);
       if (detail.message) setMessage(String(detail.message));
-      sessionStorage.setItem('maintenanceMode', '1');
+      if (eventMode === 'testing') {
+        sessionStorage.setItem('testingMode', '1');
+        sessionStorage.removeItem('testingModeAccess');
+      } else {
+        sessionStorage.setItem('maintenanceMode', '1');
+      }
+      if (!localStorage.getItem('superAdminToken')) {
+        setBlocked(true);
+      }
     };
     window.addEventListener('maintenance-mode', onEvent as EventListener);
     return () => {
       cancelled = true;
       window.removeEventListener('maintenance-mode', onEvent as EventListener);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSa, location.pathname]);
 
-  if (checking && !enabled) {
+  // Соглашение и политика всегда можно открыть (API публичный)
+  if (location.pathname === '/terms' || location.pathname === '/privacy') {
+    return <>{children}</>;
+  }
+
+  if (checking && !blocked) {
     return <PageLoader />;
   }
 
-  if (enabled && !isSa) {
+  if (blocked && !isSa) {
+    // Регистрация партнёра/маркетолога в режиме тестирования недоступна
+    if (
+      mode === 'testing' &&
+      (location.pathname === '/partner/register' || location.pathname === '/marketer/register')
+    ) {
+      return <Navigate to="/auth" replace />;
+    }
     if (location.pathname === '/auth') {
       return <>{children}</>;
     }
     return (
       <Suspense fallback={<PageLoader />}>
-        <Maintenance message={message} />
+        <Maintenance message={message} mode={mode} />
       </Suspense>
     );
   }
@@ -374,6 +455,7 @@ const AppContent: React.FC = () => {
     <Router>
       <MaintenanceGate>
       <SiteTrafficTracker />
+      <CookieConsentBanner />
       <SupportFAB />
       {!onboardingLoading && user?.role === 'OWNER' && (
         <InteractiveOnboarding
@@ -425,6 +507,10 @@ const AppContent: React.FC = () => {
             element={<TermsOfServiceWrapper />}
           />
           <Route
+            path="/privacy"
+            element={<PrivacyPolicyWrapper />}
+          />
+          <Route
             path="/contacts"
             element={<ContactsWrapper />}
           />
@@ -460,6 +546,16 @@ const AppContent: React.FC = () => {
             <RoleRoute roles={['OWNER', 'ADMIN']}>
               <AppLayout>
                 <Trainers />
+              </AppLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/trainer/profile"
+          element={
+            <RoleRoute roles={['TRAINER']}>
+              <AppLayout>
+                <TrainerProfile />
               </AppLayout>
             </RoleRoute>
           }
@@ -639,6 +735,89 @@ const AppContent: React.FC = () => {
           }
         />
         <Route path="/marketer/login" element={<Navigate to="/auth" replace />} />
+        <Route path="/marketer/register" element={<MarketerRegister />} />
+        <Route path="/marketer/panel" element={<Navigate to="/marketer/dashboard" replace />} />
+        <Route
+          path="/marketer/dashboard"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerDashboard />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/clients"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerClients />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/clients/:id"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerClientCard />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/tasks"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerTasks />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/calendar"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerCalendar />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/chats"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerChats />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/finance"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerFinance />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/ads"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerAds />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route path="/ref/:code" element={<ReferralLanding />} />
         <Route path="/promo-code-admin/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/admin/promo-codes"
@@ -648,16 +827,6 @@ const AppContent: React.FC = () => {
                 <AdminPromoCodes />
               </AppLayout>
             </ProtectedPromoCodeAdminRoute>
-          }
-        />
-        <Route
-          path="/marketer/panel"
-          element={
-            <ProtectedMarketerRoute>
-              <AppLayout>
-                <MarketerPanel />
-              </AppLayout>
-            </ProtectedMarketerRoute>
           }
         />
         <Route

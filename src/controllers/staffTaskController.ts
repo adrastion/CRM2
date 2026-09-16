@@ -61,11 +61,25 @@ export const listStaffTasks = asyncHandler(
     const { tenantId, userId, role } = requireTenantUser(req);
     const status = req.query.status ? String(req.query.status) : undefined;
     const mine = req.query.mine === '1' || req.query.mine === 'true';
+    const fromRaw = req.query.from ? String(req.query.from) : undefined;
+    const toRaw = req.query.to ? String(req.query.to) : undefined;
+    const from = fromRaw ? new Date(fromRaw) : null;
+    const to = toRaw ? new Date(toRaw) : null;
+    const hasRange =
+      (from && !Number.isNaN(from.getTime())) || (to && !Number.isNaN(to.getTime()));
 
     const tasks = await prisma.staffTask.findMany({
       where: {
         tenantId,
         ...(status ? { status } : {}),
+        ...(hasRange
+          ? {
+              dueAt: {
+                ...(from && !Number.isNaN(from.getTime()) ? { gte: from } : {}),
+                ...(to && !Number.isNaN(to.getTime()) ? { lte: to } : {}),
+              },
+            }
+          : {}),
         ...(role === 'OWNER' && !mine
           ? {}
           : {

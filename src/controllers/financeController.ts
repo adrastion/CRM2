@@ -475,6 +475,34 @@ export const receiveMembershipPayment = asyncHandler(
   }
 );
 
+/** Корректировка начисления (append-only). */
+export const correctMembershipAccrual = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+    if (!req.user?.id) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const { clientId, paymentId, newAmount, reason, occurredAt } = req.body;
+    if (!clientId) throw badRequest('Укажите clientId', 'clientId');
+
+    const result = await FinanceService.correctMembershipAccrual(req.tenant.id, {
+      clientId: String(clientId),
+      paymentId: paymentId ? String(paymentId) : null,
+      newAmount: Number(newAmount),
+      reason: String(reason || ''),
+      userId: req.user.id,
+      occurredAt: occurredAt ? new Date(occurredAt) : undefined,
+    });
+
+    res.json({ success: true, data: result });
+  }
+);
+
 /** Изменить стоимость абонемента / пересчитать долг. */
 export const updateMembershipAmount = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -523,6 +551,71 @@ export const updateMembershipAmount = asyncHandler(
     }
 
     res.json({ success: true, data: updated });
+  }
+);
+
+/** Сменить клиентский тариф и пересчитать начисление. */
+export const changeMembershipPack = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+    const { clientId, membershipId } = req.body;
+    if (!clientId) throw badRequest('Укажите clientId', 'clientId');
+    if (!membershipId) throw badRequest('Укажите membershipId', 'membershipId');
+
+    const { changeClientMembershipPack } = await import('../services/clientMembershipService');
+    try {
+      const result = await changeClientMembershipPack({
+        tenantId: req.tenant.id,
+        clientId,
+        membershipId,
+      });
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      const status = err?.statusCode || 500;
+      res.status(status).json({ success: false, error: err?.message || 'Не удалось сменить абонемент' });
+    }
+  }
+);
+
+/** Расшифровка начислений за месяц (для tooltip в Финансах). */
+export const getMonthChargesBreakdown = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+    const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
+    const month = typeof req.query.month === 'string' ? req.query.month : undefined; // YYYY-MM
+    let dateFrom = parseDate(req.query.dateFrom);
+    let dateTo = parseDate(req.query.dateTo);
+
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [y, m] = month.split('-').map(Number);
+      dateFrom = new Date(y, m - 1, 1, 0, 0, 0, 0);
+      dateTo = new Date(y, m, 0, 23, 59, 59, 999);
+    }
+
+    const data = await FinanceService.listOperations(req.tenant.id, {
+      clientIds: clientId ? [clientId] : undefined,
+      dateFrom,
+      dateTo,
+      typeCodes: [
+        'membership_charge',
+        'membership_charge_adjustment',
+        'membership_issue',
+        'training_payment',
+        'membership',
+        'client_payment',
+      ],
+      limit: 100,
+      sortBy: 'occurredAt',
+      sortDir: 'desc',
+    });
+
+    res.json({ success: true, data: data.items || [] });
   }
 );
 

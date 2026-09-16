@@ -86,6 +86,7 @@ const AdminPromoCodes: React.FC = () => {
     type: 'MARKETER',
     password: '',
     isActive: true,
+    commissionPercentage: 10,
   });
 
   const loadMarketers = async (loadStats = false) => {
@@ -346,6 +347,7 @@ const AdminPromoCodes: React.FC = () => {
       type: marketer.type,
       password: '',
       isActive: marketer.isActive,
+      commissionPercentage: Number((marketer as any).commissionPercentage ?? 10),
     });
     setOpenMarketerDialog(true);
   };
@@ -384,6 +386,7 @@ const AdminPromoCodes: React.FC = () => {
       type: 'MARKETER',
       password: '',
       isActive: true,
+      commissionPercentage: 10,
     });
   };
 
@@ -639,6 +642,7 @@ const AdminPromoCodes: React.FC = () => {
                       <TableCell>Email</TableCell>
                       <TableCell>Телефон</TableCell>
                       <TableCell>Тип</TableCell>
+                      <TableCell>Комиссия %</TableCell>
                       <TableCell>Промокодов</TableCell>
                     <TableCell>Использований</TableCell>
                       <TableCell>Ссылок</TableCell>
@@ -658,6 +662,7 @@ const AdminPromoCodes: React.FC = () => {
                             size="small"
                           />
                         </TableCell>
+                        <TableCell>{Number((marketer as any).commissionPercentage ?? 10)}%</TableCell>
                         <TableCell>{marketer.promoCodes?.length || 0}</TableCell>
                       <TableCell>{marketerStats[marketer.id]?.promoCodes.totalUsages ?? '—'}</TableCell>
                         <TableCell>{marketer.referralLinks?.length || 0}</TableCell>
@@ -961,6 +966,21 @@ const AdminPromoCodes: React.FC = () => {
                 label="Телефон"
                 value={marketerFormData.phone}
                 onChange={(e) => setMarketerFormData({ ...marketerFormData, phone: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Комиссия %"
+                value={marketerFormData.commissionPercentage}
+                onChange={(e) =>
+                  setMarketerFormData({
+                    ...marketerFormData,
+                    commissionPercentage: Number(e.target.value),
+                  })
+                }
+                inputProps={{ min: 0, max: 100 }}
               />
             </Grid>
             <Grid item xs={12}>

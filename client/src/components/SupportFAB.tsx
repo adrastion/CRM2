@@ -51,6 +51,10 @@ const SupportFAB: React.FC = () => {
   const hidden = useMemo(() => {
     if (hasSuperAdminSession()) return true;
     if (isSuperAdminRoute(location.pathname)) return true;
+    // Маркетолог использует раздел «Чаты» кабинета
+    if (location.pathname.startsWith('/marketer/') || localStorage.getItem('marketerToken')) {
+      return true;
+    }
     // На публичных страницах (например /login) кнопку не показываем, чтобы не было запросов без токена
     if (!hasAnyNonSuperAdminSession()) return true;
     return false;

@@ -84,7 +84,7 @@ export const authenticatePromoCodeOrMarketer = asyncHandler(async (
         return;
       }
 
-      if (!marketer.tenant.isActive) {
+      if (marketer.tenantId && marketer.tenant && !marketer.tenant.isActive) {
         res.status(401).json({
           success: false,
           error: 'Tenant account is inactive'
@@ -94,8 +94,8 @@ export const authenticatePromoCodeOrMarketer = asyncHandler(async (
 
       // Attach marketer and tenant to request
       (req as any).marketer = marketer;
-      (req as any).marketerTenant = marketer.tenant;
-      (req as any).marketerTenantId = marketer.tenantId;
+      (req as any).marketerTenant = marketer.tenant || null;
+      (req as any).marketerTenantId = marketer.tenantId || null;
       
       next();
       return;

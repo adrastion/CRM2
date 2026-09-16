@@ -38,6 +38,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
+import TrainerDocumentsPanel from '../components/trainers/TrainerDocumentsPanel';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
@@ -71,9 +72,13 @@ const emptyFormData = {
   qualification: '',
   experience: '',
   specialization: '',
+  coachCategory: '',
+  judgeCategory: '',
+  achievements: '',
   /** fixed_monthly или '' (= зарплата на группах) */
   salaryScheme: '',
   salaryRate: '',
+  individualTrainingPrice: '',
   canViewAllGroups: false,
   branchId: '',
 };
@@ -252,6 +257,9 @@ const Trainers: React.FC = () => {
             formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
               ? parseFloat(formData.salaryRate)
               : 0,
+          individualTrainingPrice: formData.individualTrainingPrice
+            ? parseFloat(formData.individualTrainingPrice)
+            : null,
         });
       }
       // Обновляем список сотрудников, получая свежие данные с сервера
@@ -299,6 +307,9 @@ const Trainers: React.FC = () => {
       qualification: trainer.qualification || '',
       experience: trainer.experience?.toString() || '',
       specialization: trainer.specialization || '',
+      coachCategory: trainer.coachCategory || '',
+      judgeCategory: trainer.judgeCategory || '',
+      achievements: trainer.achievements || '',
       salaryScheme:
         normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
           ? TRAINER_FIXED_MONTHLY
@@ -306,6 +317,10 @@ const Trainers: React.FC = () => {
       salaryRate:
         normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
           ? String((trainer as any).salaryRate ?? trainer.salaryAmount ?? '')
+          : '',
+      individualTrainingPrice:
+        (trainer as any).individualTrainingPrice != null
+          ? String((trainer as any).individualTrainingPrice)
           : '',
       canViewAllGroups: (trainer as any).canViewAllGroups || false,
       branchId: trainer.branches?.[0]?.branchId || '',
@@ -397,6 +412,9 @@ const Trainers: React.FC = () => {
               qualification: formData.qualification,
               experience: formData.experience,
               specialization: formData.specialization,
+              coachCategory: formData.coachCategory,
+              judgeCategory: formData.judgeCategory,
+              achievements: formData.achievements,
               salaryScheme:
                 formData.salaryScheme === TRAINER_FIXED_MONTHLY
                   ? TRAINER_FIXED_MONTHLY
@@ -413,6 +431,9 @@ const Trainers: React.FC = () => {
                 formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
                   ? parseFloat(formData.salaryRate)
                   : 0,
+              individualTrainingPrice: formData.individualTrainingPrice
+                ? parseFloat(formData.individualTrainingPrice)
+                : null,
               canViewAllGroups: formData.canViewAllGroups,
               firstName: formData.firstName,
               lastName: formData.lastName,
@@ -453,6 +474,9 @@ const Trainers: React.FC = () => {
             formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
               ? parseFloat(formData.salaryRate)
               : 0,
+          individualTrainingPrice: formData.individualTrainingPrice
+            ? parseFloat(formData.individualTrainingPrice)
+            : null,
         });
       }
 
@@ -712,6 +736,8 @@ const Trainers: React.FC = () => {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {employee.qualification || 'Квалификация не указана'}
                       {employee.experience ? ` · ${employee.experience} лет` : ''}
+                      {employee.coachCategory ? ` · Трен. кат.: ${employee.coachCategory}` : ''}
+                      {employee.judgeCategory ? ` · Суд. кат.: ${employee.judgeCategory}` : ''}
                     </Typography>
                   )}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
@@ -1152,6 +1178,34 @@ const Trainers: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Тренерская категория"
+                    value={formData.coachCategory}
+                    onChange={(e) => handleInputChange('coachCategory', e.target.value)}
+                    placeholder="Например: высшая, первая, вторая"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Судейская категория"
+                    value={formData.judgeCategory}
+                    onChange={(e) => handleInputChange('judgeCategory', e.target.value)}
+                    placeholder="Например: всероссийская, первая"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    label="Достижения"
+                    value={formData.achievements}
+                    onChange={(e) => handleInputChange('achievements', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Зарплата сотрудника</InputLabel>
                     <Select
@@ -1165,17 +1219,27 @@ const Trainers: React.FC = () => {
                   </FormControl>
                 </Grid>
                 {formData.salaryScheme === TRAINER_FIXED_MONTHLY && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
+                      type="number"
+                      value={formData.salaryRate}
+                      onChange={(e) => handleInputChange('salaryRate', e.target.value)}
+                      helperText={salarySchemeHint(TRAINER_FIXED_MONTHLY)}
+                    />
+                  </Grid>
+                )}
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
+                    label="Цена индивидуальной тренировки (₽)"
                     type="number"
-                    value={formData.salaryRate}
-                    onChange={(e) => handleInputChange('salaryRate', e.target.value)}
-                    helperText={salarySchemeHint(TRAINER_FIXED_MONTHLY)}
+                    value={formData.individualTrainingPrice}
+                    onChange={(e) => handleInputChange('individualTrainingPrice', e.target.value)}
+                    helperText="Начисляется ученику при создании индивидуалки в календаре"
                   />
                 </Grid>
-                )}
                 {isSenior && (
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth required>
@@ -1385,6 +1449,34 @@ const Trainers: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Тренерская категория"
+                    value={formData.coachCategory}
+                    onChange={(e) => handleInputChange('coachCategory', e.target.value)}
+                    placeholder="Например: высшая, первая, вторая"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Судейская категория"
+                    value={formData.judgeCategory}
+                    onChange={(e) => handleInputChange('judgeCategory', e.target.value)}
+                    placeholder="Например: всероссийская, первая"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    label="Достижения"
+                    value={formData.achievements}
+                    onChange={(e) => handleInputChange('achievements', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth error={!!formErrors.salaryScheme}>
                     <InputLabel>Зарплата сотрудника</InputLabel>
                     <Select
@@ -1415,6 +1507,16 @@ const Trainers: React.FC = () => {
                   />
                 </Grid>
                 )}
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Цена индивидуальной тренировки (₽)"
+                    type="number"
+                    value={formData.individualTrainingPrice || ''}
+                    onChange={(e) => handleInputChange('individualTrainingPrice', e.target.value)}
+                    helperText="Начисляется ученику при создании индивидуалки"
+                  />
+                </Grid>
                 <Grid item xs={12}>
                   <FormControl fullWidth>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1436,6 +1538,15 @@ const Trainers: React.FC = () => {
               </>
             )}
           </Grid>
+          {editingTrainer && getCurrentEmployeeRole() === 'TRAINER' && (
+            <Box sx={{ mt: 3 }}>
+              <Divider sx={{ mb: 2 }} />
+              <TrainerDocumentsPanel
+                trainerId={editingTrainer.id}
+                initialDocs={(editingTrainer as any).documents}
+              />
+            </Box>
+          )}
           {editingTrainer && getCurrentEmployeeRole() === 'TRAINER' && (
             <Box sx={{ mt: 3 }}>
               <AttendanceExcelExport

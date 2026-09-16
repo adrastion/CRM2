@@ -16,6 +16,13 @@ import {
   isUniqueConstraintError,
   resolveMonthlyPeriodKey,
 } from '../utils/monthlyPaymentPeriod';
+import {
+  computeGroupMonthlyCharge,
+  getGroupBillingPlan,
+  isDayInPaymentWindow,
+  unpaidNotifyDay,
+} from '../services/groupMembershipBillingService';
+import { fanoutNotification } from '../services/notificationFanout';
 
 type GroupForMonthly = {
   id: string;
@@ -25,11 +32,13 @@ type GroupForMonthly = {
   memberships: Array<{
     clientId: string;
     isTrial?: boolean;
+    billingEffectiveFrom?: Date | null;
     client?: {
       personalDiscountType?: string | null;
       personalDiscountValue?: unknown;
       lastName?: string;
       firstName?: string;
+      userId?: string | null;
     } | null;
   }>;
 };
@@ -86,6 +95,19 @@ async function createOneMonthlyPayment(params: {
     return { skipped: 'before_first_training' };
   }
 
+  const plan = await getGroupBillingPlan(group.id);
+  const earliestKeys = [plan?.effectiveFrom, membership.billingEffectiveFrom]
+    .filter(Boolean)
+    .map((d) => {
+      const dt = new Date(d as Date);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    })
+    .sort();
+  const earliest = earliestKeys[earliestKeys.length - 1];
+  if (earliest && periodKey < earliest) {
+    return { skipped: 'before_effective' };
+  }
+
   const existingByPeriod = await prisma.payment.findFirst({
     where: {
       tenantId,
@@ -99,8 +121,26 @@ async function createOneMonthlyPayment(params: {
     return { skipped: 'already_exists' };
   }
 
+  let baseAmount = monthlyAmount;
+  let listPrice = monthlyAmount;
+  let recalcAppliedPercent: number | null = null;
+  let recalcReason: string | null = null;
+  let catalogMembershipId: string | null = plan?.membershipId || null;
+
+  if (plan) {
+    listPrice = plan.price;
+    const computed = await computeGroupMonthlyCharge({
+      plan,
+      clientId: membership.clientId,
+      billPeriodKey: periodKey,
+    });
+    baseAmount = computed.amount;
+    recalcAppliedPercent = computed.recalcAppliedPercent;
+    recalcReason = computed.recalcReason;
+  }
+
   const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
-    monthlyAmount,
+    baseAmount,
     membership.client?.personalDiscountType,
     membership.client?.personalDiscountValue != null
       ? Number(membership.client.personalDiscountValue)
@@ -110,7 +150,8 @@ async function createOneMonthlyPayment(params: {
     return { skipped: 'zero_amount' };
   }
 
-  const dueDate = dueDateForPeriodKey(periodKey, Number(group.paymentDueDay) || 1);
+  const dueDay = plan?.paymentWindowEndDay || Number(group.paymentDueDay) || 1;
+  const dueDate = dueDateForPeriodKey(periodKey, dueDay);
 
   try {
     const payment = await prisma.payment.create({
@@ -118,14 +159,18 @@ async function createOneMonthlyPayment(params: {
         tenantId,
         clientId: membership.clientId,
         groupId: group.id,
+        membershipId: catalogMembershipId,
         amount: chargeAmount,
-        originalAmount,
+        originalAmount: listPrice || originalAmount,
         type: 'monthly_payment',
         status: 'pending',
         dueDate,
         isMonthlyPayment: true,
         periodKey,
         branchId: group.branchId,
+        recalcAppliedPercent,
+        recalcReason,
+        notes: recalcReason || null,
       },
       include: {
         client: true,
@@ -985,9 +1030,10 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
       where: {
         tenantId,
         isActive: true,
-        isMonthlyPayment: true,
-        paymentDueDay: currentDay,
-        monthlyPaymentAmount: { not: null }
+        OR: [
+          { isMonthlyPayment: true, monthlyPaymentAmount: { not: null } },
+          { membershipPlans: { some: { membership: { category: 'GROUP', isActive: true } } } },
+        ],
       },
       include: {
         memberships: {
@@ -1007,7 +1053,12 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
     const errors = [];
 
     for (const group of groups) {
-      const monthlyAmount = Number(group.monthlyPaymentAmount || 0);
+      const plan = await getGroupBillingPlan(group.id);
+      if (!plan) continue;
+      if (!isDayInPaymentWindow(currentDay, plan.paymentWindowStartDay, plan.paymentWindowEndDay)) {
+        continue;
+      }
+      const monthlyAmount = plan.price;
       if (monthlyAmount <= 0) continue;
 
       for (const membership of group.memberships) {
@@ -1066,8 +1117,10 @@ export const createMonthlyPaymentsForAllTenants = async () => {
 
     let totalCreated = 0;
     let totalErrors = 0;
+    let unpaidNotices = 0;
     const today = new Date();
     const currentDay = today.getDate();
+    const periodKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
     for (const tenant of tenants) {
       try {
@@ -1075,9 +1128,10 @@ export const createMonthlyPaymentsForAllTenants = async () => {
           where: {
             tenantId: tenant.id,
             isActive: true,
-            isMonthlyPayment: true,
-            paymentDueDay: currentDay,
-            monthlyPaymentAmount: { not: null },
+            OR: [
+              { isMonthlyPayment: true, monthlyPaymentAmount: { not: null } },
+              { membershipPlans: { some: { membership: { category: 'GROUP', isActive: true } } } },
+            ],
           },
           include: {
             memberships: {
@@ -1092,27 +1146,74 @@ export const createMonthlyPaymentsForAllTenants = async () => {
         });
 
         for (const group of groups) {
-          const monthlyAmount = Number(group.monthlyPaymentAmount || 0);
+          const plan = await getGroupBillingPlan(group.id);
+          if (!plan) continue;
+          const monthlyAmount = plan.price;
           if (monthlyAmount <= 0) continue;
 
-          for (const membership of group.memberships) {
-            try {
-              const result = await createOneMonthlyPayment({
-                tenantId: tenant.id,
-                group,
-                membership,
-                monthlyAmount,
-                candidateDate: today,
-              });
-              if ('payment' in result && result.payment) {
-                totalCreated++;
+          if (isDayInPaymentWindow(currentDay, plan.paymentWindowStartDay, plan.paymentWindowEndDay)) {
+            for (const membership of group.memberships) {
+              try {
+                const result = await createOneMonthlyPayment({
+                  tenantId: tenant.id,
+                  group,
+                  membership,
+                  monthlyAmount,
+                  candidateDate: today,
+                });
+                if ('payment' in result && result.payment) {
+                  totalCreated++;
+                }
+              } catch (error: any) {
+                console.error(
+                  `[Cron] Error creating payment for tenant ${tenant.id}, client ${membership.clientId}, group ${group.id}:`,
+                  error
+                );
+                totalErrors++;
               }
-            } catch (error: any) {
-              console.error(
-                `[Cron] Error creating payment for tenant ${tenant.id}, client ${membership.clientId}, group ${group.id}:`,
-                error
-              );
-              totalErrors++;
+            }
+          }
+
+          // Уведомление о неоплате на следующий день после окна
+          if (currentDay === unpaidNotifyDay(plan.paymentWindowEndDay)) {
+            const unpaid = await prisma.payment.findMany({
+              where: {
+                tenantId: tenant.id,
+                groupId: group.id,
+                isMonthlyPayment: true,
+                periodKey,
+                status: { in: ['pending', 'overdue'] },
+              },
+              include: { client: true },
+            });
+            if (unpaid.length > 0) {
+              const owners = await prisma.user.findMany({
+                where: { tenantId: tenant.id, role: { in: ['OWNER', 'ADMIN'] }, isActive: true },
+                select: { id: true },
+              });
+              for (const p of unpaid) {
+                try {
+                  const recipients: Array<{ actorType: 'USER' | 'CLIENT'; actorId: string }> = owners.map((u) => ({
+                    actorType: 'USER' as const,
+                    actorId: u.id,
+                  }));
+                  recipients.push({ actorType: 'CLIENT', actorId: p.clientId });
+                  await fanoutNotification({
+                    tenantId: tenant.id,
+                    category: 'finance',
+                    type: 'membership_unpaid',
+                    title: 'Не оплачен абонемент',
+                    body: `${p.client.lastName} ${p.client.firstName}: не оплачена ежемесячная оплата за ${periodKey} (${group.name})`,
+                    data: { paymentId: p.id, groupId: group.id, periodKey, url: '/finance' },
+                    eventType: 'finance',
+                    recipients,
+                    inboxOnly: false,
+                  });
+                  unpaidNotices++;
+                } catch (e) {
+                  console.error('[Cron] unpaid notice failed', e);
+                }
+              }
             }
           }
         }
@@ -1122,8 +1223,10 @@ export const createMonthlyPaymentsForAllTenants = async () => {
       }
     }
 
-    console.log(`[Cron] Monthly payments creation completed. Created: ${totalCreated}, Errors: ${totalErrors}`);
-    return { created: totalCreated, errors: totalErrors };
+    console.log(
+      `[Cron] Monthly payments done. Created: ${totalCreated}, Errors: ${totalErrors}, Unpaid notices: ${unpaidNotices}`
+    );
+    return { created: totalCreated, errors: totalErrors, unpaidNotices };
   } catch (error) {
     console.error('[Cron] Create monthly payments error:', error);
     throw error;

@@ -228,6 +228,7 @@ export async function canAccessThread(
         where: { id: thread.groupId, tenantId: school.tenantId },
       });
       if (!group) return false;
+      if (isAdmin) return true;
       if (isTrainer && school.kind === 'USER' && school.trainerId === group.trainerId) return true;
       if (clientId) return isActiveGroupMember(clientId, group.id);
       return false;
@@ -240,7 +241,7 @@ export async function canAccessThread(
       return false;
     }
     case 'TRAINERS': {
-      return isTrainer;
+      return isAdmin || isTrainer;
     }
     case 'STAFF_TASK': {
       if (school.kind !== 'USER' || !thread.staffTaskId) return false;
@@ -301,6 +302,7 @@ async function assertCanEnsure(actor: ChatActor, input: EnsureThreadInput): Prom
         where: { id: input.groupId, tenantId: school.tenantId },
       });
       if (!group) throw notFound('Группа не найдена');
+      if (isAdmin) return;
       if (isTrainer && school.kind === 'USER' && school.trainerId === group.trainerId) return;
       if (clientId && (await isActiveGroupMember(clientId, group.id))) return;
       throw forbidden('Нет доступа');
@@ -312,8 +314,8 @@ async function assertCanEnsure(actor: ChatActor, input: EnsureThreadInput): Prom
       throw forbidden('Нет доступа');
     }
     case 'TRAINERS': {
-      if (isTrainer) return;
-      throw forbidden('Только для тренеров');
+      if (isAdmin || isTrainer) return;
+      throw forbidden('Только для сотрудников школы');
     }
     case 'STAFF_TASK': {
       if (school.kind !== 'USER' || !input.staffTaskId) {
@@ -623,7 +625,7 @@ export async function listThreadsForActor(actor: ChatActor): Promise<ThreadListI
       }
     }
   } else if (actor.kind === 'USER' && (actor.role === 'OWNER' || actor.role === 'ADMIN')) {
-    const [clients, trainers] = await Promise.all([
+    const [clients, trainers, groups] = await Promise.all([
       prisma.client.findMany({
         where: { tenantId, isActive: true },
         select: {
@@ -645,6 +647,12 @@ export async function listThreadsForActor(actor: ChatActor): Promise<ThreadListI
         include: { user: { select: { firstName: true, lastName: true, middleName: true } } },
         take: 200,
       }),
+      prisma.group.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+        take: 500,
+      }),
     ]);
 
     for (const c of clients) {
@@ -662,6 +670,19 @@ export async function listThreadsForActor(actor: ChatActor): Promise<ThreadListI
         threadKey: threadKeyFor({ type: 'TRAINER_ADMIN', trainerId: t.id }, tenantId),
         trainerId: t.id,
         trainerName: personName([t.user.lastName, t.user.firstName, t.user.middleName]),
+      });
+    }
+    // Групповые чаты всегда в списке (даже без переписки)
+    candidates.push({
+      type: 'TRAINERS',
+      threadKey: threadKeyFor({ type: 'TRAINERS' }, tenantId),
+    });
+    for (const g of groups) {
+      candidates.push({
+        type: 'GROUP',
+        threadKey: threadKeyFor({ type: 'GROUP', groupId: g.id }, tenantId),
+        groupId: g.id,
+        groupName: g.name,
       });
     }
   } else if (actor.kind === 'USER' && actor.role === 'TRAINER' && actor.trainerId) {
@@ -1485,6 +1506,7 @@ export async function resolvePeerPresenceKeys(
             }
           }
         }
+        await addAdmins();
         break;
       }
       case 'TRAINERS': {
@@ -1493,6 +1515,7 @@ export async function resolvePeerPresenceKeys(
           select: { userId: true },
         });
         for (const t of trainers) keys.add(presenceKeyUser(t.userId));
+        await addAdmins();
         break;
       }
       case 'STAFF_TASK': {

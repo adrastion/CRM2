@@ -1149,6 +1149,18 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
     }),
   ]);
 
+  try {
+    const { MarketerCabinetService } = await import('../services/marketerCabinetService');
+    await MarketerCabinetService.recordCommissionPayout({
+      marketerId,
+      amount: paymentAmount,
+      notes: description || `Выплата маркетологу ${marketer.name}`,
+      externalKey: `payout:${transaction.id}`,
+    });
+  } catch (err) {
+    console.error('[MarketerLedger] payout failed:', err);
+  }
+
   // Логируем действие
   await createAuditLog({
     superAdminId: superAdmin?.id,
@@ -3009,3 +3021,134 @@ export const unlinkTenantOwnerTester = asyncHandler(async (
     data: { tenantId, ownerId: owner.id, unlinkedTesterId: linked.id },
   });
 });
+
+/** Публикации для маркетологов (реклама / новости) */
+export const listPlatformPublicationsAdmin = asyncHandler(
+  async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await prisma.platformPublication.findMany({
+      orderBy: { publishedAt: 'desc' },
+      take: 200,
+    });
+    res.json({ success: true, data });
+  }
+);
+
+export const createPlatformPublicationAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const superAdmin = (req as any).superAdmin;
+    const files = req.files as
+      | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
+      | undefined;
+    const imageFile = files?.image?.[0];
+    const docFile = files?.file?.[0];
+    const imageUrl = imageFile
+      ? `marketer-cabinet/publications/${imageFile.filename}`
+      : String(req.body?.imageUrl || '').trim() || undefined;
+    const fileUrl = docFile
+      ? `marketer-cabinet/publications/${docFile.filename}`
+      : String(req.body?.fileUrl || '').trim() || undefined;
+
+    const { MarketerCabinetService } = await import('../services/marketerCabinetService');
+    const data = await MarketerCabinetService.createPublication(superAdmin?.id, {
+      type: String(req.body?.type || ''),
+      title: String(req.body?.title || ''),
+      body: String(req.body?.body || ''),
+      imageUrl,
+      fileUrl,
+      isActive: req.body?.isActive !== 'false' && req.body?.isActive !== false,
+    });
+    res.status(201).json({ success: true, data });
+  }
+);
+
+export const listMarketerClosingDocsAdmin = asyncHandler(
+  async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await prisma.marketerClosingDoc.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json({ success: true, data });
+  }
+);
+
+export const createMarketerClosingDocAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const superAdmin = (req as any).superAdmin;
+    const uploaded = (req as any).file as Express.Multer.File | undefined;
+    const fileUrl = uploaded
+      ? `marketer-cabinet/docs/${uploaded.filename}`
+      : String(req.body?.fileUrl || '').trim();
+    if (!fileUrl) {
+      res.status(400).json({ success: false, error: 'Прикрепите файл' });
+      return;
+    }
+    const { MarketerCabinetService } = await import('../services/marketerCabinetService');
+    const data = await MarketerCabinetService.createClosingDoc(superAdmin?.id, {
+      title: String(req.body?.title || ''),
+      fileUrl,
+      periodLabel: req.body?.periodLabel ? String(req.body.periodLabel) : undefined,
+      marketerId: req.body?.marketerId ? String(req.body.marketerId) : null,
+    });
+    res.status(201).json({ success: true, data });
+  }
+);
+
+export const downloadPlatformPublicationImageAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const pub = await prisma.platformPublication.findUnique({ where: { id: String(req.params.id) } });
+    if (!pub?.imageUrl) {
+      res.status(404).json({ success: false, error: 'Изображение не найдено' });
+      return;
+    }
+    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (isHttpUrl(pub.imageUrl)) {
+      res.redirect(pub.imageUrl);
+      return;
+    }
+    if (!isStoredUploadPath(pub.imageUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, pub.imageUrl, { inline: true });
+  }
+);
+
+export const downloadPlatformPublicationFileAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const pub = await prisma.platformPublication.findUnique({ where: { id: String(req.params.id) } });
+    if (!pub?.fileUrl) {
+      res.status(404).json({ success: false, error: 'Файл не найден' });
+      return;
+    }
+    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (isHttpUrl(pub.fileUrl)) {
+      res.redirect(pub.fileUrl);
+      return;
+    }
+    if (!isStoredUploadPath(pub.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, pub.fileUrl);
+  }
+);
+
+export const downloadMarketerClosingDocAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const doc = await prisma.marketerClosingDoc.findUnique({ where: { id: String(req.params.id) } });
+    if (!doc?.fileUrl) {
+      res.status(404).json({ success: false, error: 'Файл не найден' });
+      return;
+    }
+    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (isHttpUrl(doc.fileUrl)) {
+      res.redirect(doc.fileUrl);
+      return;
+    }
+    if (!isStoredUploadPath(doc.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, doc.fileUrl);
+  }
+);

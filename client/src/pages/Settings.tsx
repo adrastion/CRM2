@@ -43,6 +43,7 @@ import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import PromoCodeAdminsSettings from '../components/settings/PromoCodeAdminsSettings';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
@@ -76,6 +77,7 @@ const Settings: React.FC = () => {
     user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER';
   const notificationsTabIndex = 2;
   const interfaceTabIndex = showNotificationsTab ? 3 : 2;
+  const promoAdminsTabIndex = canEditSchoolSettings ? interfaceTabIndex + 1 : -1;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +91,7 @@ const Settings: React.FC = () => {
   const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
   const [clientCanViewAllBranches, setClientCanViewAllBranches] = useState<boolean>(false);
   const [chatMessageEditLimitMinutes, setChatMessageEditLimitMinutes] = useState<number>(15);
+  const [staffTaskColor, setStaffTaskColor] = useState<string>('#6A1B9A');
   
   // Смена email
   const [newEmail, setNewEmail] = useState('');
@@ -169,6 +172,11 @@ const Settings: React.FC = () => {
             typeof response.data.chatMessageEditLimitMinutes === 'number'
               ? response.data.chatMessageEditLimitMinutes
               : 15
+          );
+          setStaffTaskColor(
+            typeof response.data.staffTaskColor === 'string' && response.data.staffTaskColor
+              ? response.data.staffTaskColor
+              : '#6A1B9A'
           );
         }
         
@@ -307,6 +315,7 @@ const Settings: React.FC = () => {
               membershipFeeResetDate: membershipFeeResetDate || '12-01',
               salaryPayoutDay,
               chatMessageEditLimitMinutes,
+              staffTaskColor,
             }
           : {}),
         clientCanViewAllTrainers,
@@ -474,6 +483,7 @@ const Settings: React.FC = () => {
     clientCategories: 'Категории клиентов',
     trainers: 'Тренеры',
     trainerEarnings: 'Мой заработок',
+    trainerProfile: 'Мой профиль',
     allTrainersEarnings: 'Заработок тренеров',
     groups: 'Группы',
     branches: 'Филиалы',
@@ -539,6 +549,9 @@ const Settings: React.FC = () => {
               <Tab label="Уведомления" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
             )}
             <Tab label="Интерфейс" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
+            {canEditSchoolSettings && (
+              <Tab label="Админы промокодов" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 160 } }} />
+            )}
           </Tabs>
 
           {/* Настройки расписания */}
@@ -592,6 +605,39 @@ const Settings: React.FC = () => {
                       helperText="По умолчанию: 25"
                       sx={{ mb: 2 }}
                     />
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                      Цвет задач на календарном плане
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Единый цвет чипов задач (Staff Workspace) на календаре сотрудников.
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <TextField
+                        type="color"
+                        label="Цвет"
+                        value={staffTaskColor}
+                        onChange={(e) => setStaffTaskColor(e.target.value.toUpperCase())}
+                        sx={{ width: 120 }}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                      <TextField
+                        label="HEX"
+                        value={staffTaskColor}
+                        onChange={(e) => {
+                          const v = e.target.value.trim();
+                          if (v === '' || /^#[0-9A-Fa-f]{0,6}$/.test(v)) {
+                            setStaffTaskColor(v.toUpperCase() || '#');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!/^#[0-9A-Fa-f]{6}$/.test(staffTaskColor)) {
+                            setStaffTaskColor('#6A1B9A');
+                          }
+                        }}
+                        sx={{ width: 140 }}
+                        inputProps={{ maxLength: 7 }}
+                      />
+                    </Box>
                   </Box>
                 )}
                 {/* Настройка даты сброса членского взноса */}
@@ -1083,6 +1129,12 @@ const Settings: React.FC = () => {
               )}
             </Grid>
           </TabPanel>
+
+          {canEditSchoolSettings && (
+            <TabPanel value={tabValue} index={promoAdminsTabIndex}>
+              <PromoCodeAdminsSettings />
+            </TabPanel>
+          )}
         </CardContent>
       </Card>
 

@@ -76,6 +76,29 @@ const PublicFooter: React.FC = () => {
           <Typography
             variant="body2"
             component="a"
+            href="/privacy"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/privacy');
+            }}
+            sx={{
+              color: 'text.secondary',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              '&:hover': {
+                color: 'primary.main',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Политика конфиденциальности
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            |
+          </Typography>
+          <Typography
+            variant="body2"
+            component="a"
             href="/contacts"
             onClick={(e) => {
               e.preventDefault();

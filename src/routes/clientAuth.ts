@@ -16,7 +16,7 @@ import {
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
 import { portalReceiptUpload } from '../controllers/paymentMethodController';
-import { getClientDashboard, getClientTrainerCard } from '../controllers/clientDashboardController';
+import { getClientDashboard, getClientTrainerCard, getPortalMembershipCatalog, changePortalMembership } from '../controllers/clientDashboardController';
 import {
   clientCreateSupportTicket,
   clientListSupportTickets,
@@ -84,6 +84,8 @@ router.post(
   submitPortalPaymentReceipt
 );
 router.get('/dashboard', authenticateClient, getClientDashboard);
+router.get('/membership-catalog', authenticateClient, getPortalMembershipCatalog);
+router.post('/change-membership', authenticateClient, changePortalMembership);
 router.get('/trainers/:trainerId/card', authenticateClient, getClientTrainerCard);
 router.get('/notifications', authenticateClient, getPortalNotifications);
 router.post('/notifications/read', authenticateClient, markPortalNotificationsRead);

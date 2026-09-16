@@ -1,17 +1,16 @@
-import { Router, Request, Response } from 'express';
-import { ApiResponse } from '../types';
-import { asyncHandler } from '../middleware/errorHandler';
-import { getMaintenanceStatus } from '../services/maintenanceService';
+import { Router } from 'express';
+import {
+  getPublicAccessStatusHandler,
+  getAccessCheck,
+  getPublicTerms,
+} from '../controllers/maintenanceController';
 
 const router = Router();
 
-/** Публичный статус техобслуживания (без auth). */
-router.get(
-  '/status',
-  asyncHandler(async (_req: Request, res: Response<ApiResponse>) => {
-    const data = await getMaintenanceStatus();
-    res.json({ success: true, data });
-  })
-);
+/** Публичный статус maintenance + testing (без allowlist). */
+router.get('/status', getPublicAccessStatusHandler);
+
+/** Проверка доступа текущего токена. */
+router.get('/access', getAccessCheck);
 
 export default router;

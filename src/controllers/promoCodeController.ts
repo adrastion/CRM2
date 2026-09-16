@@ -3,33 +3,62 @@ import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 
-/**
- * Get all promo codes with pagination
- */
-export const getPromoCodes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
-  const { page = 1, limit = 10, search, marketerId } = req.query as any;
-  
-  // If marketer is authenticated, filter by their ID
-  const finalMarketerId = authenticatedMarketerId || marketerId;
+type ActorScope =
+  | { kind: 'sa' }
+  | { kind: 'marketer'; marketerId: string }
+  | { kind: 'pca'; schoolTenantId: string };
 
+function getActorScope(req: any): ActorScope {
+  if (req.superAdmin) return { kind: 'sa' };
+  if (req.marketer?.id) return { kind: 'marketer', marketerId: req.marketer.id };
+  const schoolTenantId = req.promoCodeAdminTenantId || req.tenantId;
+  if (!schoolTenantId) {
+    const err: any = new Error('Tenant ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { kind: 'pca', schoolTenantId };
+}
+
+function listWhere(scope: ActorScope, extra: Record<string, unknown> = {}) {
+  const where: any = { ...extra };
+  if (scope.kind === 'marketer') {
+    where.marketerId = scope.marketerId;
+  } else if (scope.kind === 'pca') {
+    where.tenantId = scope.schoolTenantId;
+  } else {
+    where.tenantId = null;
+  }
+  return where;
+}
+
+function createTenantId(scope: ActorScope): string | null {
+  if (scope.kind === 'pca') return scope.schoolTenantId;
+  return null;
+}
+
+async function assertMarketerExists(marketerId: string) {
+  const marketer = await prisma.marketer.findUnique({ where: { id: marketerId } });
+  if (!marketer) {
+    const err: any = new Error('Маркетолог не найден');
+    err.statusCode = 400;
+    throw err;
+  }
+  return marketer;
+}
+
+export const getPromoCodes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const scope = getActorScope(req);
+  const { page = 1, limit = 10, search, marketerId } = req.query as any;
   const skip = (parseInt(page.toString()) - 1) * parseInt(limit.toString());
   const take = parseInt(limit.toString());
 
-  const where: any = {
-    tenantId,
-  };
-
+  const where = listWhere(scope);
   if (search) {
-    where.OR = [
-      { code: { contains: search } },
-      { description: { contains: search } },
-    ];
+    where.OR = [{ code: { contains: search } }, { description: { contains: search } }];
   }
-
-  if (finalMarketerId) {
-    where.marketerId = finalMarketerId;
+  if (scope.kind !== 'marketer' && marketerId) {
+    where.marketerId = marketerId;
   }
 
   const [promoCodes, total] = await Promise.all([
@@ -39,19 +68,8 @@ export const getPromoCodes = asyncHandler(async (req: AuthenticatedRequest, res:
       take,
       orderBy: { createdAt: 'desc' },
       include: {
-        marketer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            type: true,
-          },
-        },
-        _count: {
-          select: {
-            usages: true,
-          },
-        },
+        marketer: { select: { id: true, name: true, email: true, type: true } },
+        _count: { select: { usages: true } },
       },
     }),
     prisma.promoCode.count({ where }),
@@ -69,77 +87,36 @@ export const getPromoCodes = asyncHandler(async (req: AuthenticatedRequest, res:
   });
 });
 
-/**
- * Get single promo code by ID
- */
 export const getPromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
+  const where = listWhere(scope, { id });
 
   const promoCode = await prisma.promoCode.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
+    where,
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
       usages: {
         include: {
-          client: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          payment: {
-            select: {
-              id: true,
-              amount: true,
-              status: true,
-            },
-          },
+          client: { select: { id: true, firstName: true, lastName: true, email: true } },
+          payment: { select: { id: true, amount: true, status: true } },
         },
         orderBy: { usedAt: 'desc' },
         take: 50,
       },
-      _count: {
-        select: {
-          usages: true,
-        },
-      },
+      _count: { select: { usages: true } },
     },
   });
 
   if (!promoCode) {
-    res.status(404).json({
-      success: false,
-      error: 'Промокод не найден',
-    });
+    res.status(404).json({ success: false, error: 'Промокод не найден' });
     return;
   }
-
-  res.json({
-    success: true,
-    data: promoCode,
-  });
+  res.json({ success: true, data: promoCode });
 });
 
-/**
- * Create new promo code
- */
 export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const {
     code,
     description,
@@ -153,55 +130,36 @@ export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, re
     marketerId: providedMarketerId,
     isActive = true,
   } = req.body;
-  
-  // Use authenticated marketer's ID if not provided
-  const marketerId = providedMarketerId || authenticatedMarketerId;
 
-  // Check if code already exists for this tenant
-  const existing = await prisma.promoCode.findFirst({
-    where: {
-      code,
-      tenantId,
-    },
-  });
+  const marketerId =
+    scope.kind === 'marketer' ? scope.marketerId : providedMarketerId || null;
 
-  if (existing) {
-    res.status(400).json({
-      success: false,
-      error: 'Промокод с таким кодом уже существует',
-    });
+  const normalizedCode = String(code || '')
+    .trim()
+    .toUpperCase();
+  if (!normalizedCode || !discountType || discountValue == null || !validFrom) {
+    res.status(400).json({ success: false, error: 'Заполните обязательные поля промокода' });
     return;
   }
 
-  // Validate marketer if provided
-  if (marketerId) {
-    const marketer = await prisma.marketer.findFirst({
-      where: {
-        id: marketerId,
-        tenantId,
-      },
-    });
+  const existing = await prisma.promoCode.findUnique({ where: { code: normalizedCode } });
+  if (existing) {
+    res.status(400).json({ success: false, error: 'Промокод с таким кодом уже существует' });
+    return;
+  }
 
-    if (!marketer) {
-      res.status(400).json({
-        success: false,
-        error: 'Маркетолог не найден',
-      });
+  if (marketerId) {
+    try {
+      await assertMarketerExists(marketerId);
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
       return;
     }
   }
 
-  if (!tenantId) {
-    res.status(400).json({
-      success: false,
-      error: 'Tenant ID is required',
-    });
-    return;
-  }
-
   const promoCode = await prisma.promoCode.create({
     data: {
-      code,
+      code: normalizedCode,
       description,
       discountType,
       discountValue,
@@ -212,32 +170,18 @@ export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, re
       validUntil: validUntil ? new Date(validUntil) : null,
       marketerId: marketerId || null,
       isActive,
-      tenantId,
+      tenantId: createTenantId(scope),
     },
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
     },
   });
 
-  res.status(201).json({
-    success: true,
-    data: promoCode,
-  });
+  res.status(201).json({ success: true, data: promoCode });
 });
 
-/**
- * Update promo code
- */
 export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
   const {
     code,
@@ -253,24 +197,13 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
     isActive,
   } = req.body;
 
-  // Check if promo code exists
-  const existing = await prisma.promoCode.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const existing = await prisma.promoCode.findFirst({ where: listWhere(scope, { id }) });
   if (!existing) {
-    res.status(404).json({
-      success: false,
-      error: 'Промокод не найден',
-    });
+    res.status(404).json({ success: false, error: 'Промокод не найден' });
     return;
   }
 
-  // If marketer is authenticated, ensure they can only update their own promo codes
-  if (authenticatedMarketerId && existing.marketerId !== authenticatedMarketerId) {
+  if (scope.kind === 'marketer' && existing.marketerId !== scope.marketerId) {
     res.status(403).json({
       success: false,
       error: 'Доступ запрещен. Вы можете редактировать только свои промокоды.',
@@ -278,45 +211,28 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
     return;
   }
 
-  // Check if code already exists for another promo code
-  if (code && code !== existing.code) {
+  if (code && String(code).trim().toUpperCase() !== existing.code) {
+    const normalizedCode = String(code).trim().toUpperCase();
     const codeExists = await prisma.promoCode.findFirst({
-      where: {
-        code,
-        tenantId,
-        NOT: { id },
-      },
+      where: { code: normalizedCode, NOT: { id } },
     });
-
     if (codeExists) {
-      res.status(400).json({
-        success: false,
-        error: 'Промокод с таким кодом уже существует',
-      });
+      res.status(400).json({ success: false, error: 'Промокод с таким кодом уже существует' });
       return;
     }
   }
 
-  // Validate marketer if provided
   if (marketerId) {
-    const marketer = await prisma.marketer.findFirst({
-      where: {
-        id: marketerId,
-        tenantId,
-      },
-    });
-
-    if (!marketer) {
-      res.status(400).json({
-        success: false,
-        error: 'Маркетолог не найден',
-      });
+    try {
+      await assertMarketerExists(marketerId);
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
       return;
     }
   }
 
   const updateData: any = {};
-  if (code !== undefined) updateData.code = code;
+  if (code !== undefined) updateData.code = String(code).trim().toUpperCase();
   if (description !== undefined) updateData.description = description;
   if (discountType !== undefined) updateData.discountType = discountType;
   if (discountValue !== undefined) updateData.discountValue = discountValue;
@@ -325,55 +241,31 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
   if (usageLimit !== undefined) updateData.usageLimit = usageLimit;
   if (validFrom !== undefined) updateData.validFrom = new Date(validFrom);
   if (validUntil !== undefined) updateData.validUntil = validUntil ? new Date(validUntil) : null;
-  if (marketerId !== undefined) updateData.marketerId = marketerId;
+  if (marketerId !== undefined && scope.kind !== 'marketer') updateData.marketerId = marketerId || null;
   if (isActive !== undefined) updateData.isActive = isActive;
 
   const promoCode = await prisma.promoCode.update({
     where: { id },
     data: updateData,
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
     },
   });
 
-  res.json({
-    success: true,
-    data: promoCode,
-  });
+  res.json({ success: true, data: promoCode });
 });
 
-/**
- * Delete promo code
- */
 export const deletePromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
 
-  const promoCode = await prisma.promoCode.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const promoCode = await prisma.promoCode.findFirst({ where: listWhere(scope, { id }) });
   if (!promoCode) {
-    res.status(404).json({
-      success: false,
-      error: 'Промокод не найден',
-    });
+    res.status(404).json({ success: false, error: 'Промокод не найден' });
     return;
   }
 
-  // If marketer is authenticated, ensure they can only delete their own promo codes
-  if (authenticatedMarketerId && promoCode.marketerId !== authenticatedMarketerId) {
+  if (scope.kind === 'marketer' && promoCode.marketerId !== scope.marketerId) {
     res.status(403).json({
       success: false,
       error: 'Доступ запрещен. Вы можете удалять только свои промокоды.',
@@ -381,55 +273,31 @@ export const deletePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
     return;
   }
 
-  await prisma.promoCode.delete({
-    where: { id },
-  });
-
-  res.json({
-    success: true,
-    message: 'Промокод удален',
-  });
+  await prisma.promoCode.delete({ where: { id } });
+  res.json({ success: true, message: 'Промокод удален' });
 });
 
-/**
- * Get promo code statistics
- */
 export const getPromoCodeStats = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).marketerTenantId || req.tenantId;
+  const scope = getActorScope(req);
   const { id } = req.params;
 
   const promoCode = await prisma.promoCode.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
+    where: listWhere(scope, { id }),
     include: {
       usages: {
         include: {
-          client: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
+          client: { select: { id: true, firstName: true, lastName: true } },
         },
       },
     },
   });
 
   if (!promoCode) {
-    res.status(404).json({
-      success: false,
-      error: 'Промокод не найден',
-    });
+    res.status(404).json({ success: false, error: 'Промокод не найден' });
     return;
   }
 
-  const totalDiscount = promoCode.usages.reduce(
-    (sum, usage) => sum + Number(usage.discountAmount),
-    0
-  );
+  const totalDiscount = promoCode.usages.reduce((sum, usage) => sum + Number(usage.discountAmount), 0);
 
   res.json({
     success: true,
@@ -442,4 +310,3 @@ export const getPromoCodeStats = asyncHandler(async (req: AuthenticatedRequest, 
     },
   });
 });
-

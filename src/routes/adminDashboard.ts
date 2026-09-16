@@ -36,6 +36,13 @@ import {
   getDashboardPresets,
   saveDashboardPreset,
   deleteDashboardPreset,
+  listPlatformPublicationsAdmin,
+  createPlatformPublicationAdmin,
+  listMarketerClosingDocsAdmin,
+  createMarketerClosingDocAdmin,
+  downloadPlatformPublicationImageAdmin,
+  downloadPlatformPublicationFileAdmin,
+  downloadMarketerClosingDocAdmin,
 } from '../controllers/adminDashboardController';
 import {
   listDevNotes,
@@ -81,12 +88,41 @@ import {
 import {
   getAdminMaintenance,
   updateAdminMaintenance,
+  getAdminTestingMode,
+  updateAdminTestingMode,
+  getTestingAccountCandidates,
+  getAdminTerms,
+  updateAdminTerms,
+  getAdminPrivacy,
+  updateAdminPrivacy,
 } from '../controllers/maintenanceController';
 import {
   getSiteTrafficLive,
   getSiteTrafficSummary,
   getSiteTrafficQuietHours,
 } from '../controllers/siteAnalyticsController';
+import {
+  getMarketers as listPlatformMarketers,
+  getMarketer as getPlatformMarketer,
+  createMarketer as createPlatformMarketer,
+  updateMarketer as updatePlatformMarketer,
+  deleteMarketer as deletePlatformMarketer,
+  getMarketerStats as getPlatformMarketerDetailStats,
+} from '../controllers/marketerController';
+import {
+  getPromoCodes as getPlatformPromoCodes,
+  getPromoCode as getPlatformPromoCode,
+  createPromoCode as createPlatformPromoCode,
+  updatePromoCode as updatePlatformPromoCode,
+  deletePromoCode as deletePlatformPromoCode,
+} from '../controllers/promoCodeController';
+import {
+  getReferralLinks as getPlatformReferralLinks,
+  getReferralLink as getPlatformReferralLink,
+  createReferralLink as createPlatformReferralLink,
+  updateReferralLink as updatePlatformReferralLink,
+  deleteReferralLink as deletePlatformReferralLink,
+} from '../controllers/referralLinkController';
 import {
   authenticateSuperAdmin,
   authenticatePlatformViewer,
@@ -100,6 +136,23 @@ const devNotesUpload = multer({
     filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
   }),
   limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+});
+
+const marketerCabinetUploadDir = ensureUploadDir('marketer-cabinet', 'publications');
+const marketerDocsUploadDir = ensureUploadDir('marketer-cabinet', 'docs');
+const marketerPubsUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, marketerCabinetUploadDir),
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024, files: 4 },
+});
+const marketerDocsUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, marketerDocsUploadDir),
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
 });
 
 const router = Router();
@@ -150,6 +203,26 @@ router.delete('/expenses/:id', deleteExpense);
 // Выплата маркетологу
 router.post('/marketers/pay', payMarketer);
 router.get('/marketers/stats', getMarketerStats);
+
+// Платформенный CRUD маркетологов / промо / рефералок (без выбора школы)
+router.get('/platform/marketers', listPlatformMarketers);
+router.get('/platform/marketers/:id', getPlatformMarketer);
+router.post('/platform/marketers', createPlatformMarketer);
+router.put('/platform/marketers/:id', updatePlatformMarketer);
+router.delete('/platform/marketers/:id', deletePlatformMarketer);
+router.get('/platform/marketers/:id/stats', getPlatformMarketerDetailStats);
+
+router.get('/platform/promo-codes', getPlatformPromoCodes);
+router.get('/platform/promo-codes/:id', getPlatformPromoCode);
+router.post('/platform/promo-codes', createPlatformPromoCode);
+router.put('/platform/promo-codes/:id', updatePlatformPromoCode);
+router.delete('/platform/promo-codes/:id', deletePlatformPromoCode);
+
+router.get('/platform/referral-links', getPlatformReferralLinks);
+router.get('/platform/referral-links/:id', getPlatformReferralLink);
+router.post('/platform/referral-links', createPlatformReferralLink);
+router.put('/platform/referral-links/:id', updatePlatformReferralLink);
+router.delete('/platform/referral-links/:id', deletePlatformReferralLink);
 
 // Выдача тарифа аккаунту, изменение срока и история выдачи
 router.put('/tenants/:tenantId/plan', updateTenantPlan);
@@ -230,7 +303,29 @@ router.put('/notification-prefs', updateSuperAdminNotificationPrefs);
 router.get('/school-offers', listSchoolOffers);
 router.post('/school-offers', publishSchoolOffer);
 
+router.get('/marketer-publications', listPlatformPublicationsAdmin);
+router.post(
+  '/marketer-publications',
+  marketerPubsUpload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+  ]),
+  createPlatformPublicationAdmin
+);
+router.get('/marketer-publications/:id/image', downloadPlatformPublicationImageAdmin);
+router.get('/marketer-publications/:id/file', downloadPlatformPublicationFileAdmin);
+router.get('/marketer-closing-docs', listMarketerClosingDocsAdmin);
+router.post('/marketer-closing-docs', marketerDocsUpload.single('file'), createMarketerClosingDocAdmin);
+router.get('/marketer-closing-docs/:id/file', downloadMarketerClosingDocAdmin);
+
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);
+router.get('/testing-mode', getAdminTestingMode);
+router.put('/testing-mode', updateAdminTestingMode);
+router.get('/testing-mode/accounts', getTestingAccountCandidates);
+router.get('/terms', getAdminTerms);
+router.put('/terms', updateAdminTerms);
+router.get('/privacy', getAdminPrivacy);
+router.put('/privacy', updateAdminPrivacy);
 
 export default router;

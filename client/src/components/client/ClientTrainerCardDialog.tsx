@@ -149,9 +149,24 @@ const ClientTrainerCardDialog: React.FC<ClientTrainerCardDialogProps> = ({
                   Квалификация: {card.qualification}
                 </Typography>
               )}
+              {card.coachCategory && (
+                <Typography sx={{ mt: 0.25, fontSize: typography.hint, color: colors.textMuted }}>
+                  Тренерская категория: {card.coachCategory}
+                </Typography>
+              )}
+              {card.judgeCategory && (
+                <Typography sx={{ mt: 0.25, fontSize: typography.hint, color: colors.textMuted }}>
+                  Судейская категория: {card.judgeCategory}
+                </Typography>
+              )}
               {card.specialization && (
                 <Typography sx={{ mt: 0.25, fontSize: typography.hint, color: colors.textMuted }}>
                   Специализация: {card.specialization}
+                </Typography>
+              )}
+              {card.achievements && (
+                <Typography sx={{ mt: 1, fontSize: typography.hint, color: colors.textMuted, whiteSpace: 'pre-wrap' }}>
+                  Достижения: {card.achievements}
                 </Typography>
               )}
             </Box>

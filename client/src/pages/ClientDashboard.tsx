@@ -1,5 +1,20 @@
 import React from 'react';
-import { Box, Button, CircularProgress, TextField, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { HourglassEmpty, SportsMartialArtsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -84,6 +99,11 @@ const ClientDashboard: React.FC = () => {
   const [verifyError, setVerifyError] = React.useState('');
   const [emailVerifiedLocal, setEmailVerifiedLocal] = React.useState<boolean | null>(null);
   const [trainerCardId, setTrainerCardId] = React.useState<string | null>(null);
+  const [changeMembershipOpen, setChangeMembershipOpen] = React.useState(false);
+  const [portalCatalog, setPortalCatalog] = React.useState<any[]>([]);
+  const [portalMembershipId, setPortalMembershipId] = React.useState('');
+  const [changingPortalMembership, setChangingPortalMembership] = React.useState(false);
+  const [portalMembershipError, setPortalMembershipError] = React.useState('');
   const clientToken = localStorage.getItem('clientToken');
   const chatUnread = useChatUnreadBadge({
     mode: 'client',
@@ -393,23 +413,55 @@ const ClientDashboard: React.FC = () => {
           caption={balanceCaption}
           placeholder={pending}
         />
-        <MetricCard
-          label="Абонемент"
-          value={membershipValue}
-          icon={<DesignIcon category="metric" name="attendance" size={81} />}
-          designIcon
-          progress={
-            data.membership?.visitsTotal != null
-              ? {
-                  value: Math.max(0, data.membership.visitsTotal - data.membership.visitsUsed),
-                  max: Math.max(1, data.membership.visitsTotal),
-                  danger: (data.membership.remaining ?? 0) < 0,
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0 }}>
+          <MetricCard
+            label="Абонемент"
+            value={membershipValue}
+            icon={<DesignIcon category="metric" name="attendance" size={81} />}
+            designIcon
+            progress={
+              data.membership?.visitsTotal != null
+                ? {
+                    value: Math.max(0, data.membership.visitsTotal - data.membership.visitsUsed),
+                    max: Math.max(1, data.membership.visitsTotal),
+                    danger: (data.membership.remaining ?? 0) < 0,
+                  }
+                : { value: 0, max: 1 }
+            }
+            caption={
+              data.onGroupBilling
+                ? `${membershipCaption}${
+                    data.balance?.nextCharge
+                      ? ` · следующий платёж ${new Date(data.balance.nextCharge.date).toLocaleDateString('ru-RU')}: ${RUB.format(data.balance.nextCharge.amount)}`
+                      : ''
+                  }`
+                : membershipCaption
+            }
+            placeholder={pending}
+          />
+          {!pending && data.canChangeMembership !== false && !data.onGroupBilling && (
+            <Button
+              size="small"
+              variant="text"
+              sx={{ textTransform: 'none', color: colors.primary, alignSelf: 'flex-start' }}
+              onClick={async () => {
+                setPortalMembershipError('');
+                setPortalMembershipId('');
+                setChangeMembershipOpen(true);
+                try {
+                  const items = await apiService.getPortalMembershipCatalog();
+                  setPortalCatalog(items);
+                } catch (e: any) {
+                  setPortalMembershipError(
+                    e?.response?.data?.error || 'Не удалось загрузить тарифы'
+                  );
                 }
-              : { value: 0, max: 1 }
-          }
-          caption={membershipCaption}
-          placeholder={pending}
-        />
+              }}
+            >
+              Сменить тариф
+            </Button>
+          )}
+        </Box>
         <MetricCard
           label="Посещаемость"
           value={attendanceValue}
@@ -588,6 +640,67 @@ const ClientDashboard: React.FC = () => {
         clientId={currentAthleteId || null}
         onClose={() => setTrainerCardId(null)}
       />
+      <Dialog
+        open={changeMembershipOpen}
+        onClose={() => setChangeMembershipOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Сменить абонемент</DialogTitle>
+        <DialogContent>
+          {portalMembershipError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {portalMembershipError}
+            </Alert>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Выберите тариф из каталога школы. Долг по посещениям перейдёт на новый пакет.
+            Автопродление при ручной смене не запускается.
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Тариф</InputLabel>
+            <Select
+              label="Тариф"
+              value={portalMembershipId}
+              onChange={(e) => setPortalMembershipId(String(e.target.value))}
+            >
+              {portalCatalog.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.name}
+                  {m.visits != null ? ` (${m.visits} пос.)` : ''}
+                  {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setChangeMembershipOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={!portalMembershipId || changingPortalMembership}
+            onClick={async () => {
+              try {
+                setChangingPortalMembership(true);
+                setPortalMembershipError('');
+                await apiService.changePortalMembership({
+                  membershipId: portalMembershipId,
+                  clientId: currentAthleteId || undefined,
+                });
+                setChangeMembershipOpen(false);
+                const refreshed = await loadDashboard(switchClientId);
+                setData(refreshed);
+              } catch (e: any) {
+                setPortalMembershipError(e?.response?.data?.error || 'Не удалось сменить тариф');
+              } finally {
+                setChangingPortalMembership(false);
+              }
+            }}
+          >
+            {changingPortalMembership ? '…' : 'Подтвердить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       {pending && activeKey !== 'chats' && activeKey !== 'notifications' ? (
         <Box sx={{ position: 'relative' }}>
           <Box

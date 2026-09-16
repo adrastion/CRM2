@@ -58,7 +58,8 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
     req.tenant.id,
     planType as PlanType,
     returnUrl || defaultReturnUrl,
-    promoCode
+    promoCode,
+    (req.body as any)?.refCode || (req.body as any)?.referralCode
   );
 
   res.json({

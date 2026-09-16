@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { deductFromClientBalance } from '../utils/finance';
-import { accrueForAttendance } from '../services/trainerSalaryService';
+import { accrueForAttendance, reverseForAttendance } from '../services/trainerSalaryService';
 import {
   consumeVisitFromActivePack,
   getActiveMembershipSummary,
@@ -32,10 +32,18 @@ async function applyClientBillingForPresent(params: {
   const { coveredByMembership } = await consumeVisitFromActivePack(clientId, tenantId);
   const shouldChargeClient = !coveredByMembership;
 
-  if (shouldChargeClient && trainingWithDetails?.group) {
-    const trainingPrice = trainingWithDetails.group.trainingPrice
-      ? Number(trainingWithDetails.group.trainingPrice)
-      : 0;
+  if (shouldChargeClient && trainingWithDetails) {
+    let trainingPrice = 0;
+    if (trainingWithDetails.group?.trainingPrice) {
+      trainingPrice = Number(trainingWithDetails.group.trainingPrice);
+    } else if (!trainingWithDetails.groupId && trainingWithDetails.price) {
+      trainingPrice = Number(trainingWithDetails.price);
+    } else if (
+      !trainingWithDetails.groupId &&
+      trainingWithDetails.trainer?.individualTrainingPrice
+    ) {
+      trainingPrice = Number(trainingWithDetails.trainer.individualTrainingPrice);
+    }
 
     if (trainingPrice > 0) {
       const currentClient = await prisma.client.findFirst({
@@ -54,9 +62,19 @@ async function applyClientBillingForPresent(params: {
             `Оплата тренировки: ${trainingWithDetails.title}`
           );
         } else {
-          console.warn(
-            `Insufficient balance for client ${clientId}. Balance: ${clientBalance}, Required: ${trainingPrice}`
-          );
+          // Всё равно начисляем долг через отрицательный баланс
+          await deductFromClientBalance(
+            clientId,
+            trainingPrice,
+            trainingId,
+            attendanceId,
+            tenantId,
+            `Оплата тренировки: ${trainingWithDetails.title}`
+          ).catch(() => {
+            console.warn(
+              `Insufficient balance for client ${clientId}. Balance: ${clientBalance}, Required: ${trainingPrice}`
+            );
+          });
         }
       }
     }
@@ -67,6 +85,7 @@ async function applyClientBillingForPresent(params: {
  * Начисление тренеру по схеме per_training_person.
  * Идемпотентно (уникальность attendanceId в реестре).
  * Не зависит от group.trainingPrice — ставка берётся из настроек тренера.
+ * При снятии PRESENT / платного пропуска — откат начисления.
  */
 async function accrueTrainerForAttendanceStatus(params: {
   tenantId: string;
@@ -81,7 +100,13 @@ async function accrueTrainerForAttendanceStatus(params: {
   const isPaidMiss =
     (params.status === 'ABSENT' || params.status === 'EXCUSED') && !params.shouldCharge;
 
-  if (!isPresent && !isPaidMiss) return;
+  if (!isPresent && !isPaidMiss) {
+    await reverseForAttendance({
+      tenantId: params.tenantId,
+      attendanceId: params.attendanceId,
+    }).catch((err) => console.error('Trainer salary reverse failed:', err));
+    return;
+  }
 
   const training = await prisma.training.findFirst({
     where: { id: params.trainingId, tenantId: params.tenantId },
@@ -620,6 +645,13 @@ export const deleteAttendance = async (req: AuthenticatedRequest, res: Response)
         error: 'Attendance not found'
       });
       return;
+    }
+
+    if (req.tenant?.id) {
+      await reverseForAttendance({
+        tenantId: req.tenant.id,
+        attendanceId: attendance.id,
+      }).catch((err) => console.error('Trainer salary reverse on delete failed:', err));
     }
 
     await prisma.attendance.delete({

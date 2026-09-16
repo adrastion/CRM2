@@ -6,7 +6,9 @@ interface Marketer {
   email: string;
   name: string;
   type: 'MARKETER' | 'MEDIA_PARTNER';
-  tenantId: string;
+  tenantId?: string | null;
+  commissionPercentage?: number;
+  balance?: number;
 }
 
 interface Tenant {
@@ -40,7 +42,7 @@ const initialState: MarketerAuthState = {
 
 type MarketerAuthAction =
   | { type: 'AUTH_START' }
-  | { type: 'AUTH_SUCCESS'; payload: { marketer: Marketer; tenant: Tenant; token: string } }
+  | { type: 'AUTH_SUCCESS'; payload: { marketer: Marketer; tenant: Tenant | null; token: string } }
   | { type: 'AUTH_FAILURE' }
   | { type: 'LOGOUT' };
 
@@ -68,6 +70,20 @@ const marketerAuthReducer = (state: MarketerAuthState, action: MarketerAuthActio
   }
 };
 
+/** Парсит tenant из localStorage; платформенные маркетологи могут быть без школы. */
+function parseStoredTenant(raw: string | null): Tenant | null {
+  if (raw == null || raw === '' || raw === 'null' || raw === 'undefined') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.id) return null;
+    return parsed as Tenant;
+  } catch {
+    return null;
+  }
+}
+
 interface MarketerAuthProviderProps {
   children: ReactNode;
 }
@@ -75,12 +91,9 @@ interface MarketerAuthProviderProps {
 export const MarketerAuthProvider: React.FC<MarketerAuthProviderProps> = ({ children }) => {
   const [state, dispatch] = React.useReducer(marketerAuthReducer, initialState);
 
-  // Check for existing token on app load
   useEffect(() => {
-    // Check if user explicitly logged out (flag in sessionStorage)
     const wasLoggedOut = sessionStorage.getItem('marketerLoggedOut');
     if (wasLoggedOut === 'true') {
-      // Clear the flag and don't restore auth
       sessionStorage.removeItem('marketerLoggedOut');
       localStorage.removeItem('marketerToken');
       localStorage.removeItem('marketer');
@@ -93,14 +106,18 @@ export const MarketerAuthProvider: React.FC<MarketerAuthProviderProps> = ({ chil
     const marketerStr = localStorage.getItem('marketer');
     const tenantStr = localStorage.getItem('marketerTenant');
 
-    if (token && marketerStr && tenantStr) {
+    // tenant не обязателен: платформенные маркетологи без привязки к школе
+    if (token && marketerStr) {
       try {
         const marketer = JSON.parse(marketerStr);
-        const tenant = JSON.parse(tenantStr);
-        
+        if (!marketer?.id) {
+          throw new Error('Invalid marketer payload');
+        }
+        const tenant = parseStoredTenant(tenantStr);
+
         dispatch({
           type: 'AUTH_SUCCESS',
-          payload: { marketer, tenant, token }
+          payload: { marketer, tenant, token },
         });
       } catch (error) {
         console.error('Error parsing stored marketer auth data:', error);
@@ -117,19 +134,18 @@ export const MarketerAuthProvider: React.FC<MarketerAuthProviderProps> = ({ chil
   const login = async (email: string, password: string): Promise<void> => {
     try {
       dispatch({ type: 'AUTH_START' });
-      
+
       const response = await apiService.marketerLogin({ email, password });
-      
-      // Store in localStorage
+
       localStorage.setItem('marketerToken', response.token);
       localStorage.setItem('marketer', JSON.stringify(response.marketer));
-      localStorage.setItem('marketerTenant', JSON.stringify(response.tenant));
-      
+      localStorage.setItem('marketerTenant', JSON.stringify(response.tenant ?? null));
+
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {
           marketer: response.marketer,
-          tenant: response.tenant,
+          tenant: response.tenant ?? null,
           token: response.token,
         },
       });
@@ -140,26 +156,19 @@ export const MarketerAuthProvider: React.FC<MarketerAuthProviderProps> = ({ chil
   };
 
   const logout = (): void => {
-    // Set flag to prevent auto-restore on next mount
     sessionStorage.setItem('marketerLoggedOut', 'true');
-    
-    // Clear all marketer-related data from localStorage
+
     localStorage.removeItem('marketerToken');
     localStorage.removeItem('marketer');
     localStorage.removeItem('marketerTenant');
-    
-    // Also clear from sessionStorage to be safe
+
     sessionStorage.removeItem('marketerToken');
     sessionStorage.removeItem('marketer');
     sessionStorage.removeItem('marketerTenant');
-    
-    // Dispatch logout action immediately
+
     dispatch({ type: 'LOGOUT' });
-    
-    // Force state update by clearing any pending auth checks
-    // This ensures the component re-renders with logged out state
+
     setTimeout(() => {
-      // Double-check that tokens are removed
       if (localStorage.getItem('marketerToken')) {
         localStorage.removeItem('marketerToken');
         localStorage.removeItem('marketer');
@@ -167,8 +176,6 @@ export const MarketerAuthProvider: React.FC<MarketerAuthProviderProps> = ({ chil
       }
     }, 100);
   };
-
-  // Token is handled by apiService interceptor automatically via localStorage
 
   return (
     <MarketerAuthContext.Provider
@@ -190,4 +197,3 @@ export const useMarketerAuth = (): MarketerAuthContextType => {
   }
   return context;
 };
-

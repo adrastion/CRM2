@@ -50,6 +50,10 @@ const setupPasswordSchema = Joi.object({
     'any.only': 'Необходимо принять условия соглашения',
     'any.required': 'Необходимо принять условия соглашения',
   }),
+  acceptPrivacy: Joi.boolean().valid(true).required().messages({
+    'any.only': 'Необходимо согласие на обработку персональных данных',
+    'any.required': 'Необходимо согласие на обработку персональных данных',
+  }),
   rememberMe: Joi.boolean().default(false),
 });
 

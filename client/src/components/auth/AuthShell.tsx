@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { ArrowBack } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../common/BrandLogo';
 import { colors, radii, sizes, typography } from '../../theme/tokens';
@@ -40,6 +41,21 @@ const AuthShell: React.FC<AuthShellProps> = ({
 
   const brand = <BrandLogo size={{ xs: 56, md: 80 }} wordmarkSize={{ xs: 16, md: 20 }} />;
 
+  const goBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    if (
+      sessionStorage.getItem('testingMode') === '1' ||
+      sessionStorage.getItem('maintenanceMode') === '1'
+    ) {
+      navigate('/maintenance');
+      return;
+    }
+    navigate('/');
+  };
+
   return (
     <Box
       sx={{
@@ -51,6 +67,16 @@ const AuthShell: React.FC<AuthShellProps> = ({
         py: { xs: 2, md: 3 },
       }}
     >
+      <Box sx={{ alignSelf: 'flex-start', mb: 1 }}>
+        <Button
+          startIcon={<ArrowBack />}
+          onClick={goBack}
+          sx={{ textTransform: 'none', color: colors.textMuted }}
+        >
+          Назад
+        </Button>
+      </Box>
+
       <Box
         sx={{
           flex: 1,
@@ -114,7 +140,7 @@ const AuthShell: React.FC<AuthShellProps> = ({
         </Box>
       </Box>
 
-      <Box sx={{ textAlign: 'center', pt: { xs: 2, md: 3 } }}>
+      <Box sx={{ textAlign: 'center', pt: { xs: 2, md: 3 }, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography
           component="button"
           type="button"
@@ -131,6 +157,23 @@ const AuthShell: React.FC<AuthShellProps> = ({
           }}
         >
           Пользовательское соглашение
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => navigate('/privacy')}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: colors.textMuted,
+            fontSize: typography.label,
+            fontFamily: 'inherit',
+            p: 0,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Политика конфиденциальности
         </Typography>
       </Box>
     </Box>

@@ -97,8 +97,8 @@ function writeSessionKeys(session: SessionLike): string {
     case 'MARKETER':
       localStorage.setItem('marketerToken', session.token);
       localStorage.setItem('marketer', JSON.stringify(session.marketer));
-      localStorage.setItem('marketerTenant', JSON.stringify(session.tenant));
-      destination = '/marketer/panel';
+      localStorage.setItem('marketerTenant', JSON.stringify(session.tenant ?? null));
+      destination = '/marketer/dashboard';
       break;
 
     case 'PROMO_CODE_ADMIN':
@@ -282,7 +282,7 @@ export function currentSessionDestination(): string | null {
   if (localStorage.getItem('testerToken')) return '/tester/dashboard';
   if (localStorage.getItem('platformStaffToken')) return '/platform-staff/desk';
   if (localStorage.getItem('promoCodeAdminToken')) return '/admin/promo-codes';
-  if (localStorage.getItem('marketerToken')) return '/marketer/panel';
+  if (localStorage.getItem('marketerToken')) return '/marketer/dashboard';
   return null;
 }
 

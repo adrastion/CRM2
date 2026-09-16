@@ -260,6 +260,8 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
   try {
     const tenantId = req.tenant?.id;
     const limit = parseInt(req.query.limit as string) || 10;
+    /** Берём с запасом, чтобы после группировки хватило сводных карточек */
+    const fetchLimit = Math.min(Math.max(limit * 15, 30), 200);
 
     if (!tenantId) {
       res.status(401).json({
@@ -269,10 +271,9 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
-    // Check if user is a trainer
     let trainer = null;
     let trainerGroupIds: string[] = [];
-    
+
     if (req.user?.role === 'TRAINER') {
       trainer = await prisma.trainer.findFirst({
         where: {
@@ -285,13 +286,11 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
       });
 
       if (trainer) {
-        trainerGroupIds = trainer.groups.map(g => g.id);
+        trainerGroupIds = trainer.groups.map((g) => g.id);
       }
     }
 
-    // Get recent activities from different sources
     const [recentClients, recentPayments, recentTrainings, recentAttendances] = await Promise.all([
-      // Recent clients - для тренера только клиенты его групп
       trainer && trainerGroupIds.length > 0
         ? prisma.client.findMany({
             where: {
@@ -304,16 +303,14 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
               }
             },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: fetchLimit,
             include: {
               groupMemberships: {
-                where: { 
+                where: {
                   isActive: true,
                   groupId: { in: trainerGroupIds }
                 },
-                include: {
-                  group: true
-                },
+                include: { group: true },
                 take: 1
               }
             }
@@ -321,164 +318,268 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
         : prisma.client.findMany({
             where: { tenantId },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: fetchLimit,
             include: {
               groupMemberships: {
                 where: { isActive: true },
-                include: {
-                  group: true
-                },
+                include: { group: true },
                 take: 1
               }
             }
           }),
-      // Recent payments - для тренера не показываем
       req.user?.role === 'TRAINER'
         ? Promise.resolve([])
         : prisma.payment.findMany({
-            where: { tenantId },
+            where: { tenantId, status: 'paid' },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: fetchLimit,
             include: {
               client: true,
               membership: true
             }
           }),
-      // Recent trainings - для тренера только его тренировки
       trainer
         ? prisma.training.findMany({
             where: {
               tenantId,
-              trainerId: trainer.id
+              trainerId: trainer.id,
+              endTime: { lt: new Date() }
             },
-            orderBy: { startTime: 'desc' },
-            take: limit,
+            orderBy: { endTime: 'desc' },
+            take: fetchLimit,
             include: {
               group: true,
-              trainer: {
-                include: {
-                  user: true
-                }
-              },
-              substituteTrainer: {
-                include: {
-                  user: true
-                }
-              }
+              trainer: { include: { user: true } },
+              substituteTrainer: { include: { user: true } }
             }
           })
         : prisma.training.findMany({
-            where: { tenantId },
-            orderBy: { startTime: 'desc' },
-            take: limit,
+            where: {
+              tenantId,
+              endTime: { lt: new Date() }
+            },
+            orderBy: { endTime: 'desc' },
+            take: fetchLimit,
             include: {
               group: true,
-              trainer: {
-                include: {
-                  user: true
-                }
-              },
-              substituteTrainer: {
-                include: {
-                  user: true
-                }
-              }
+              trainer: { include: { user: true } },
+              substituteTrainer: { include: { user: true } }
             }
           }),
-      // Recent attendances - для тренера только его групп
       trainer && trainerGroupIds.length > 0
         ? prisma.attendance.findMany({
             where: {
               tenantId,
-              training: {
-                groupId: { in: trainerGroupIds }
-              }
+              training: { groupId: { in: trainerGroupIds } }
             },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: fetchLimit,
             include: {
               client: true,
-              training: {
-                include: {
-                  group: true
-                }
-              }
+              training: { include: { group: true } }
             }
           })
         : prisma.attendance.findMany({
             where: { tenantId },
             orderBy: { createdAt: 'desc' },
-            take: limit,
+            take: fetchLimit,
             include: {
               client: true,
-              training: {
-                include: {
-                  group: true
-                }
-              }
+              training: { include: { group: true } }
             }
           })
     ]);
 
-    // Combine and format activities
-    const activities: any[] = [];
+    const dayKey = (d: Date) => {
+      const x = new Date(d);
+      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    };
 
-    // Add client activities
-    recentClients.forEach(client => {
+    const attendanceStatusLabel = (status: string) => {
+      switch (status) {
+        case 'PRESENT':
+          return 'присутствовал';
+        case 'ABSENT':
+          return 'отсутствовал';
+        case 'EXCUSED':
+          return 'уважительная причина';
+        case 'LATE':
+          return 'опоздал';
+        default:
+          return status.toLowerCase();
+      }
+    };
+
+    type ActivityItem = {
+      label: string;
+      detail?: string;
+      timestamp: Date;
+      amount?: number;
+    };
+
+    type RawActivity = {
+      type: string;
+      groupKey: string;
+      title: string;
+      icon: string;
+      timestamp: Date;
+      item: ActivityItem;
+      amount?: number;
+      meta?: { trainingId?: string; groupName?: string };
+    };
+
+    const raw: RawActivity[] = [];
+
+    for (const client of recentClients) {
       const group = client.groupMemberships?.[0]?.group;
-      activities.push({
+      const name = `${client.firstName} ${client.lastName}`.trim();
+      raw.push({
         type: 'client_created',
-        title: 'Новый клиент зарегистрирован',
-        description: `${client.firstName} ${client.lastName}${group ? ` присоединился к группе ${group.name}` : ''}`,
+        groupKey: `client_created:${dayKey(client.createdAt)}`,
+        title: 'Новые клиенты',
+        icon: 'People',
         timestamp: client.createdAt,
-        icon: 'People'
+        item: {
+          label: name,
+          detail: group ? `группа ${group.name}` : undefined,
+          timestamp: client.createdAt,
+        },
       });
-    });
+    }
 
-    // Add payment activities
-    recentPayments.forEach(payment => {
-      if (payment.status === 'paid') {
-        activities.push({
-          type: 'payment_received',
-          title: 'Получен платеж',
-          description: `${payment.type === 'membership' ? 'Ежемесячный платеж за членство' : 'Платеж'} от ${payment.client.firstName} ${payment.client.lastName}`,
-          timestamp: payment.paidAt || payment.createdAt,
-          icon: 'AttachMoney',
-          amount: payment.amount
-        });
-      }
-    });
+    for (const payment of recentPayments) {
+      const ts = payment.paidAt || payment.createdAt;
+      const name = `${payment.client.firstName} ${payment.client.lastName}`.trim();
+      const kind = payment.type === 'membership' ? 'абонемент' : 'платёж';
+      raw.push({
+        type: 'payment_received',
+        groupKey: `payment_received:${dayKey(ts)}`,
+        title: 'Получены платежи',
+        icon: 'AttachMoney',
+        timestamp: ts,
+        amount: Number(payment.amount),
+        item: {
+          label: name,
+          detail: kind,
+          timestamp: ts,
+          amount: Number(payment.amount),
+        },
+      });
+    }
 
-    // Add training activities
-    recentTrainings.forEach(training => {
-      const now = new Date();
-      if (new Date(training.endTime) < now) {
-        // Completed training
-        activities.push({
-          type: 'training_completed',
-          title: 'Тренировка завершена',
-          description: `${training.group?.name || training.title || 'Тренировка'} - ${training.trainer?.user?.firstName} ${training.trainer?.user?.lastName}`,
+    for (const training of recentTrainings) {
+      const trainerUser =
+        training.substituteTrainer?.user || training.trainer?.user;
+      const trainerName = trainerUser
+        ? `${trainerUser.firstName || ''} ${trainerUser.lastName || ''}`.trim()
+        : '';
+      const label = training.group?.name || training.title || 'Тренировка';
+      raw.push({
+        type: 'training_completed',
+        groupKey: `training_completed:${dayKey(training.endTime)}`,
+        title: 'Завершённые тренировки',
+        icon: 'CheckCircle',
+        timestamp: training.endTime,
+        item: {
+          label,
+          detail: trainerName || undefined,
           timestamp: training.endTime,
-          icon: 'CheckCircle'
-        });
+        },
+      });
+    }
+
+    for (const attendance of recentAttendances) {
+      const name = `${attendance.client.firstName} ${attendance.client.lastName}`.trim();
+      const groupName = attendance.training?.group?.name || attendance.training?.title || 'Тренировка';
+      const ts = attendance.updatedAt || attendance.createdAt;
+      raw.push({
+        type: 'attendance_marked',
+        groupKey: `attendance_marked:${attendance.trainingId}`,
+        title: 'Отмечена посещаемость',
+        icon: 'CheckCircle',
+        timestamp: ts,
+        meta: { trainingId: attendance.trainingId, groupName },
+        item: {
+          label: name,
+          detail: attendanceStatusLabel(attendance.status),
+          timestamp: ts,
+        },
+      });
+    }
+
+    // Группировка по groupKey
+    const groups = new Map<string, RawActivity[]>();
+    for (const event of raw) {
+      const list = groups.get(event.groupKey) || [];
+      list.push(event);
+      groups.set(event.groupKey, list);
+    }
+
+    const activities = Array.from(groups.values()).map((events) => {
+      events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      const head = events[0];
+      const items = events.map((e) => ({
+        label: e.item.label,
+        detail: e.item.detail || null,
+        timestamp: e.item.timestamp,
+        amount: e.item.amount != null ? Number(e.item.amount) : undefined,
+      }));
+      const count = items.length;
+      const totalAmount =
+        head.type === 'payment_received'
+          ? events.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+          : undefined;
+
+      let description: string;
+      if (head.type === 'attendance_marked') {
+        const gName = head.meta?.groupName || 'тренировка';
+        description =
+          count === 1
+            ? `${items[0].label} — ${items[0].detail || 'отмечен'} · ${gName}`
+            : `${count} клиентов — ${gName}`;
+      } else if (head.type === 'payment_received') {
+        description =
+          count === 1
+            ? `${items[0].detail || 'Платёж'} от ${items[0].label}`
+            : `${count} платежей на ${Number(totalAmount || 0).toLocaleString('ru-RU')} ₽`;
+      } else if (head.type === 'client_created') {
+        description =
+          count === 1
+            ? `${items[0].label}${items[0].detail ? ` · ${items[0].detail}` : ''}`
+            : `${count} новых клиентов`;
+      } else if (head.type === 'training_completed') {
+        description =
+          count === 1
+            ? `${items[0].label}${items[0].detail ? ` — ${items[0].detail}` : ''}`
+            : `${count} тренировок`;
+      } else {
+        description = count === 1 ? items[0].label : `${count} событий`;
       }
+
+      const singularTitle: Record<string, string> = {
+        client_created: 'Новый клиент зарегистрирован',
+        payment_received: 'Получен платеж',
+        training_completed: 'Тренировка завершена',
+        attendance_marked: 'Отмечена посещаемость',
+      };
+
+      return {
+        type: head.type,
+        title: count === 1 ? singularTitle[head.type] || head.title : head.title,
+        description,
+        timestamp: head.timestamp,
+        icon: head.icon,
+        amount: totalAmount,
+        count,
+        trainingId: head.meta?.trainingId,
+        groupName: head.meta?.groupName,
+        items,
+      };
     });
 
-    // Add attendance activities
-    recentAttendances.forEach(attendance => {
-      if (attendance.status === 'PRESENT') {
-        activities.push({
-          type: 'attendance_marked',
-          title: 'Отмечена посещаемость',
-          description: `${attendance.client.firstName} ${attendance.client.lastName} присутствовал на тренировке`,
-          timestamp: attendance.createdAt,
-          icon: 'CheckCircle'
-        });
-      }
-    });
-
-    // Sort by timestamp (most recent first) and limit
-    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    activities.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
     const limitedActivities = activities.slice(0, limit);
 
     res.json({

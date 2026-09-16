@@ -1,34 +1,54 @@
 import { prisma } from '../lib/prisma';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { BCRYPT_ROUNDS } from '../constants/security';
 
+function parseCommission(raw: unknown, fallback = 10): number {
+  if (raw == null || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 100) {
+    const err: any = new Error('commissionPercentage: 0–100');
+    err.statusCode = 400;
+    throw err;
+  }
+  return n;
+}
+
+function marketerSelect() {
+  return {
+    id: true,
+    name: true,
+    email: true,
+    phone: true,
+    type: true,
+    isActive: true,
+    tenantId: true,
+    balance: true,
+    commissionPercentage: true,
+    createdAt: true,
+    updatedAt: true,
+  } as const;
+}
+
 /**
- * Get all marketers with pagination
+ * Get all marketers (platform-wide; PCA and SA)
  */
 export const getMarketers = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
-  const { page = 1, limit = 10, search, type } = req.query as any;
-
+  const { page = 1, limit = 50, search, type } = req.query as any;
   const skip = (parseInt(page.toString()) - 1) * parseInt(limit.toString());
   const take = parseInt(limit.toString());
 
-  const where: any = {
-    tenantId,
-  };
-
+  const where: any = {};
   if (search) {
     where.OR = [
-      { name: { contains: search } },
-      { email: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
     ];
   }
-
-  if (type) {
-    where.type = type;
-  }
+  if (type) where.type = type;
 
   const [marketers, total] = await Promise.all([
     prisma.marketer.findMany({
@@ -36,13 +56,9 @@ export const getMarketers = asyncHandler(async (req: AuthenticatedRequest, res: 
       skip,
       take,
       orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: {
-            promoCodes: true,
-            referralLinks: true,
-          },
-        },
+      select: {
+        ...marketerSelect(),
+        _count: { select: { promoCodes: true, referralLinks: true, referredTenants: true } },
       },
     }),
     prisma.marketer.count({ where }),
@@ -60,228 +76,132 @@ export const getMarketers = asyncHandler(async (req: AuthenticatedRequest, res: 
   });
 });
 
-/**
- * Get single marketer by ID
- */
 export const getMarketer = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
   const { id } = req.params;
-
-  const marketer = await prisma.marketer.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
+  const marketer = await prisma.marketer.findUnique({
+    where: { id },
     include: {
       promoCodes: {
-        include: {
-          _count: {
-            select: {
-              usages: true,
-            },
-          },
-        },
+        include: { _count: { select: { usages: true } } },
       },
       referralLinks: {
-        include: {
-          _count: {
-            select: {
-              clicks: true,
-            },
-          },
-        },
+        include: { _count: { select: { clicks: true } } },
       },
     },
   });
-
   if (!marketer) {
-    res.status(404).json({
-      success: false,
-      error: 'Маркетолог не найден',
-    });
+    res.status(404).json({ success: false, error: 'Маркетолог не найден' });
     return;
   }
-
-  res.json({
-    success: true,
-    data: marketer,
-  });
+  const { password: _, ...safe } = marketer as any;
+  res.json({ success: true, data: safe });
 });
 
-/**
- * Create new marketer
- */
 export const createMarketer = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
-  const { name, email, password, phone, type, isActive = true } = req.body;
+  const { name, email, password, phone, type, isActive = true, commissionPercentage } = req.body;
+  const normalizedEmail = String(email || '')
+    .trim()
+    .toLowerCase();
+  if (!name?.trim() || !normalizedEmail || !password) {
+    res.status(400).json({ success: false, error: 'Укажите имя, email и пароль' });
+    return;
+  }
+  const marketerType = ['MARKETER', 'MEDIA_PARTNER'].includes(String(type))
+    ? String(type)
+    : 'MARKETER';
 
-  // Check if email already exists for this tenant
-  const existing = await prisma.marketer.findFirst({
-    where: {
-      email,
-      tenantId,
-    },
-  });
-
+  const existing = await prisma.marketer.findUnique({ where: { email: normalizedEmail } });
   if (existing) {
-    res.status(400).json({
-      success: false,
-      error: 'Маркетолог с таким email уже существует',
-    });
+    res.status(400).json({ success: false, error: 'Маркетолог с таким email уже существует' });
     return;
   }
 
-  if (!tenantId) {
-    res.status(400).json({
-      success: false,
-      error: 'Tenant ID is required',
-    });
+  let commission = 10;
+  try {
+    commission = parseCommission(commissionPercentage, 10);
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
     return;
   }
 
-  if (!password) {
-    res.status(400).json({
-      success: false,
-      error: 'Password is required',
-    });
-    return;
-  }
-
-  // Hash password
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
   const marketer = await prisma.marketer.create({
     data: {
-      name,
-      email,
+      name: String(name).trim(),
+      email: normalizedEmail,
       password: hashedPassword,
       phone: phone || null,
-      type,
-      isActive,
-      tenantId,
+      type: marketerType,
+      isActive: isActive !== false,
+      tenantId: null,
+      commissionPercentage: commission,
     },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      type: true,
-      isActive: true,
-      tenantId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: marketerSelect(),
   });
 
-  res.status(201).json({
-    success: true,
-    data: marketer,
-  });
+  res.status(201).json({ success: true, data: marketer });
 });
 
-/**
- * Update marketer
- */
 export const updateMarketer = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
   const { id } = req.params;
-  const { name, email, phone, type, isActive } = req.body;
+  const { name, email, phone, type, isActive, commissionPercentage, password } = req.body;
 
-  // Check if marketer exists
-  const existing = await prisma.marketer.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const existing = await prisma.marketer.findUnique({ where: { id } });
   if (!existing) {
-    res.status(404).json({
-      success: false,
-      error: 'Маркетолог не найден',
-    });
+    res.status(404).json({ success: false, error: 'Маркетолог не найден' });
     return;
-  }
-
-  // Check if email already exists for another marketer
-  if (email && email !== existing.email) {
-    const emailExists = await prisma.marketer.findFirst({
-      where: {
-        email,
-        tenantId,
-        NOT: { id },
-      },
-    });
-
-    if (emailExists) {
-      res.status(400).json({
-        success: false,
-        error: 'Маркетолог с таким email уже существует',
-      });
-      return;
-    }
   }
 
   const updateData: any = {};
-  if (name !== undefined) updateData.name = name;
-  if (email !== undefined) updateData.email = email;
+  if (name !== undefined) updateData.name = String(name).trim();
+  if (email !== undefined) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (normalizedEmail !== existing.email) {
+      const emailExists = await prisma.marketer.findUnique({ where: { email: normalizedEmail } });
+      if (emailExists) {
+        res.status(400).json({ success: false, error: 'Маркетолог с таким email уже существует' });
+        return;
+      }
+      updateData.email = normalizedEmail;
+    }
+  }
   if (phone !== undefined) updateData.phone = phone;
   if (type !== undefined) updateData.type = type;
   if (isActive !== undefined) updateData.isActive = isActive;
+  if (commissionPercentage !== undefined) {
+    try {
+      updateData.commissionPercentage = parseCommission(commissionPercentage, Number(existing.commissionPercentage));
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
+      return;
+    }
+  }
+  if (password) {
+    updateData.password = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
+  }
 
   const marketer = await prisma.marketer.update({
     where: { id },
     data: updateData,
+    select: marketerSelect(),
   });
-
-  res.json({
-    success: true,
-    data: marketer,
-  });
+  res.json({ success: true, data: marketer });
 });
 
-/**
- * Delete marketer
- */
 export const deleteMarketer = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
   const { id } = req.params;
-
-  const marketer = await prisma.marketer.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const marketer = await prisma.marketer.findUnique({ where: { id } });
   if (!marketer) {
-    res.status(404).json({
-      success: false,
-      error: 'Маркетолог не найден',
-    });
+    res.status(404).json({ success: false, error: 'Маркетолог не найден' });
+    return;
   }
-
-  await prisma.marketer.delete({
-    where: { id },
-  });
-
-  res.json({
-    success: true,
-    message: 'Маркетолог удален',
-  });
+  await prisma.marketer.delete({ where: { id } });
+  res.json({ success: true, message: 'Маркетолог удален' });
 });
 
-/**
- * Get marketer statistics (for marketer panel)
- */
 export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
   const { id } = req.params;
-  
-  // If marketer is accessing their own stats, use their ID
   const marketerId = (req as any).marketer?.id || id;
-  
-  // If marketer is authenticated, ensure they can only access their own stats
   const authenticatedMarketerId = (req as any).marketer?.id;
   if (authenticatedMarketerId && marketerId !== authenticatedMarketerId) {
     res.status(403).json({
@@ -291,50 +211,34 @@ export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, r
     return;
   }
 
-  const marketer = await prisma.marketer.findFirst({
-    where: {
-      id: marketerId,
-      tenantId,
-    },
+  const marketer = await prisma.marketer.findUnique({
+    where: { id: marketerId },
     include: {
-      promoCodes: {
-        include: {
-          usages: true,
-        },
-      },
-      referralLinks: {
-        include: {
-          clicks: true,
-        },
-      },
+      promoCodes: { include: { usages: true } },
+      referralLinks: { include: { clicks: true } },
     },
   });
-
   if (!marketer) {
-    res.status(404).json({
-      success: false,
-      error: 'Маркетолог не найден',
-    });
+    res.status(404).json({ success: false, error: 'Маркетолог не найден' });
     return;
   }
 
-  // Calculate promo code stats
   const totalPromoCodes = marketer.promoCodes?.length || 0;
   const activePromoCodes = marketer.promoCodes?.filter((pc) => pc.isActive).length || 0;
   const totalPromoUsages = marketer.promoCodes?.reduce((sum, pc) => sum + (pc.usages?.length || 0), 0) || 0;
-  const totalDiscountGiven = marketer.promoCodes?.reduce(
-    (sum, pc) => sum + (pc.usages?.reduce((s, u) => s + Number(u.discountAmount), 0) || 0),
-    0
-  ) || 0;
-
-  // Calculate referral link stats
+  const totalDiscountGiven =
+    marketer.promoCodes?.reduce(
+      (sum, pc) => sum + (pc.usages?.reduce((s, u) => s + Number(u.discountAmount), 0) || 0),
+      0
+    ) || 0;
   const totalReferralLinks = marketer.referralLinks?.length || 0;
   const activeReferralLinks = marketer.referralLinks?.filter((rl) => rl.isActive).length || 0;
   const totalClicks = marketer.referralLinks?.reduce((sum, rl) => sum + (rl.clicks?.length || 0), 0) || 0;
-  const totalConversions = marketer.referralLinks?.reduce(
-    (sum, rl) => sum + (rl.clicks?.filter((c) => c.converted).length || 0),
-    0
-  ) || 0;
+  const totalConversions =
+    marketer.referralLinks?.reduce(
+      (sum, rl) => sum + (rl.clicks?.filter((c) => c.converted).length || 0),
+      0
+    ) || 0;
   const conversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
 
   res.json({
@@ -345,6 +249,8 @@ export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, r
         name: marketer.name,
         email: marketer.email,
         type: marketer.type,
+        balance: Number(marketer.balance),
+        commissionPercentage: Number(marketer.commissionPercentage),
       },
       promoCodes: {
         total: totalPromoCodes,
@@ -363,3 +269,66 @@ export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, r
   });
 });
 
+/** Публичная саморегистрация маркетолога (платформа). */
+export const registerMarketer = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { name, email, password, phone, type } = req.body || {};
+  const normalizedEmail = String(email || '')
+    .trim()
+    .toLowerCase();
+  if (!name?.trim() || !normalizedEmail || !password || String(password).length < 6) {
+    res.status(400).json({ success: false, error: 'Укажите имя, email и пароль (мин. 6 символов)' });
+    return;
+  }
+  const marketerType = String(type) === 'MEDIA_PARTNER' ? 'MEDIA_PARTNER' : 'MARKETER';
+  const existing = await prisma.marketer.findUnique({ where: { email: normalizedEmail } });
+  if (existing) {
+    res.status(400).json({ success: false, error: 'Маркетолог с таким email уже существует' });
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
+  const marketer = await prisma.marketer.create({
+    data: {
+      name: String(name).trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      phone: phone ? String(phone).trim() : null,
+      type: marketerType,
+      isActive: true,
+      tenantId: null,
+      commissionPercentage: 10,
+    },
+  });
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    res.status(500).json({ success: false, error: 'JWT_SECRET is not configured' });
+    return;
+  }
+  const token = jwt.sign(
+    {
+      userId: marketer.id,
+      email: marketer.email,
+      type: 'MARKETER',
+      tenantId: null,
+    },
+    jwtSecret,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as jwt.SignOptions
+  );
+
+  res.status(201).json({
+    success: true,
+    data: {
+      marketer: {
+        id: marketer.id,
+        email: marketer.email,
+        name: marketer.name,
+        type: marketer.type,
+        tenantId: null,
+        commissionPercentage: Number(marketer.commissionPercentage),
+      },
+      tenant: null,
+      token,
+    },
+  });
+});

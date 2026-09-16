@@ -4,6 +4,14 @@ import { AuthenticatedRequest } from '../types';
 import { AuthService } from '../services/authService';
 import bcrypt from 'bcrypt';
 import { BCRYPT_ROUNDS } from '../constants/security';
+import fs from 'fs';
+import path from 'path';
+import {
+  absoluteUploadPath,
+  contentDispositionAttachment,
+  decodeUploadOriginalName,
+  safeUnlink,
+} from '../utils/fileStorage';
 import {
   SALARY_SCHEMES,
   SalaryScheme,
@@ -19,6 +27,42 @@ import {
   backfillPaymentAccruals,
   SCHEME_LABELS,
 } from '../services/trainerSalaryService';
+
+const TRAINER_DOC_KINDS = ['DIPLOMA', 'EDUCATION', 'CERTIFICATE', 'OTHER'] as const;
+type TrainerDocKind = (typeof TRAINER_DOC_KINDS)[number];
+
+function normalizeDocKind(raw: unknown): TrainerDocKind {
+  const k = String(raw || 'OTHER').toUpperCase();
+  return (TRAINER_DOC_KINDS as readonly string[]).includes(k) ? (k as TrainerDocKind) : 'OTHER';
+}
+
+/** full = admin/owner/senior; self = own profile whitelist only */
+async function resolveTrainerEditAccess(
+  req: AuthenticatedRequest,
+  trainer: { id: string; userId: string; tenantId: string }
+): Promise<'full' | 'self' | null> {
+  const role = req.user?.role;
+  if (!role || !req.user?.id) return null;
+  if (role === 'OWNER' || role === 'ADMIN') return 'full';
+  if (role !== 'TRAINER') return null;
+  if (trainer.userId === req.user.id) return 'self';
+  const { getSeniorBranchIds } = await import('../utils/branchAccess');
+  const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
+  if (seniorIds.length === 0) return null;
+  const linked = await prisma.trainer.findFirst({
+    where: {
+      id: trainer.id,
+      tenantId: trainer.tenantId,
+      OR: [
+        { branches: { some: { branchId: { in: seniorIds } } } },
+        { groups: { some: { branchId: { in: seniorIds }, isActive: true } } },
+        { seniorBranches: { some: { id: { in: seniorIds } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return linked ? 'full' : null;
+}
 
 function parseSalaryFields(body: any): {
   salaryScheme: SalaryScheme;
@@ -189,7 +233,10 @@ export const getTrainerById = async (req: AuthenticatedRequest, res: Response) =
           include: {
             branch: true
           }
-        }
+        },
+        documents: {
+          orderBy: { createdAt: 'desc' },
+        },
       }
     });
 
@@ -198,6 +245,12 @@ export const getTrainerById = async (req: AuthenticatedRequest, res: Response) =
         success: false,
         error: 'Trainer not found'
       });
+      return;
+    }
+
+    const access = await resolveTrainerEditAccess(req, trainer);
+    if (!access && req.user?.role === 'TRAINER') {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
       return;
     }
 
@@ -225,7 +278,22 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    const { email, password, firstName, lastName, middleName, phone, qualification, experience, specialization, canViewAllGroups, branchId } = req.body;
+    const {
+      email,
+      password,
+      firstName,
+      lastName,
+      middleName,
+      phone,
+      qualification,
+      experience,
+      specialization,
+      coachCategory,
+      judgeCategory,
+      achievements,
+      canViewAllGroups,
+      branchId,
+    } = req.body;
     const salary = parseSalaryFields(req.body);
     const normalizedEmail = String(email || '').trim().toLowerCase();
 
@@ -297,10 +365,19 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         qualification,
         experience: experience ? parseInt(experience) : undefined,
         specialization,
+        coachCategory: coachCategory != null ? String(coachCategory).trim() || null : null,
+        judgeCategory: judgeCategory != null ? String(judgeCategory).trim() || null : null,
+        achievements: achievements != null ? String(achievements).trim() || null : null,
         salaryType: salary.salaryType,
         salaryAmount: salary.salaryAmount,
         salaryScheme: salary.salaryScheme,
         salaryRate: salary.salaryRate,
+        individualTrainingPrice:
+          req.body.individualTrainingPrice !== undefined &&
+          req.body.individualTrainingPrice !== null &&
+          req.body.individualTrainingPrice !== ''
+            ? parseFloat(String(req.body.individualTrainingPrice))
+            : null,
         canViewAllGroups:
           seniorBranchIds.length > 0
             ? false
@@ -347,13 +424,21 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 export const updateTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, middleName, email, phone, password, qualification, experience, specialization, canViewAllGroups } = req.body;
-    const hasSalaryUpdate =
-      req.body.salaryScheme !== undefined ||
-      req.body.salaryType !== undefined ||
-      req.body.salaryRate !== undefined ||
-      req.body.salaryAmount !== undefined;
-    const salary = hasSalaryUpdate ? parseSalaryFields(req.body) : null;
+    const {
+      firstName,
+      lastName,
+      middleName,
+      email,
+      phone,
+      password,
+      qualification,
+      experience,
+      specialization,
+      coachCategory,
+      judgeCategory,
+      achievements,
+      canViewAllGroups,
+    } = req.body;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
@@ -373,8 +458,24 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
+    const access = await resolveTrainerEditAccess(req, trainer);
+    if (!access) {
+      res.status(403).json({ success: false, error: 'Недостаточно прав для изменения профиля' });
+      return;
+    }
+
+    const isSelfOnly = access === 'self';
+
+    const hasSalaryUpdate =
+      !isSelfOnly &&
+      (req.body.salaryScheme !== undefined ||
+        req.body.salaryType !== undefined ||
+        req.body.salaryRate !== undefined ||
+        req.body.salaryAmount !== undefined);
+    const salary = hasSalaryUpdate ? parseSalaryFields(req.body) : null;
+
     const normalizedEmail =
-      email !== undefined && email !== null
+      !isSelfOnly && email !== undefined && email !== null
         ? String(email).trim().toLowerCase()
         : undefined;
 
@@ -395,44 +496,62 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
-    // Обновляем данные пользователя
-    const userUpdateData: any = {
-      firstName,
-      lastName,
-      middleName,
-      phone,
-    };
+    const userUpdateData: any = {};
+    if (firstName !== undefined) userUpdateData.firstName = firstName;
+    if (lastName !== undefined) userUpdateData.lastName = lastName;
+    if (middleName !== undefined) userUpdateData.middleName = middleName;
+    if (phone !== undefined) userUpdateData.phone = phone;
     if (normalizedEmail) {
       userUpdateData.email = normalizedEmail;
     }
 
-    // Если указан новый пароль, хешируем его и отзываем старые сессии
-    if (password && password.trim() !== '') {
+    if (!isSelfOnly && password && password.trim() !== '') {
       userUpdateData.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
       userUpdateData.sessionVersion = { increment: 1 };
     }
 
-    await prisma.user.update({
-      where: { id: trainer.userId },
-      data: userUpdateData
-    });
-
-    // Обновляем данные тренера
-    const trainerUpdateData: any = {
-      qualification,
-      experience: experience ? parseInt(experience) : undefined,
-      specialization,
-      canViewAllGroups: canViewAllGroups !== undefined ? (canViewAllGroups === true || canViewAllGroups === 'true') : undefined
-    };
-
-    if (salary) {
-      trainerUpdateData.salaryScheme = salary.salaryScheme;
-      trainerUpdateData.salaryRate = salary.salaryRate;
-      trainerUpdateData.salaryType = salary.salaryType;
-      trainerUpdateData.salaryAmount = salary.salaryAmount;
+    if (Object.keys(userUpdateData).length > 0) {
+      await prisma.user.update({
+        where: { id: trainer.userId },
+        data: userUpdateData
+      });
     }
 
-    // Удаляем undefined значения
+    const trainerUpdateData: any = {};
+    if (qualification !== undefined) trainerUpdateData.qualification = qualification;
+    if (experience !== undefined) {
+      trainerUpdateData.experience =
+        experience === null || experience === '' ? null : parseInt(String(experience), 10);
+    }
+    if (specialization !== undefined) trainerUpdateData.specialization = specialization;
+    if (coachCategory !== undefined) {
+      trainerUpdateData.coachCategory = String(coachCategory || '').trim() || null;
+    }
+    if (judgeCategory !== undefined) {
+      trainerUpdateData.judgeCategory = String(judgeCategory || '').trim() || null;
+    }
+    if (achievements !== undefined) {
+      trainerUpdateData.achievements = String(achievements || '').trim() || null;
+    }
+
+    if (!isSelfOnly) {
+      if (canViewAllGroups !== undefined) {
+        trainerUpdateData.canViewAllGroups =
+          canViewAllGroups === true || canViewAllGroups === 'true';
+      }
+      if (salary) {
+        trainerUpdateData.salaryScheme = salary.salaryScheme;
+        trainerUpdateData.salaryRate = salary.salaryRate;
+        trainerUpdateData.salaryType = salary.salaryType;
+        trainerUpdateData.salaryAmount = salary.salaryAmount;
+      }
+      if (req.body.individualTrainingPrice !== undefined) {
+        const raw = req.body.individualTrainingPrice;
+        trainerUpdateData.individualTrainingPrice =
+          raw === null || raw === '' ? null : parseFloat(String(raw));
+      }
+    }
+
     Object.keys(trainerUpdateData).forEach(key => {
       if (trainerUpdateData[key] === undefined) {
         delete trainerUpdateData[key];
@@ -443,7 +562,8 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       where: { id },
       data: trainerUpdateData,
       include: {
-        user: true
+        user: true,
+        documents: { orderBy: { createdAt: 'desc' } },
       }
     });
 
@@ -1094,5 +1214,160 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
       success: false,
       error: 'Failed to retrieve trainers earnings'
     });
+  }
+};
+
+export const listTrainerDocuments = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+    });
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    const access = await resolveTrainerEditAccess(req, trainer);
+    if (!access && req.user?.role === 'TRAINER') {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+    const documents = await prisma.trainerDocument.findMany({
+      where: { trainerId: id, tenantId: req.tenant!.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: documents });
+  } catch (error) {
+    console.error('List trainer documents error:', error);
+    res.status(500).json({ success: false, error: 'Failed to list documents' });
+  }
+};
+
+export const uploadTrainerDocument = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+    });
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    const access = await resolveTrainerEditAccess(req, trainer);
+    if (!access) {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ success: false, error: 'Файл не загружен' });
+      return;
+    }
+
+    const originalName = decodeUploadOriginalName(file.originalname);
+    const storagePath = path.join('trainer-docs', String(req.tenant!.id), file.filename).replace(/\\/g, '/');
+    const title =
+      String(req.body?.title || '').trim() ||
+      originalName.replace(/\.[^.]+$/, '') ||
+      'Документ';
+    const kind = normalizeDocKind(req.body?.kind);
+
+    const doc = await prisma.trainerDocument.create({
+      data: {
+        trainerId: id,
+        tenantId: req.tenant!.id,
+        kind,
+        title,
+        originalName,
+        storagePath,
+        mimeType: file.mimetype || 'application/octet-stream',
+        sizeBytes: file.size,
+        uploadedById: req.user?.id || null,
+      },
+    });
+
+    res.status(201).json({ success: true, data: doc });
+  } catch (error) {
+    console.error('Upload trainer document error:', error);
+    if (req.file?.filename && req.tenant?.id) {
+      safeUnlink(path.join('trainer-docs', String(req.tenant.id), req.file.filename).replace(/\\/g, '/'));
+    }
+    res.status(500).json({ success: false, error: 'Failed to upload document' });
+  }
+};
+
+export const downloadTrainerDocument = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, docId } = req.params;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+    });
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    const access = await resolveTrainerEditAccess(req, trainer);
+    // Staff (owner/admin) can always download; trainers only own or managed
+    if (!access && req.user?.role === 'TRAINER') {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN' && !access) {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+
+    const doc = await prisma.trainerDocument.findFirst({
+      where: { id: docId, trainerId: id, tenantId: req.tenant!.id },
+    });
+    if (!doc) {
+      res.status(404).json({ success: false, error: 'Документ не найден' });
+      return;
+    }
+    const abs = absoluteUploadPath(doc.storagePath);
+    if (!fs.existsSync(abs)) {
+      res.status(404).json({ success: false, error: 'Файл отсутствует на диске' });
+      return;
+    }
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', contentDispositionAttachment(doc.originalName));
+    fs.createReadStream(abs).pipe(res);
+  } catch (error) {
+    console.error('Download trainer document error:', error);
+    res.status(500).json({ success: false, error: 'Failed to download document' });
+  }
+};
+
+export const deleteTrainerDocument = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, docId } = req.params;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+    });
+    if (!trainer) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    const access = await resolveTrainerEditAccess(req, trainer);
+    if (!access) {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+
+    const doc = await prisma.trainerDocument.findFirst({
+      where: { id: docId, trainerId: id, tenantId: req.tenant!.id },
+    });
+    if (!doc) {
+      res.status(404).json({ success: false, error: 'Документ не найден' });
+      return;
+    }
+
+    await prisma.trainerDocument.delete({ where: { id: doc.id } });
+    safeUnlink(doc.storagePath);
+    res.json({ success: true, message: 'Документ удалён' });
+  } catch (error) {
+    console.error('Delete trainer document error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete document' });
   }
 };

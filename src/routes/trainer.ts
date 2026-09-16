@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
+import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
 import {
   getTrainers,
   getTrainerById,
@@ -19,9 +21,33 @@ import {
   accrueFixedMonthlySalaries,
   backfillSalaryFromAttendance,
   backfillSalaryFromPayments,
+  listTrainerDocuments,
+  uploadTrainerDocument,
+  downloadTrainerDocument,
+  deleteTrainerDocument,
 } from '../controllers/trainerController';
 
 const router = Router();
+
+const trainerDocsUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      const tenantId = (req as any).tenant?.id || (req as any).tenantId || 'unknown';
+      cb(null, ensureUploadDir('trainer-docs', String(tenantId)));
+    },
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname.toLowerCase();
+    const ok =
+      file.mimetype === 'application/pdf' ||
+      file.mimetype.startsWith('image/') ||
+      /\.(pdf|png|jpe?g|webp|gif|heic)$/i.test(name);
+    if (ok) cb(null, true);
+    else cb(new Error('Допустимы PDF и изображения'));
+  },
+});
 
 // All routes require authentication
 router.use(authenticate);
@@ -39,6 +65,25 @@ router.get('/:id', getTrainerById);
 router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainers'), createTrainer);
 router.put('/:id', requireOwnerAdminOrTrainer, updateTrainer);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteTrainer);
+
+// Documents
+router.get('/:id/documents', requireOwnerAdminOrTrainer, listTrainerDocuments);
+router.post(
+  '/:id/documents',
+  requireOwnerAdminOrTrainer,
+  (req, res, next) => {
+    trainerDocsUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
+        return;
+      }
+      next();
+    });
+  },
+  uploadTrainerDocument
+);
+router.get('/:id/documents/:docId/download', requireOwnerAdminOrTrainer, downloadTrainerDocument);
+router.delete('/:id/documents/:docId', requireOwnerAdminOrTrainer, deleteTrainerDocument);
 
 // Trainer branch assignment routes
 router.post('/:id/branches', requireOwnerAdminOrTrainer, addBranchToTrainer);

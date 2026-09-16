@@ -292,6 +292,10 @@ const Clients: React.FC = () => {
   const [issuingMembership, setIssuingMembership] = useState(false);
   const [remainingVisitsInput, setRemainingVisitsInput] = useState('');
   const [savingRemaining, setSavingRemaining] = useState(false);
+  const [createBillingEffectiveFrom, setCreateBillingEffectiveFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
   const [statsDialog, setStatsDialog] = useState(false);
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
   const [clientStats, setClientStats] = useState<any>(null);
@@ -627,7 +631,19 @@ const Clients: React.FC = () => {
         for (const groupId of groupIds) {
           if (trialGroupId && groupId === trialGroupId) continue;
           try {
-            await apiService.addClientToGroup(groupId, createdClient.id);
+            const group = groups.find((g) => g.id === groupId);
+            const needsBillingDate =
+              Boolean(group?.isMonthlyPayment) ||
+              Boolean(
+                (group as any)?.membershipPlans?.some(
+                  (p: any) => p.membership?.category === 'GROUP' && p.membership?.isActive !== false
+                )
+              );
+            await apiService.addClientToGroup(
+              groupId,
+              createdClient.id,
+              needsBillingDate ? createBillingEffectiveFrom : undefined
+            );
           } catch (err: any) {
             console.error(`Error adding client to group ${groupId}:`, err);
           }
@@ -1443,7 +1459,11 @@ const Clients: React.FC = () => {
           setMembershipDialog(true);
           try {
             const res = await apiService.getMemberships({ limit: 200 });
-            setCatalogMemberships((res.data || []).filter((m: Membership) => m.isActive !== false));
+            setCatalogMemberships(
+              (res.data || []).filter(
+                (m: Membership) => m.isActive !== false && (m as any).category !== 'GROUP'
+              )
+            );
           } catch (err) {
             console.error(err);
             setSnackbarMessage('Не удалось загрузить каталог абонементов');
@@ -1750,11 +1770,58 @@ const Clients: React.FC = () => {
                   {groups.filter(g => g.isActive).map((group) => (
                     <MenuItem key={group.id} value={group.id}>
                       {group.name} {group.branch ? `(${group.branch.name})` : ''}
+                      {group.isMonthlyPayment ||
+                      (group as any).membershipPlans?.some(
+                        (p: any) => p.membership?.category === 'GROUP'
+                      )
+                        ? ' · ежемесячная'
+                        : ''}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
+            {formData.groupIds.some((gid) => {
+              const g = groups.find((x) => x.id === gid);
+              return (
+                Boolean(g?.isMonthlyPayment) ||
+                Boolean(
+                  (g as any)?.membershipPlans?.some(
+                    (p: any) => p.membership?.category === 'GROUP' && p.membership?.isActive !== false
+                  )
+                )
+              );
+            }) && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Начало начислений (групповой абонемент)"
+                  value={createBillingEffectiveFrom}
+                  onChange={(e) => setCreateBillingEffectiveFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  helperText="С какой даты начислять ежемесячную оплату"
+                />
+              </Grid>
+            )}
+            {formData.groupIds.some((gid) => {
+              const g = groups.find((x) => x.id === gid);
+              return (
+                Boolean(g?.isMonthlyPayment) ||
+                Boolean(
+                  (g as any)?.membershipPlans?.some(
+                    (p: any) => p.membership?.category === 'GROUP' && p.membership?.isActive !== false
+                  )
+                )
+              );
+            }) && (
+              <Grid item xs={12}>
+                <Alert severity="info">
+                  Выбрана группа с групповым абонементом — клиентский пакет при создании не выдаётся.
+                  Оплата идёт по ежемесячному тарифу группы.
+                </Alert>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <FormControlLabel
                 control={
@@ -2933,7 +3000,21 @@ open={editDialogOpen}
             <Alert severity="warning">
               Выдача абонемента отменяет незакрытые ежемесячные платежи группы. Пока действует
               абонемент (или долг по нему), ежемесячная оплата группы начисляться не будет.
+              Клиент в группе с групповым абонементом не может получить клиентский пакет.
             </Alert>
+
+            {selectedClientForMembership?.groupMemberships?.some(
+              (gm: any) =>
+                gm.isActive &&
+                !gm.isTrial &&
+                (gm.group?.isMonthlyPayment ||
+                  gm.group?.membershipPlans?.some((p: any) => p.membership?.category === 'GROUP'))
+            ) && (
+              <Alert severity="error">
+                Клиент состоит в группе с ежемесячной оплатой — выдача клиентского абонемента
+                недоступна. Снимите с группового тарифа или уберите из группы.
+              </Alert>
+            )}
 
             {selectedClientForMembership?.activeMembership?.visitsTotal != null && (
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
@@ -3015,7 +3096,22 @@ open={editDialogOpen}
           </Button>
           <Button
             variant="contained"
-            disabled={!selectedMembershipId || !selectedClientForMembership || issuingMembership}
+            disabled={
+              !selectedMembershipId ||
+              !selectedClientForMembership ||
+              issuingMembership ||
+              Boolean(
+                selectedClientForMembership?.groupMemberships?.some(
+                  (gm: any) =>
+                    gm.isActive &&
+                    !gm.isTrial &&
+                    (gm.group?.isMonthlyPayment ||
+                      gm.group?.membershipPlans?.some(
+                        (p: any) => p.membership?.category === 'GROUP'
+                      ))
+                )
+              )
+            }
             onClick={async () => {
               if (!selectedClientForMembership || !selectedMembershipId) return;
               try {

@@ -424,16 +424,19 @@ export const getClientDashboard = asyncHandler(
         : null,
     });
 
-    /* --- Следующее списание по ежемесячной оплате --- */
+    /* --- Следующее списание по групповому абонементу --- */
     let nextCharge: { date: string; amount: number } | null = null;
+    const { getGroupBillingPlan } = await import('../services/groupMembershipBillingService');
+    const { clientHasGroupBilling } = await import('../services/groupMembershipBillingService');
     for (const m of memberships) {
-      const g = m.group;
-      if (!g?.isMonthlyPayment || !g.monthlyPaymentAmount) continue;
-      const dueDay = g.paymentDueDay || 1;
+      if (!m.groupId || m.isTrial) continue;
+      const plan = await getGroupBillingPlan(m.groupId);
+      if (!plan) continue;
+      const dueDay = plan.paymentWindowEndDay || 1;
       const candidate = new Date(now.getFullYear(), now.getMonth(), dueDay);
       if (candidate < now) candidate.setMonth(candidate.getMonth() + 1);
       const { amount } = applyPersonalDiscount(
-        Number(g.monthlyPaymentAmount),
+        plan.price,
         client?.personalDiscountType,
         client?.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
       );
@@ -442,6 +445,7 @@ export const getClientDashboard = asyncHandler(
       }
     }
 
+    const onGroupBilling = await clientHasGroupBilling(client.id, tenantId);
     const activeMembership = await getActiveMembershipSummary(client.id, tenantId);
     const membershipPayload = activeMembership
       ? {
@@ -476,6 +480,8 @@ export const getClientDashboard = asyncHandler(
           membershipFeePaid: client.membershipFeePaid,
         },
         membership: membershipPayload,
+        onGroupBilling,
+        canChangeMembership: !onGroupBilling,
         balance: {
           amount: Number(client.balance),
           nextCharge,
@@ -490,6 +496,7 @@ export const getClientDashboard = asyncHandler(
           name: m.group?.name,
           color: m.group?.color,
           branchName: m.group?.branch?.name || null,
+          isMonthlyPayment: Boolean(m.group?.isMonthlyPayment),
         })),
         weekRange: { start: weekStart.toISOString(), end: weekEnd.toISOString() },
         upcomingTrainings: visible(weekTrainings).map(mapTraining),
@@ -658,6 +665,9 @@ export const getClientTrainerCard = asyncHandler(
         experience: trainer.experience ?? null,
         qualification: trainer.qualification ?? null,
         specialization: trainer.specialization ?? null,
+        coachCategory: trainer.coachCategory ?? null,
+        judgeCategory: trainer.judgeCategory ?? null,
+        achievements: trainer.achievements ?? null,
         groups: groups.map((g) => ({
           id: g.id,
           name: g.name,
@@ -677,5 +687,110 @@ export const getClientTrainerCard = asyncHandler(
         })),
       },
     });
+  }
+);
+
+/** Каталог клиентских абонементов школы для ЛК. */
+export const getPortalMembershipCatalog = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const tenantId = req.client?.tenantId || req.parent?.tenantId;
+    if (!tenantId) throw unauthorized('Требуется авторизация');
+
+    const items = await prisma.membership.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        category: 'CLIENT',
+      },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        price: true,
+        visits: true,
+        validityDays: true,
+        duration: true,
+        periodType: true,
+        periodMonths: true,
+        category: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: items,
+    });
+  }
+);
+
+/** Смена клиентского тарифа из ЛК. */
+export const changePortalMembership = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const userType = req.userType;
+    const clientAuthId = req.client?.id;
+    const parentAuthId = req.parent?.id;
+    if (!clientAuthId && !parentAuthId) throw unauthorized('Требуется авторизация');
+
+    const membershipId = String(req.body.membershipId || '');
+    if (!membershipId) {
+      res.status(400).json({ success: false, error: 'Укажите membershipId' });
+      return;
+    }
+
+    let clientId: string;
+    let tenantId: string;
+
+    if (userType === 'parent' && parentAuthId) {
+      const parent = await prisma.parent.findUnique({
+        where: { id: parentAuthId },
+        select: { clientId: true, tenantId: true, isAccountApproved: true },
+      });
+      if (!parent?.isAccountApproved) throw unauthorized('Аккаунт не подтверждён');
+      clientId = parent.clientId;
+      tenantId = parent.tenantId;
+      const requested =
+        typeof req.body.clientId === 'string' && req.body.clientId.trim()
+          ? req.body.clientId.trim()
+          : null;
+      if (requested) {
+        const linked = await findLinkedAthletes(tenantId, userType, clientAuthId, parentAuthId);
+        if (!linked.some((a) => a.id === requested)) throw unauthorized('Нет доступа');
+        clientId = requested;
+      }
+    } else {
+      const client = await prisma.client.findUnique({
+        where: { id: clientAuthId as string },
+        select: { id: true, tenantId: true, isAccountApproved: true },
+      });
+      if (!client?.isAccountApproved) throw unauthorized('Аккаунт не подтверждён');
+      clientId = client.id;
+      tenantId = client.tenantId;
+      const requested =
+        typeof req.body.clientId === 'string' && req.body.clientId.trim()
+          ? req.body.clientId.trim()
+          : null;
+      if (requested && requested !== clientId) {
+        const linked = await findLinkedAthletes(tenantId, userType, clientAuthId, parentAuthId);
+        if (!linked.some((a) => a.id === requested)) throw unauthorized('Нет доступа');
+        clientId = requested;
+      }
+    }
+
+    const { changeClientMembershipPack } = await import('../services/clientMembershipService');
+    try {
+      const result = await changeClientMembershipPack({
+        tenantId,
+        clientId,
+        membershipId,
+      });
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      const status = err?.statusCode || 500;
+      res.status(status).json({
+        success: false,
+        error: err?.message || 'Не удалось сменить абонемент',
+      });
+    }
   }
 );

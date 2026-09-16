@@ -51,6 +51,7 @@ import {
 import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
 import { loginRateLimiter } from '../middleware/loginRateLimit';
 import { ensureCsrfCookie } from '../middleware/authCookies';
+import { registerMarketer } from '../controllers/marketerController';
 
 const router = Router();
 
@@ -66,6 +67,7 @@ router.post('/select-account', loginRateLimiter, validateSelectAccount, selectAc
 router.post('/register', validateRegister, register);
 router.post('/login', loginRateLimiter, validateLogin, login);
 router.post('/unified-staff-login', loginRateLimiter, validateLogin, unifiedStaffLogin);
+router.post('/marketer/register', loginRateLimiter, registerMarketer);
 router.post('/marketer/login', loginRateLimiter, validateMarketerLogin, marketerLogin);
 router.post(
   '/promo-code-admin/login',

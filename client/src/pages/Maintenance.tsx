@@ -1,35 +1,74 @@
 import React from 'react';
-import { Box, Button, Divider, List, ListItemButton, ListItemText, Typography } from '@mui/material';
+import { Box, Button, Divider, List, ListItemButton, ListItemText, Stack, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/common/BrandLogo';
 import { colors, typography } from '../theme/tokens';
 import {
+  canSwitchToSavedAccount,
   getActiveAccountId,
   listSavedAccounts,
   SavedAccountSlot,
-  switchToAccount,
+  switchToAccountSafe,
 } from '../utils/accountSwitcher';
+import { clearAllAuthStorage } from '../utils/authSession';
 
 type Props = {
   message?: string;
+  mode?: 'maintenance' | 'testing';
 };
 
 /**
- * Полноэкранная заглушка режима технических работ.
- * Показывает список сохранённых аккаунтов, чтобы можно было вернуться на SA.
+ * Полноэкранная заглушка режима технических работ / тестирования.
+ * Показывает список сохранённых аккаунтов, чтобы можно было вернуться на SA
+ * или на разрешённый тестовый аккаунт.
  */
 const Maintenance: React.FC<Props> = ({
   message = 'На сайте сейчас технические работы. Сервис временно недоступен. Попробуйте позже.',
+  mode = 'maintenance',
 }) => {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = React.useState<SavedAccountSlot[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [slotAccess, setSlotAccess] = React.useState<Record<string, boolean>>({});
+  const [switchingId, setSwitchingId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setAccounts(listSavedAccounts().sort((a, b) => b.updatedAt - a.updatedAt));
+    const list = listSavedAccounts().sort((a, b) => b.updatedAt - a.updatedAt);
+    setAccounts(list);
     setActiveId(getActiveAccountId());
+
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, boolean> = {};
+      await Promise.all(
+        list.map(async (account) => {
+          next[account.id] = await canSwitchToSavedAccount(account);
+        })
+      );
+      if (!cancelled) setSlotAccess(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const saAccounts = accounts.filter((a) => a.accountType === 'SUPER_ADMIN');
-  const otherAccounts = accounts.filter((a) => a.accountType !== 'SUPER_ADMIN');
+  const availableAccounts = accounts.filter(
+    (a) => a.accountType === 'SUPER_ADMIN' || slotAccess[a.id] === true
+  );
+  const blockedAccounts = accounts.filter(
+    (a) => a.accountType !== 'SUPER_ADMIN' && slotAccess[a.id] !== true
+  );
+
+  const title = mode === 'testing' ? 'Режим тестирования' : 'Технические работы';
+  const loginLabel =
+    mode === 'testing' ? 'Войти разрешённым аккаунтом' : 'Вход для администратора';
+
+  const onSwitch = async (id: string) => {
+    setSwitchingId(id);
+    const result = await switchToAccountSafe(id);
+    if (result !== 'ok') setSwitchingId(null);
+  };
 
   return (
     <Box
@@ -41,6 +80,7 @@ const Maintenance: React.FC<Props> = ({
         justifyContent: 'center',
         px: 3,
         py: 6,
+        pb: { xs: 14, sm: 10 },
         bgcolor: colors.surface,
         backgroundImage: `linear-gradient(160deg, ${colors.surface} 0%, ${colors.primarySoft} 55%, ${colors.surface} 100%)`,
       }}
@@ -57,7 +97,7 @@ const Maintenance: React.FC<Props> = ({
           maxWidth: 520,
         }}
       >
-        Технические работы
+        {title}
       </Typography>
       <Typography
         sx={{
@@ -72,7 +112,7 @@ const Maintenance: React.FC<Props> = ({
         {message}
       </Typography>
 
-      {saAccounts.length > 0 && (
+      {availableAccounts.length > 0 && (
         <Box
           sx={{
             mt: 4,
@@ -94,20 +134,20 @@ const Maintenance: React.FC<Props> = ({
               fontWeight: 600,
             }}
           >
-            Вернуться к супер-админу
+            Доступные аккаунты
           </Typography>
           <List dense disablePadding>
-            {saAccounts.map((account) => {
+            {availableAccounts.map((account) => {
               const isActive = account.id === activeId;
               return (
                 <ListItemButton
                   key={account.id}
-                  disabled={isActive}
-                  onClick={() => switchToAccount(account.id)}
+                  disabled={isActive || switchingId === account.id}
+                  onClick={() => void onSwitch(account.id)}
                 >
                   <ListItemText
                     primary={account.displayName}
-                    secondary={account.subtitle || 'Супер-админ'}
+                    secondary={account.subtitle || undefined}
                     primaryTypographyProps={{ fontWeight: isActive ? 700 : 600 }}
                   />
                 </ListItemButton>
@@ -117,7 +157,7 @@ const Maintenance: React.FC<Props> = ({
         </Box>
       )}
 
-      {otherAccounts.length > 0 && (
+      {blockedAccounts.length > 0 && (
         <Box sx={{ mt: 2, width: '100%', maxWidth: 400 }}>
           <Typography
             sx={{
@@ -127,7 +167,9 @@ const Maintenance: React.FC<Props> = ({
               color: colors.textHint,
             }}
           >
-            Другие аккаунты сейчас недоступны
+            {mode === 'testing'
+              ? 'Остальные аккаунты недоступны (нет в списке тестирования)'
+              : 'Другие аккаунты сейчас недоступны'}
           </Typography>
           <List
             dense
@@ -139,7 +181,7 @@ const Maintenance: React.FC<Props> = ({
               opacity: 0.7,
             }}
           >
-            {otherAccounts.map((account) => (
+            {blockedAccounts.map((account) => (
               <ListItemButton key={account.id} disabled>
                 <ListItemText
                   primary={account.displayName}
@@ -153,13 +195,32 @@ const Maintenance: React.FC<Props> = ({
 
       {accounts.length > 0 && <Divider sx={{ my: 3, width: '100%', maxWidth: 400 }} />}
 
-      <Button
-        href="/auth"
-        variant="text"
-        sx={{ textTransform: 'none', color: colors.primary }}
-      >
-        Вход для администратора
-      </Button>
+      <Stack spacing={0.5} sx={{ mt: accounts.length === 0 ? 4 : 0, alignItems: 'center' }}>
+        <Button
+          variant="text"
+          onClick={() => {
+            clearAllAuthStorage();
+            navigate('/auth');
+          }}
+          sx={{ textTransform: 'none', color: colors.primary }}
+        >
+          {loginLabel}
+        </Button>
+        <Button
+          variant="text"
+          onClick={() => navigate('/terms')}
+          sx={{ textTransform: 'none', color: colors.textMuted }}
+        >
+          Пользовательское соглашение
+        </Button>
+        <Button
+          variant="text"
+          onClick={() => navigate('/privacy')}
+          sx={{ textTransform: 'none', color: colors.textMuted }}
+        >
+          Политика конфиденциальности
+        </Button>
+      </Stack>
     </Box>
   );
 };

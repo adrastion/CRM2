@@ -38,6 +38,7 @@ const navigationItems: Array<{
   { label: 'Заметки и задачи', path: '/staff-workspace', iconName: 'knowledge-base', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'staffWorkspace' },
   { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'clients', onboarding: 'clients-nav' },
   { label: 'Сотрудники', path: '/trainers', iconName: 'staff', roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
+  { label: 'Мой профиль', path: '/trainer/profile', iconName: 'clients', roles: ['TRAINER'], tabKey: 'trainerProfile' },
   { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER'], tabKey: 'trainerEarnings' },
   { label: 'Группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
   { label: 'Филиалы', path: '/branches', iconName: 'branches', roles: ['OWNER', 'ADMIN'], tabKey: 'branches', onboarding: 'branches-nav' },
@@ -73,6 +74,8 @@ const SA_DASHBOARD_SECTIONS: Array<{
   { section: 'server-load', label: 'Нагрузка сервера', iconName: 'settings' },
   { section: 'site-traffic', label: 'Посещаемость сайта', iconName: 'dashboard' },
   { section: 'maintenance', label: 'Техобслуживание', iconName: 'faq' },
+  { section: 'terms', label: 'Соглашение', iconName: 'knowledge-base' },
+  { section: 'privacy', label: 'Политика ПДн', iconName: 'faq' },
   { section: 'notifications', label: 'Уведомления', iconName: 'faq' },
   { section: 'planner', label: 'Планировщик', iconName: 'schedule' },
   { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
@@ -109,7 +112,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     Boolean(tester && localStorage.getItem('testerToken')) &&
     location.pathname.startsWith('/tester');
 
-  const isPlatformShell = isSuperAdminRoute || isTesterRoute;
+  const isMarketerRoute = location.pathname.startsWith('/marketer/');
+  const isPromoCodeAdminRoute = location.pathname.startsWith('/admin/promo-codes');
+  /** Кабинеты вне школьной сессии — без школьных уведомлений/поиска/баннеров. */
+  const isNonSchoolShell = isMarketerRoute || isPromoCodeAdminRoute;
+
+  const isPlatformShell = isSuperAdminRoute || isTesterRoute || isNonSchoolShell;
 
   const schoolToken = !isPlatformShell ? localStorage.getItem('token') : null;
   const chatUnread = useChatUnreadBadge({
@@ -252,14 +260,73 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
             onClick: () => navigate('/tester/dashboard'),
           },
         ]
+      : isMarketerRoute
+        ? [
+            {
+              key: '/marketer/dashboard',
+              label: 'Панель управления',
+              iconName: 'dashboard',
+              onClick: () => navigate('/marketer/dashboard'),
+            },
+            {
+              key: '/marketer/clients',
+              label: 'Клиенты',
+              iconName: 'clients',
+              onClick: () => navigate('/marketer/clients'),
+            },
+            {
+              key: '/marketer/tasks',
+              label: 'Задачи',
+              iconName: 'knowledge-base',
+              onClick: () => navigate('/marketer/tasks'),
+            },
+            {
+              key: '/marketer/calendar',
+              label: 'Календарь',
+              iconName: 'schedule',
+              onClick: () => navigate('/marketer/calendar'),
+            },
+            {
+              key: '/marketer/chats',
+              label: 'Чаты',
+              iconName: 'chats',
+              onClick: () => navigate('/marketer/chats'),
+            },
+            {
+              key: '/marketer/finance',
+              label: 'Финансы',
+              iconName: 'finance',
+              onClick: () => navigate('/marketer/finance'),
+            },
+            {
+              key: '/marketer/ads',
+              label: 'Реклама',
+              iconName: 'tariffs',
+              onClick: () => navigate('/marketer/ads'),
+            },
+          ]
+        : isPromoCodeAdminRoute
+          ? [
+              {
+                key: '/admin/promo-codes',
+                label: 'Промокоды',
+                iconName: 'tariffs',
+                onClick: () => navigate('/admin/promo-codes'),
+              },
+            ]
       : navigationItems
           .filter((item) => {
             const role = user?.role || '';
             const roleOk =
               item.roles.includes(role) ||
               (canAccessAdminNav(user) && item.roles.includes('ADMIN') && !item.roles.includes('TRAINER'));
-            // «Мой заработок» остаётся и для старшего тренера
-            if (item.path === '/trainer/earnings' && role === 'TRAINER') return visibleTabs[item.tabKey!] !== false;
+            // «Мой заработок» и «Мой профиль» остаются и для старшего тренера
+            if (
+              (item.path === '/trainer/earnings' || item.path === '/trainer/profile') &&
+              role === 'TRAINER'
+            ) {
+              return visibleTabs[item.tabKey!] !== false;
+            }
             if (!roleOk) return false;
             if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
             return true;
@@ -273,6 +340,28 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
             ...(item.path === '/chats' && chatUnread > 0 ? { badge: chatUnread } : {}),
           }));
 
+  const marketerName = (() => {
+    try {
+      const raw = localStorage.getItem('marketer');
+      if (!raw) return '';
+      const m = JSON.parse(raw);
+      return m?.name || m?.email || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  const promoAdminName = (() => {
+    try {
+      const raw = localStorage.getItem('promoCodeAdmin');
+      if (!raw) return '';
+      const a = JSON.parse(raw);
+      return a?.name || a?.email || '';
+    } catch {
+      return '';
+    }
+  })();
+
   const userName = isSuperAdminRoute
     ? [superAdmin?.lastName, superAdmin?.firstName].filter(Boolean).join(' ') ||
       superAdmin?.email ||
@@ -281,6 +370,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       ? [tester?.lastName, tester?.firstName].filter(Boolean).join(' ') ||
         tester?.email ||
         'Тестировщик'
+      : isMarketerRoute
+        ? marketerName || 'Маркетолог'
+        : isPromoCodeAdminRoute
+          ? promoAdminName || 'Админ промокодов'
       : user
         ? [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ')
         : '';
@@ -289,6 +382,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     ? 'Супер-админ'
     : isTesterRoute
       ? 'Тестировщик'
+      : isMarketerRoute
+        ? 'Маркетолог'
+        : isPromoCodeAdminRoute
+          ? 'Админ промокодов'
       : canAccessAdminNav(user) && user?.role === 'TRAINER'
         ? 'Старший тренер'
         : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
@@ -299,6 +396,22 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       : `/admin/dashboard?section=${saSection}`
     : isTesterRoute
       ? '/tester/dashboard'
+      : isMarketerRoute
+        ? location.pathname.startsWith('/marketer/clients')
+          ? '/marketer/clients'
+          : location.pathname.startsWith('/marketer/tasks')
+            ? '/marketer/tasks'
+            : location.pathname.startsWith('/marketer/calendar')
+              ? '/marketer/calendar'
+              : location.pathname.startsWith('/marketer/chats')
+                ? '/marketer/chats'
+                : location.pathname.startsWith('/marketer/finance')
+                  ? '/marketer/finance'
+                  : location.pathname.startsWith('/marketer/ads')
+                    ? '/marketer/ads'
+                    : '/marketer/dashboard'
+        : isPromoCodeAdminRoute
+          ? '/admin/promo-codes'
       : location.pathname.startsWith('/schedule')
         ? '/schedule'
         : location.pathname;
@@ -308,7 +421,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       (location.pathname.startsWith('/admin/support-hub')
         ? 'Support Hub'
         : SA_SECTION_TITLES[saSection] || 'Панель супер-админа')
-    : pageTitle;
+    : isMarketerRoute
+      ? pageTitle || 'Панель маркетолога'
+      : isPromoCodeAdminRoute
+        ? pageTitle || 'Промокоды'
+        : pageTitle;
 
   return (
     <Box>

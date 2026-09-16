@@ -4,31 +4,61 @@ import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { randomBytes } from 'crypto';
 
-/**
- * Generate unique referral code
- */
+type ActorScope =
+  | { kind: 'sa' }
+  | { kind: 'marketer'; marketerId: string }
+  | { kind: 'pca'; schoolTenantId: string };
+
+function getActorScope(req: any): ActorScope {
+  if (req.superAdmin) return { kind: 'sa' };
+  if (req.marketer?.id) return { kind: 'marketer', marketerId: req.marketer.id };
+  const schoolTenantId = req.promoCodeAdminTenantId || req.tenantId;
+  if (!schoolTenantId) {
+    const err: any = new Error('Tenant ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { kind: 'pca', schoolTenantId };
+}
+
+function listWhere(scope: ActorScope, extra: Record<string, unknown> = {}) {
+  const where: any = { ...extra };
+  if (scope.kind === 'marketer') {
+    where.marketerId = scope.marketerId;
+  } else if (scope.kind === 'pca') {
+    where.tenantId = scope.schoolTenantId;
+  } else {
+    where.tenantId = null;
+  }
+  return where;
+}
+
+function createTenantId(scope: ActorScope): string | null {
+  if (scope.kind === 'pca') return scope.schoolTenantId;
+  return null;
+}
+
+async function assertMarketerExists(marketerId: string) {
+  const marketer = await prisma.marketer.findUnique({ where: { id: marketerId } });
+  if (!marketer) {
+    const err: any = new Error('Маркетолог не найден');
+    err.statusCode = 400;
+    throw err;
+  }
+  return marketer;
+}
+
 function generateReferralCode(): string {
   return randomBytes(8).toString('hex').toUpperCase();
 }
 
-/**
- * Get all referral links with pagination
- */
 export const getReferralLinks = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { page = 1, limit = 10, search, marketerId } = req.query as any;
-  
-  // If marketer is authenticated, filter by their ID
-  const finalMarketerId = authenticatedMarketerId || marketerId;
-
   const skip = (parseInt(page.toString()) - 1) * parseInt(limit.toString());
   const take = parseInt(limit.toString());
 
-  const where: any = {
-    tenantId,
-  };
-
+  const where = listWhere(scope);
   if (search) {
     where.OR = [
       { code: { contains: search } },
@@ -36,9 +66,8 @@ export const getReferralLinks = asyncHandler(async (req: AuthenticatedRequest, r
       { description: { contains: search } },
     ];
   }
-
-  if (finalMarketerId) {
-    where.marketerId = finalMarketerId;
+  if (scope.kind !== 'marketer' && marketerId) {
+    where.marketerId = marketerId;
   }
 
   const [referralLinks, total] = await Promise.all([
@@ -48,25 +77,13 @@ export const getReferralLinks = asyncHandler(async (req: AuthenticatedRequest, r
       take,
       orderBy: { createdAt: 'desc' },
       include: {
-        marketer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            type: true,
-          },
-        },
-        _count: {
-          select: {
-            clicks: true,
-          },
-        },
+        marketer: { select: { id: true, name: true, email: true, type: true } },
+        _count: { select: { clicks: true } },
       },
     }),
     prisma.referralLink.count({ where }),
   ]);
 
-  // Add stats to each link
   const linksWithStats = await Promise.all(
     referralLinks.map(async (link) => {
       const clicks = await prisma.referralClick.findMany({
@@ -75,7 +92,6 @@ export const getReferralLinks = asyncHandler(async (req: AuthenticatedRequest, r
       const totalClicks = clicks.length;
       const conversions = clicks.filter((c) => c.converted).length;
       const conversionRate = totalClicks > 0 ? (conversions / totalClicks) * 100 : 0;
-
       return {
         ...link,
         stats: {
@@ -99,38 +115,17 @@ export const getReferralLinks = asyncHandler(async (req: AuthenticatedRequest, r
   });
 });
 
-/**
- * Get single referral link by ID
- */
 export const getReferralLink = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
 
   const referralLink = await prisma.referralLink.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
+    where: listWhere(scope, { id }),
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
       clicks: {
         include: {
-          client: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
+          client: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
         orderBy: { clickedAt: 'desc' },
         take: 100,
@@ -139,10 +134,7 @@ export const getReferralLink = asyncHandler(async (req: AuthenticatedRequest, re
   });
 
   if (!referralLink) {
-    res.status(404).json({
-      success: false,
-      error: 'Реферальная ссылка не найдена',
-    });
+    res.status(404).json({ success: false, error: 'Реферальная ссылка не найдена' });
     return;
   }
 
@@ -164,121 +156,70 @@ export const getReferralLink = asyncHandler(async (req: AuthenticatedRequest, re
   });
 });
 
-/**
- * Create new referral link
- */
 export const createReferralLink = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { name, description, url, marketerId: providedMarketerId, isActive = true } = req.body;
-  
-  // Use authenticated marketer's ID if not provided
-  const marketerId = providedMarketerId || authenticatedMarketerId;
+  const marketerId =
+    scope.kind === 'marketer' ? scope.marketerId : providedMarketerId || null;
 
-  // Generate unique code
-  let code: string;
+  if (!name?.trim() || !url?.trim()) {
+    res.status(400).json({ success: false, error: 'Укажите название и URL' });
+    return;
+  }
+
+  let code: string | undefined;
   let isUnique = false;
   let attempts = 0;
   while (!isUnique && attempts < 10) {
     code = generateReferralCode();
-    const existing = await prisma.referralLink.findUnique({
-      where: { code },
-    });
-    if (!existing) {
-      isUnique = true;
-    }
+    const existing = await prisma.referralLink.findUnique({ where: { code } });
+    if (!existing) isUnique = true;
     attempts++;
   }
-
-  if (!isUnique) {
-    res.status(500).json({
-      success: false,
-      error: 'Не удалось создать уникальный код',
-    });
+  if (!isUnique || !code) {
+    res.status(500).json({ success: false, error: 'Не удалось создать уникальный код' });
     return;
   }
 
-  if (!tenantId) {
-    res.status(400).json({
-      success: false,
-      error: 'Tenant ID is required',
-    });
-    return;
-  }
-
-  // Validate marketer if provided
   if (marketerId) {
-    const marketer = await prisma.marketer.findFirst({
-      where: {
-        id: marketerId,
-        tenantId,
-      },
-    });
-
-    if (!marketer) {
-      res.status(400).json({
-        success: false,
-        error: 'Маркетолог не найден',
-      });
+    try {
+      await assertMarketerExists(marketerId);
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
       return;
     }
   }
 
   const referralLink = await prisma.referralLink.create({
     data: {
-      code: code!,
-      name,
+      code,
+      name: String(name).trim(),
       description,
-      url,
+      url: String(url).trim(),
       marketerId: marketerId || null,
       isActive,
-      tenantId,
+      tenantId: createTenantId(scope),
     },
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
     },
   });
 
-  res.status(201).json({
-    success: true,
-    data: referralLink,
-  });
+  res.status(201).json({ success: true, data: referralLink });
 });
 
-/**
- * Update referral link
- */
 export const updateReferralLink = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
   const { name, description, url, marketerId, isActive } = req.body;
 
-  // Check if referral link exists
-  const existing = await prisma.referralLink.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const existing = await prisma.referralLink.findFirst({ where: listWhere(scope, { id }) });
   if (!existing) {
-    res.status(404).json({
-      success: false,
-      error: 'Реферальная ссылка не найдена',
-    });
+    res.status(404).json({ success: false, error: 'Реферальная ссылка не найдена' });
     return;
   }
 
-  // If marketer is authenticated, ensure they can only update their own referral links
-  if (authenticatedMarketerId && existing.marketerId !== authenticatedMarketerId) {
+  if (scope.kind === 'marketer' && existing.marketerId !== scope.marketerId) {
     res.status(403).json({
       success: false,
       error: 'Доступ запрещен. Вы можете редактировать только свои реферальные ссылки.',
@@ -286,20 +227,11 @@ export const updateReferralLink = asyncHandler(async (req: AuthenticatedRequest,
     return;
   }
 
-  // Validate marketer if provided
   if (marketerId) {
-    const marketer = await prisma.marketer.findFirst({
-      where: {
-        id: marketerId,
-        tenantId,
-      },
-    });
-
-    if (!marketer) {
-      res.status(400).json({
-        success: false,
-        error: 'Маркетолог не найден',
-      });
+    try {
+      await assertMarketerExists(marketerId);
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
       return;
     }
   }
@@ -308,55 +240,31 @@ export const updateReferralLink = asyncHandler(async (req: AuthenticatedRequest,
   if (name !== undefined) updateData.name = name;
   if (description !== undefined) updateData.description = description;
   if (url !== undefined) updateData.url = url;
-  if (marketerId !== undefined) updateData.marketerId = marketerId;
+  if (marketerId !== undefined && scope.kind !== 'marketer') updateData.marketerId = marketerId || null;
   if (isActive !== undefined) updateData.isActive = isActive;
 
   const referralLink = await prisma.referralLink.update({
     where: { id },
     data: updateData,
     include: {
-      marketer: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          type: true,
-        },
-      },
+      marketer: { select: { id: true, name: true, email: true, type: true } },
     },
   });
 
-  res.json({
-    success: true,
-    data: referralLink,
-  });
+  res.json({ success: true, data: referralLink });
 });
 
-/**
- * Delete referral link
- */
 export const deleteReferralLink = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).promoCodeAdminTenantId || (req as any).marketerTenantId || req.tenantId;
-  const authenticatedMarketerId = (req as any).marketer?.id;
+  const scope = getActorScope(req);
   const { id } = req.params;
 
-  const referralLink = await prisma.referralLink.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-  });
-
+  const referralLink = await prisma.referralLink.findFirst({ where: listWhere(scope, { id }) });
   if (!referralLink) {
-    res.status(404).json({
-      success: false,
-      error: 'Реферальная ссылка не найдена',
-    });
+    res.status(404).json({ success: false, error: 'Реферальная ссылка не найдена' });
     return;
   }
 
-  // If marketer is authenticated, ensure they can only delete their own referral links
-  if (authenticatedMarketerId && referralLink.marketerId !== authenticatedMarketerId) {
+  if (scope.kind === 'marketer' && referralLink.marketerId !== scope.marketerId) {
     res.status(403).json({
       success: false,
       error: 'Доступ запрещен. Вы можете удалять только свои реферальные ссылки.',
@@ -364,34 +272,44 @@ export const deleteReferralLink = asyncHandler(async (req: AuthenticatedRequest,
     return;
   }
 
-  await prisma.referralLink.delete({
-    where: { id },
-  });
-
-  res.json({
-    success: true,
-    message: 'Реферальная ссылка удалена',
-  });
+  await prisma.referralLink.delete({ where: { id } });
+  res.json({ success: true, message: 'Реферальная ссылка удалена' });
 });
 
-/**
- * Track referral link click (public endpoint, can be called without auth)
- */
 export const trackReferralClick = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const { code } = req.params;
-  const { clientId } = req.body;
+  const { clientId } = req.body || {};
   const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
   const userAgent = req.headers['user-agent'];
 
   const referralLink = await prisma.referralLink.findUnique({
-    where: { code },
-    include: { tenant: true },
+    where: { code: String(code || '').toUpperCase() },
   });
 
   if (!referralLink || !referralLink.isActive) {
-    res.status(404).json({
-      success: false,
-      error: 'Реферальная ссылка не найдена или неактивна',
+    // also try exact case
+    const byExact = await prisma.referralLink.findUnique({ where: { code: String(code || '') } });
+    if (!byExact || !byExact.isActive) {
+      res.status(404).json({ success: false, error: 'Реферальная ссылка не найдена или неактивна' });
+      return;
+    }
+    const click = await prisma.referralClick.create({
+      data: {
+        referralLinkId: byExact.id,
+        clientId: clientId || null,
+        ipAddress:
+          typeof ipAddress === 'string'
+            ? ipAddress
+            : Array.isArray(ipAddress)
+              ? ipAddress[0]
+              : ipAddress || null,
+        userAgent: userAgent || null,
+        tenantId: byExact.tenantId,
+      },
+    });
+    res.json({
+      success: true,
+      data: { click, url: byExact.url, code: byExact.code },
     });
     return;
   }
@@ -400,7 +318,12 @@ export const trackReferralClick = asyncHandler(async (req: any, res: Response<Ap
     data: {
       referralLinkId: referralLink.id,
       clientId: clientId || null,
-      ipAddress: typeof ipAddress === 'string' ? ipAddress : (Array.isArray(ipAddress) ? ipAddress[0] : ipAddress) || null,
+      ipAddress:
+        typeof ipAddress === 'string'
+          ? ipAddress
+          : Array.isArray(ipAddress)
+            ? ipAddress[0]
+            : ipAddress || null,
       userAgent: userAgent || null,
       tenantId: referralLink.tenantId,
     },
@@ -408,32 +331,21 @@ export const trackReferralClick = asyncHandler(async (req: any, res: Response<Ap
 
   res.json({
     success: true,
-    data: click,
+    data: { click, url: referralLink.url, code: referralLink.code },
   });
 });
 
-/**
- * Get referral link statistics
- */
 export const getReferralLinkStats = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const tenantId = (req as any).marketerTenantId || req.tenantId;
+  const scope = getActorScope(req);
   const { id } = req.params;
 
   const referralLink = await prisma.referralLink.findFirst({
-    where: {
-      id,
-      tenantId,
-    },
-    include: {
-      clicks: true,
-    },
+    where: listWhere(scope, { id }),
+    include: { clicks: true },
   });
 
   if (!referralLink) {
-    res.status(404).json({
-      success: false,
-      error: 'Реферальная ссылка не найдена',
-    });
+    res.status(404).json({ success: false, error: 'Реферальная ссылка не найдена' });
     return;
   }
 
@@ -442,7 +354,6 @@ export const getReferralLinkStats = asyncHandler(async (req: AuthenticatedReques
   const conversions = clicks.filter((c) => c.converted).length;
   const conversionRate = totalClicks > 0 ? (conversions / totalClicks) * 100 : 0;
 
-  // Group by date
   const clicksByDate: Record<string, number> = {};
   clicks.forEach((click) => {
     const date = click.clickedAt.toISOString().split('T')[0];
@@ -459,4 +370,3 @@ export const getReferralLinkStats = asyncHandler(async (req: AuthenticatedReques
     },
   });
 });
-

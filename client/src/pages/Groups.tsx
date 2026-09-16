@@ -1682,67 +1682,17 @@ const Groups: React.FC = () => {
               </Box>
             </Grid>
             
-            {/* Ежемесячная оплата */}
+            {/* Ежемесячная оплата перенесена в Абонементы */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>Ежемесячная оплата</Typography>
+              <Alert severity="info">
+                Ежемесячная оплата группы настраивается во вкладке «Абонементы» (категория «Групповой»)
+                с привязкой к группе и датой начала действия.
+                {formData.isMonthlyPayment
+                  ? ' У этой группы включена ежемесячная оплата (мигрировано / legacy).'
+                  : ''}
+              </Alert>
             </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.isMonthlyPayment}
-                    onChange={(e) => handleInputChange('isMonthlyPayment', e.target.checked)}
-                  />
-                }
-                label="Включить ежемесячную оплату"
-              />
-            </Grid>
-            {formData.isMonthlyPayment && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Сумма ежемесячного платежа (руб.)"
-                    type="number"
-                    value={formData.monthlyPaymentAmount}
-                    onChange={(e) => handleInputChange('monthlyPaymentAmount', e.target.value)}
-                    inputProps={{ min: 0, step: 0.01 }}
-                    required={formData.isMonthlyPayment}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="День месяца для оплаты"
-                    type="number"
-                    value={formData.paymentDueDay}
-                    onChange={(e) => handleInputChange('paymentDueDay', e.target.value)}
-                    inputProps={{ min: 1, max: 31 }}
-                    required={formData.isMonthlyPayment}
-                    helperText="День месяца, когда клиенты должны оплачивать (1-31)"
-                  />
-                </Grid>
-                {!editDialog && (
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={formData.createPaymentsImmediately}
-                          onChange={(e) => handleInputChange('createPaymentsImmediately', e.target.checked)}
-                        />
-                      }
-                      label="Создать платежи сразу после создания графика тренировок"
-                    />
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Счёт создаётся за месяц первого занятия (не за месяц набора). Пока есть незакрытый
-                      ежемесячный платёж по группе, повтор не создаётся; пробные участники и клиенты с
-                      абонементом пропускаются.
-                    </Typography>
-                  </Grid>
-                )}
-              </>
-            )}
             
             {/* Зарплата тренера по группе */}
             <Grid item xs={12}>
@@ -2033,67 +1983,17 @@ const Groups: React.FC = () => {
               </Box>
             </Grid>
             
-            {/* Ежемесячная оплата */}
+            {/* Ежемесячная оплата перенесена в Абонементы */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>Ежемесячная оплата</Typography>
+              <Alert severity="info">
+                Ежемесячная оплата группы настраивается во вкладке «Абонементы» (категория «Групповой»)
+                с привязкой к группе и датой начала действия.
+                {formData.isMonthlyPayment
+                  ? ' У этой группы включена ежемесячная оплата (мигрировано / legacy).'
+                  : ''}
+              </Alert>
             </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.isMonthlyPayment}
-                    onChange={(e) => handleInputChange('isMonthlyPayment', e.target.checked)}
-                  />
-                }
-                label="Включить ежемесячную оплату"
-              />
-            </Grid>
-            {formData.isMonthlyPayment && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Сумма ежемесячного платежа (руб.)"
-                    type="number"
-                    value={formData.monthlyPaymentAmount}
-                    onChange={(e) => handleInputChange('monthlyPaymentAmount', e.target.value)}
-                    inputProps={{ min: 0, step: 0.01 }}
-                    required={formData.isMonthlyPayment}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="День месяца для оплаты"
-                    type="number"
-                    value={formData.paymentDueDay}
-                    onChange={(e) => handleInputChange('paymentDueDay', e.target.value)}
-                    inputProps={{ min: 1, max: 31 }}
-                    required={formData.isMonthlyPayment}
-                    helperText="День месяца, когда клиенты должны оплачивать (1-31)"
-                  />
-                </Grid>
-                {!editDialog && (
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={formData.createPaymentsImmediately}
-                          onChange={(e) => handleInputChange('createPaymentsImmediately', e.target.checked)}
-                        />
-                      }
-                      label="Создать платежи сразу после создания графика тренировок"
-                    />
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Счёт создаётся за месяц первого занятия (не за месяц набора). Пока есть незакрытый
-                      ежемесячный платёж по группе, повтор не создаётся; пробные участники и клиенты с
-                      абонементом пропускаются.
-                    </Typography>
-                  </Grid>
-                )}
-              </>
-            )}
 
             {/* Зарплата тренера по группе */}
             <Grid item xs={12}>

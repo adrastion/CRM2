@@ -13,7 +13,10 @@ import {
   Chip,
   Divider,
   Alert,
+  Collapse,
+  IconButton,
 } from '@mui/material';
+import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +28,13 @@ import DesignIcon from '../components/common/DesignIcon';
 import { MetricIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
 
+interface ActivityItem {
+  label: string;
+  detail?: string | null;
+  timestamp: string;
+  amount?: number;
+}
+
 interface Activity {
   type: string;
   title: string;
@@ -32,6 +42,10 @@ interface Activity {
   timestamp: string;
   icon: string;
   amount?: number;
+  count?: number;
+  trainingId?: string;
+  groupName?: string;
+  items?: ActivityItem[];
 }
 
 interface UpcomingTraining {
@@ -50,7 +64,7 @@ const RUB = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 0,
 });
 
-/** Карточка быстрого действия из макета. */
+/** Компактная карточка быстрого действия. */
 const QuickAction: React.FC<{
   title: string;
   description: string;
@@ -63,48 +77,57 @@ const QuickAction: React.FC<{
     onClick={onClick}
     sx={{
       border: 'none',
-      textAlign: 'center',
+      textAlign: 'left',
       cursor: 'pointer',
       fontFamily: 'inherit',
       bgcolor: colors.card,
       borderRadius: `${radii.panel}px`,
-      boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
-      px: { xs: 2.5, md: 4 },
-      py: { xs: 2, md: 2.5 },
+      boxShadow: '0 2px 10px rgba(32, 34, 36, 0.06)',
+      px: { xs: 1.5, md: 2 },
+      py: { xs: 1.25, md: 1.5 },
       display: 'flex',
-      flexDirection: 'column',
+      flexDirection: 'row',
       alignItems: 'center',
-      gap: 1.5,
-      transition: 'transform 160ms ease, box-shadow 160ms ease',
+      gap: 1.25,
+      minWidth: 0,
+      transition: 'transform 140ms ease, box-shadow 140ms ease',
       '&:hover': {
-        transform: 'translateY(-3px)',
-        boxShadow: '0 10px 28px rgba(32, 34, 36, 0.12)',
+        transform: 'translateY(-1px)',
+        boxShadow: '0 6px 16px rgba(32, 34, 36, 0.1)',
       },
-      '&:focus-visible': { outline: `3px solid ${colors.primarySoft}`, outlineOffset: 3 },
+      '&:focus-visible': { outline: `3px solid ${colors.primarySoft}`, outlineOffset: 2 },
     }}
   >
-    <Box aria-hidden sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <DesignIcon category="metric" name={iconName} size={72} />
+    <Box aria-hidden sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <DesignIcon category="metric" name={iconName} size={44} />
     </Box>
-    <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, color: colors.text }}>
-      {title}
-    </Typography>
-    <Typography sx={{ fontSize: typography.label, color: colors.textSubtle }}>
-      {description}
-    </Typography>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text, lineHeight: 1.25 }}>
+        {title}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: typography.hint,
+          color: colors.textSubtle,
+          display: { xs: 'none', sm: 'block' },
+          mt: 0.25,
+        }}
+      >
+        {description}
+      </Typography>
+    </Box>
   </Box>
 );
 
 /**
- * Панель управления школы по макету dorabot/1920w Панель управления.pdf:
- * восемь KPI-карт, «Последняя активность», «Предстоящие тренировки»
- * и блок быстрых действий.
+ * Панель управления: быстрые действия сверху, KPI, активность и расписание.
  */
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, tenant } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [expandedActivityKeys, setExpandedActivityKeys] = useState<Record<string, boolean>>({});
   const [upcomingTrainings, setUpcomingTrainings] = useState<UpcomingTraining[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -294,6 +317,56 @@ const Dashboard: React.FC = () => {
 
       {error && <Alert severity="error">{error}</Alert>}
 
+      {/* Быстрые действия — сразу под заголовком */}
+      <Box>
+        <Typography
+          component="h2"
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 700,
+            color: colors.text,
+            mb: 1,
+          }}
+        >
+          Быстрые действия
+        </Typography>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' },
+            gap: { xs: 1, sm: 1.25, md: 1.5 },
+          }}
+        >
+          <QuickAction
+            title="Добавить клиента"
+            description="Зарегистрировать нового клиента"
+            iconName="add-client"
+            onClick={() => navigate('/clients')}
+          />
+          <QuickAction
+            title="Запланировать тренировку"
+            description="Создать занятие в расписании"
+            iconName="schedule-training"
+            onClick={() => navigate('/schedule')}
+          />
+          {!isTrainer ? (
+            <QuickAction
+              title="Записать платеж"
+              description="Обработать оплату клиента"
+              iconName="record-payment"
+              onClick={() => navigate('/finance')}
+            />
+          ) : (
+            <QuickAction
+              title="Клиенты"
+              description="Открыть список и карточку спортсмена"
+              iconName="add-client"
+              onClick={() => navigate('/clients')}
+            />
+          )}
+        </Box>
+      </Box>
+
       {/* KPI-карты */}
       <Box
         sx={{
@@ -339,46 +412,102 @@ const Dashboard: React.FC = () => {
               </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {activities.map((activity, index) => (
-                  <Box
-                    key={`${activity.type}-${index}`}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 2,
-                      px: 2,
-                      py: 1.5,
-                      borderRadius: `${radii.cell}px`,
-                      bgcolor: index % 2 === 0 ? colors.surface : colors.rowAlt,
-                    }}
-                  >
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography
-                        sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}
-                      >
-                        {activity.title}
-                      </Typography>
-                      <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                        {activity.description}
-                      </Typography>
-                      <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.5 }}>
-                        {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
-                      </Typography>
+                {activities.map((activity, index) => {
+                  const key = `${activity.type}-${activity.trainingId || activity.timestamp}-${index}`;
+                  const canExpand = (activity.items?.length || 0) > 1;
+                  const expanded = Boolean(expandedActivityKeys[key]);
+                  return (
+                    <Box
+                      key={key}
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        px: 2,
+                        py: 1.5,
+                        borderRadius: `${radii.cell}px`,
+                        bgcolor: index % 2 === 0 ? colors.surface : colors.rowAlt,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography
+                            sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}
+                          >
+                            {activity.title}
+                            {canExpand && activity.count != null ? ` · ${activity.count}` : ''}
+                          </Typography>
+                          <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+                            {activity.description}
+                          </Typography>
+                          <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.5 }}>
+                            {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
+                          </Typography>
+                        </Box>
+                        {activity.amount != null && (
+                          <Typography
+                            sx={{
+                              fontSize: typography.label,
+                              fontWeight: 700,
+                              color: colors.success,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {RUB.format(Number(activity.amount))}
+                          </Typography>
+                        )}
+                        {canExpand && (
+                          <IconButton
+                            size="small"
+                            aria-label={expanded ? 'Свернуть' : 'Подробности'}
+                            onClick={() =>
+                              setExpandedActivityKeys((prev) => ({
+                                ...prev,
+                                [key]: !prev[key],
+                              }))
+                            }
+                            sx={{ mt: -0.5 }}
+                          >
+                            {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                          </IconButton>
+                        )}
+                      </Box>
+                      {canExpand && (
+                        <Collapse in={expanded}>
+                          <Box sx={{ mt: 1, pl: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {(activity.items || []).map((item, i) => (
+                              <Box
+                                key={`${key}-item-${i}`}
+                                sx={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  gap: 1,
+                                  alignItems: 'baseline',
+                                }}
+                              >
+                                <Typography sx={{ fontSize: typography.hint, color: colors.text }}>
+                                  {item.label}
+                                  {item.detail ? ` — ${item.detail}` : ''}
+                                </Typography>
+                                {item.amount != null && (
+                                  <Typography
+                                    sx={{
+                                      fontSize: typography.hint,
+                                      fontWeight: 600,
+                                      color: colors.success,
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {RUB.format(Number(item.amount))}
+                                  </Typography>
+                                )}
+                              </Box>
+                            ))}
+                          </Box>
+                        </Collapse>
+                      )}
                     </Box>
-                    {activity.amount != null && (
-                      <Typography
-                        sx={{
-                          fontSize: typography.label,
-                          fontWeight: 700,
-                          color: colors.success,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {RUB.format(activity.amount)}
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             )}
           </Panel>
@@ -447,56 +576,6 @@ const Dashboard: React.FC = () => {
             </Box>
           )}
         </Panel>
-      </Box>
-
-      {/* Быстрые действия */}
-      <Box>
-        <Typography
-          component="h2"
-          sx={{
-            fontSize: typography.panelTitle,
-            fontWeight: 700,
-            color: colors.text,
-            mb: { xs: 2, md: 2.5 },
-          }}
-        >
-          Быстрые действия
-        </Typography>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' },
-            gap: { xs: 1.5, sm: 2, md: 3 },
-          }}
-        >
-          <QuickAction
-            title="Добавить клиента"
-            description="Зарегистрировать нового клиента"
-            iconName="add-client"
-            onClick={() => navigate('/clients')}
-          />
-          <QuickAction
-            title="Запланировать тренировку"
-            description="Создать занятие в расписании"
-            iconName="schedule-training"
-            onClick={() => navigate('/schedule')}
-          />
-          {!isTrainer ? (
-            <QuickAction
-              title="Записать платеж"
-              description="Обработать оплату клиента"
-              iconName="record-payment"
-              onClick={() => navigate('/finance')}
-            />
-          ) : (
-            <QuickAction
-              title="Клиенты"
-              description="Открыть список и карточку спортсмена"
-              iconName="add-client"
-              onClick={() => navigate('/clients')}
-            />
-          )}
-        </Box>
       </Box>
 
       {/* Диалог тарифа */}

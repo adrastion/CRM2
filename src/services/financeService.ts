@@ -978,14 +978,26 @@ export class FinanceService {
     });
 
     const rows = clients.map((client) => {
-      const pending = client.payments.filter((p) => p.status === 'pending' || p.status === 'overdue');
-      const paid = client.payments.filter((p) => p.status === 'paid');
+      const pending = client.payments.filter(
+        (p) =>
+          !p.isAccrualAdjustment &&
+          (p.status === 'pending' || p.status === 'overdue')
+      );
+      const paid = client.payments.filter(
+        (p) => !p.isAccrualAdjustment && p.status === 'paid'
+      );
+      // Эффективное начисление = pending + paid (корректировки меняют pending, сами в сумму не входят)
       const chargePayments = client.payments.filter(
-        (p) => p.status !== 'cancelled' && Number(p.amount) > 0
+        (p) =>
+          !p.isAccrualAdjustment &&
+          p.status !== 'cancelled' &&
+          p.status !== 'adjustment' &&
+          Number(p.amount) > 0
       );
       const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
       const paidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
-      const latest = client.payments[0];
+      const latest =
+        client.payments.find((p) => !p.isAccrualAdjustment) || client.payments[0];
       const membershipPrice =
         chargePayments.length > 0
           ? chargePayments.reduce((s, p) => s + Number(p.amount), 0)
@@ -1018,6 +1030,234 @@ export class FinanceService {
       if (filters.amountTo != null && r.membershipPrice > filters.amountTo) return false;
       return true;
     });
+  }
+
+  /**
+   * Append-only корректировка начисления абонемента.
+   * Исходный Payment не меняется; создаётся signed adjustment + finance op.
+   */
+  static async correctMembershipAccrual(
+    tenantId: string,
+    input: {
+      clientId: string;
+      paymentId?: string | null;
+      newAmount: number;
+      reason: string;
+      userId: string;
+      occurredAt?: Date;
+    }
+  ) {
+    const reason = String(input.reason || '').trim();
+    if (!reason) throw badRequest('Укажите причину корректировки', 'reason');
+    const newAmount = Number(input.newAmount);
+    if (!Number.isFinite(newAmount) || newAmount < 0) {
+      throw badRequest('Некорректная новая сумма', 'newAmount');
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { id: input.clientId, tenantId },
+    });
+    if (!client) throw notFound('Клиент не найден');
+
+    const membershipPayments = await prisma.payment.findMany({
+      where: {
+        tenantId,
+        clientId: input.clientId,
+        OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+        status: { not: 'cancelled' },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let source = input.paymentId
+      ? membershipPayments.find((p) => p.id === input.paymentId && !p.isAccrualAdjustment)
+      : null;
+    if (!source && input.paymentId) {
+      const byId = await prisma.payment.findFirst({
+        where: {
+          id: input.paymentId,
+          tenantId,
+          clientId: input.clientId,
+          isAccrualAdjustment: false,
+        },
+      });
+      if (byId) source = byId;
+    }
+    if (!source) {
+      source =
+        membershipPayments.find(
+          (p) => !p.isAccrualAdjustment && (p.status === 'pending' || p.status === 'overdue')
+        ) ||
+        membershipPayments.find((p) => !p.isAccrualAdjustment) ||
+        null;
+    }
+    if (!source) throw badRequest('Не найдено исходное начисление', 'paymentId');
+
+    const currentEffective = membershipPayments
+      .filter(
+        (p) =>
+          !p.isAccrualAdjustment &&
+          p.status !== 'cancelled' &&
+          p.status !== 'adjustment' &&
+          Number(p.amount) > 0
+      )
+      .reduce((s, p) => s + Number(p.amount), 0);
+    const delta = newAmount - currentEffective;
+    if (Math.abs(delta) < 0.005) {
+      throw badRequest('Новая сумма совпадает с текущим начислением', 'newAmount');
+    }
+
+    const occurredAt = input.occurredAt || new Date();
+    const absDelta = Math.abs(delta);
+
+    const adjustment = await prisma.$transaction(async (tx) => {
+      const adj = await tx.payment.create({
+        data: {
+          tenantId,
+          clientId: input.clientId,
+          membershipId: source!.membershipId,
+          branchId: source!.branchId,
+          groupId: source!.groupId,
+          amount: delta,
+          type: source!.type || 'membership',
+          status: 'adjustment',
+          isMonthlyPayment: source!.isMonthlyPayment,
+          periodKey: source!.periodKey,
+          notes: `Корректировка начисления: ${reason}`,
+          correctsPaymentId: source!.id,
+          isAccrualAdjustment: true,
+          adjustmentReason: reason,
+          adjustedByUserId: input.userId,
+          adjustedAt: occurredAt,
+          dueDate: source!.dueDate,
+        },
+      });
+
+      await tx.client.update({
+        where: { id: input.clientId },
+        data: { balance: { increment: -delta } },
+      });
+
+      const paidAmount = membershipPayments
+        .filter((p) => !p.isAccrualAdjustment && p.status === 'paid')
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const effectiveAfter = currentEffective + delta;
+
+      if (effectiveAfter <= paidAmount + 0.005) {
+        await tx.payment.updateMany({
+          where: {
+            tenantId,
+            clientId: input.clientId,
+            isAccrualAdjustment: false,
+            status: { in: ['pending', 'overdue'] },
+            OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+          },
+          data: {
+            status: 'cancelled',
+            notes: 'Отменено после корректировки начисления',
+          },
+        });
+      } else if (delta < 0) {
+        // Уменьшаем pending на величину снижения начисления
+        let remainingReduce = -delta;
+        const pendings = await tx.payment.findMany({
+          where: {
+            tenantId,
+            clientId: input.clientId,
+            isAccrualAdjustment: false,
+            status: { in: ['pending', 'overdue'] },
+            OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const pend of pendings) {
+          if (remainingReduce <= 0.005) break;
+          const amt = Number(pend.amount);
+          if (amt <= remainingReduce + 0.005) {
+            await tx.payment.update({
+              where: { id: pend.id },
+              data: {
+                status: 'cancelled',
+                notes: 'Отменено после корректировки начисления',
+              },
+            });
+            remainingReduce -= amt;
+          } else {
+            await tx.payment.update({
+              where: { id: pend.id },
+              data: {
+                originalAmount: pend.originalAmount ?? pend.amount,
+                amount: amt - remainingReduce,
+              },
+            });
+            remainingReduce = 0;
+          }
+        }
+      } else if (delta > 0) {
+        // Увеличиваем / создаём pending на прирост начисления
+        const existingPending = await tx.payment.findFirst({
+          where: {
+            tenantId,
+            clientId: input.clientId,
+            isAccrualAdjustment: false,
+            status: { in: ['pending', 'overdue'] },
+            OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (existingPending) {
+          await tx.payment.update({
+            where: { id: existingPending.id },
+            data: {
+              originalAmount: existingPending.originalAmount ?? existingPending.amount,
+              amount: Number(existingPending.amount) + delta,
+            },
+          });
+        } else {
+          await tx.payment.create({
+            data: {
+              tenantId,
+              clientId: input.clientId,
+              membershipId: source!.membershipId,
+              branchId: source!.branchId,
+              groupId: source!.groupId,
+              amount: delta,
+              type: source!.type || 'membership',
+              status: 'pending',
+              isMonthlyPayment: source!.isMonthlyPayment,
+              periodKey: source!.periodKey,
+              notes: `Доп. начисление после корректировки: ${reason}`,
+              dueDate: source!.dueDate || occurredAt,
+            },
+          });
+        }
+      }
+
+      return adj;
+    });
+
+    await this.createOperation(tenantId, {
+      direction: delta < 0 ? 'income' : 'expense',
+      typeCode: 'membership_charge_adjustment',
+      title: 'Корректировка начисления',
+      amount: absDelta,
+      occurredAt,
+      clientId: input.clientId,
+      groupId: source.groupId,
+      branchId: source.branchId,
+      paymentId: adjustment.id,
+      externalKey: `membership_charge_adjustment:${adjustment.id}`,
+      notes: reason,
+      createdById: input.userId,
+    });
+
+    return {
+      adjustment,
+      sourcePaymentId: source.id,
+      previousEffective: currentEffective,
+      newEffective: currentEffective + delta,
+      delta,
+    };
   }
 
   /** Сводка зарплат тренеров за период. */

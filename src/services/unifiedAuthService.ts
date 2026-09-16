@@ -161,7 +161,10 @@ function fullName(parts: Array<string | null | undefined>): string {
   return parts.filter(Boolean).join(' ').trim();
 }
 
-function toTenantBrief(tenant: { id: string; name: string; subdomain: string }): TenantBrief {
+function toTenantBrief(
+  tenant: { id: string; name: string; subdomain: string } | null | undefined
+): TenantBrief | undefined {
+  if (!tenant) return undefined;
   return { id: tenant.id, name: tenant.name, subdomain: tenant.subdomain };
 }
 
@@ -308,7 +311,8 @@ export class UnifiedAuthService {
     }
 
     for (const m of marketers) {
-      if (!m.isActive || !m.tenant.isActive) continue;
+      if (!m.isActive) continue;
+      if (m.tenantId && m.tenant && !m.tenant.isActive) continue;
       accounts.push({
         accountType: 'MARKETER',
         id: m.id,

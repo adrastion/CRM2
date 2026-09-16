@@ -298,7 +298,7 @@ export class AuthService {
     // Приводим email к нижнему регистру для поиска
     const normalizedEmail = email.trim().toLowerCase();
     
-    // Find marketer with tenant
+    // Find marketer (platform — tenant optional)
     const marketer = await prisma.marketer.findFirst({
       where: { email: normalizedEmail },
       include: { tenant: true }
@@ -312,7 +312,7 @@ export class AuthService {
       throw new Error('Account is deactivated');
     }
 
-    if (!marketer.tenant.isActive) {
+    if (marketer.tenantId && marketer.tenant && !marketer.tenant.isActive) {
       throw new Error('Tenant account is deactivated');
     }
 
@@ -345,13 +345,17 @@ export class AuthService {
         email: marketer.email,
         name: marketer.name,
         type: marketer.type,
-        tenantId: marketer.tenantId
+        tenantId: marketer.tenantId,
+        commissionPercentage: Number(marketer.commissionPercentage),
+        balance: Number(marketer.balance),
       },
-      tenant: {
-        id: marketer.tenant.id,
-        name: marketer.tenant.name,
-        subdomain: marketer.tenant.subdomain
-      },
+      tenant: marketer.tenant
+        ? {
+            id: marketer.tenant.id,
+            name: marketer.tenant.name,
+            subdomain: marketer.tenant.subdomain
+          }
+        : null,
       token
     };
   }

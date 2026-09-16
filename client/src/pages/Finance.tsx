@@ -26,6 +26,9 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import { Add, Close, Tune } from '@mui/icons-material';
 import { DateTimePicker, DatePicker } from '@mui/x-date-pickers';
@@ -223,6 +226,17 @@ const Finance: React.FC = () => {
   const [addFormBaseline, setAddFormBaseline] = useState<Record<string, unknown> | null>(null);
   const [payoutBaseline, setPayoutBaseline] = useState('');
   const [receiveBaseline, setReceiveBaseline] = useState('');
+  const [changePackId, setChangePackId] = useState('');
+  const [catalogForChange, setCatalogForChange] = useState<any[]>([]);
+  const [changingPack, setChangingPack] = useState(false);
+  const [accrualCorrectOpen, setAccrualCorrectOpen] = useState(false);
+  const [accrualCorrectRow, setAccrualCorrectRow] = useState<FinanceMembershipRow | null>(null);
+  const [accrualNewAmount, setAccrualNewAmount] = useState('');
+  const [accrualReason, setAccrualReason] = useState('');
+  const [accrualOccurredAt, setAccrualOccurredAt] = useState<Date | null>(new Date());
+  const [accrualSaving, setAccrualSaving] = useState(false);
+  const [accrualHistory, setAccrualHistory] = useState<any[]>([]);
+  const [accrualHistoryLoading, setAccrualHistoryLoading] = useState(false);
 
   const refsLoadedRef = useRef(false);
 
@@ -497,7 +511,70 @@ const Finance: React.FC = () => {
     setReceiveAmount('');
     setReceiveBaseline('');
     setSelectedMembership(null);
+    setChangePackId('');
   }, []);
+
+  const openAccrualCorrectDialog = async (row: FinanceMembershipRow) => {
+    setAccrualCorrectRow(row);
+    setAccrualNewAmount(String(Math.round(row.membershipPrice ?? 0)));
+    setAccrualReason('');
+    setAccrualOccurredAt(new Date());
+    setAccrualCorrectOpen(true);
+    setAccrualHistoryLoading(true);
+    try {
+      const month = memDate ? format(memDate, 'yyyy-MM') : format(new Date(), 'yyyy-MM');
+      const items = await apiService.getMonthChargesBreakdown({
+        clientId: row.clientId,
+        month,
+      });
+      setAccrualHistory(items);
+    } catch {
+      setAccrualHistory([]);
+    } finally {
+      setAccrualHistoryLoading(false);
+    }
+  };
+
+  const discardAccrualCorrect = () => {
+    setAccrualCorrectOpen(false);
+    setAccrualCorrectRow(null);
+    setAccrualNewAmount('');
+    setAccrualReason('');
+    setAccrualOccurredAt(new Date());
+    setAccrualHistory([]);
+  };
+
+  const handleCorrectAccrual = async (): Promise<boolean> => {
+    if (!accrualCorrectRow) return false;
+    const newAmount = Number(String(accrualNewAmount).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(newAmount) || newAmount < 0) {
+      setError('Введите корректную новую сумму');
+      return false;
+    }
+    if (!accrualReason.trim()) {
+      setError('Укажите причину корректировки');
+      return false;
+    }
+    try {
+      setAccrualSaving(true);
+      await apiService.correctMembershipAccrual({
+        clientId: accrualCorrectRow.clientId,
+        paymentId: accrualCorrectRow.latestPaymentId || undefined,
+        newAmount,
+        reason: accrualReason.trim(),
+        occurredAt: accrualOccurredAt?.toISOString(),
+      });
+      discardAccrualCorrect();
+      setSnackbar('Начисление скорректировано');
+      await Promise.all([loadMemberships(), loadOperations()]);
+      return true;
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось скорректировать начисление');
+      return false;
+    } finally {
+      setAccrualSaving(false);
+    }
+  };
 
   const handlePayout = async (): Promise<boolean> => {
     if (!selectedSalary) return false;
@@ -645,11 +722,23 @@ const Finance: React.FC = () => {
         accrued: row.membershipPrice,
         paid: row.paidAmount,
         remaining: row.remaining,
+        onAccruedClick: () => {
+          void openAccrualCorrectDialog(row);
+        },
         onPaidClick: () => {
           setSelectedMembership(row);
           setReceiveAmount('');
           setReceiveBaseline('');
+          setChangePackId('');
           setReceiveOpen(true);
+          void apiService
+            .getMemberships({ limit: 200 })
+            .then((res) =>
+              setCatalogForChange(
+                (res.data || []).filter((m: any) => m.isActive !== false && m.category !== 'GROUP')
+              )
+            )
+            .catch(() => setCatalogForChange([]));
         },
       })),
     [membershipRows, memDate]
@@ -1737,6 +1826,51 @@ const Finance: React.FC = () => {
                 </Typography>
               );
             })()}
+            <Typography sx={{ mt: 3, mb: 1, fontWeight: 600, fontSize: typography.label }}>
+              Изменить абонемент
+            </Typography>
+            <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+              <InputLabel>Новый тариф</InputLabel>
+              <Select
+                label="Новый тариф"
+                value={changePackId}
+                onChange={(e) => setChangePackId(String(e.target.value))}
+              >
+                {catalogForChange.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name}
+                    {m.visits != null ? ` (${m.visits} пос.)` : ''}
+                    {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={!changePackId || !selectedMembership || changingPack}
+              sx={{ textTransform: 'none' }}
+              onClick={async () => {
+                if (!selectedMembership || !changePackId) return;
+                try {
+                  setChangingPack(true);
+                  await apiService.changeMembershipPack({
+                    clientId: selectedMembership.clientId,
+                    membershipId: changePackId,
+                  });
+                  setSnackbar('Абонемент изменён, начисление пересчитано');
+                  setChangePackId('');
+                  await loadMemberships();
+                  await loadOperations();
+                } catch (e: any) {
+                  setError(e?.response?.data?.error || 'Не удалось сменить абонемент');
+                } finally {
+                  setChangingPack(false);
+                }
+              }}
+            >
+              {changingPack ? 'Смена…' : 'Применить тариф'}
+            </Button>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={discardReceiveForm} sx={{ textTransform: 'none' }}>
@@ -1748,7 +1882,109 @@ const Finance: React.FC = () => {
               onClick={handleReceive}
               sx={{ textTransform: 'none', bgcolor: colors.primary }}
             >
-              Подтвердить
+              Подтвердить оплату
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={accrualCorrectOpen}
+          onClose={() => {
+            if (!accrualSaving) discardAccrualCorrect();
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 600 }}>Изменить начисление</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mb: 1 }}>
+              {accrualCorrectRow ? (
+                <ClientNameLink
+                  clientId={accrualCorrectRow.clientId}
+                  name={accrualCorrectRow.clientName}
+                  variant="inherit"
+                  sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                />
+              ) : null}
+            </Typography>
+            <Typography sx={{ mb: 2, fontSize: typography.label }}>
+              Текущее начисление: {formatMoney(accrualCorrectRow?.membershipPrice ?? 0)}
+            </Typography>
+            <TextField
+              fullWidth
+              autoFocus
+              label="Новая сумма"
+              value={accrualNewAmount}
+              onChange={(e) => setAccrualNewAmount(e.target.value)}
+              sx={{ mb: 2 }}
+              inputProps={{ inputMode: 'decimal' }}
+            />
+            <TextField
+              fullWidth
+              required
+              label="Причина"
+              value={accrualReason}
+              onChange={(e) => setAccrualReason(e.target.value)}
+              multiline
+              minRows={2}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Сотрудник"
+              value={
+                user
+                  ? `${user.lastName || ''} ${user.firstName || ''}`.trim() || user.email || '—'
+                  : '—'
+              }
+              InputProps={{ readOnly: true }}
+              sx={{ mb: 2 }}
+            />
+            <DateTimePicker
+              label="Дата и время"
+              value={accrualOccurredAt}
+              onChange={(v) => setAccrualOccurredAt(v)}
+              slotProps={{ textField: { fullWidth: true, sx: { mb: 2 } } }}
+            />
+            <Typography sx={{ fontWeight: 600, mb: 1, fontSize: typography.label }}>
+              История начислений
+            </Typography>
+            {accrualHistoryLoading ? (
+              <CircularProgress size={20} />
+            ) : accrualHistory.length === 0 ? (
+              <Typography sx={{ color: colors.textMuted, fontSize: typography.hint }}>
+                Нет операций за выбранный месяц
+              </Typography>
+            ) : (
+              <List dense disablePadding>
+                {accrualHistory.map((op) => (
+                  <ListItem key={op.id} alignItems="flex-start" sx={{ px: 0 }}>
+                    <ListItemText
+                      primary={`${formatMoney(Number(op.amount))} · ${op.typeName || op.typeCode}`}
+                      secondary={`${op.occurredAt ? format(new Date(op.occurredAt), 'dd.MM.yyyy HH:mm', { locale: ru }) : ''} — ${op.title || ''}${op.notes ? ` (${op.notes})` : ''}`}
+                      primaryTypographyProps={{ fontSize: typography.label }}
+                      secondaryTypographyProps={{ fontSize: typography.hint }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={discardAccrualCorrect}
+              disabled={accrualSaving}
+              sx={{ textTransform: 'none' }}
+            >
+              Отмена
+            </Button>
+            <Button
+              variant="contained"
+              disabled={accrualSaving || !accrualReason.trim() || !accrualNewAmount}
+              onClick={() => void handleCorrectAccrual()}
+              sx={{ textTransform: 'none', bgcolor: colors.primary }}
+            >
+              Сохранить
             </Button>
           </DialogActions>
         </Dialog>

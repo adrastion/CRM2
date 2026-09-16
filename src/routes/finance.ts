@@ -11,7 +11,10 @@ import {
   getMembershipFinanceSummary,
   receiveMembershipPayment,
   updateMembershipAmount,
+  changeMembershipPack,
+  getMonthChargesBreakdown,
   getFinanceRefs,
+  correctMembershipAccrual,
 } from '../controllers/financeController';
 import {
   listPaymentMethods,
@@ -45,6 +48,9 @@ router.post('/salary-payout', payoutTrainerSalary);
 router.get('/membership-summary', getMembershipFinanceSummary);
 router.post('/membership-payments/receive', receiveMembershipPayment);
 router.put('/membership-payments/amount', updateMembershipAmount);
+router.post('/membership-payments/correct-accrual', correctMembershipAccrual);
+router.post('/membership-payments/change-pack', changeMembershipPack);
+router.get('/month-charges', getMonthChargesBreakdown);
 
 router.get('/payment-methods', listPaymentMethods);
 router.post(

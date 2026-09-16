@@ -109,7 +109,7 @@ const StaffWorkspace: React.FC = () => {
 
   const loadTasks = useCallback(async () => {
     const data = await apiService.listStaffTasks(
-      taskStatus === 'ALL' ? undefined : taskStatus
+      taskStatus === 'ALL' ? undefined : { status: taskStatus }
     );
     setTasks(data);
   }, [taskStatus]);

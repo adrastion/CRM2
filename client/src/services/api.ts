@@ -92,20 +92,24 @@ class ApiService {
         const clientToken = localStorage.getItem('clientToken');
         const regularToken = localStorage.getItem('token');
         
-        if (superAdminToken) {
-          config.headers.Authorization = `Bearer ${superAdminToken}`;
-        } else if (testerToken) {
-          config.headers.Authorization = `Bearer ${testerToken}`;
-        } else if (platformStaffToken && (config.url?.includes('/platform-staff/') || config.url?.includes('/platform-staff/auth/'))) {
-          config.headers.Authorization = `Bearer ${platformStaffToken}`;
-        } else if (promoCodeAdminToken) {
-          config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
-        } else if (marketerToken) {
-          config.headers.Authorization = `Bearer ${marketerToken}`;
-        } else if (clientToken) {
-          config.headers.Authorization = `Bearer ${clientToken}`;
-        } else if (regularToken) {
-          config.headers.Authorization = `Bearer ${regularToken}`;
+        // Не перезаписываем Authorization, если уже задан (проверка доступа слота и т.п.)
+        const existingAuth = config.headers?.Authorization || config.headers?.authorization;
+        if (!existingAuth) {
+          if (superAdminToken) {
+            config.headers.Authorization = `Bearer ${superAdminToken}`;
+          } else if (testerToken) {
+            config.headers.Authorization = `Bearer ${testerToken}`;
+          } else if (platformStaffToken && (config.url?.includes('/platform-staff/') || config.url?.includes('/platform-staff/auth/'))) {
+            config.headers.Authorization = `Bearer ${platformStaffToken}`;
+          } else if (promoCodeAdminToken) {
+            config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
+          } else if (marketerToken) {
+            config.headers.Authorization = `Bearer ${marketerToken}`;
+          } else if (clientToken) {
+            config.headers.Authorization = `Bearer ${clientToken}`;
+          } else if (regularToken) {
+            config.headers.Authorization = `Bearer ${regularToken}`;
+          }
         }
 
         // CSRF double-submit при cookie-сессии без Bearer
@@ -136,16 +140,49 @@ class ApiService {
         if (error.response?.status === 503 && error.response?.data?.code === 'MAINTENANCE') {
           if (!localStorage.getItem('superAdminToken')) {
             sessionStorage.setItem('maintenanceMode', '1');
+            sessionStorage.removeItem('testingModeAccess');
             window.dispatchEvent(
               new CustomEvent('maintenance-mode', {
                 detail: {
                   enabled: true,
+                  mode: 'maintenance',
                   message: error.response?.data?.error || '',
                 },
               })
             );
             const path = window.location.pathname;
-            if (path !== '/auth' && path !== '/maintenance') {
+            if (
+              path !== '/auth' &&
+              path !== '/maintenance' &&
+              path !== '/terms' &&
+              path !== '/privacy'
+            ) {
+              window.location.href = '/maintenance';
+            }
+          }
+          return Promise.reject(error);
+        }
+
+        if (error.response?.status === 503 && error.response?.data?.code === 'TESTING_MODE') {
+          if (!localStorage.getItem('superAdminToken')) {
+            sessionStorage.setItem('testingMode', '1');
+            sessionStorage.removeItem('testingModeAccess');
+            window.dispatchEvent(
+              new CustomEvent('maintenance-mode', {
+                detail: {
+                  enabled: true,
+                  mode: 'testing',
+                  message: error.response?.data?.error || '',
+                },
+              })
+            );
+            const path = window.location.pathname;
+            if (
+              path !== '/auth' &&
+              path !== '/maintenance' &&
+              path !== '/terms' &&
+              path !== '/privacy'
+            ) {
               window.location.href = '/maintenance';
             }
           }
@@ -206,11 +243,11 @@ class ApiService {
             localStorage.removeItem('tester');
             const schoolDest = fallbackToSchoolAccount();
             window.location.href = schoolDest || '/';
-          } else if (isMarketerRoute) {
+          } else if (isMarketerRoute || (localStorage.getItem('marketerToken') && (url.includes('/promo-codes') || url.includes('/referral-links') || url.includes('/marketers')))) {
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
-            window.location.href = '/';
+            window.location.href = '/auth';
           } else if (isPromoCodeAdminRoute) {
             localStorage.removeItem('promoCodeAdminToken');
             localStorage.removeItem('promoCodeAdmin');
@@ -226,6 +263,9 @@ class ApiService {
             localStorage.removeItem('clientTenant');
             localStorage.removeItem('userType');
             window.location.href = '/';
+          } else if (localStorage.getItem('marketerToken') || localStorage.getItem('promoCodeAdminToken')) {
+            // Школьный endpoint при активной сессии маркетолога/PCA — не сбрасывать в цикл /
+            return Promise.reject(error);
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -255,6 +295,7 @@ class ApiService {
     password: string;
     confirmPassword: string;
     acceptTerms: boolean;
+    acceptPrivacy: boolean;
     rememberMe?: boolean;
   }): Promise<UnifiedLoginResponse> {
     const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
@@ -314,7 +355,11 @@ class ApiService {
   }
 
   async register(data: RegisterForm): Promise<AuthResponse> {
-    const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/register', data);
+    const refCode = localStorage.getItem('refCode') || undefined;
+    const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/register', {
+      ...data,
+      refCode,
+    });
     return response.data.data!;
   }
 
@@ -530,6 +575,37 @@ class ApiService {
 
   async deleteTrainer(id: string): Promise<void> {
     await this.api.delete(`/trainers/${id}`);
+  }
+
+  async listTrainerDocuments(trainerId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(`/trainers/${trainerId}/documents`);
+    return response.data.data || [];
+  }
+
+  async uploadTrainerDocument(
+    trainerId: string,
+    file: File,
+    meta?: { title?: string; kind?: string }
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    if (meta?.title) form.append('title', meta.title);
+    if (meta?.kind) form.append('kind', meta.kind);
+    const response = await this.api.post<ApiResponse>(`/trainers/${trainerId}/documents`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async downloadTrainerDocumentBlob(trainerId: string, docId: string): Promise<Blob> {
+    const response = await this.api.get(`/trainers/${trainerId}/documents/${docId}/download`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async deleteTrainerDocument(trainerId: string, docId: string): Promise<void> {
+    await this.api.delete(`/trainers/${trainerId}/documents/${docId}`);
   }
 
   async addBranchToTrainer(trainerId: string, branchId: string): Promise<any> {
@@ -748,9 +824,21 @@ class ApiService {
     return response.data.data || [];
   }
 
-  async listStaffTasks(status?: string): Promise<any[]> {
+  async listStaffTasks(params?: {
+    status?: string;
+    from?: string;
+    to?: string;
+    mine?: boolean;
+  }): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/staff-workspace/tasks', {
-      params: status ? { status } : undefined,
+      params: params
+        ? {
+            ...(params.status ? { status: params.status } : {}),
+            ...(params.from ? { from: params.from } : {}),
+            ...(params.to ? { to: params.to } : {}),
+            ...(params.mine ? { mine: '1' } : {}),
+          }
+        : undefined,
     });
     return response.data.data || [];
   }
@@ -951,8 +1039,34 @@ class ApiService {
     return response.data.data;
   }
 
-  async getMaintenanceStatus(): Promise<{ enabled: boolean; message: string }> {
+  async getMaintenanceStatus(): Promise<{
+    maintenance: { enabled: boolean; message: string };
+    testing: { enabled: boolean; message: string };
+    /** @deprecated use maintenance.enabled */
+    enabled?: boolean;
+    message?: string;
+  }> {
     const response = await this.api.get<ApiResponse>('/maintenance/status');
+    const data = response.data.data || {};
+    // backward-compatible shape for older callers
+    if (data.maintenance) {
+      return {
+        ...data,
+        enabled: Boolean(data.maintenance.enabled),
+        message: data.maintenance.message,
+      };
+    }
+    return data;
+  }
+
+  async getMaintenanceAccess(): Promise<{
+    canAccess: boolean;
+    mode: 'none' | 'maintenance' | 'testing';
+    message: string;
+    isSuperAdmin: boolean;
+    isAllowlisted: boolean;
+  }> {
+    const response = await this.api.get<ApiResponse>('/maintenance/access');
     return response.data.data;
   }
 
@@ -963,6 +1077,76 @@ class ApiService {
 
   async updateAdminMaintenance(enabled: boolean): Promise<{ enabled: boolean; message: string }> {
     const response = await this.api.put<ApiResponse>('/admin-dashboard/maintenance', { enabled });
+    return response.data.data;
+  }
+
+  async getAdminTestingMode(): Promise<{ enabled: boolean; message: string; allowlist: string[] }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/testing-mode');
+    return response.data.data;
+  }
+
+  async getTestingAccountCandidates(): Promise<
+    Array<{ email: string; name: string; roleLabel: string }>
+  > {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/testing-mode/accounts');
+    return response.data.data?.accounts || [];
+  }
+
+  async updateAdminTestingMode(
+    enabled: boolean,
+    allowlist?: string[]
+  ): Promise<{ enabled: boolean; message: string; allowlist: string[] }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/testing-mode', {
+      enabled,
+      allowlist,
+    });
+    return response.data.data;
+  }
+
+  /** Проверка доступа токена слота (не текущего) при testing/maintenance. */
+  async getMaintenanceAccessWithToken(token: string): Promise<{
+    canAccess: boolean;
+    mode: string;
+    isSuperAdmin?: boolean;
+    isAllowlisted?: boolean;
+  }> {
+    const response = await this.api.get<ApiResponse>('/maintenance/access', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data.data;
+  }
+
+  async getPublicTerms(): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.get<ApiResponse>('/legal/terms');
+    return response.data.data;
+  }
+
+  async getAdminTerms(): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/terms');
+    return response.data.data;
+  }
+
+  async updateAdminTerms(
+    content: string
+  ): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/terms', { content });
+    return response.data.data;
+  }
+
+  async getPublicPrivacy(): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.get<ApiResponse>('/legal/privacy');
+    return response.data.data;
+  }
+
+  async getAdminPrivacy(): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/privacy');
+    return response.data.data;
+  }
+
+  async updateAdminPrivacy(
+    content: string
+  ): Promise<{ content: string; updatedAt: string | null; isDefault: boolean }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/privacy', { content });
     return response.data.data;
   }
 
@@ -1058,8 +1242,11 @@ class ApiService {
     await this.api.delete(`/groups/${id}`);
   }
 
-  async addClientToGroup(groupId: string, clientId: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/groups/${groupId}/clients`, { clientId });
+  async addClientToGroup(groupId: string, clientId: string, billingEffectiveFrom?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/groups/${groupId}/clients`, {
+      clientId,
+      ...(billingEffectiveFrom ? { billingEffectiveFrom } : {}),
+    });
     return response.data.data;
   }
 
@@ -1477,6 +1664,35 @@ class ApiService {
     return response.data.data;
   }
 
+  async correctMembershipAccrual(data: {
+    clientId: string;
+    paymentId?: string;
+    newAmount: number;
+    reason: string;
+    occurredAt?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      '/finance/membership-payments/correct-accrual',
+      data
+    );
+    return response.data.data;
+  }
+
+  async changeMembershipPack(data: { clientId: string; membershipId: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/finance/membership-payments/change-pack', data);
+    return response.data.data;
+  }
+
+  async getMonthChargesBreakdown(params: {
+    clientId?: string;
+    month?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/finance/month-charges', { params });
+    return response.data.data || [];
+  }
+
   async listSchoolPaymentMethods(): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/finance/payment-methods');
     return response.data.data || [];
@@ -1768,6 +1984,169 @@ class ApiService {
     return response.data.data!;
   }
 
+  async getMarketerDashboard(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/dashboard');
+    return response.data.data;
+  }
+
+  async getMarketerClients(): Promise<{ leads: any[]; schools: any[] }> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/clients');
+    return response.data.data || { leads: [], schools: [] };
+  }
+
+  async getMarketerClientCard(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/marketers/me/clients/${id}`);
+    return response.data.data;
+  }
+
+  async createMarketerLead(data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/leads', data);
+    return response.data.data;
+  }
+
+  async updateMarketerLead(id: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(`/marketers/me/leads/${id}`, data);
+    return response.data.data;
+  }
+
+  async claimMarketerClient(code: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/clients/claim', { code });
+    return response.data.data;
+  }
+
+  async getMarketerTasks(params?: Record<string, string>): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/tasks', { params });
+    return response.data.data || [];
+  }
+
+  async createMarketerTask(data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/tasks', data);
+    return response.data.data;
+  }
+
+  async updateMarketerTask(id: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.patch<ApiResponse>(`/marketers/me/tasks/${id}`, data);
+    return response.data.data;
+  }
+
+  async getMarketerChats(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/chats');
+    return response.data.data || [];
+  }
+
+  async ensureMarketerChat(channel: 'SUPPORT' | 'ACCOUNTING'): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/marketers/me/chats/${channel}/ensure`);
+    return response.data.data;
+  }
+
+  async getMarketerChatMessages(threadId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(`/marketers/me/chats/${threadId}/messages`);
+    return response.data.data || [];
+  }
+
+  async postMarketerChatMessage(threadId: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/marketers/me/chats/${threadId}/messages`, {
+      body,
+    });
+    return response.data.data;
+  }
+
+  async getMarketerFinance(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/finance');
+    return response.data.data;
+  }
+
+  async getMarketerPublications(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/publications');
+    return response.data.data || [];
+  }
+
+  async getMarketerClosingDocs(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/closing-docs');
+    return response.data.data || [];
+  }
+
+  async adminListMarketerPublications(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-publications');
+    return response.data.data || [];
+  }
+
+  async adminCreateMarketerPublication(data: {
+    type: string;
+    title: string;
+    body: string;
+    image?: File | null;
+    file?: File | null;
+  }): Promise<any> {
+    const form = new FormData();
+    form.append('type', data.type);
+    form.append('title', data.title);
+    form.append('body', data.body);
+    if (data.image) form.append('image', data.image);
+    if (data.file) form.append('file', data.file);
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/marketer-publications', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async adminListMarketerClosingDocs(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-closing-docs');
+    return response.data.data || [];
+  }
+
+  async adminCreateMarketerClosingDoc(data: {
+    title: string;
+    periodLabel?: string;
+    marketerId?: string | null;
+    file: File;
+  }): Promise<any> {
+    const form = new FormData();
+    form.append('title', data.title);
+    if (data.periodLabel) form.append('periodLabel', data.periodLabel);
+    if (data.marketerId) form.append('marketerId', data.marketerId);
+    form.append('file', data.file);
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/marketer-closing-docs', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async downloadMarketerPublicationImageBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/publications/${id}/image`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async downloadMarketerPublicationFileBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/publications/${id}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async downloadMarketerClosingDocBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/closing-docs/${id}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async adminDownloadMarketerPublicationFileBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/admin-dashboard/marketer-publications/${id}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async adminDownloadMarketerClosingDocBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/admin-dashboard/marketer-closing-docs/${id}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
   // Promo Code Admin endpoints (require regular admin auth)
   async getPromoCodeAdmins(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     // Use regular token for admin endpoints
@@ -1861,12 +2240,82 @@ class ApiService {
   }
 
   async createSubscriptionPayment(planType: string, returnUrl?: string, promoCode?: string): Promise<any> {
+    const refCode = localStorage.getItem('refCode') || undefined;
     const response = await this.api.post<ApiResponse>('/subscriptions/payment', {
       planType,
       returnUrl,
       promoCode,
+      refCode,
     });
     return response.data.data;
+  }
+
+  async registerMarketer(data: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    type?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/auth/marketer/register', data);
+    return response.data.data;
+  }
+
+  async getPlatformMarketers(params?: any): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/platform/marketers', { params });
+    return { data: response.data.data || [], pagination: response.data.pagination };
+  }
+
+  async createPlatformMarketer(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/platform/marketers', data);
+    return response.data.data;
+  }
+
+  async updatePlatformMarketer(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/platform/marketers/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlatformMarketer(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/platform/marketers/${id}`);
+  }
+
+  async getPlatformPromoCodes(params?: any): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/platform/promo-codes', { params });
+    return { data: response.data.data || [], pagination: response.data.pagination };
+  }
+
+  async createPlatformPromoCode(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/platform/promo-codes', data);
+    return response.data.data;
+  }
+
+  async updatePlatformPromoCode(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/platform/promo-codes/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlatformPromoCode(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/platform/promo-codes/${id}`);
+  }
+
+  async getPlatformReferralLinks(params?: any): Promise<{ data: any[]; pagination: any }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/platform/referral-links', { params });
+    return { data: response.data.data || [], pagination: response.data.pagination };
+  }
+
+  async createPlatformReferralLink(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/platform/referral-links', data);
+    return response.data.data;
+  }
+
+  async updatePlatformReferralLink(id: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/platform/referral-links/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlatformReferralLink(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/platform/referral-links/${id}`);
   }
 
   async updateSubscriptionPlan(planType: string): Promise<any> {
@@ -2732,6 +3181,16 @@ class ApiService {
       params: clientId ? { clientId } : undefined,
     });
     return response.data.data!;
+  }
+
+  async getPortalMembershipCatalog(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/client-auth/membership-catalog');
+    return response.data.data || [];
+  }
+
+  async changePortalMembership(data: { membershipId: string; clientId?: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/client-auth/change-membership', data);
+    return response.data.data;
   }
 
   /** Карточка тренера в ЛК клиента/родителя. */

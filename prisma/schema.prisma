@@ -51,6 +51,7 @@ model Tenant {
   users                   User[]
   supportTickets          SupportTicket[]
   trainerSalaryLedgers    TrainerSalaryLedger[]
+  trainerDocuments        TrainerDocument[]
   chatThreads             ChatThread[]
   clientContracts         ClientContract[]
   staffNotes              StaffNote[]
@@ -79,6 +80,8 @@ model TenantSettings {
   // Настройки личного кабинета клиента
   clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
+  /// Единый цвет задач на календарном плане (только OWNER)
+  staffTaskColor           String?  @default("#6A1B9A")
   tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
@@ -107,6 +110,7 @@ model User {
   linkedTester     Tester?
   uploadedContracts ClientContract[]
   uploadedAddenda   ClientContractAddendum[]
+  uploadedTrainerDocuments TrainerDocument[]
   staffNotesAuthored StaffNote[] @relation("StaffNoteAuthor")
   staffTasksCreated  StaffTask[] @relation("StaffTaskCreator")
   staffTaskAssignments StaffTaskAssignee[]
@@ -114,6 +118,7 @@ model User {
   workoutTemplatesCreated  WorkoutTemplate[]  @relation("WorkoutTemplateCreator")
   trainingCyclesCreated    TrainingCycle[]    @relation("TrainingCycleCreator")
   paymentReceiptsReviewed  PaymentReceipt[]   @relation("PaymentReceiptReviewer")
+  accrualAdjustmentsMade   Payment[]          @relation("PaymentAccrualAdjustedBy")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -403,6 +408,12 @@ model Trainer {
   qualification        String?
   experience           Int?
   specialization       String?
+  /// Тренерская категория (напр. высшая, первая, вторая)
+  coachCategory        String?
+  /// Судейская категория
+  judgeCategory        String?
+  /// Свободное описание достижений (текст)
+  achievements         String?
   /// Legacy: синхронизируется с salaryScheme при записи
   salaryType           String
   salaryAmount         Decimal?
@@ -417,11 +428,14 @@ model Trainer {
   canViewAllGroups     Boolean                      @default(false)
   balance              Decimal                      @default(0)
   salaryPercentage     Decimal?
+  /// Цена индивидуальной тренировки (начисляется ученику при создании individual)
+  individualTrainingPrice Decimal?
   competitionTrainers  CompetitionTrainer[]
   groups               Group[]
   branches             TrainerBranch[]
   seniorBranches       Branch[]                     @relation("BranchSeniorTrainer")
   salaryLedgers        TrainerSalaryLedger[]
+  documents            TrainerDocument[]
   tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                 User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   trainings            Training[]                   @relation("TrainingTrainer")
@@ -434,6 +448,29 @@ model Trainer {
   @@index([tenantId, isActive])
   @@index([tenantId, userId])
   @@map("trainers")
+}
+
+/// Документы тренера: диплом, образование, сертификаты и пр.
+model TrainerDocument {
+  id           String   @id @default(cuid())
+  trainerId    String
+  tenantId     String
+  /// DIPLOMA | EDUCATION | CERTIFICATE | OTHER
+  kind         String   @default("OTHER")
+  title        String
+  originalName String
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  trainer      Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([trainerId, createdAt])
+  @@index([tenantId])
+  @@map("trainer_documents")
 }
 
 /// Построчный реестр начислений/выплат зарплаты сотрудника
@@ -619,7 +656,7 @@ model Group {
   color                     String?
   trainingPrice             Decimal?
   schedule                  String?
-  // Ежемесячная оплата
+  // Ежемесячная оплата (legacy; источник правды — Membership category=GROUP + MembershipGroup)
   isMonthlyPayment          Boolean           @default(false)
   monthlyPaymentAmount      Decimal?
   paymentDueDay             Int? // День месяца для оплаты (1-31)
@@ -633,6 +670,7 @@ model Group {
   /// Ставка (₽) или процент в зависимости от salaryScheme
   salaryRate                Decimal?
   memberships               GroupMembership[]
+  membershipPlans           MembershipGroup[]
   standardGroups            StandardGroup[]
   branch                    Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -661,6 +699,8 @@ model GroupMembership {
   /// Временное членство на пробное занятие (не делает клиента «не лидом»)
   isTrial         Boolean   @default(false)
   trialTrainingId String?
+  /// С какой даты/периода начислять групповой абонемент этому ученику
+  billingEffectiveFrom DateTime?
   client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   group           Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   trialTraining   Training? @relation(fields: [trialTrainingId], references: [id], onDelete: SetNull)
@@ -678,18 +718,52 @@ model Membership {
   description       String?
   price             Decimal
   duration          Int?
+  /// visits | monthly | group_monthly (legacy type; category — основной классификатор)
   type              String
   isActive          Boolean            @default(true)
   tenantId          String
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   visits            Int?
+  /// CLIENT | GROUP
+  category          String             @default("CLIENT")
+  /// Окно оплаты группового абонемента (дни месяца), напр. 1–6
+  paymentWindowStartDay Int?
+  paymentWindowEndDay   Int?
+  /// PAY_ATTENDED | MISS_THRESHOLD
+  recalcMode            String?
+  missThresholdPercent  Decimal?
+  midMonthHalfChargeEnabled Boolean @default(true)
+  /// Опциональный срок действия клиентского пакета в днях (если задан отдельно от duration)
+  validityDays          Int?
+  /// VISITS | FIXED_DAYS | CALENDAR_PERIOD
+  periodType            String?
+  /// Для CALENDAR_PERIOD — число месяцев
+  periodMonths          Int?
   clientMemberships ClientMembership[]
+  membershipGroups  MembershipGroup[]
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments          Payment[]
   schoolPaymentMethodMemberships SchoolPaymentMethodMembership[]
 
+  @@index([tenantId, category, isActive])
   @@map("memberships")
+}
+
+/// Привязка группового абонемента к группе (у группы максимум один GROUP-план)
+model MembershipGroup {
+  id            String     @id @default(cuid())
+  membershipId  String
+  groupId       String     @unique
+  /// С какой даты действует абонемент для группы (закрытие кассового разрыва)
+  effectiveFrom DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  membership    Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  group         Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("membership_groups")
 }
 
 model ClientMembership {
@@ -729,6 +803,15 @@ model Payment {
   originalAmount   Decimal? // Оригинальная сумма до перерасчета
   /// Период ежемесячного платежа (YYYY-MM); уникален вместе с client+group (partial unique в SQL)
   periodKey        String?
+  /// Процент/доля после перерасчёта пропусков (100 = полная цена)
+  recalcAppliedPercent Decimal?
+  recalcReason         String?
+  /// Корректировка начисления: ссылка на исходный платёж
+  correctsPaymentId    String?
+  isAccrualAdjustment  Boolean         @default(false)
+  adjustmentReason     String?
+  adjustedByUserId     String?
+  adjustedAt           DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   branch           Branch?         @relation(fields: [branchId], references: [id])
@@ -736,6 +819,9 @@ model Payment {
   membership       Membership?     @relation(fields: [membershipId], references: [id])
   group            Group?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  correctsPayment  Payment?        @relation("PaymentAccrualCorrections", fields: [correctsPaymentId], references: [id], onDelete: SetNull)
+  accrualCorrections Payment[]     @relation("PaymentAccrualCorrections")
+  adjustedByUser   User?           @relation("PaymentAccrualAdjustedBy", fields: [adjustedByUserId], references: [id], onDelete: SetNull)
   promoCodeUsage   PromoCodeUsage?
   transactions     Transaction[]
   financeOperations FinanceOperation[]
@@ -747,6 +833,7 @@ model Payment {
   @@index([tenantId, createdAt])
   @@index([tenantId, status, paidAt])
   @@index([tenantId, clientId, groupId, periodKey])
+  @@index([correctsPaymentId])
   @@map("payments")
 }
 
@@ -916,23 +1003,168 @@ model TrainerBranch {
 model Marketer {
   id                   String             @id @default(cuid())
   name                 String
-  email                String
+  email                String             @unique
   password             String
   phone                String?
   type                 String
   isActive             Boolean            @default(true)
-  tenantId             String
+  /// Платформенный маркетолог: null (не привязан к школе)
+  tenantId             String?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   balance              Decimal            @default(0)
   commissionPercentage Decimal            @default(10)
   adminTransactions    AdminTransaction[]
-  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   promoCodes           PromoCode[]
   referralLinks        ReferralLink[]
   referredTenants      TenantMarketer[]
+  leads                MarketerLead[]
+  tasks                MarketerTask[]
+  commissionLedger     MarketerCommissionLedger[]
+  closingDocs          MarketerClosingDoc[]
+  chatThreads          MarketerChatThread[]
 
   @@map("marketers")
+}
+
+/// Лид маркетолога (контакты в БД есть, в API маркетологу — только маски)
+model MarketerLead {
+  id                String        @id @default(cuid())
+  marketerId        String
+  displayCode       String
+  /// Сырые контакты — только для платформы / SA
+  contactName       String?
+  contactEmail      String?
+  contactPhone      String?
+  /// NEW | IN_PROGRESS | CONVERTED | LOST
+  status            String        @default("NEW")
+  notes             String?
+  /// MANUAL | REFERRAL | PROMO
+  source            String        @default("MANUAL")
+  convertedTenantId String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  marketer          Marketer      @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  tasks             MarketerTask[]
+
+  @@unique([marketerId, displayCode])
+  @@index([marketerId, status])
+  @@index([convertedTenantId])
+  @@map("marketer_leads")
+}
+
+model MarketerTask {
+  id         String       @id @default(cuid())
+  marketerId String
+  leadId     String?
+  tenantId   String?
+  title      String
+  body       String?
+  dueAt      DateTime?
+  /// OPEN | DONE | CANCELLED
+  status     String       @default("OPEN")
+  /// TASK | CALL | OTHER
+  kind       String       @default("TASK")
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  marketer   Marketer     @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  lead       MarketerLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([marketerId, dueAt])
+  @@index([marketerId, status])
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("marketer_tasks")
+}
+
+/// Новости / реклама / баннеры платформы (пишет SA, читает маркетолог)
+model PlatformPublication {
+  id                    String    @id @default(cuid())
+  /// NEWS | PROMO | BANNER | POSTER | UPDATE
+  type                  String
+  title                 String
+  body                  String    @db.Text
+  imageUrl              String?
+  fileUrl               String?
+  publishedAt           DateTime  @default(now())
+  isActive              Boolean   @default(true)
+  createdBySuperAdminId String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  createdBy             SuperAdmin? @relation("PlatformPublicationAuthor", fields: [createdBySuperAdminId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, publishedAt])
+  @@map("platform_publications")
+}
+
+model MarketerClosingDoc {
+  id                      String    @id @default(cuid())
+  /// null = документ для всех маркетологов
+  marketerId              String?
+  title                   String
+  fileUrl                 String
+  periodLabel             String?
+  uploadedBySuperAdminId  String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  marketer                Marketer? @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  uploadedBy              SuperAdmin? @relation("MarketerClosingDocUploader", fields: [uploadedBySuperAdminId], references: [id], onDelete: SetNull)
+
+  @@index([marketerId, createdAt])
+  @@map("marketer_closing_docs")
+}
+
+model MarketerCommissionLedger {
+  id          String   @id @default(cuid())
+  marketerId  String
+  tenantId    String?
+  /// ACCRUAL | PAYOUT
+  kind        String
+  amount      Decimal
+  occurredAt  DateTime @default(now())
+  notes       String?
+  externalKey String?
+  createdAt   DateTime @default(now())
+  marketer    Marketer @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+
+  @@unique([marketerId, externalKey])
+  @@index([marketerId, occurredAt])
+  @@index([tenantId])
+  @@map("marketer_commission_ledger")
+}
+
+model MarketerChatThread {
+  id         String                @id @default(cuid())
+  marketerId String
+  /// SUPPORT | ACCOUNTING
+  channel    String
+  /// OPEN | CLOSED
+  status     String                @default("OPEN")
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+  marketer   Marketer              @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  messages   MarketerChatMessage[]
+
+  @@unique([marketerId, channel])
+  @@index([channel, status])
+  @@map("marketer_chat_threads")
+}
+
+model MarketerChatMessage {
+  id                 String             @id @default(cuid())
+  threadId           String
+  /// marketer | platform_staff | super_admin
+  authorType         String
+  body               String             @db.Text
+  authorMarketerId   String?
+  authorStaffId      String?
+  authorSuperAdminId String?
+  createdAt          DateTime           @default(now())
+  thread             MarketerChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("marketer_chat_messages")
 }
 
 model PromoCodeAdmin {
@@ -952,7 +1184,7 @@ model PromoCodeAdmin {
 
 model PromoCode {
   id            String           @id @default(cuid())
-  code          String
+  code          String           @unique
   description   String?
   discountType  String
   discountValue Decimal
@@ -963,15 +1195,15 @@ model PromoCode {
   isActive      Boolean          @default(true)
   validFrom     DateTime
   validUntil    DateTime?
-  tenantId      String
+  /// Школьный промо: tenantId школы; платформенный: null
+  tenantId      String?
   marketerId    String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   usages        PromoCodeUsage[]
   marketer      Marketer?        @relation(fields: [marketerId], references: [id])
-  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
-  @@unique([code, tenantId])
   @@map("promo_codes")
 }
 
@@ -1000,13 +1232,14 @@ model ReferralLink {
   description String?
   url         String
   isActive    Boolean         @default(true)
-  tenantId    String
+  /// Школьная ссылка: tenantId; платформенная: null
+  tenantId    String?
   marketerId  String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   clicks      ReferralClick[]
   marketer    Marketer?       @relation(fields: [marketerId], references: [id])
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@map("referral_links")
 }
@@ -1020,10 +1253,11 @@ model ReferralClick {
   clickedAt      DateTime     @default(now())
   converted      Boolean      @default(false)
   conversionDate DateTime?
-  tenantId       String
+  /// Заполняется при конверсии (регистрация/оплата школы)
+  tenantId       String?
   client         Client?      @relation(fields: [clientId], references: [id])
   referralLink   ReferralLink @relation(fields: [referralLinkId], references: [id], onDelete: Cascade)
-  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@map("referral_clicks")
 }
@@ -1158,6 +1392,16 @@ model SuperAdminSettings {
   lastAlertAt         DateTime?
   /// Режим технических работ: сайт недоступен всем, кроме супер-админа
   maintenanceMode     Boolean       @default(false)
+  /// Режим тестирования: доступ только у SA и email из allowlist
+  testingMode         Boolean       @default(false)
+  /// JSON-массив email (lowercase), которым разрешён доступ в режиме тестирования
+  testingModeAllowlist String       @default("[]")
+  /// Текст пользовательского соглашения (plain text / markdown-like)
+  termsOfServiceText  String?
+  termsUpdatedAt      DateTime?
+  /// Политика конфиденциальности / обработки ПДн
+  privacyPolicyText   String?
+  privacyUpdatedAt    DateTime?
   budgetLimits        BudgetLimit[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -1293,6 +1537,8 @@ model SuperAdmin {
   changelogEntries   PlatformChangelogEntry[]
   plannerEvents      PlatformCalendarEvent[]
   devNoteAttachments SuperAdminDevNoteAttachment[]
+  platformPublications PlatformPublication[] @relation("PlatformPublicationAuthor")
+  marketerClosingDocs  MarketerClosingDoc[]  @relation("MarketerClosingDocUploader")
 
   @@map("super_admins")
 }

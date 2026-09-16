@@ -15,7 +15,7 @@ import { applyUnifiedSession, clearAllAuthStorage, extractApiError } from '../ut
 import AuthShell from '../components/auth/AuthShell';
 import AuthButton from '../components/auth/AuthButton';
 import PillField from '../components/auth/PillField';
-import TermsCheckbox from '../components/auth/TermsCheckbox';
+import LegalConsentCheckboxes from '../components/auth/LegalConsentCheckboxes';
 import { colors, typography } from '../theme/tokens';
 
 /** Приводит введённый номер к формату +79999999999, который ждёт backend. */
@@ -70,6 +70,7 @@ const PartnerRegister: React.FC = () => {
     confirmPassword: '',
   });
   const [acceptTerms, setAcceptTerms] = React.useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(false);
 
@@ -103,6 +104,7 @@ const PartnerRegister: React.FC = () => {
     if (form.password.length < 6) next.password = 'Минимум 6 символов';
     if (form.confirmPassword !== form.password) next.confirmPassword = 'Пароли не совпадают';
     if (!acceptTerms) next.acceptTerms = 'Необходимо принять условия соглашения';
+    if (!acceptPrivacy) next.acceptPrivacy = 'Необходимо согласие на обработку персональных данных';
 
     return next;
   };
@@ -255,9 +257,10 @@ const PartnerRegister: React.FC = () => {
         </Box>
 
         <Box>
-          <TermsCheckbox
-            checked={acceptTerms}
-            onChange={(v) => {
+          <LegalConsentCheckboxes
+            acceptTerms={acceptTerms}
+            acceptPrivacy={acceptPrivacy}
+            onAcceptTerms={(v) => {
               setAcceptTerms(v);
               setErrors((prev) => {
                 if (!prev.acceptTerms) return prev;
@@ -266,13 +269,18 @@ const PartnerRegister: React.FC = () => {
                 return next;
               });
             }}
-            error={Boolean(errors.acceptTerms)}
+            onAcceptPrivacy={(v) => {
+              setAcceptPrivacy(v);
+              setErrors((prev) => {
+                if (!prev.acceptPrivacy) return prev;
+                const next = { ...prev };
+                delete next.acceptPrivacy;
+                return next;
+              });
+            }}
+            termsError={errors.acceptTerms}
+            privacyError={errors.acceptPrivacy}
           />
-          {errors.acceptTerms && (
-            <Typography sx={{ color: colors.danger, fontSize: typography.hint, ml: 4.5, mt: 0.5 }}>
-              {errors.acceptTerms}
-            </Typography>
-          )}
         </Box>
 
         {errors.form && (

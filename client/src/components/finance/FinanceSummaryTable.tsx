@@ -14,6 +14,7 @@ export interface FinanceSummaryRow {
   paid: number;
   remaining: number;
   onPaidClick?: () => void;
+  onAccruedClick?: (event: React.MouseEvent<HTMLElement>) => void;
 }
 
 interface FinanceSummaryTableProps {
@@ -104,6 +105,33 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
     </Box>
   );
 
+  const accruedNode = (row: FinanceSummaryRow) => (
+    <Box
+      component={row.onAccruedClick ? 'button' : 'div'}
+      type={row.onAccruedClick ? 'button' : undefined}
+      onClick={(e: React.MouseEvent<HTMLElement>) => row.onAccruedClick?.(e)}
+          title={row.onAccruedClick ? 'Изменить начисление' : undefined}
+      sx={{
+        border: 'none',
+        background: 'none',
+        p: 0,
+        m: 0,
+        font: 'inherit',
+        cursor: row.onAccruedClick ? 'pointer' : 'default',
+        textAlign: 'left',
+        color: row.onAccruedClick ? colors.primary : colors.text,
+        '&:hover': row.onAccruedClick ? { textDecoration: 'underline' } : undefined,
+      }}
+    >
+      <Typography
+        component="span"
+        sx={{ fontSize: typography.label, fontWeight: 500, color: 'inherit' }}
+      >
+        {formatMoney(row.accrued)}
+      </Typography>
+    </Box>
+  );
+
   return (
     <>
       {/* Mobile card list */}
@@ -149,7 +177,7 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
             >
               <Box>
                 <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>Начислено</Typography>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 500 }}>{formatMoney(row.accrued)}</Typography>
+                {accruedNode(row)}
               </Box>
               <Box>
                 <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>Выплачено</Typography>
@@ -235,11 +263,7 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                       {row.count}
                     </Typography>
                   </Box>
-                  <Box sx={cellSx(3, false)}>
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
-                      {formatMoney(row.accrued)}
-                    </Typography>
-                  </Box>
+                  <Box sx={cellSx(3, false)}>{accruedNode(row)}</Box>
                   <Box sx={cellSx(4, false)}>{paidNode(row)}</Box>
                   <Box sx={cellSx(5, true)}>
                     <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>

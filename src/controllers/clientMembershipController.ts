@@ -105,6 +105,10 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
       res.status(404).json({ success: false, error: 'Membership not found' });
       return;
     }
+    if (error?.statusCode === 400) {
+      res.status(400).json({ success: false, error: error.message || 'Bad request' });
+      return;
+    }
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to create client membership'

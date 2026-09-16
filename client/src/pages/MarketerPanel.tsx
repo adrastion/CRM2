@@ -105,6 +105,9 @@ const MarketerPanel: React.FC = () => {
           {marketer && (
             <Typography variant="body2" color="textSecondary">
               {marketer.name} ({marketer.type === 'MARKETER' ? 'Маркетолог' : 'Медиа-партнер'})
+              {stats?.marketer?.commissionPercentage != null &&
+                ` · комиссия ${stats.marketer.commissionPercentage}%`}
+              {stats?.marketer?.balance != null && ` · баланс ${Number(stats.marketer.balance).toFixed(2)} ₽`}
             </Typography>
           )}
           <Button

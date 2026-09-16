@@ -50,6 +50,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     clientCanViewAllBranches,
     salaryPayoutDay,
     chatMessageEditLimitMinutes,
+    staffTaskColor,
   } = req.body;
 
   if (!tenantId) {
@@ -64,13 +65,30 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   const wantsFinanceSettings =
     salaryPayoutDay !== undefined || membershipFeeResetDate !== undefined;
   const wantsChatEditLimit = chatMessageEditLimitMinutes !== undefined;
+  const wantsStaffTaskColor = staffTaskColor !== undefined;
 
-  if ((wantsFinanceSettings || wantsChatEditLimit) && !isOwner) {
+  if ((wantsFinanceSettings || wantsChatEditLimit || wantsStaffTaskColor) && !isOwner) {
     res.status(403).json({
       success: false,
-      error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов и лимит редактирования сообщений'
+      error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов, лимит редактирования сообщений и цвет задач'
     });
     return;
+  }
+
+  let parsedStaffTaskColor: string | undefined;
+  if (isOwner && wantsStaffTaskColor) {
+    const raw = String(staffTaskColor || '').trim();
+    if (raw === '') {
+      parsedStaffTaskColor = '#6A1B9A';
+    } else if (!/^#[0-9A-Fa-f]{6}$/.test(raw)) {
+      res.status(400).json({
+        success: false,
+        error: 'Цвет задач должен быть в формате #RRGGBB'
+      });
+      return;
+    } else {
+      parsedStaffTaskColor = raw.toUpperCase();
+    }
   }
 
   // Валидация
@@ -131,6 +149,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
       chatMessageEditLimitMinutes:
         parsedChatEditLimit !== undefined ? parsedChatEditLimit : undefined,
+      staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : undefined,
     },
     create: {
       tenantId,
@@ -140,6 +159,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false,
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
       chatMessageEditLimitMinutes: parsedChatEditLimit !== undefined ? parsedChatEditLimit : 15,
+      staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : '#6A1B9A',
     }
   });
 

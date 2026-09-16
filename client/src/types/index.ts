@@ -260,6 +260,9 @@ export interface ClientTrainerCardData {
   experience: number | null;
   qualification?: string | null;
   specialization?: string | null;
+  coachCategory?: string | null;
+  judgeCategory?: string | null;
+  achievements?: string | null;
   groups: Array<{
     id: string;
     name: string;
@@ -325,10 +328,19 @@ export interface ClientDashboardData {
     visitsTotal: number | null;
     remaining: number | null;
     endDate: string | null;
-    isActive: boolean;
+    isActive?: boolean;
   } | null;
+  /** Клиент в группе с GROUP-биллингом — клиентский пакет недоступен */
+  onGroupBilling?: boolean;
+  canChangeMembership?: boolean;
   staff: ClientDashboardStaffMember[];
-  groups: Array<{ id?: string; name?: string; color?: string | null; branchName: string | null }>;
+  groups: Array<{
+    id?: string;
+    name?: string;
+    color?: string | null;
+    branchName: string | null;
+    isMonthlyPayment?: boolean;
+  }>;
   weekRange?: { start: string; end: string };
   upcomingTrainings: ClientDashboardEvent[];
   monthEvents: ClientDashboardEvent[];
@@ -484,17 +496,36 @@ export interface Trainer {
   qualification?: string;
   experience?: number;
   specialization?: string;
+  coachCategory?: string | null;
+  judgeCategory?: string | null;
+  achievements?: string | null;
   salaryType: 'percentage' | 'per_student' | 'fixed' | 'per_training' | 'individual'
     | 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
   salaryAmount?: number;
   salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | 'fixed_monthly';
   salaryRate?: number;
-  salaryPercentage?: number; // Для individual типа (процент от индивидуального занятия)
+  salaryPercentage?: number;
+  individualTrainingPrice?: number | null;
   balance?: number;
   canViewAllGroups?: boolean;
   isActive: boolean;
   user?: User;
   branches?: TrainerBranch[];
+  documents?: TrainerDocument[];
+}
+
+export interface TrainerDocument {
+  id: string;
+  trainerId: string;
+  tenantId: string;
+  kind: 'DIPLOMA' | 'EDUCATION' | 'CERTIFICATE' | 'OTHER' | string;
+  title: string;
+  originalName: string;
+  storagePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedById?: string | null;
+  createdAt: string;
 }
 
 export interface TrainerBranch {
@@ -530,6 +561,20 @@ export interface Group {
   isMonthlyPayment?: boolean;
   monthlyPaymentAmount?: number;
   paymentDueDay?: number; // День месяца для оплаты (1-31)
+  /** Привязанные групповые абонементы из каталога */
+  membershipPlans?: Array<{
+    id: string;
+    membershipId: string;
+    groupId: string;
+    effectiveFrom?: string;
+    membership?: {
+      id: string;
+      name: string;
+      category?: string;
+      price?: number;
+      isActive?: boolean;
+    };
+  }>;
   /** Схема зарплаты на группе */
   salaryScheme?: 'per_training_person' | 'fixed_per_student_month' | 'percent_month' | null;
   salaryRate?: number | null;
@@ -598,11 +643,26 @@ export interface Membership {
   name: string;
   description?: string;
   price: number;
-  duration?: number; // days (для месячных абонементов)
-  visits?: number; // количество посещений (для абонементов на количество раз)
+  duration?: number;
+  visits?: number;
   type: string;
   isActive: boolean;
   tenantId: string;
+  category?: 'CLIENT' | 'GROUP' | string;
+  paymentWindowStartDay?: number | null;
+  paymentWindowEndDay?: number | null;
+  recalcMode?: string | null;
+  missThresholdPercent?: number | null;
+  midMonthHalfChargeEnabled?: boolean;
+  validityDays?: number | null;
+  periodType?: string | null;
+  periodMonths?: number | null;
+  membershipGroups?: Array<{
+    id: string;
+    groupId: string;
+    effectiveFrom?: string;
+    group?: { id: string; name: string; branchId?: string };
+  }>;
 }
 
 // Payment Types
@@ -906,7 +966,9 @@ export interface Marketer {
   phone?: string;
   type: 'MARKETER' | 'MEDIA_PARTNER';
   isActive: boolean;
-  tenantId: string;
+  tenantId?: string | null;
+  balance?: number;
+  commissionPercentage?: number;
   createdAt: string;
   updatedAt: string;
   promoCodes?: PromoCode[];
@@ -930,6 +992,8 @@ export interface MarketerStatsSummary {
     name: string;
     email: string;
     type: string;
+    balance?: number;
+    commissionPercentage?: number;
   };
   promoCodes: {
     total: number;

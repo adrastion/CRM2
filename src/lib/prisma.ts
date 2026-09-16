@@ -1,4 +1,11 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+
+// Prisma импортируется раньше dotenv.config() в server.ts — грузим .env здесь.
+const rootEnv = path.resolve(__dirname, '..', '.env');
+dotenv.config({ path: rootEnv });
+dotenv.config();
 
 /**
  * Единый Prisma Client на весь процесс.
@@ -7,9 +14,13 @@ import { PrismaClient } from '@prisma/client';
  */
 const globalForPrisma = globalThis as unknown as { __crmPrisma?: PrismaClient };
 
-function buildDatasourceUrl(): string | undefined {
+function buildDatasourceUrl(): string {
   const url = process.env.DATABASE_URL;
-  if (!url) return undefined;
+  if (!url) {
+    throw new Error(
+      `DATABASE_URL is not set. Expected it in ${rootEnv} (or process env).`
+    );
+  }
   // Ограничиваем пул на один процесс, если явно не задано.
   if (/[?&]connection_limit=/.test(url)) return url;
   const sep = url.includes('?') ? '&' : '?';

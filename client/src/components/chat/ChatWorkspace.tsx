@@ -18,7 +18,7 @@ import { Close, Edit, EmojiEmotions, Send } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 
 export type PresenceStatus = 'unregistered' | 'offline' | 'online';
 
@@ -58,6 +58,28 @@ export interface ChatMessageItem {
   authorName: string;
   createdAt: string;
   editedAt?: string | null;
+}
+
+type ChatCategory = 'all' | 'personal' | 'groups' | 'tasks';
+
+const PERSONAL_TYPES = new Set(['CLIENT_ADMIN', 'CLIENT_TRAINER', 'TRAINER_ADMIN']);
+const GROUP_TYPES = new Set(['GROUP', 'TRAINERS']);
+const TASK_TYPES = new Set(['STAFF_TASK']);
+
+function isPersonalThread(type: string): boolean {
+  return PERSONAL_TYPES.has(type);
+}
+
+function hasConversation(t: ChatThreadItem): boolean {
+  return Boolean(t.lastMessageAt || (t.lastMessagePreview && t.lastMessagePreview.trim()));
+}
+
+function matchesCategory(type: string, category: ChatCategory): boolean {
+  if (category === 'all') return true;
+  if (category === 'personal') return PERSONAL_TYPES.has(type);
+  if (category === 'groups') return GROUP_TYPES.has(type);
+  if (category === 'tasks') return TASK_TYPES.has(type);
+  return true;
 }
 
 interface ChatWorkspaceProps {
@@ -149,6 +171,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const [editLimitMinutes, setEditLimitMinutes] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<ChatCategory>('all');
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -189,14 +212,44 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     selectedRef.current = threads.find((t) => t.threadKey === selectedKey) || null;
   }, [threads, selectedKey]);
 
+  const showTasksTab = mode === 'staff' || threads.some((t) => TASK_TYPES.has(t.type));
+
+  const categoryTabs = useMemo(() => {
+    const tabs: Array<{ id: ChatCategory; label: string }> = [
+      { id: 'all', label: 'Все' },
+      { id: 'personal', label: 'Личные' },
+      { id: 'groups', label: 'Группы' },
+    ];
+    if (showTasksTab) tabs.push({ id: 'tasks', label: 'Задачи' });
+    return tabs;
+  }, [showTasksTab]);
+
+  useEffect(() => {
+    if (category === 'tasks' && !showTasksTab) setCategory('all');
+  }, [category, showTasksTab]);
+
   const filteredThreads = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return threads;
+    const searching = Boolean(q);
+
     return threads.filter((t) => {
-      const hay = [t.title, t.subtitle, t.lastMessagePreview || ''].join(' ').toLowerCase();
-      return hay.includes(q);
+      if (!matchesCategory(t.type, category)) return false;
+
+      if (searching) {
+        const hay = [t.title, t.subtitle, t.lastMessagePreview || ''].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+        return true;
+      }
+
+      // Без поиска: в «Все» и «Личные» скрываем только личные без переписки.
+      // Группы (GROUP / TRAINERS) и задачи всегда остаются в списке.
+      if ((category === 'all' || category === 'personal') && isPersonalThread(t.type) && !hasConversation(t)) {
+        return false;
+      }
+
+      return true;
     });
-  }, [threads, search]);
+  }, [threads, search, category]);
 
   const cancelEdit = () => {
     setEditingId(null);
@@ -486,11 +539,37 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           minWidth: { sm: 280 },
         }}
       >
-        <Box sx={{ p: 1.5 }}>
+        <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {categoryTabs.map((tab) => {
+              const active = category === tab.id;
+              return (
+                <Chip
+                  key={tab.id}
+                  label={tab.label}
+                  size="small"
+                  onClick={() => setCategory(tab.id)}
+                  sx={{
+                    fontSize: typography.hint,
+                    fontWeight: active ? 700 : 500,
+                    bgcolor: active ? colors.primary : colors.surface,
+                    color: active ? '#fff' : colors.text,
+                    '&:hover': {
+                      bgcolor: active ? colors.primary : colors.rowAlt,
+                    },
+                  }}
+                />
+              );
+            })}
+          </Box>
           <TextField
             fullWidth
             size="small"
-            placeholder="Поиск"
+            placeholder={
+              category === 'all' || category === 'personal'
+                ? 'Поиск (в т.ч. без переписки)'
+                : 'Поиск'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

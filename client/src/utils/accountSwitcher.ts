@@ -85,7 +85,7 @@ function activeDestination(): string {
     return staff?.mustChangePassword ? '/platform-staff/change-password' : '/platform-staff/desk';
   }
   if (localStorage.getItem('promoCodeAdminToken')) return '/admin/promo-codes';
-  if (localStorage.getItem('marketerToken')) return '/marketer/panel';
+  if (localStorage.getItem('marketerToken')) return '/marketer/dashboard';
   return '/auth';
 }
 
@@ -325,6 +325,67 @@ export function upsertSavedAccountFromSession(_session?: UnifiedSession): void {
   upsertFromActiveStorage();
 }
 
+/** Bearer-токен из снимка слота (приоритет как у axios-интерцептора). */
+export function getSlotBearerToken(slot: SavedAccountSlot): string | null {
+  const keys = slot.keys || {};
+  return (
+    keys.superAdminToken ||
+    keys.testerToken ||
+    keys.platformStaffToken ||
+    keys.promoCodeAdminToken ||
+    keys.marketerToken ||
+    keys.clientToken ||
+    keys.token ||
+    null
+  );
+}
+
+/**
+ * Можно ли переключиться на слот при maintenance/testing.
+ * SUPER_ADMIN всегда можно; при testing — только allowlist (по токену слота).
+ */
+export async function canSwitchToSavedAccount(slot: SavedAccountSlot): Promise<boolean> {
+  if (slot.accountType === 'SUPER_ADMIN') return true;
+
+  const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
+  if (maintenanceOn) return false;
+
+  const testingOn = sessionStorage.getItem('testingMode') === '1';
+  if (!testingOn) return true;
+
+  const token = getSlotBearerToken(slot);
+  if (!token) return false;
+
+  try {
+    const { apiService } = await import('../services/api');
+    const access = await apiService.getMaintenanceAccessWithToken(token);
+    return Boolean(access?.canAccess);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Переключить аккаунт с проверкой testing/maintenance.
+ * Не уходит на заглушку «вслепую» — сначала проверяет доступ слота.
+ */
+export async function switchToAccountSafe(
+  id: string
+): Promise<'ok' | 'blocked' | 'missing'> {
+  const slot = listSavedAccounts().find((a) => a.id === id);
+  if (!slot) return 'missing';
+
+  const allowed = await canSwitchToSavedAccount(slot);
+  if (!allowed) return 'blocked';
+
+  if (sessionStorage.getItem('testingMode') === '1') {
+    sessionStorage.setItem('testingModeAccess', '1');
+  }
+
+  switchToAccount(id);
+  return 'ok';
+}
+
 /** Переключить активную сессию на сохранённый слот (полный reload). */
 export function switchToAccount(id: string): void {
   const slot = listSavedAccounts().find((a) => a.id === id);
@@ -353,7 +414,9 @@ export function logoutCurrentAccount(): string | null {
 
   if (remaining.length === 0) return null;
 
-  const next = remaining[0];
+  // При выходе предпочтительно SA — иначе при testing можно попасть на заглушку
+  const next =
+    remaining.find((a) => a.accountType === 'SUPER_ADMIN') || remaining[0];
   for (const [key, value] of Object.entries(next.keys)) {
     localStorage.setItem(key, value);
   }

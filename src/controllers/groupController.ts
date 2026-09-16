@@ -55,7 +55,22 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
             include: {
               client: true
             }
-          }
+          },
+          membershipPlans: {
+            include: {
+              membership: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  price: true,
+                  isActive: true,
+                  paymentWindowStartDay: true,
+                  paymentWindowEndDay: true,
+                },
+              },
+            },
+          },
         },
         skip,
         take: Number(limit),
@@ -66,14 +81,18 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
 
     // Парсим schedule для каждой группы
     const groupsWithParsedSchedule = groups.map(group => {
-      if (group.schedule) {
+      const hasGroupPlan = (group.membershipPlans || []).some(
+        (p) => p.membership?.category === 'GROUP' && p.membership?.isActive !== false
+      );
+      const base = hasGroupPlan ? { ...group, isMonthlyPayment: true } : group;
+      if (base.schedule) {
         try {
-          return { ...group, schedule: JSON.parse(group.schedule) };
+          return { ...base, schedule: JSON.parse(base.schedule as string) };
         } catch (e) {
-          return group;
+          return base;
         }
       }
-      return group;
+      return base;
     });
 
     res.json({
@@ -547,7 +566,8 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
 export const addClientToGroup = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params; // group id
-    const { clientId } = req.body;
+    const { clientId, billingEffectiveFrom } = req.body;
+    const tenantId = req.tenant?.id;
 
     if (!clientId) {
       res.status(400).json({
@@ -561,7 +581,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     const group = await prisma.group.findFirst({
       where: {
         id,
-        tenantId: req.tenant?.id
+        tenantId
       }
     });
 
@@ -577,7 +597,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     const client = await prisma.client.findFirst({
       where: {
         id: clientId,
-        tenantId: req.tenant?.id
+        tenantId
       }
     });
 
@@ -588,6 +608,26 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
       });
       return;
     }
+
+    const { getGroupBillingPlan } = await import('../services/groupMembershipBillingService');
+    const { deactivateActiveClientPacks } = await import('../services/clientMembershipService');
+    const plan = await getGroupBillingPlan(id);
+
+    let effectiveFromDate: Date | null = null;
+    if (billingEffectiveFrom) {
+      const d = new Date(billingEffectiveFrom);
+      if (!Number.isNaN(d.getTime())) effectiveFromDate = d;
+    }
+    if (plan && !effectiveFromDate) {
+      // По умолчанию — начало текущего месяца (закрытие кассового разрыва)
+      const now = new Date();
+      effectiveFromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const applyGroupBillingSideEffects = async () => {
+      if (!plan || !tenantId) return;
+      await deactivateActiveClientPacks(clientId, tenantId);
+    };
 
     // Check if client is already in group
     const existingMembership = await prisma.groupMembership.findUnique({
@@ -614,11 +654,13 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
             leftAt: null,
             isTrial: false,
             trialTrainingId: null,
+            ...(effectiveFromDate ? { billingEffectiveFrom: effectiveFromDate } : {}),
           },
           include: {
             client: true
           }
         });
+        await applyGroupBillingSideEffects();
 
         res.json({
           success: true,
@@ -640,11 +682,13 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
             leftAt: null,
             isTrial: false,
             trialTrainingId: null,
+            ...(effectiveFromDate ? { billingEffectiveFrom: effectiveFromDate } : {}),
           },
           include: {
             client: true
           }
         });
+        await applyGroupBillingSideEffects();
 
         res.json({
           success: true,
@@ -686,11 +730,13 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
         groupId: id,
         isTrial: false,
         trialTrainingId: null,
+        billingEffectiveFrom: effectiveFromDate,
       },
       include: {
         client: true
       }
     });
+    await applyGroupBillingSideEffects();
 
     res.status(201).json({
       success: true,

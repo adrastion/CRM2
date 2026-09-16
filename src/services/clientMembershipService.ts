@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { FinanceService } from './financeService';
+import { clientHasGroupBilling } from './groupMembershipBillingService';
 
 export type ActiveMembershipSummary = {
   id: string;
@@ -20,6 +21,7 @@ export type ConsumeVisitResult = {
   /** Пакет только что ушёл в долг / истёк по дате */
   enteredDebt?: boolean;
   debt?: number;
+  autoRenewed?: boolean;
 };
 
 export function visitsRemaining(visitsTotal: number | null | undefined, visitsUsed: number): number | null {
@@ -247,6 +249,45 @@ export async function consumeVisitFromActivePack(
     await removeClientFromMonthlyPaymentGroups(clientId, tenantId);
   }
 
+  // Автопродление клиентского пакета при превышении лимита занятий
+  if (active.visitsTotal != null && visitsUsed > active.visitsTotal) {
+    const pack = await prisma.clientMembership.findUnique({
+      where: { id: active.id },
+      include: { membership: true },
+    });
+    if (pack?.membership && pack.membership.category !== 'GROUP') {
+      try {
+        const renewed = await issueClientMembership({
+          tenantId,
+          clientId,
+          membershipId: pack.membershipId,
+          allowWhileGroupBilling: false,
+          isAutoRenew: true,
+        });
+        const price = Number(pack.membership.price || 0);
+        if (price > 0 && renewed) {
+          await FinanceService.recordMembershipIssue({
+            tenantId,
+            clientId,
+            amount: price,
+            title: `Автопродление абонемента: ${pack.membership.name}`,
+            clientMembershipId: renewed.id,
+            membershipCatalogId: pack.membershipId,
+          }).catch((e) => console.error('Auto-renew finance record failed', e));
+        }
+        return {
+          coveredByMembership: true,
+          membershipId: renewed.id,
+          enteredDebt: true,
+          debt: visitDebt(renewed.visitsTotal, renewed.visitsUsed),
+          autoRenewed: true,
+        };
+      } catch (e) {
+        console.error('Auto-renew membership failed', e);
+      }
+    }
+  }
+
   return {
     coveredByMembership: true,
     membershipId: active.id,
@@ -263,6 +304,9 @@ export async function issueClientMembership(params: {
   tenantId: string;
   clientId: string;
   membershipId: string;
+  /** Разрешить выдачу даже при групповом биллинге (служебное) */
+  allowWhileGroupBilling?: boolean;
+  isAutoRenew?: boolean;
 }) {
   const membership = await prisma.membership.findFirst({
     where: { id: params.membershipId, tenantId: params.tenantId },
@@ -270,11 +314,27 @@ export async function issueClientMembership(params: {
   if (!membership) {
     throw Object.assign(new Error('Membership not found'), { statusCode: 404 });
   }
+  if (membership.category === 'GROUP') {
+    throw Object.assign(new Error('Групповой абонемент нельзя выдать клиенту лично'), { statusCode: 400 });
+  }
+  if (!params.allowWhileGroupBilling && (await clientHasGroupBilling(params.clientId, params.tenantId))) {
+    throw Object.assign(
+      new Error('Клиент в группе с ежемесячной оплатой — клиентский абонемент недоступен'),
+      { statusCode: 400 }
+    );
+  }
 
   let endDate: Date | null = null;
-  if (membership.type === 'monthly' && membership.duration) {
+  const validityDays = membership.validityDays ?? membership.duration;
+  if (membership.periodType === 'CALENDAR_PERIOD' && membership.periodMonths) {
     endDate = new Date();
-    endDate.setDate(endDate.getDate() + membership.duration);
+    endDate.setMonth(endDate.getMonth() + membership.periodMonths);
+  } else if ((membership.type === 'monthly' || membership.periodType === 'FIXED_DAYS') && validityDays) {
+    endDate = new Date();
+    endDate.setDate(endDate.getDate() + validityDays);
+  } else if (membership.periodType === 'VISITS' && validityDays) {
+    endDate = new Date();
+    endDate.setDate(endDate.getDate() + validityDays);
   }
 
   const visitsTotal = membership.visits ?? null;
@@ -383,6 +443,87 @@ export async function setClientMembershipRemaining(params: {
 /**
  * Cron: клиенты без живого покрытия абонемента, но ещё в monthly-группах → слет.
  */
+/** Деактивировать клиентские пакеты при вступлении в группу с GROUP-биллингом. */
+export async function deactivateActiveClientPacks(clientId: string, tenantId: string): Promise<number> {
+  const result = await prisma.clientMembership.updateMany({
+    where: { clientId, tenantId, isActive: true },
+    data: { isActive: false },
+  });
+  return result.count;
+}
+
+/**
+ * Смена клиентского тарифа (Finance / ЛК): выдача нового пакета с переносом долга
+ * и пересчёт суммы начисления (цена нового тарифа).
+ */
+export async function changeClientMembershipPack(params: {
+  tenantId: string;
+  clientId: string;
+  membershipId: string;
+  /** Не создавать повторное finance-начисление (если вызывающий сам обновит Payment) */
+  skipFinanceRecord?: boolean;
+}) {
+  const previous = await findActiveClientMembership(params.clientId, params.tenantId);
+  const previousDebt =
+    previous && previous.visitsTotal != null
+      ? visitDebt(previous.visitsTotal, previous.visitsUsed)
+      : 0;
+
+  const renewed = await issueClientMembership({
+    tenantId: params.tenantId,
+    clientId: params.clientId,
+    membershipId: params.membershipId,
+  });
+
+  const newPrice = Number(renewed.membership?.price || 0);
+
+  // Обновить незакрытый счёт на цену нового тарифа (учёт сверхлимитного занятия уже в visitsUsed)
+  const pending = await prisma.payment.findFirst({
+    where: {
+      tenantId: params.tenantId,
+      clientId: params.clientId,
+      status: { in: ['pending', 'overdue'] },
+      OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (pending && newPrice >= 0) {
+    await prisma.payment.update({
+      where: { id: pending.id },
+      data: {
+        originalAmount: pending.originalAmount ?? pending.amount,
+        amount: newPrice,
+        notes: [
+          pending.notes,
+          `Смена тарифа → ${renewed.membership?.name || params.membershipId}`,
+          previousDebt > 0 ? `перенесён долг посещений: ${previousDebt}` : null,
+        ]
+          .filter(Boolean)
+          .join(' / '),
+      },
+    });
+  }
+
+  if (!params.skipFinanceRecord && newPrice > 0) {
+    const clientName = `${renewed.client.lastName} ${renewed.client.firstName}`.trim();
+    await FinanceService.recordMembershipIssue({
+      tenantId: params.tenantId,
+      clientId: params.clientId,
+      amount: newPrice,
+      title: `Смена абонемента: ${clientName} — ${renewed.membership?.name}`,
+      clientMembershipId: renewed.id,
+      membershipCatalogId: params.membershipId,
+    }).catch((e) => console.error('change pack finance record failed', e));
+  }
+
+  return {
+    membership: renewed,
+    previousDebt,
+    newPrice,
+    updatedPaymentId: pending?.id || null,
+  };
+}
+
 export async function cleanupExpiredMembershipMonthlyGroups(): Promise<number> {
   const activeRows = await prisma.clientMembership.findMany({
     where: { isActive: true },

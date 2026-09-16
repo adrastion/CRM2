@@ -94,6 +94,8 @@ import { apiService } from '../services/api';
 import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
 import SiteTrafficMonitoringTab from './SiteTrafficMonitoringTab';
 import SuperAdminMaintenanceTab from './SuperAdminMaintenanceTab';
+import SuperAdminTermsTab from './SuperAdminTermsTab';
+import SuperAdminPrivacyTab from './SuperAdminPrivacyTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 import SuperAdminPlannerTab from './SuperAdminPlannerTab';
 import {
@@ -104,6 +106,7 @@ import NotificationSettingsPanel from '../components/notifications/NotificationS
 import SchoolOffersPanel from '../components/notifications/SchoolOffersPanel';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
+import PlatformMarketersCrud from '../components/admin/PlatformMarketersCrud';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -119,6 +122,8 @@ const SA_SECTIONS = [
   'server-load',
   'site-traffic',
   'maintenance',
+  'terms',
+  'privacy',
   'notifications',
   'planner',
   'development',
@@ -2967,6 +2972,13 @@ const AdminDashboard: React.FC = () => {
       {/* Вкладка: Маркетологи */}
       {section === 'marketers' && (
         <Box>
+          <Typography variant="h5" fontWeight="bold" mb={2}>
+            Платформенное управление
+          </Typography>
+          <Paper sx={{ p: 2, mb: 4 }}>
+            <PlatformMarketersCrud mode="sa" />
+          </Paper>
+
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5" fontWeight="bold">
               Статистика маркетологов
@@ -3081,6 +3093,10 @@ const AdminDashboard: React.FC = () => {
       {section === 'site-traffic' && <SiteTrafficMonitoringTab />}
 
       {section === 'maintenance' && <SuperAdminMaintenanceTab />}
+
+      {section === 'terms' && <SuperAdminTermsTab />}
+
+      {section === 'privacy' && <SuperAdminPrivacyTab />}
 
       {section === 'notifications' && (
         <Box sx={{ maxWidth: 720 }}>

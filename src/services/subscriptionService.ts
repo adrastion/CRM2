@@ -264,6 +264,20 @@ export class SubscriptionService {
       },
     });
 
+    const externalKey = `sub_commission:${tenantId}:${Date.now()}:${commissionAmount}`;
+    try {
+      const { MarketerCabinetService } = await import('./marketerCabinetService');
+      await MarketerCabinetService.recordCommissionAccrual({
+        marketerId: tenantMarketer.marketerId,
+        tenantId,
+        amount: commissionAmount,
+        notes: `Комиссия ${commissionPercentage}% с оплаты ${paymentAmount}`,
+        externalKey,
+      });
+    } catch (err) {
+      console.error('[MarketerLedger] accrual failed:', err);
+    }
+
     console.log('Commission added to marketer:', {
       marketerId: tenantMarketer.marketerId,
       tenantId,
@@ -414,7 +428,8 @@ export class SubscriptionService {
     tenantId: string,
     planType: PlanType,
     returnUrl: string,
-    promoCode?: string
+    promoCode?: string,
+    refCode?: string
   ) {
     const subscription = await this.getOrCreateSubscription(tenantId);
 
@@ -502,6 +517,15 @@ export class SubscriptionService {
         });
       }
 
+      if (refCode) {
+        try {
+          const { applyReferralConversion } = await import('./referralConversionService');
+          await applyReferralConversion(String(refCode), tenantId);
+        } catch (e) {
+          console.error('Referral conversion on free payment failed:', e);
+        }
+      }
+
       return {
         paymentId: null,
         paymentUrl: null,
@@ -549,6 +573,7 @@ export class SubscriptionService {
         subscriptionId: subscription.id,
         originalAmount: listPrice.toString(),
         discountAmount: discountAmount.toString(),
+        ...(refCode ? { refCode: String(refCode).trim() } : {}),
         ...(validatedPromoCode && {
           promoCodeId: validatedPromoCode.id,
           promoCode: validatedPromoCode.code,
@@ -804,6 +829,15 @@ export class SubscriptionService {
             : Number(subscriptionPayment.amount);
           
           await this.addCommissionToMarketer(tenantId, originalAmount);
+          const refCode = payment.metadata?.refCode || payment.metadata?.referralCode;
+          if (refCode) {
+            try {
+              const { applyReferralConversion } = await import('./referralConversionService');
+              await applyReferralConversion(String(refCode), tenantId);
+            } catch (e) {
+              console.error('Referral conversion on payment failed:', e);
+            }
+          }
         } catch (error) {
           console.error('Error activating subscription:', error);
           throw error;

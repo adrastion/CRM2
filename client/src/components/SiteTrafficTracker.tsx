@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { hasAnalyticsConsent } from '../utils/cookieConsent';
 
 const VISITOR_KEY = 'siteVisitorId';
 const HEARTBEAT_MS = 30_000;
@@ -22,7 +23,7 @@ function ensureVisitorId(): string {
 
 function resolveActorHint(): string {
   try {
-    if (localStorage.getItem('superAdminToken')) return 'guest'; // SA panel counts as guest-ish ops; keep guest
+    if (localStorage.getItem('superAdminToken')) return 'guest';
     if (localStorage.getItem('token')) return 'school';
     if (localStorage.getItem('clientToken')) {
       return localStorage.getItem('userType') === 'parent' ? 'parent' : 'client';
@@ -40,6 +41,7 @@ function pingUrl(): string {
 }
 
 function sendPing(payload: Record<string, unknown>, useBeacon = false) {
+  if (!hasAnalyticsConsent()) return;
   const body = JSON.stringify(payload);
   const url = pingUrl();
   try {
@@ -62,15 +64,23 @@ function sendPing(payload: Record<string, unknown>, useBeacon = false) {
 
 /**
  * Tracks SPA presence for Super Admin site-traffic monitoring.
- * Mount once under Router.
+ * Sends pings only after cookie analytics consent.
  */
 const SiteTrafficTracker: React.FC = () => {
   const location = useLocation();
   const visitorIdRef = useRef(ensureVisitorId());
   const pathRef = useRef(location.pathname);
+  const [consentOk, setConsentOk] = useState(() => hasAnalyticsConsent());
+
+  useEffect(() => {
+    const onChange = () => setConsentOk(hasAnalyticsConsent());
+    window.addEventListener('cookie-consent-changed', onChange as EventListener);
+    return () => window.removeEventListener('cookie-consent-changed', onChange as EventListener);
+  }, []);
 
   useEffect(() => {
     pathRef.current = location.pathname;
+    if (!consentOk) return;
     sendPing({
       visitorId: visitorIdRef.current,
       path: location.pathname,
@@ -78,9 +88,11 @@ const SiteTrafficTracker: React.FC = () => {
       referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
       visibility: typeof document !== 'undefined' ? document.visibilityState : 'visible',
     });
-  }, [location.pathname]);
+  }, [location.pathname, consentOk]);
 
   useEffect(() => {
+    if (!consentOk) return;
+
     const tick = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       sendPing({
@@ -130,7 +142,7 @@ const SiteTrafficTracker: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
     };
-  }, []);
+  }, [consentOk]);
 
   return null;
 };

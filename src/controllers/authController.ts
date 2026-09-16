@@ -79,6 +79,15 @@ const changeEmailSchema = Joi.object({
  */
 export const register = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const result = await AuthService.registerTenant(req.body);
+  const refCode = (req.body as any)?.refCode || (req.body as any)?.referralCode;
+  if (refCode && result?.tenant?.id) {
+    try {
+      const { applyReferralConversion } = await import('../services/referralConversionService');
+      await applyReferralConversion(String(refCode), result.tenant.id);
+    } catch (e) {
+      console.error('Referral conversion on register failed:', e);
+    }
+  }
   maybeSetAuthCookies(res, result);
   res.status(201).json({
     success: true,
