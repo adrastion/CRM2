@@ -134,12 +134,13 @@ export async function getClosedTestingModeStatus(): Promise<{
   };
 }
 
-/** Публичный статус (без allowlist). */
+/** Публичный статус (без allowlist). Без кэша — CLI on/off виден сразу. */
 export async function getPublicAccessStatus(): Promise<{
   maintenance: { enabled: boolean; message: string };
   testing: { enabled: boolean; message: string };
   closedTesting: { enabled: boolean; message: string };
 }> {
+  clearMaintenanceCache();
   const c = await loadCache();
   return {
     maintenance: { enabled: c.maintenance, message: MAINTENANCE_MESSAGE },

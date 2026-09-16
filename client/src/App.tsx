@@ -149,6 +149,17 @@ const RoleRoute: React.FC<{ roles: string[]; children: React.ReactNode }> = ({ r
 
 /** Корень сайта: гости → лендинг, авторизованные → свой кабинет. */
 const HomeRoute: React.FC = () => {
+  const closedOrTestingStub =
+    sessionStorage.getItem('closedTestingMode') === '1' ||
+    (sessionStorage.getItem('testingMode') === '1' &&
+      sessionStorage.getItem('testingModeAccess') !== '1') ||
+    sessionStorage.getItem('maintenanceMode') === '1';
+
+  // Пока Gate ещё проверяет статус — не светим лендинг в закрытых режимах
+  if (closedOrTestingStub && !hasAnySession() && !localStorage.getItem('superAdminToken')) {
+    return <Navigate to="/maintenance" replace />;
+  }
+
   if (hasAnySession()) {
     const dest = currentSessionDestination();
     return <Navigate to={dest || '/dashboard'} replace />;
@@ -302,9 +313,13 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           sessionStorage.setItem('testingMode', '1');
           setMode('closed_testing');
           setMessage(status?.closedTesting?.message || message);
+          // Гость без localStorage-сессии всегда на заглушке (cookie ≠ вход в SPA)
           if (isSa) {
             sessionStorage.setItem('testingModeAccess', '1');
             setBlocked(false);
+          } else if (!hasAnySession()) {
+            sessionStorage.removeItem('testingModeAccess');
+            setBlocked(true);
           } else {
             try {
               const access = await apiService.getMaintenanceAccess();
@@ -329,6 +344,10 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           if (isSa) {
             sessionStorage.setItem('testingModeAccess', '1');
             setBlocked(false);
+          } else if (!hasAnySession()) {
+            // Гость → заглушка (с кнопкой входа); /auth пропускается отдельно
+            sessionStorage.removeItem('testingModeAccess');
+            setBlocked(true);
           } else {
             try {
               const access = await apiService.getMaintenanceAccess();
