@@ -122,7 +122,7 @@ async function main() {
       code: customCode,
       name: 'Тестовый тариф',
       price: 1500,
-      limits: { trainers: 5, clients: 200, groups: 12, branches: 3, trainings: 'unlimited' },
+      limits: { trainers: 5, clients: 200, groups: 12, branches: 3, trainings: 'unlimited', extraStaff: 2 },
       sortOrder: 2,
     });
     check('201', created.status === 201, created.json);
@@ -158,7 +158,7 @@ async function main() {
       name: 'Индивидуальный',
       price: 9900,
       isPublic: false,
-      limits: { trainers: 'unlimited', clients: 'unlimited' },
+      limits: { trainers: 'unlimited', clients: 'unlimited', groups: 'unlimited', branches: 'unlimited', trainings: 'unlimited', extraStaff: 'unlimited' },
     });
     check('201', individual.status === 201, individual.json);
     check('isPublic=false', individual.json?.data?.isPublic === false);

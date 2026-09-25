@@ -91,7 +91,7 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
         }
       }
     })();
-
+    
     return () => {
       cancelled = true;
     };
@@ -114,7 +114,7 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
       if (declined) {
         onDecline();
         onClose();
-      } else {
+          } else {
         onComplete();
       }
     }
@@ -141,12 +141,12 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
   if (!open || !step) return null;
 
   return createPortal(
-    <Box
-      sx={{
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
+          <Box
+          sx={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
         zIndex: 2000,
         pointerEvents: 'none',
         display: 'flex',
@@ -158,16 +158,16 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
       aria-modal="false"
       aria-labelledby="onboarding-title"
     >
-      <Paper
+        <Paper
         elevation={12}
-        sx={{
+          sx={{
           width: { xs: '100%', sm: 520 },
           maxWidth: '100%',
           maxHeight: { xs: 'min(70vh, 560px)', sm: 'min(75vh, 640px)' },
           display: 'flex',
           flexDirection: 'column',
           pointerEvents: 'auto',
-          borderRadius: 3,
+            borderRadius: 3,
           overflow: 'hidden',
           border: '1px solid',
           borderColor: 'divider',
@@ -211,13 +211,13 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
               </Typography>
             ))}
           </Box>
-        </Box>
+          </Box>
 
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
             flexWrap: 'wrap',
             px: 2.5,
             py: 1.5,
@@ -234,31 +234,31 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
             onClick={() => void persist(true)}
             sx={{ textTransform: 'none' }}
           >
-            Пропустить
-          </Button>
+              Пропустить
+            </Button>
           <Box sx={{ flex: 1 }} />
           {busy && <CircularProgress size={18} sx={{ mr: 0.5 }} />}
-          <Button
+                <Button
             size="small"
-            startIcon={<ArrowBack />}
+                  startIcon={<ArrowBack />}
             disabled={isFirst || saving}
             onClick={goBack}
             sx={{ textTransform: 'none' }}
-          >
-            Назад
-          </Button>
-          <Button
+                >
+                  Назад
+                </Button>
+              <Button
             size="small"
-            variant="contained"
+                variant="contained"
             endIcon={isLast ? <CheckCircle /> : <ArrowForward />}
             disabled={saving}
             onClick={goNext}
             sx={{ textTransform: 'none' }}
           >
             {isLast ? 'Завершить' : 'Далее'}
-          </Button>
-        </Box>
-      </Paper>
+              </Button>
+          </Box>
+        </Paper>
     </Box>,
     document.body
   );

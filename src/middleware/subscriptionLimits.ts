@@ -3,7 +3,13 @@ import { AuthenticatedRequest, ApiResponse } from '../types';
 import { SubscriptionService } from '../services/subscriptionService';
 import { asyncHandler } from './errorHandler';
 
-export type ResourceType = 'trainers' | 'clients' | 'groups' | 'branches' | 'trainings';
+export type ResourceType =
+  | 'trainers'
+  | 'clients'
+  | 'groups'
+  | 'branches'
+  | 'trainings'
+  | 'extraStaff';
 
 /**
  * Middleware to check if tenant has access to create a resource

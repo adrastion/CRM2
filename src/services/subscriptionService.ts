@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
-import { PlanCatalogService, PlanLimits, LimitKey } from './planCatalogService';
+import { PlanCatalogService, PlanLimits, LimitKey, EXTRA_STAFF_ROLES } from './planCatalogService';
 
 // YooKassa API базовый URL
 const YOOKASSA_API_URL = 'https://api.yookassa.ru/v3';
@@ -962,7 +962,7 @@ export class SubscriptionService {
           where: { tenantId, isActive: true },
         });
         break;
-      case 'trainings':
+      case 'trainings': {
         // Для тренировок считаем за текущий месяц
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
@@ -972,6 +972,17 @@ export class SubscriptionService {
             tenantId,
             startTime: { gte: startOfMonth },
             isCancelled: false,
+          },
+        });
+        break;
+      }
+      case 'extraStaff':
+        // OWNER и TRAINER не входят — общий пул ADMIN + PROMOTER (+ будущие роли)
+        currentUsage = await prisma.user.count({
+          where: {
+            tenantId,
+            isActive: true,
+            role: { in: [...EXTRA_STAFF_ROLES] },
           },
         });
         break;
@@ -999,7 +1010,8 @@ export class SubscriptionService {
       : await PlanCatalogService.getLimits(subscription.planType);
 
     // Подсчитываем текущее использование ресурсов
-    const [trainersCount, clientsCount, groupsCount, branchesCount, trainingsCount] = await Promise.all([
+    const [trainersCount, clientsCount, groupsCount, branchesCount, trainingsCount, extraStaffCount] =
+      await Promise.all([
       prisma.trainer.count({
         where: { tenantId, isActive: true },
       }),
@@ -1027,6 +1039,13 @@ export class SubscriptionService {
           },
         });
       })(),
+      prisma.user.count({
+        where: {
+          tenantId,
+          isActive: true,
+          role: { in: [...EXTRA_STAFF_ROLES] },
+        },
+      }),
     ]);
 
     // Вычисляем оставшиеся ресурсы
@@ -1060,6 +1079,7 @@ export class SubscriptionService {
         groups: limits.groups,
         branches: limits.branches,
         trainings: limits.trainings,
+        extraStaff: limits.extraStaff,
       },
       usage: {
         trainers: trainersCount,
@@ -1067,6 +1087,7 @@ export class SubscriptionService {
         groups: groupsCount,
         branches: branchesCount,
         trainings: trainingsCount,
+        extraStaff: extraStaffCount,
       },
       remaining: {
         trainers: calculateRemaining(limits.trainers, trainersCount),
@@ -1074,6 +1095,7 @@ export class SubscriptionService {
         groups: calculateRemaining(limits.groups, groupsCount),
         branches: calculateRemaining(limits.branches, branchesCount),
         trainings: calculateRemaining(limits.trainings, trainingsCount),
+        extraStaff: calculateRemaining(limits.extraStaff, extraStaffCount),
       },
       usagePercent: {
         trainers: calculateUsagePercent(limits.trainers, trainersCount),
@@ -1081,6 +1103,7 @@ export class SubscriptionService {
         groups: calculateUsagePercent(limits.groups, groupsCount),
         branches: calculateUsagePercent(limits.branches, branchesCount),
         trainings: calculateUsagePercent(limits.trainings, trainingsCount),
+        extraStaff: calculateUsagePercent(limits.extraStaff, extraStaffCount),
       },
     };
   }

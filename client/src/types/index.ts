@@ -151,6 +151,8 @@ export interface PlanLimitsDto {
   groups: PlanLimitValue;
   branches: PlanLimitValue;
   trainings: PlanLimitValue;
+  /** Доп. сотрудники (ADMIN + PROMOTER и аналоги), без OWNER/TRAINER. */
+  extraStaff: PlanLimitValue;
 }
 
 /** Тариф в панели супер-админа. */

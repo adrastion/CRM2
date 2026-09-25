@@ -6,6 +6,31 @@ import { JWTPayload, CreateClientData } from '../types';
 import { HttpError } from '../utils/httpError';
 import { PasswordResetService } from './passwordResetService';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
+import { SubscriptionService } from './subscriptionService';
+import type { PlanLimits } from './planCatalogService';
+
+const STAFF_LIMIT_BY_ROLE: Partial<Record<string, keyof PlanLimits>> = {
+  ADMIN: 'extraStaff',
+  PROMOTER: 'extraStaff',
+  TRAINER: 'trainers',
+};
+
+const STAFF_LIMIT_LABEL: Record<string, string> = {
+  extraStaff: 'доп. сотрудников',
+  trainers: 'тренеров',
+};
+
+async function assertStaffRoleWithinLimit(tenantId: string, role: string) {
+  const resource = STAFF_LIMIT_BY_ROLE[role];
+  if (!resource) return;
+  const allowed = await SubscriptionService.checkLimit(tenantId, resource);
+  if (!allowed) {
+    throw new HttpError(
+      403,
+      `Достигнут лимит ${STAFF_LIMIT_LABEL[resource] || resource} по текущему тарифу`
+    );
+  }
+}
 
 export class AuthService {
   /**
@@ -493,6 +518,8 @@ export class AuthService {
       throw new Error('Role must be ADMIN, TRAINER or PROMOTER');
     }
 
+    await assertStaffRoleWithinLimit(data.tenantId, data.role);
+
     const normalizedEmail = data.email.toLowerCase().trim();
 
     // Email уникален внутри школы
@@ -827,6 +854,8 @@ export class AuthService {
       if (data.role !== 'ADMIN' && data.role !== 'TRAINER') {
         throw new HttpError(400, 'Роль может быть только ADMIN или TRAINER');
       }
+
+      await assertStaffRoleWithinLimit(currentUser.tenantId, data.role);
 
       updateData.role = data.role;
 

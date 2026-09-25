@@ -2,7 +2,13 @@ import { prisma } from '../lib/prisma';
 import { badRequest, notFound } from '../utils/httpError';
 
 /** Ключи лимитов, которыми оперирует система. */
-export type LimitKey = 'trainers' | 'clients' | 'groups' | 'branches' | 'trainings';
+export type LimitKey =
+  | 'trainers'
+  | 'clients'
+  | 'groups'
+  | 'branches'
+  | 'trainings'
+  | 'extraStaff';
 
 /** Лимит: число или 'unlimited' (в БД — NULL). */
 export type LimitValue = number | 'unlimited';
@@ -13,7 +19,15 @@ export interface PlanLimits {
   groups: LimitValue;
   branches: LimitValue;
   trainings: LimitValue;
+  /**
+   * Доп. сотрудники школы (ADMIN, PROMOTER и будущие роли кабинета),
+   * без OWNER и без TRAINER (у тренеров свой лимит).
+   */
+  extraStaff: LimitValue;
 }
+
+/** Роли, которые входят в общий лимит «Доп. сотрудники». */
+export const EXTRA_STAFF_ROLES = ['ADMIN', 'PROMOTER'] as const;
 
 /** Тариф в том виде, в котором его используют сервисы и отдаёт API. */
 export interface PlanCatalogItem {
@@ -33,12 +47,16 @@ export interface PlanCatalogItem {
 }
 
 /** Соответствие ключа лимита и колонки в БД. */
-const LIMIT_COLUMNS: Record<LimitKey, 'maxTrainers' | 'maxClients' | 'maxGroups' | 'maxBranches' | 'maxTrainings'> = {
+const LIMIT_COLUMNS: Record<
+  LimitKey,
+  'maxTrainers' | 'maxClients' | 'maxGroups' | 'maxBranches' | 'maxTrainings' | 'maxExtraStaff'
+> = {
   trainers: 'maxTrainers',
   clients: 'maxClients',
   groups: 'maxGroups',
   branches: 'maxBranches',
   trainings: 'maxTrainings',
+  extraStaff: 'maxExtraStaff',
 };
 
 export const LIMIT_KEYS = Object.keys(LIMIT_COLUMNS) as LimitKey[];
@@ -75,6 +93,7 @@ function mapPlan(row: any): PlanCatalogItem {
       groups: toLimit(row.maxGroups),
       branches: toLimit(row.maxBranches),
       trainings: toLimit(row.maxTrainings),
+      extraStaff: toLimit(row.maxExtraStaff ?? null),
     },
     isPublic: row.isPublic,
     isActive: row.isActive,
@@ -140,7 +159,14 @@ export class PlanCatalogService {
     if (plan) return plan.limits;
 
     console.warn(`[planCatalog] Тариф «${code}» отсутствует в каталоге, применяю нулевые лимиты`);
-    return { trainers: 0, clients: 0, groups: 0, branches: 0, trainings: 0 };
+    return {
+      trainers: 0,
+      clients: 0,
+      groups: 0,
+      branches: 0,
+      trainings: 0,
+      extraStaff: 0,
+    };
   }
 
   /** Цена тарифа; null — «Цена договорная». */
@@ -201,6 +227,7 @@ export class PlanCatalogService {
         maxGroups: fromLimit(limits.groups, 'groups'),
         maxBranches: fromLimit(limits.branches, 'branches'),
         maxTrainings: fromLimit(limits.trainings, 'trainings'),
+        maxExtraStaff: fromLimit(limits.extraStaff, 'extraStaff'),
         isPublic: input.isPublic ?? true,
         sortOrder: Number.isFinite(Number(input.sortOrder)) ? Number(input.sortOrder) : 0,
         supportLevel: input.supportLevel?.trim() || null,

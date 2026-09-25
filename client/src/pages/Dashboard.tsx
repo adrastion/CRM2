@@ -585,7 +585,9 @@ const Dashboard: React.FC = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Мой тариф: {planUsage?.subscription?.planType || 'Загрузка...'}</DialogTitle>
+        <DialogTitle>
+          Мой тариф: {planUsage?.subscription?.planName || planUsage?.subscription?.planType || 'Загрузка...'}
+        </DialogTitle>
         <DialogContent>
           {planUsageLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -612,6 +614,7 @@ const Dashboard: React.FC = () => {
               {[
                 { key: 'clients', label: 'Клиенты' },
                 { key: 'trainers', label: 'Тренеры' },
+                { key: 'extraStaff', label: 'Доп. сотрудники' },
                 { key: 'groups', label: 'Группы' },
                 { key: 'branches', label: 'Филиалы' },
                 { key: 'trainings', label: 'Тренировки (в месяц)' },

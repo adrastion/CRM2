@@ -33,6 +33,7 @@ import {
   Support,
   TrendingUp,
   LocalOffer,
+  Badge,
 } from '@mui/icons-material';
 import PublicFooter from '../components/PublicFooter';
 import PublicSiteNav from '../components/PublicSiteNav';
@@ -51,6 +52,7 @@ interface PricingPlanCard {
   description: string;
   features: {
     trainers: number | string;
+    extraStaff: number | string;
     clients: number | string;
     groups: number | string;
     branches: number | string;
@@ -93,6 +95,7 @@ const mapPublicPlan = (plan: PublicPlanItem, index: number): PricingPlanCard => 
     description: plan.description || '',
     features: {
       trainers: formatLimit(plan.limits?.trainers),
+      extraStaff: formatLimit(plan.limits?.extraStaff),
       clients: formatLimit(plan.limits?.clients),
       groups: formatLimit(plan.limits?.groups),
       branches: formatLimit(plan.limits?.branches),
@@ -299,7 +302,10 @@ const Pricing: React.FC = () => {
         )}
         {isAuthenticated && user?.role === 'OWNER' && subscription && (
           <Alert severity="info" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
-            Текущий тариф: <strong>{subscription.planType}</strong>
+            Текущий тариф:{' '}
+            <strong>
+              {currentPlan?.name || subscription.planName || subscription.planType}
+            </strong>
             {subscription.status === 'active' && subscription.endDate && (
               <> • Действует до: {new Date(subscription.endDate).toLocaleDateString('ru-RU')}</>
             )}
@@ -324,15 +330,15 @@ const Pricing: React.FC = () => {
       ) : planTypes.length === 0 ? (
         <Alert severity="info">Тарифы временно недоступны</Alert>
       ) : (
-      <Grid container spacing={3}>
-        {planTypes.map((plan, index) => {
+      <Grid container spacing={3} justifyContent="center">
+        {planTypes.map((plan) => {
           const isCurrentPlan =
             (currentPlan?.planType === plan.planType || currentPlan?.code === plan.code) &&
             subscription?.status === 'active';
           const isNegotiable = plan.isNegotiable;
           
           return (
-          <Grid item xs={12} sm={6} md={4} lg={index === 4 ? 12 : undefined} key={plan.code || plan.planType}>
+          <Grid item xs={12} sm={6} md={4} key={plan.code || plan.planType}>
             <Paper
               sx={{
                 p: 4,
@@ -393,6 +399,15 @@ const Pricing: React.FC = () => {
                   <ListItemText
                     primary="Тренеры"
                     secondary={plan.features.trainers}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <Badge color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Доп. сотрудники"
+                    secondary={plan.features.extraStaff}
                   />
                 </ListItem>
                 <ListItem>

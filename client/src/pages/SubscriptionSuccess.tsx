@@ -132,7 +132,7 @@ const SubscriptionSuccess: React.FC = () => {
                 Подписка успешно активирована!
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
-                Ваш тариф: <strong>{subscription.planType}</strong>
+                Ваш тариф: <strong>{subscription.planName || subscription.planType}</strong>
               </Typography>
               {subscription.endDate && (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

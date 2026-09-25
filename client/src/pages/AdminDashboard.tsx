@@ -378,7 +378,9 @@ const AdminDashboard: React.FC = () => {
     groups: '',
     branches: '',
     trainings: '',
+    extraStaff: '',
   });
+  const [editingPlanSortOrder, setEditingPlanSortOrder] = useState('0');
   const [createPlanDialog, setCreatePlanDialog] = useState(false);
   const [planForm, setPlanForm] = useState({
     code: '',
@@ -386,11 +388,13 @@ const AdminDashboard: React.FC = () => {
     description: '',
     price: '',
     isPublic: true,
+    sortOrder: '0',
     trainers: '',
     clients: '',
     groups: '',
     branches: '',
     trainings: '',
+    extraStaff: '',
   });
   const [grantEndDate, setGrantEndDate] = useState<Date | null>(null);
   const [grantComment, setGrantComment] = useState('');
@@ -427,11 +431,13 @@ const AdminDashboard: React.FC = () => {
     description: '',
     price: '',
     isPublic: true,
+    sortOrder: '0',
     trainers: '',
     clients: '',
     groups: '',
     branches: '',
     trainings: '',
+    extraStaff: '',
   });
 
   const [expenseFormBaseline, setExpenseFormBaseline] = useState(emptyExpenseForm());
@@ -666,6 +672,7 @@ const AdminDashboard: React.FC = () => {
     editingPlanDescription,
     editingPlanIsPublic,
     editingPlanPrice,
+    editingPlanSortOrder,
     editingPlanLimits,
   });
 
@@ -987,6 +994,7 @@ const AdminDashboard: React.FC = () => {
     groups: string;
     branches: string;
     trainings: string;
+    extraStaff: string;
   }) => {
     const result: Record<string, number | 'unlimited'> = {};
     Object.keys(limits).forEach((key) => {
@@ -1013,12 +1021,14 @@ const AdminDashboard: React.FC = () => {
     setEditingPlanName('');
     setEditingPlanDescription('');
     setEditingPlanIsPublic(true);
+    setEditingPlanSortOrder('0');
     setEditingPlanLimits({
       trainers: '',
       clients: '',
       groups: '',
       branches: '',
       trainings: '',
+      extraStaff: '',
     });
     setEditPlanBaseline(null);
   };
@@ -1055,12 +1065,14 @@ const AdminDashboard: React.FC = () => {
       groups: plan.limits.groups === 'unlimited' ? 'unlimited' : String(plan.limits.groups ?? ''),
       branches: plan.limits.branches === 'unlimited' ? 'unlimited' : String(plan.limits.branches ?? ''),
       trainings: plan.limits.trainings === 'unlimited' ? 'unlimited' : String(plan.limits.trainings ?? ''),
+      extraStaff: plan.limits.extraStaff === 'unlimited' ? 'unlimited' : String(plan.limits.extraStaff ?? ''),
     };
     const initial = {
       editingPlanName: plan.name || '',
       editingPlanDescription: plan.description || '',
       editingPlanIsPublic: plan.isPublic !== false,
       editingPlanPrice: plan.price == null ? '' : plan.price.toString(),
+      editingPlanSortOrder: String(plan.sortOrder ?? 0),
       editingPlanLimits: limits,
     };
     setEditingPlan(plan);
@@ -1068,6 +1080,7 @@ const AdminDashboard: React.FC = () => {
     setEditingPlanDescription(initial.editingPlanDescription);
     setEditingPlanIsPublic(initial.editingPlanIsPublic);
     setEditingPlanPrice(initial.editingPlanPrice);
+    setEditingPlanSortOrder(initial.editingPlanSortOrder);
     setEditingPlanLimits(limits);
     setEditPlanBaseline(initial);
     setEditPlanDialog(true);
@@ -1091,6 +1104,7 @@ const AdminDashboard: React.FC = () => {
         price: Number.isFinite(priceValue as number) ? priceValue : null,
         limits,
         isPublic: editingPlanIsPublic,
+        sortOrder: Number.isFinite(Number(editingPlanSortOrder)) ? Number(editingPlanSortOrder) : 0,
       });
       discardEditPlanForm();
       await loadPlanPrices();
@@ -1117,6 +1131,7 @@ const AdminDashboard: React.FC = () => {
         groups: planForm.groups,
         branches: planForm.branches,
         trainings: planForm.trainings,
+        extraStaff: planForm.extraStaff,
       });
       const priceValue = planForm.price.trim() === '' ? null : parseFloat(planForm.price);
       await apiService.createPlan({
@@ -1126,6 +1141,7 @@ const AdminDashboard: React.FC = () => {
         price: Number.isFinite(priceValue as number) ? priceValue : null,
         limits,
         isPublic: planForm.isPublic,
+        sortOrder: Number.isFinite(Number(planForm.sortOrder)) ? Number(planForm.sortOrder) : 0,
       });
       discardCreatePlanForm();
       await loadPlanPrices();
@@ -2942,8 +2958,14 @@ const AdminDashboard: React.FC = () => {
                         Лимиты:
                       </Typography>
                       <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Порядок отображения: {plan.sortOrder ?? 0}
+                        </Typography>
                         <Typography variant="body2">
                           Тренеры: {plan.limits.trainers === 'unlimited' ? 'Безлимит' : plan.limits.trainers}
+                        </Typography>
+                        <Typography variant="body2">
+                          Доп. сотрудники: {plan.limits.extraStaff === 'unlimited' ? 'Безлимит' : plan.limits.extraStaff ?? 'Безлимит'}
                         </Typography>
                         <Typography variant="body2">
                           Клиенты: {plan.limits.clients === 'unlimited' ? 'Безлимит' : plan.limits.clients}
@@ -3437,6 +3459,16 @@ const AdminDashboard: React.FC = () => {
               label="Публичный тариф (на странице /pricing)"
               sx={{ mb: 2 }}
             />
+            <TextField
+              fullWidth
+              label="Порядок отображения"
+              type="number"
+              value={editingPlanSortOrder}
+              onChange={(e) => setEditingPlanSortOrder(e.target.value)}
+              sx={{ mb: 2 }}
+              helperText="Меньше число — выше в списке на /pricing и в иерархии тарифов"
+              disabled={!canWrite}
+            />
 
             <Divider sx={{ my: 2 }} />
             <Typography variant="h6" gutterBottom>
@@ -3444,86 +3476,37 @@ const AdminDashboard: React.FC = () => {
             </Typography>
             
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Тренеры"
-                  type="text"
-                  value={editingPlanLimits.trainers}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                      setEditingPlanLimits({ ...editingPlanLimits, trainers: value });
+              {(
+                [
+                  ['trainers', 'Тренеры'],
+                  ['extraStaff', 'Доп. сотрудники'],
+                  ['clients', 'Клиенты'],
+                  ['groups', 'Группы'],
+                  ['branches', 'Филиалы'],
+                  ['trainings', 'Тренировки в месяц'],
+                ] as const
+              ).map(([key, label]) => (
+                <Grid item xs={12} sm={6} key={key}>
+                  <TextField
+                    fullWidth
+                    label={label}
+                    type="text"
+                    value={editingPlanLimits[key]}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                        setEditingPlanLimits({ ...editingPlanLimits, [key]: value });
+                      }
+                    }}
+                    helperText={
+                      key === 'extraStaff'
+                        ? "Админы, промоутеры и аналоги (без владельца и тренеров). Число или 'unlimited'"
+                        : "Введите число или 'unlimited'"
                     }
-                  }}
-                  helperText="Введите число или 'unlimited'"
-                  disabled={!canWrite}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Клиенты"
-                  type="text"
-                  value={editingPlanLimits.clients}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                      setEditingPlanLimits({ ...editingPlanLimits, clients: value });
-                    }
-                  }}
-                  helperText="Введите число или 'unlimited'"
-                  disabled={!canWrite}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Группы"
-                  type="text"
-                  value={editingPlanLimits.groups}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                      setEditingPlanLimits({ ...editingPlanLimits, groups: value });
-                    }
-                  }}
-                  helperText="Введите число или 'unlimited'"
-                  disabled={!canWrite}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Филиалы"
-                  type="text"
-                  value={editingPlanLimits.branches}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                      setEditingPlanLimits({ ...editingPlanLimits, branches: value });
-                    }
-                  }}
-                  helperText="Введите число или 'unlimited'"
-                  disabled={!canWrite}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Тренировки в месяц"
-                  type="text"
-                  value={editingPlanLimits.trainings}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                      setEditingPlanLimits({ ...editingPlanLimits, trainings: value });
-                    }
-                  }}
-                  helperText="Введите число или 'unlimited'"
-                  disabled={!canWrite}
-                />
-              </Grid>
+                    disabled={!canWrite}
+                  />
+                </Grid>
+              ))}
             </Grid>
           </Box>
         </DialogContent>
@@ -3610,20 +3593,32 @@ const AdminDashboard: React.FC = () => {
               label="Публичный тариф"
               sx={{ mb: 2 }}
             />
+            <TextField
+              fullWidth
+              label="Порядок отображения"
+              type="number"
+              value={planForm.sortOrder}
+              onChange={(e) => setPlanForm({ ...planForm, sortOrder: e.target.value })}
+              sx={{ mb: 2 }}
+              helperText="Меньше число — выше в списке на /pricing"
+            />
             <Divider sx={{ my: 2 }} />
             <Typography variant="h6" gutterBottom>Лимиты</Typography>
             <Grid container spacing={2}>
-              {(['trainers', 'clients', 'groups', 'branches', 'trainings'] as const).map((key) => (
+              {(
+                [
+                  ['trainers', 'Тренеры'],
+                  ['extraStaff', 'Доп. сотрудники'],
+                  ['clients', 'Клиенты'],
+                  ['groups', 'Группы'],
+                  ['branches', 'Филиалы'],
+                  ['trainings', 'Тренировки в месяц'],
+                ] as const
+              ).map(([key, label]) => (
                 <Grid item xs={12} sm={6} key={key}>
                   <TextField
                     fullWidth
-                    label={
-                      key === 'trainers' ? 'Тренеры'
-                        : key === 'clients' ? 'Клиенты'
-                          : key === 'groups' ? 'Группы'
-                            : key === 'branches' ? 'Филиалы'
-                              : 'Тренировки в месяц'
-                    }
+                    label={label}
                     value={planForm[key]}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -3631,7 +3626,11 @@ const AdminDashboard: React.FC = () => {
                         setPlanForm({ ...planForm, [key]: value });
                       }
                     }}
-                    helperText="Число или 'unlimited'"
+                    helperText={
+                      key === 'extraStaff'
+                        ? "Админы, промоутеры и аналоги (без владельца и тренеров). Число или 'unlimited'"
+                        : "Число или 'unlimited'"
+                    }
                   />
                 </Grid>
               ))}

@@ -18,11 +18,15 @@ export const getSubscription = asyncHandler(async (req: AuthenticatedRequest, re
 
   const subscription = await SubscriptionService.getSubscription(req.tenant.id);
   const limits = await SubscriptionService.getLimits(req.tenant.id);
+  const plan = await PlanCatalogService.findByCode(subscription.planType);
 
   res.json({
     success: true,
     data: {
-      subscription,
+      subscription: {
+        ...subscription,
+        planName: plan?.name || subscription.planType,
+      },
       limits,
     },
   });

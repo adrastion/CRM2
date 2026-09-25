@@ -1318,6 +1318,8 @@ model SubscriptionPlan {
   maxGroups     Int?
   maxBranches   Int?
   maxTrainings  Int?
+  /// Доп. сотрудники школы (ADMIN, PROMOTER и аналогичные роли, без OWNER и TRAINER). null = безлимит.
+  maxExtraStaff Int?
   /// false — индивидуальный тариф: не отображается на странице /pricing,
   /// выдаётся только вручную из панели супер-админа
   isPublic      Boolean  @default(true)
