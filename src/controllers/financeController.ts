@@ -144,6 +144,7 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     trainerId: req.body.trainerId,
     groupId: req.body.groupId,
     branchId: req.body.branchId,
+    allocation: req.body.allocation || null,
     createdById: req.user?.id,
   });
 
@@ -243,6 +244,10 @@ export const getMembershipFinanceSummary = asyncHandler(
       search: req.query.search ? String(req.query.search) : undefined,
       amountFrom: req.query.amountFrom != null ? Number(req.query.amountFrom) : undefined,
       amountTo: req.query.amountTo != null ? Number(req.query.amountTo) : undefined,
+      periodKey:
+        typeof req.query.periodKey === 'string' && /^\d{4}-\d{2}$/.test(req.query.periodKey)
+          ? req.query.periodKey
+          : undefined,
     });
 
     res.json({ success: true, data });
@@ -273,7 +278,7 @@ export const receiveMembershipPayment = asyncHandler(
       }).catch((err) => console.error('[Notifications] finance:', err));
     };
 
-    const { paymentId, clientId, amount, notes } = req.body;
+    const { paymentId, clientId, amount, notes, periodKey } = req.body;
     if (!paymentId && !clientId) {
       throw badRequest('Укажите paymentId или clientId', 'paymentId');
     }
@@ -282,6 +287,9 @@ export const receiveMembershipPayment = asyncHandler(
     if (!Number.isFinite(increment) || increment === 0) {
       throw badRequest('Некорректная сумма', 'amount');
     }
+
+    const periodKeyStr =
+      typeof periodKey === 'string' && /^\d{4}-\d{2}$/.test(periodKey) ? periodKey : null;
 
     // Отрицательная сумма: уменьшить «выплачено» (4000 + (−3000) → 1000)
     if (increment < 0) {
@@ -320,10 +328,31 @@ export const receiveMembershipPayment = asyncHandler(
             tenantId: req.tenant.id,
             clientId,
             status: { in: ['pending', 'overdue'] },
+            ...(periodKeyStr ? { periodKey: periodKeyStr } : {}),
           },
           orderBy: { dueDate: 'asc' },
           include: { client: true },
         });
+
+    // Если по periodKey не нашли — fallback на dueDate/createdAt в том же месяце
+    if (!pendingPayment && !paymentId && clientId && periodKeyStr) {
+      const allPending = await prisma.payment.findMany({
+        where: {
+          tenantId: req.tenant.id,
+          clientId,
+          status: { in: ['pending', 'overdue'] },
+        },
+        orderBy: { dueDate: 'asc' },
+        include: { client: true },
+      });
+      pendingPayment =
+        allPending.find((p) => {
+          if (p.periodKey === periodKeyStr) return true;
+          const d = p.dueDate || p.createdAt;
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          return key === periodKeyStr;
+        }) || null;
+    }
 
     let paidReference: (typeof pendingPayment) = null;
     if (!pendingPayment && paymentId) {
@@ -348,6 +377,7 @@ export const receiveMembershipPayment = asyncHandler(
           branchId: paidReference.branchId,
           groupId: paidReference.groupId,
           membershipId: paidReference.membershipId,
+          periodKey: periodKeyStr || paidReference.periodKey,
           notes: notes ?? null,
         },
         include: { client: true },
@@ -374,6 +404,7 @@ export const receiveMembershipPayment = asyncHandler(
           status: 'paid',
           paidAt: new Date(),
           isMonthlyPayment: true,
+          periodKey: periodKeyStr,
           notes: notes ?? null,
         },
         include: { client: true },
@@ -487,12 +518,13 @@ export const correctMembershipAccrual = asyncHandler(
       return;
     }
 
-    const { clientId, paymentId, newAmount, reason, occurredAt } = req.body;
+    const { clientId, paymentId, newAmount, reason, occurredAt, periodKey } = req.body;
     if (!clientId) throw badRequest('Укажите clientId', 'clientId');
 
     const result = await FinanceService.correctMembershipAccrual(req.tenant.id, {
       clientId: String(clientId),
       paymentId: paymentId ? String(paymentId) : null,
+      periodKey: periodKey ? String(periodKey) : null,
       newAmount: Number(newAmount),
       reason: String(reason || ''),
       userId: req.user.id,

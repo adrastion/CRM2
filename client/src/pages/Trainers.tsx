@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { validateTrainerForm } from '../utils/validation';
 import {
   Box,
@@ -30,21 +31,19 @@ import {
   Snackbar,
   useMediaQuery,
   useTheme,
-  Divider,
   Stack,
 } from '@mui/material';
-import { Add, Edit, Delete, Business, AttachMoney, Person, AdminPanelSettings } from '@mui/icons-material';
+import { Add, Delete, Person, AdminPanelSettings } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
-import TrainerDocumentsPanel from '../components/trainers/TrainerDocumentsPanel';
 import { ru } from 'date-fns/locale';
+import TrainerCard, { employeeRoleLabel, isEmployeeAdmin, isEmployeePromoter } from '../components/trainers/TrainerCard';
 import { apiService } from '../services/api';
 import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { canCreateAdminUsers, isOwner as roleIsOwner } from '../utils/roles';
-import AttendanceExcelExport from '../components/AttendanceExcelExport';
+import { canCreateAdminUsers, canCreatePromoterUsers, isOwner as roleIsOwner, isOwnerOrAdmin } from '../utils/roles';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
@@ -55,11 +54,6 @@ import {
 } from '../utils/salarySchemes';
 
 const TRAINER_FIXED_MONTHLY = 'fixed_monthly';
-
-const isEmployeeAdmin = (employee: any): boolean =>
-  employee?.employeeType === 'admin' ||
-  employee?.user?.role === 'ADMIN' ||
-  employee?.role === 'ADMIN';
 
 const emptyFormData = {
   email: '',
@@ -89,21 +83,19 @@ const Trainers: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
   const isOwner = roleIsOwner(user?.role);
+  const canPickEmployeeRole = isOwnerOrAdmin(user?.role);
   const isSenior = Boolean(user?.isSeniorTrainer || (user?.seniorBranchIds && user.seniorBranchIds.length > 0));
+  const [searchParams, setSearchParams] = useSearchParams();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleSelectionDialog, setRoleSelectionDialog] = useState(false); // Диалог выбора роли
   const [openDialog, setOpenDialog] = useState(false);
-  const [editDialog, setEditDialog] = useState(false);
-  const [roleConfirmDialog, setRoleConfirmDialog] = useState(false);
-  const [pendingRoleChange, setPendingRoleChange] = useState<string | null>(null);
-  const [branchesDialog, setBranchesDialog] = useState(false);
+  const [cardDialog, setCardDialog] = useState(false);
   const [earningsDialog, setEarningsDialog] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
-  const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
+  const [cardEmployee, setCardEmployee] = useState<Trainer | any | null>(null);
   const [earnings, setEarnings] = useState<any>(null);
   const [loadingEarnings, setLoadingEarnings] = useState(false);
   const [earningsStartDate, setEarningsStartDate] = useState<Date | null>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -113,7 +105,6 @@ const Trainers: React.FC = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState({ ...emptyFormData });
   const [createFormBaseline, setCreateFormBaseline] = useState({ ...emptyFormData });
-  const [editFormBaseline, setEditFormBaseline] = useState({ ...emptyFormData });
 
   useEffect(() => {
     let isMounted = true;
@@ -216,18 +207,24 @@ const Trainers: React.FC = () => {
     }
 
     try {
-      // Если создаем администратора, используем API создания пользователя
-      if (formData.role === 'ADMIN') {
-        if (!canCreateAdminUsers(user?.role)) {
+      // Если создаем администратора или промоутера, используем API создания пользователя
+      if (formData.role === 'ADMIN' || formData.role === 'PROMOTER') {
+        if (formData.role === 'ADMIN' && !canCreateAdminUsers(user?.role)) {
           setError('Только владелец может создавать администраторов');
           setSnackbarMessage('Только владелец может создавать администраторов');
+          setSnackbarOpen(true);
+          return false;
+        }
+        if (formData.role === 'PROMOTER' && !canCreatePromoterUsers(user?.role)) {
+          setError('Недостаточно прав для создания промоутера');
+          setSnackbarMessage('Недостаточно прав для создания промоутера');
           setSnackbarOpen(true);
           return false;
         }
         const { role, qualification, experience, specialization, salaryScheme, salaryRate, canViewAllGroups, ...userData } = formData;
         await apiService.createUser({
           ...userData,
-          role: 'ADMIN'
+          role: formData.role,
         });
       } else {
         if (isSenior && !formData.branchId) {
@@ -292,257 +289,58 @@ const Trainers: React.FC = () => {
     }
   };
 
-  const handleEditTrainer = (trainer: Trainer) => {
-    setEditingTrainer(trainer);
-    setFormErrors({});
-    setError('');
-    const nextForm = {
-      email: trainer.user?.email || '',
-      password: '',
-      firstName: trainer.user?.firstName || '',
-      lastName: trainer.user?.lastName || '',
-      middleName: trainer.user?.middleName || '',
-      phone: trainer.user?.phone || '',
-      role: trainer.user?.role || 'TRAINER',
-      qualification: trainer.qualification || '',
-      experience: trainer.experience?.toString() || '',
-      specialization: trainer.specialization || '',
-      coachCategory: trainer.coachCategory || '',
-      judgeCategory: trainer.judgeCategory || '',
-      achievements: trainer.achievements || '',
-      salaryScheme:
-        normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
-          ? TRAINER_FIXED_MONTHLY
-          : '',
-      salaryRate:
-        normalizeSalaryScheme((trainer as any).salaryScheme || trainer.salaryType) === TRAINER_FIXED_MONTHLY
-          ? String((trainer as any).salaryRate ?? trainer.salaryAmount ?? '')
-          : '',
-      individualTrainingPrice:
-        (trainer as any).individualTrainingPrice != null
-          ? String((trainer as any).individualTrainingPrice)
-          : '',
-      canViewAllGroups: (trainer as any).canViewAllGroups || false,
-      branchId: trainer.branches?.[0]?.branchId || '',
-    };
-    setFormData(nextForm);
-    setEditFormBaseline(nextForm);
-    setEditDialog(true);
+  const openEmployeeCard = (employee: any) => {
+    setCardEmployee(employee);
+    setCardDialog(true);
   };
 
-  const handleEditAdmin = (admin: any) => {
-    setEditingTrainer(admin);
-    setFormErrors({});
-    setError('');
-    const adminUser = admin.user || admin;
-    const nextForm = {
-      ...emptyFormData,
-      email: adminUser.email || '',
-      firstName: adminUser.firstName || '',
-      lastName: adminUser.lastName || '',
-      middleName: adminUser.middleName || '',
-      phone: adminUser.phone || '',
-      role: adminUser.role || 'ADMIN',
-    };
-    setFormData(nextForm);
-    setEditFormBaseline(nextForm);
-    setEditDialog(true);
+  const closeEmployeeCard = () => {
+    setCardDialog(false);
+    setCardEmployee(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('trainerId');
+      return next;
+    }, { replace: true });
   };
 
-  const openEmployeeEdit = (employee: any) => {
-    if (isEmployeeAdmin(employee)) {
-      handleEditAdmin(employee);
-    } else {
-      handleEditTrainer(employee);
-    }
-  };
+  // Deep-link: ?trainerId= opens employee card
+  useEffect(() => {
+    const trainerIdFromUrl = searchParams.get('trainerId');
+    if (!trainerIdFromUrl || cardDialog || loading) return;
 
-  const getCurrentEmployeeRole = (): string => {
-    if (!editingTrainer) return formData.role;
-    return (
-      (editingTrainer as any).user?.role ||
-      (editingTrainer as any).role ||
-      ((editingTrainer as any).employeeType === 'admin' ? 'ADMIN' : 'TRAINER')
-    );
-  };
+    let cancelled = false;
 
-  const resetEditForm = () => {
-    setEditDialog(false);
-    setFormErrors({});
-    setError('');
-    setEditingTrainer(null);
-    setFormData({ ...emptyFormData });
-    setEditFormBaseline({ ...emptyFormData });
-    setRoleConfirmDialog(false);
-    setPendingRoleChange(null);
-  };
-
-  const performSaveEmployee = async (): Promise<boolean> => {
-    if (!editingTrainer) return false;
-
-    const userId = (editingTrainer as any).user?.id || (editingTrainer as any).id;
-    const currentRole = getCurrentEmployeeRole();
-    const newRole = formData.role;
-    const roleChanged = newRole !== currentRole;
-
-    try {
-      if (roleChanged) {
-        const updateData: any = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          middleName: formData.middleName,
-          phone: formData.phone,
-          email: formData.email,
-          role: newRole,
-        };
-        if (formData.password) {
-          updateData.password = formData.password;
-        }
-        await apiService.updateUser(userId, updateData);
-
-        // After ADMIN → TRAINER, update trainer profile fields if provided
-        if (newRole === 'TRAINER') {
-          await fetchTrainers();
-          const refreshed = await apiService.getTrainers({ includeAdmins: 'true', limit: 1000 });
-          const created = refreshed.data.find(
-            (e: any) => (e.user?.id || e.id) === userId && e.employeeType !== 'admin'
+    (async () => {
+      try {
+        let employee: any = trainers.find((t: any) => t.id === trainerIdFromUrl);
+        if (!employee) {
+          employee = trainers.find(
+            (t: any) => (t.user?.id || t.id) === trainerIdFromUrl
           );
-          if (created?.id) {
-            await apiService.updateTrainer(created.id, {
-              qualification: formData.qualification,
-              experience: formData.experience,
-              specialization: formData.specialization,
-              coachCategory: formData.coachCategory,
-              judgeCategory: formData.judgeCategory,
-              achievements: formData.achievements,
-              salaryScheme:
-                formData.salaryScheme === TRAINER_FIXED_MONTHLY
-                  ? TRAINER_FIXED_MONTHLY
-                  : 'per_training_person',
-              salaryRate:
-                formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
-                  ? parseFloat(formData.salaryRate)
-                  : 0,
-              salaryType:
-                formData.salaryScheme === TRAINER_FIXED_MONTHLY
-                  ? TRAINER_FIXED_MONTHLY
-                  : 'per_training_person',
-              salaryAmount:
-                formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
-                  ? parseFloat(formData.salaryRate)
-                  : 0,
-              individualTrainingPrice: formData.individualTrainingPrice
-                ? parseFloat(formData.individualTrainingPrice)
-                : null,
-              canViewAllGroups: formData.canViewAllGroups,
-              firstName: formData.firstName,
-              lastName: formData.lastName,
-              middleName: formData.middleName,
-              phone: formData.phone,
-              email: formData.email,
-            });
+        }
+        if (!employee) {
+          try {
+            employee = await apiService.getTrainer(trainerIdFromUrl);
+          } catch {
+            employee = null;
           }
         }
-      } else if (newRole === 'ADMIN') {
-        const updateData: any = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          middleName: formData.middleName,
-          phone: formData.phone,
-          email: formData.email,
-        };
-        if (formData.password) {
-          updateData.password = formData.password;
-        }
-        await apiService.updateUser(userId, updateData);
-      } else {
-        await apiService.updateTrainer(editingTrainer.id, {
-          ...formData,
-          salaryScheme:
-            formData.salaryScheme === TRAINER_FIXED_MONTHLY
-              ? TRAINER_FIXED_MONTHLY
-              : 'per_training_person',
-          salaryRate:
-            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
-              ? parseFloat(formData.salaryRate)
-              : 0,
-          salaryType:
-            formData.salaryScheme === TRAINER_FIXED_MONTHLY
-              ? TRAINER_FIXED_MONTHLY
-              : 'per_training_person',
-          salaryAmount:
-            formData.salaryScheme === TRAINER_FIXED_MONTHLY && formData.salaryRate
-              ? parseFloat(formData.salaryRate)
-              : 0,
-          individualTrainingPrice: formData.individualTrainingPrice
-            ? parseFloat(formData.individualTrainingPrice)
-            : null,
-        });
+        if (cancelled || !employee) return;
+        openEmployeeCard(employee);
+        const next = new URLSearchParams(searchParams);
+        next.delete('trainerId');
+        setSearchParams(next, { replace: true });
+      } catch (err) {
+        console.error('Failed to open trainer card from URL:', err);
       }
+    })();
 
-      await fetchTrainers();
-      resetEditForm();
-      setSnackbarMessage('Изменения сохранены');
-      setSnackbarOpen(true);
-      return true;
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка обновления сотрудника');
-      console.error('Error updating employee:', err);
-      return false;
-    }
-  };
-
-  const handleUpdateTrainer = async (): Promise<boolean> => {
-    if (!editingTrainer) return false;
-
-    const currentRole = getCurrentEmployeeRole();
-    const newRole = formData.role;
-    const roleChanged = newRole !== currentRole;
-    const targetIsAdmin = newRole === 'ADMIN';
-
-    if (targetIsAdmin) {
-      const adminErrors: Record<string, string> = {};
-      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
-      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
-      if (!formData.email) adminErrors.email = 'Email обязателен';
-      setFormErrors(adminErrors);
-      if (Object.keys(adminErrors).length > 0) {
-        setError('Пожалуйста, исправьте ошибки в форме');
-        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-        setSnackbarOpen(true);
-        return false;
-      }
-    } else {
-      const errors = validateTrainerForm(formData);
-      if (Object.keys(errors).length > 0) {
-        setFormErrors(errors);
-        setError('Пожалуйста, исправьте ошибки в форме');
-        setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
-        setSnackbarOpen(true);
-        return false;
-      }
-    }
-
-    if (roleChanged && isOwner) {
-      setPendingRoleChange(newRole);
-      setRoleConfirmDialog(true);
-      return false;
-    }
-
-    return performSaveEmployee();
-  };
-
-  const handleOpenBranchesDialog = async (trainer: Trainer) => {
-    setSelectedTrainer(trainer);
-    // Refresh trainer data to get latest branches
-    try {
-      const updatedTrainer = await apiService.getTrainer(trainer.id);
-      setSelectedTrainer(updatedTrainer);
-    } catch (err: any) {
-      console.error('Error fetching trainer:', err);
-    }
-    setBranchesDialog(true);
-  };
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trainers, searchParams, cardDialog, loading, setSearchParams]);
 
   const handleOpenEarningsDialog = async (trainer: Trainer) => {
     setSelectedTrainer(trainer);
@@ -573,48 +371,6 @@ const Trainers: React.FC = () => {
     }
   };
 
-  const handleAddBranchToTrainer = async () => {
-    if (!selectedTrainer || !selectedBranchId) return;
-
-    try {
-      await apiService.addBranchToTrainer(selectedTrainer.id, selectedBranchId);
-      // Refresh trainer data
-      const updatedTrainer = await apiService.getTrainer(selectedTrainer.id);
-      setSelectedTrainer(updatedTrainer);
-      // Refresh trainers list
-      await fetchTrainers();
-      setSelectedBranchId('');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка добавления филиала к тренеру');
-      console.error('Error adding branch to trainer:', err);
-    }
-  };
-
-  const handleRemoveBranchFromTrainer = async (branchId: string) => {
-    if (!selectedTrainer) return;
-
-    if (window.confirm('Вы уверены, что хотите удалить этот филиал у тренера?')) {
-      try {
-        await apiService.removeBranchFromTrainer(selectedTrainer.id, branchId);
-        // Refresh trainer data
-        const updatedTrainer = await apiService.getTrainer(selectedTrainer.id);
-        setSelectedTrainer(updatedTrainer);
-        // Refresh trainers list
-        await fetchTrainers();
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Ошибка удаления филиала у тренера');
-        console.error('Error removing branch from trainer:', err);
-      }
-    }
-  };
-
-  // Get available branches (not already assigned to trainer)
-  const getAvailableBranches = () => {
-    if (!selectedTrainer) return branches;
-    const assignedBranchIds = selectedTrainer.branches?.map(tb => tb.branchId) || [];
-    return branches.filter(branch => !assignedBranchIds.includes(branch.id) && branch.isActive);
-  };
-
   const discardCreateForm = React.useCallback(() => {
     setOpenDialog(false);
     setFormErrors({});
@@ -624,18 +380,11 @@ const Trainers: React.FC = () => {
   }, []);
 
   const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
-  const editDirty = editDialog && isDirtyValue(formData, editFormBaseline);
 
   const createUnsaved = useUnsavedClose({
     isDirty: Boolean(createDirty),
     onDiscard: discardCreateForm,
     onSave: async () => handleCreateTrainer(),
-  });
-
-  const editUnsaved = useUnsavedClose({
-    isDirty: Boolean(editDirty),
-    onDiscard: resetEditForm,
-    onSave: async () => handleUpdateTrainer(),
   });
 
   if (loading) {
@@ -679,7 +428,7 @@ const Trainers: React.FC = () => {
           startIcon={<Add />}
           sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
           onClick={() => {
-            if (isOwner) {
+            if (canPickEmployeeRole) {
               setRoleSelectionDialog(true);
             } else {
               const defaultBranch =
@@ -704,21 +453,25 @@ const Trainers: React.FC = () => {
         <Stack spacing={1.5}>
           {trainers.filter(Boolean).map((employee: any) => {
             const isAdmin = isEmployeeAdmin(employee);
+            const isPromoter = isEmployeePromoter(employee);
             const empUser = employee.user || employee;
             const displayName = `${empUser.lastName || ''} ${empUser.firstName || ''} ${empUser.middleName || ''}`.trim();
             return (
-              <Card key={employee.id || empUser.id} variant="outlined">
+              <Card
+                key={employee.id || empUser.id}
+                variant="outlined"
+                sx={{ cursor: 'pointer' }}
+                onClick={() => openEmployeeCard(employee)}
+              >
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
                     <Box sx={{ minWidth: 0 }}>
                       <Typography
                         sx={{
                           fontWeight: 600,
-                          cursor: 'pointer',
                           color: 'primary.main',
                           '&:hover': { textDecoration: 'underline' },
                         }}
-                        onClick={() => openEmployeeEdit(employee)}
                       >
                         {displayName}
                       </Typography>
@@ -727,12 +480,12 @@ const Trainers: React.FC = () => {
                       </Typography>
                     </Box>
                     <Chip
-                      label={isAdmin ? 'Администратор' : 'Тренер'}
-                      color={isAdmin ? 'primary' : 'secondary'}
+                      label={employeeRoleLabel(employee)}
+                      color={isAdmin ? 'primary' : isPromoter ? 'default' : 'secondary'}
                       size="small"
                     />
                   </Box>
-                  {!isAdmin && (
+                  {!isAdmin && !isPromoter && (
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {employee.qualification || 'Квалификация не указана'}
                       {employee.experience ? ` · ${employee.experience} лет` : ''}
@@ -756,30 +509,24 @@ const Trainers: React.FC = () => {
                       />
                     )}
                     {!isAdmin && employee.balance !== undefined && (
-                      <Chip label={`${Number(employee.balance).toFixed(0)} ₽`} size="small" variant="outlined" />
+                      <Chip
+                        label={`${Number(employee.balance).toFixed(0)} ₽`}
+                        size="small"
+                        variant="outlined"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEarningsDialog(employee);
+                        }}
+                        sx={{ cursor: 'pointer' }}
+                      />
                     )}
                   </Box>
-                  <Divider sx={{ mb: 1 }} />
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                    {!isAdmin && (
-                      <>
-                        <IconButton size="small" color="primary" title="Филиалы" onClick={() => handleOpenBranchesDialog(employee)}>
-                          <Business />
-                        </IconButton>
-                        <IconButton size="small" color="primary" title="Зарплата" onClick={() => handleOpenEarningsDialog(employee)}>
-                          <AttachMoney />
-                        </IconButton>
-                      </>
-                    )}
-                    {(isOwner || !isAdmin) && (
-                      <IconButton size="small" color="primary" onClick={() => openEmployeeEdit(employee)}>
-                        <Edit />
-                      </IconButton>
-                    )}
                     <IconButton
                       size="small"
                       color="error"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (isAdmin) {
                           if (window.confirm('Вы уверены, что хотите удалить этого администратора?')) {
                             handleDeleteAdmin(empUser.id);
@@ -819,19 +566,23 @@ const Trainers: React.FC = () => {
               <TableBody>
                 {trainers.filter(employee => employee).map((employee: any) => {
                   const isAdmin = isEmployeeAdmin(employee);
+                  const isPromoter = isEmployeePromoter(employee);
                   const empUser = employee.user || employee;
                   const displayName = `${empUser.lastName || ''} ${empUser.firstName || ''} ${empUser.middleName || ''}`.trim();
                   
                   return (
-                    <TableRow key={employee.id || empUser.id}>
+                    <TableRow
+                      key={employee.id || empUser.id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => openEmployeeCard(employee)}
+                    >
                       <TableCell>
                         <Typography
                           sx={{
-                            cursor: 'pointer',
                             color: 'primary.main',
                             '&:hover': { textDecoration: 'underline' },
                           }}
-                          onClick={() => openEmployeeEdit(employee)}
                         >
                           {displayName}
                         </Typography>
@@ -839,13 +590,13 @@ const Trainers: React.FC = () => {
                       <TableCell>{empUser.email}</TableCell>
                       <TableCell>
                         <Chip 
-                          label={isAdmin ? 'Администратор' : 'Тренер'} 
-                          color={isAdmin ? 'primary' : 'secondary'} 
+                          label={employeeRoleLabel(employee)} 
+                          color={isAdmin ? 'primary' : isPromoter ? 'default' : 'secondary'} 
                           size="small" 
                         />
                       </TableCell>
-                      <TableCell>{employee.qualification || '-'}</TableCell>
-                      <TableCell>{employee.experience ? `${employee.experience} лет` : '-'}</TableCell>
+                      <TableCell>{isAdmin || isPromoter ? '-' : (employee.qualification || '-')}</TableCell>
+                      <TableCell>{isAdmin || isPromoter ? '-' : (employee.experience ? `${employee.experience} лет` : '-')}</TableCell>
                       <TableCell>
                         {normalizeSalaryScheme(
                           (employee as any).salaryScheme || employee.salaryType
@@ -863,7 +614,14 @@ const Trainers: React.FC = () => {
                           '-'
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        onClick={(e) => {
+                          if (!isAdmin && employee.balance !== undefined) {
+                            e.stopPropagation();
+                            handleOpenEarningsDialog(employee);
+                          }
+                        }}
+                      >
                         {employee.balance !== undefined ? (
                           <Typography 
                             variant="body2" 
@@ -871,8 +629,11 @@ const Trainers: React.FC = () => {
                               fontWeight: 'bold',
                               color: Number(employee.balance) > 0 
                                 ? 'success.main' 
-                                : 'text.secondary'
+                                : 'text.secondary',
+                              cursor: !isAdmin ? 'pointer' : 'default',
+                              textDecoration: !isAdmin ? 'underline' : 'none',
                             }}
+                            title={!isAdmin ? 'Просмотр зарплаты' : undefined}
                           >
                             {Number(employee.balance).toFixed(2)} ₽
                           </Typography>
@@ -903,44 +664,7 @@ const Trainers: React.FC = () => {
                           size="small" 
                         />
                       </TableCell>
-                      <TableCell>
-                        {!isAdmin && (
-                          <>
-                            <IconButton 
-                              size="small" 
-                              color="primary"
-                              title="Управление филиалами"
-                              onClick={() => handleOpenBranchesDialog(employee)}
-                            >
-                              <Business />
-                            </IconButton>
-                            <IconButton 
-                              size="small" 
-                              color="primary"
-                              title="Просмотр зарплаты"
-                              onClick={() => handleOpenEarningsDialog(employee)}
-                            >
-                              <AttachMoney />
-                            </IconButton>
-                            <IconButton 
-                              size="small" 
-                              color="primary"
-                              onClick={() => handleEditTrainer(employee)}
-                            >
-                              <Edit />
-                            </IconButton>
-                          </>
-                        )}
-                        {isAdmin && isOwner && (
-                          <IconButton 
-                            size="small" 
-                            color="primary"
-                            title="Редактировать администратора"
-                            onClick={() => handleEditAdmin(employee)}
-                          >
-                            <Edit />
-                          </IconButton>
-                        )}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <IconButton 
                           size="small" 
                           color="error"
@@ -974,8 +698,8 @@ const Trainers: React.FC = () => {
       </Card>
       )}
 
-      {/* Диалог выбора роли (только для владельца) */}
-      {isOwner && (
+      {/* Диалог выбора роли (OWNER / ADMIN) */}
+      {canPickEmployeeRole && (
         <Dialog open={roleSelectionDialog} onClose={() => setRoleSelectionDialog(false)} maxWidth="sm" fullWidth fullScreen={isNarrow}>
           <DialogTitle>
             Кого вы хотите добавить?
@@ -1008,6 +732,34 @@ const Trainers: React.FC = () => {
                   </Typography>
                 </Box>
               </Button>
+              {isOwner && (
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  size="large"
+                  onClick={() => {
+                    const initial = {
+                      ...emptyFormData,
+                      role: 'ADMIN',
+                    };
+                    setFormData(initial);
+                    setCreateFormBaseline(initial);
+                    setRoleSelectionDialog(false);
+                    setOpenDialog(true);
+                    setFormErrors({});
+                    setError('');
+                  }}
+                  sx={{ py: 2 }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <AdminPanelSettings sx={{ fontSize: 40 }} />
+                    <Typography variant="h6">Администратор</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Создать аккаунт администратора
+                    </Typography>
+                  </Box>
+                </Button>
+              )}
               <Button
                 variant="outlined"
                 fullWidth
@@ -1015,7 +767,7 @@ const Trainers: React.FC = () => {
                 onClick={() => {
                   const initial = {
                     ...emptyFormData,
-                    role: 'ADMIN',
+                    role: 'PROMOTER',
                   };
                   setFormData(initial);
                   setCreateFormBaseline(initial);
@@ -1027,10 +779,10 @@ const Trainers: React.FC = () => {
                 sx={{ py: 2 }}
               >
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <AdminPanelSettings sx={{ fontSize: 40 }} />
-                  <Typography variant="h6">Администратор</Typography>
+                  <Person sx={{ fontSize: 40 }} />
+                  <Typography variant="h6">Промоутер</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Создать аккаунт администратора
+                    Создать аккаунт промоутера (только свои клиенты)
                   </Typography>
                 </Box>
               </Button>
@@ -1069,14 +821,18 @@ const Trainers: React.FC = () => {
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {/* Тип сотрудника отображается как информационный блок (уже выбран в предыдущем диалоге) */}
-            {isOwner && (
+            {canPickEmployeeRole && (
               <Grid item xs={12}>
                 <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
                   <Typography variant="subtitle2" gutterBottom>
                     Тип сотрудника
                   </Typography>
                   <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
-                    {formData.role === 'ADMIN' ? 'Администратор' : 'Тренер'}
+                    {formData.role === 'ADMIN'
+                      ? 'Администратор'
+                      : formData.role === 'PROMOTER'
+                        ? 'Промоутер'
+                        : 'Тренер'}
                   </Typography>
                 </Box>
               </Grid>
@@ -1306,403 +1062,46 @@ const Trainers: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Диалог редактирования тренера */}
-      <Dialog 
-        open={editDialog} 
-        onClose={(_event, reason) => {
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-            editUnsaved.requestClose(reason);
-          }
-        }}
-        maxWidth="md" 
+      {/* Карточка сотрудника */}
+      <Dialog
+        open={cardDialog}
+        onClose={() => closeEmployeeCard()}
+        maxWidth="md"
         fullWidth
         fullScreen={isNarrow}
-        disableEscapeKeyDown={Object.keys(formErrors).length > 0 || !!error}
       >
-        <DialogTitle>Редактировать сотрудника</DialogTitle>
         <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-              {error}
-            </Alert>
-          )}
-          {Object.keys(formErrors).length > 0 && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              Пожалуйста, исправьте {Object.keys(formErrors).length} {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
-            </Alert>
-          )}
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            {isOwner && (
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Роль</InputLabel>
-                  <Select
-                    value={formData.role}
-                    label="Роль"
-                    onChange={(e) => handleInputChange('role', e.target.value)}
-                  >
-                    <MenuItem value="TRAINER">Тренер</MenuItem>
-                    <MenuItem value="ADMIN">Администратор</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Фамилия"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                required
-                error={!!formErrors.lastName}
-                helperText={formErrors.lastName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Имя"
-                value={formData.firstName}
-                onChange={(e) => handleInputChange('firstName', e.target.value)}
-                required
-                error={!!formErrors.firstName}
-                helperText={formErrors.firstName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                label="Отчество"
-                value={formData.middleName}
-                onChange={(e) => handleInputChange('middleName', e.target.value)}
-                error={!!formErrors.middleName}
-                helperText={formErrors.middleName}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                required
-                error={!!formErrors.email}
-                helperText={formErrors.email}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Новый пароль (оставьте пустым, чтобы не менять)"
-                type="password"
-                value={formData.password}
-                onChange={(e) => handleInputChange('password', e.target.value)}
-                placeholder="Введите новый пароль или оставьте пустым"
-                error={!!formErrors.password}
-                helperText={formErrors.password}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Телефон"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                error={!!formErrors.phone}
-                helperText={formErrors.phone}
-              />
-            </Grid>
-            {formData.role === 'TRAINER' && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Квалификация"
-                    value={formData.qualification}
-                    onChange={(e) => handleInputChange('qualification', e.target.value)}
-                    placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
-                    helperText={formErrors.qualification || "Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)"}
-                    error={!!formErrors.qualification}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Опыт (лет)"
-                    type="number"
-                    value={formData.experience}
-                    onChange={(e) => handleInputChange('experience', e.target.value)}
-                    error={!!formErrors.experience}
-                    helperText={formErrors.experience}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Специализация"
-                    value={formData.specialization}
-                    onChange={(e) => handleInputChange('specialization', e.target.value)}
-                    placeholder="например: Карате, Тхэквондо"
-                    error={!!formErrors.specialization}
-                    helperText={formErrors.specialization}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Тренерская категория"
-                    value={formData.coachCategory}
-                    onChange={(e) => handleInputChange('coachCategory', e.target.value)}
-                    placeholder="Например: высшая, первая, вторая"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Судейская категория"
-                    value={formData.judgeCategory}
-                    onChange={(e) => handleInputChange('judgeCategory', e.target.value)}
-                    placeholder="Например: всероссийская, первая"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    label="Достижения"
-                    value={formData.achievements}
-                    onChange={(e) => handleInputChange('achievements', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth error={!!formErrors.salaryScheme}>
-                    <InputLabel>Зарплата сотрудника</InputLabel>
-                    <Select
-                      value={formData.salaryScheme}
-                      label="Зарплата сотрудника"
-                      onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
-                    >
-                      <MenuItem value="">На группах</MenuItem>
-                      <MenuItem value={TRAINER_FIXED_MONTHLY}>Фикс плата в месяц</MenuItem>
-                    </Select>
-                    {formErrors.salaryScheme && (
-                      <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
-                        {formErrors.salaryScheme}
-                      </Typography>
-                    )}
-                  </FormControl>
-                </Grid>
-                {formData.salaryScheme === TRAINER_FIXED_MONTHLY && (
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
-                    type="number"
-                    value={formData.salaryRate}
-                    onChange={(e) => handleInputChange('salaryRate', e.target.value)}
-                    error={!!formErrors.salaryRate}
-                    helperText={formErrors.salaryRate || salarySchemeHint(TRAINER_FIXED_MONTHLY)}
-                  />
-                </Grid>
-                )}
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Цена индивидуальной тренировки (₽)"
-                    type="number"
-                    value={formData.individualTrainingPrice || ''}
-                    onChange={(e) => handleInputChange('individualTrainingPrice', e.target.value)}
-                    helperText="Начисляется ученику при создании индивидуалки"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControl fullWidth>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <input
-                        type="checkbox"
-                        checked={formData.canViewAllGroups}
-                        onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked.toString())}
-                        style={{ width: 20, height: 20 }}
-                      />
-                      <Typography variant="body2">
-                        Тренер может видеть расписание всех групп (не только своих)
-                      </Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
-                      Если отключено, тренер будет видеть только тренировки своих групп
-                    </Typography>
-                  </FormControl>
-                </Grid>
-              </>
-            )}
-          </Grid>
-          {editingTrainer && getCurrentEmployeeRole() === 'TRAINER' && (
-            <Box sx={{ mt: 3 }}>
-              <Divider sx={{ mb: 2 }} />
-              <TrainerDocumentsPanel
-                trainerId={editingTrainer.id}
-                initialDocs={(editingTrainer as any).documents}
-              />
-            </Box>
-          )}
-          {editingTrainer && getCurrentEmployeeRole() === 'TRAINER' && (
-            <Box sx={{ mt: 3 }}>
-              <AttendanceExcelExport
-                scope="trainer"
-                entityId={editingTrainer.id}
-                entityName={[
-                  editingTrainer.user?.lastName,
-                  editingTrainer.user?.firstName,
-                  editingTrainer.user?.middleName,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              />
-            </Box>
+          {cardEmployee && (
+            <TrainerCard
+              employee={cardEmployee}
+              branches={branches}
+              isOwner={isOwner}
+              onSaved={async () => {
+                await fetchTrainers();
+                const id = cardEmployee?.id || cardEmployee?.user?.id;
+                if (!id) return;
+                try {
+                  if (!isEmployeeAdmin(cardEmployee)) {
+                    const refreshed = await apiService.getTrainer(cardEmployee.id);
+                    setCardEmployee(refreshed);
+                  } else {
+                    const list = await apiService.getTrainers({ includeAdmins: 'true', limit: 1000 });
+                    const refreshed = list.data.find(
+                      (e: any) => (e.user?.id || e.id) === (cardEmployee.user?.id || cardEmployee.id)
+                    );
+                    if (refreshed) setCardEmployee(refreshed);
+                  }
+                } catch (_) {
+                  /* keep current card */
+                }
+              }}
+              onClose={closeEmployeeCard}
+              onOpenEarnings={(trainer) => {
+                handleOpenEarningsDialog(trainer);
+              }}
+            />
           )}
         </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              resetEditForm();
-            }}
-            type="button"
-          >
-            Отмена
-          </Button>
-          <Button 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              e.nativeEvent.stopImmediatePropagation();
-              handleUpdateTrainer();
-            }} 
-            variant="contained"
-            type="button"
-          >
-            Сохранить изменения
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={roleConfirmDialog} onClose={() => { setRoleConfirmDialog(false); setPendingRoleChange(null); }} fullScreen={isNarrow}>
-        <DialogTitle>Сменить роль сотрудника?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            {pendingRoleChange === 'ADMIN'
-              ? 'Тренер станет администратором. Запись тренера и привязки к филиалам будут удалены. Если у сотрудника есть группы — смена роли будет отклонена.'
-              : 'Администратор станет тренером. Будет создан профиль тренера — заполните квалификацию и зарплату при необходимости.'}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setRoleConfirmDialog(false); setPendingRoleChange(null); }}>Отмена</Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              setRoleConfirmDialog(false);
-              await performSaveEmployee();
-            }}
-          >
-            Подтвердить
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Диалог управления филиалами тренера */}
-      <Dialog open={branchesDialog} onClose={() => setBranchesDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Филиалы тренера: {selectedTrainer?.user?.firstName} {selectedTrainer?.user?.lastName}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Добавить филиал</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={8}>
-                <FormControl fullWidth>
-                  <InputLabel>Выберите филиал</InputLabel>
-                  <Select
-                    value={selectedBranchId}
-                    onChange={(e) => setSelectedBranchId(e.target.value)}
-                    label="Выберите филиал"
-                  >
-                    {getAvailableBranches().map((branch) => (
-                      <MenuItem key={branch.id} value={branch.id}>
-                        {branch.name} - {branch.address}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleAddBranchToTrainer}
-                  disabled={!selectedBranchId}
-                  sx={{ height: '56px' }}
-                >
-                  Добавить
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-
-          <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>Текущие филиалы ({selectedTrainer?.branches?.length || 0})</Typography>
-            {selectedTrainer?.branches?.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                У тренера пока нет привязанных филиалов
-              </Typography>
-            ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Название</TableCell>
-                      <TableCell>Адрес</TableCell>
-                      <TableCell>Телефон</TableCell>
-                      <TableCell>Дата привязки</TableCell>
-                      <TableCell>Действия</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedTrainer?.branches?.map((trainerBranch) => (
-                      <TableRow key={trainerBranch.id}>
-                        <TableCell>{trainerBranch.branch?.name}</TableCell>
-                        <TableCell>{trainerBranch.branch?.address}</TableCell>
-                        <TableCell>{trainerBranch.branch?.phone || '-'}</TableCell>
-                        <TableCell>
-                          {trainerBranch.createdAt ? new Date(trainerBranch.createdAt).toLocaleDateString('ru-RU') : '-'}
-                        </TableCell>
-                        <TableCell>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            title="Удалить привязку"
-                            onClick={() => handleRemoveBranchFromTrainer(trainerBranch.branchId)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setBranchesDialog(false);
-            setSelectedTrainer(null);
-            setSelectedBranchId('');
-          }}>Закрыть</Button>
-        </DialogActions>
       </Dialog>
 
       {/* Диалог просмотра зарплаты тренера */}
@@ -1891,13 +1290,6 @@ const Trainers: React.FC = () => {
         onSave={createUnsaved.save}
         onDiscard={createUnsaved.discard}
         onStay={createUnsaved.stay}
-      />
-      <UnsavedChangesDialog
-        open={editUnsaved.confirmOpen}
-        saving={editUnsaved.saving}
-        onSave={editUnsaved.save}
-        onDiscard={editUnsaved.discard}
-        onStay={editUnsaved.stay}
       />
     </Box>
   );

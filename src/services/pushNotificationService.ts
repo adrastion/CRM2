@@ -15,7 +15,11 @@ if (vapidPublicKey && vapidPrivateKey) {
     );
     console.log('[Push Notifications] VAPID keys configured successfully');
   } catch (error) {
-    console.error('[Push Notifications] Error setting VAPID details:', error);
+    // Невалидные ключи в .env не должны валить/пугать старт сервера
+    console.warn(
+      '[Push Notifications] VAPID keys invalid or incomplete — push disabled. ' +
+        'Fix VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY or run: npx web-push generate-vapid-keys'
+    );
   }
 } else {
   console.warn('[Push Notifications] VAPID keys not configured. Push notifications will not work.');

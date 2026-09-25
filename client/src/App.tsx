@@ -29,7 +29,6 @@ const TrainerEarnings = lazy(() => import('./pages/TrainerEarnings'));
 const TrainerProfile = lazy(() => import('./pages/TrainerProfile'));
 const AllTrainersEarnings = lazy(() => import('./pages/AllTrainersEarnings'));
 const Groups = lazy(() => import('./pages/Groups'));
-const Branches = lazy(() => import('./pages/Branches'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Memberships = lazy(() => import('./pages/Memberships'));
@@ -141,7 +140,7 @@ const RoleRoute: React.FC<{ roles: string[]; children: React.ReactNode }> = ({ r
         !roles.includes('TRAINER')));
 
   if (!roleOk) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={user?.role === 'PROMOTER' ? '/clients' : '/dashboard'} replace />;
   }
 
   return <>{children}</>;
@@ -169,7 +168,7 @@ const HomeRoute: React.FC = () => {
 
 // Public Route Component (redirect to dashboard if already authenticated)
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   // Clear other tokens if trying to access regular login
   React.useEffect(() => {
@@ -206,7 +205,11 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return <PageLoader />;
   }
 
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
+  return !isAuthenticated ? (
+    <>{children}</>
+  ) : (
+    <Navigate to={user?.role === 'PROMOTER' ? '/clients' : '/dashboard'} replace />
+  );
 };
 
 // Protected Marketer Route Component
@@ -587,21 +590,21 @@ const AppContent: React.FC = () => {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER']}>
               <AppLayout>
                 <Dashboard />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/clients"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
               <AppLayout>
                 <Clients />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
@@ -654,16 +657,7 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/branches"
-          element={
-            <RoleRoute roles={['OWNER', 'ADMIN']}>
-              <AppLayout>
-                <Branches />
-              </AppLayout>
-            </RoleRoute>
-          }
-        />
+        <Route path="/branches" element={<Navigate to="/groups" replace />} />
         <Route
           path="/schedule"
           element={

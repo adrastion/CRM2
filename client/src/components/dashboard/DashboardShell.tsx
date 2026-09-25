@@ -26,7 +26,7 @@ import NotificationsBell from '../notifications/NotificationsBell';
 import { NavIconName } from '../../assets/icons/registry';
 import {
   getActiveAccountId,
-  listSavedAccounts,
+  listUsableSavedAccounts,
   switchToAccountSafe,
   upsertFromActiveStorage,
   canSwitchToSavedAccount,
@@ -135,7 +135,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
     if (!menuAnchor) return;
     // Подхватить текущую сессию, если пользователь залогинен до появления реестра
     upsertFromActiveStorage();
-    const accounts = listSavedAccounts();
+    const accounts = listUsableSavedAccounts();
     setSavedAccounts(accounts);
     setActiveAccountId(getActiveAccountId());
 
@@ -174,7 +174,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         const result = await syncLinkedPlatformAccounts();
         if (cancelled || result.kickedTo) return;
         if (result.changed || menuAnchor) {
-          setSavedAccounts(listSavedAccounts());
+          setSavedAccounts(listUsableSavedAccounts());
           setActiveAccountId(getActiveAccountId());
         }
       } catch {

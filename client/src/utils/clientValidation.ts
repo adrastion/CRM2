@@ -20,6 +20,7 @@ export interface ClientFormData {
   schoolOrKindergarten: string;
   photo: string;
   weight: string;
+  athleteStatus?: string;
   // Паспорт РФ
   passportSeries?: string;
   passportNumber?: string;

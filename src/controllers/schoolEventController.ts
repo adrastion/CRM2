@@ -10,6 +10,76 @@ function parseDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function asIdArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+}
+
+/** Поддержка и groupIds[], и legacy groupId. */
+function resolveGroupIds(body: any): string[] {
+  if (body.groupIds !== undefined) return asIdArray(body.groupIds);
+  if (body.groupId) return asIdArray([body.groupId]);
+  return [];
+}
+
+const schoolEventInclude = {
+  branch: { select: { id: true, name: true } },
+  groups: {
+    include: {
+      group: { select: { id: true, name: true, color: true } },
+    },
+  },
+  participants: {
+    include: {
+      client: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          middleName: true,
+        },
+      },
+    },
+  },
+  parents: {
+    include: {
+      parent: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          relationType: true,
+          clientId: true,
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              middleName: true,
+            },
+          },
+        },
+      },
+    },
+  },
+  trainers: {
+    include: {
+      trainer: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              middleName: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 export const getSchoolEvents = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tenantId = req.tenant?.id;
@@ -34,10 +104,7 @@ export const getSchoolEvents = async (req: AuthenticatedRequest, res: Response) 
 
     const events = await prisma.schoolEvent.findMany({
       where,
-      include: {
-        branch: { select: { id: true, name: true } },
-        group: { select: { id: true, name: true, color: true } },
-      },
+      include: schoolEventInclude,
       orderBy: { startTime: 'asc' },
     });
 
@@ -58,10 +125,7 @@ export const getSchoolEventById = async (req: AuthenticatedRequest, res: Respons
 
     const event = await prisma.schoolEvent.findFirst({
       where: { id: req.params.id, tenantId },
-      include: {
-        branch: { select: { id: true, name: true } },
-        group: { select: { id: true, name: true, color: true } },
-      },
+      include: schoolEventInclude,
     });
 
     if (!event) {
@@ -102,6 +166,11 @@ export const createSchoolEvent = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
+    const groupIds = resolveGroupIds(req.body);
+    const participantIds = asIdArray(req.body.participantIds);
+    const parentIds = asIdArray(req.body.parentIds);
+    const trainerIds = asIdArray(req.body.trainerIds);
+
     const event = await prisma.schoolEvent.create({
       data: {
         tenantId,
@@ -112,12 +181,20 @@ export const createSchoolEvent = async (req: AuthenticatedRequest, res: Response
         endTime,
         location: req.body.location?.trim() || null,
         branchId: req.body.branchId || null,
-        groupId: req.body.groupId || null,
+        groups: {
+          create: groupIds.map((groupId) => ({ groupId, tenantId })),
+        },
+        participants: {
+          create: participantIds.map((clientId) => ({ clientId, tenantId })),
+        },
+        parents: {
+          create: parentIds.map((parentId) => ({ parentId, tenantId })),
+        },
+        trainers: {
+          create: trainerIds.map((trainerId) => ({ trainerId, tenantId })),
+        },
       },
-      include: {
-        branch: { select: { id: true, name: true } },
-        group: { select: { id: true, name: true, color: true } },
-      },
+      include: schoolEventInclude,
     });
 
     res.status(201).json({ success: true, data: event });
@@ -180,9 +257,6 @@ export const updateSchoolEvent = async (req: AuthenticatedRequest, res: Response
     if (req.body.branchId !== undefined) {
       data.branchId = req.body.branchId || null;
     }
-    if (req.body.groupId !== undefined) {
-      data.groupId = req.body.groupId || null;
-    }
 
     const start = data.startTime || existing.startTime;
     const end = data.endTime || existing.endTime;
@@ -191,13 +265,71 @@ export const updateSchoolEvent = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const event = await prisma.schoolEvent.update({
-      where: { id: existing.id },
-      data,
-      include: {
-        branch: { select: { id: true, name: true } },
-        group: { select: { id: true, name: true, color: true } },
-      },
+    const replaceGroups =
+      req.body.groupIds !== undefined || req.body.groupId !== undefined;
+
+    const event = await prisma.$transaction(async (tx) => {
+      if (replaceGroups) {
+        const groupIds = resolveGroupIds(req.body);
+        await tx.schoolEventGroup.deleteMany({ where: { schoolEventId: existing.id } });
+        if (groupIds.length > 0) {
+          await tx.schoolEventGroup.createMany({
+            data: groupIds.map((groupId) => ({
+              schoolEventId: existing.id,
+              groupId,
+              tenantId,
+            })),
+          });
+        }
+      }
+
+      if (req.body.participantIds !== undefined) {
+        const participantIds = asIdArray(req.body.participantIds);
+        await tx.schoolEventParticipant.deleteMany({ where: { schoolEventId: existing.id } });
+        if (participantIds.length > 0) {
+          await tx.schoolEventParticipant.createMany({
+            data: participantIds.map((clientId) => ({
+              schoolEventId: existing.id,
+              clientId,
+              tenantId,
+            })),
+          });
+        }
+      }
+
+      if (req.body.parentIds !== undefined) {
+        const parentIds = asIdArray(req.body.parentIds);
+        await tx.schoolEventParent.deleteMany({ where: { schoolEventId: existing.id } });
+        if (parentIds.length > 0) {
+          await tx.schoolEventParent.createMany({
+            data: parentIds.map((parentId) => ({
+              schoolEventId: existing.id,
+              parentId,
+              tenantId,
+            })),
+          });
+        }
+      }
+
+      if (req.body.trainerIds !== undefined) {
+        const trainerIds = asIdArray(req.body.trainerIds);
+        await tx.schoolEventTrainer.deleteMany({ where: { schoolEventId: existing.id } });
+        if (trainerIds.length > 0) {
+          await tx.schoolEventTrainer.createMany({
+            data: trainerIds.map((trainerId) => ({
+              schoolEventId: existing.id,
+              trainerId,
+              tenantId,
+            })),
+          });
+        }
+      }
+
+      return tx.schoolEvent.update({
+        where: { id: existing.id },
+        data,
+        include: schoolEventInclude,
+      });
     });
 
     res.json({ success: true, data: event });

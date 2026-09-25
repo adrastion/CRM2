@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { badRequest, notFound } from '../utils/httpError';
+import { randomBytes } from 'crypto';
 import {
   makeLeadDisplayCode,
   maskEmail,
@@ -84,8 +85,37 @@ async function serializeSchoolClient(
 }
 
 export class MarketerCabinetService {
+  static async ensureAdvertisingLink(marketerId: string) {
+    const existing = await prisma.referralLink.findFirst({
+      where: { marketerId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) return existing;
+
+    let code = randomBytes(8).toString('hex').toUpperCase();
+    for (let i = 0; i < 5; i++) {
+      const clash = await prisma.referralLink.findUnique({ where: { code } });
+      if (!clash) break;
+      code = randomBytes(8).toString('hex').toUpperCase();
+    }
+
+    return prisma.referralLink.create({
+      data: {
+        code,
+        name: 'Рекламная ссылка',
+        description: 'Автоматически созданная рекламная ссылка маркетолога',
+        url: '/register',
+        isActive: true,
+        marketerId,
+        tenantId: null,
+      },
+    });
+  }
+
   static async getDashboard(marketerId: string) {
-    const [leads, schools, urgentTasks, publications, accruals, docs, marketer] =
+    await this.ensureAdvertisingLink(marketerId);
+
+    const [leads, schools, urgentTasks, publications, accruals, docs, marketer, promoCodes, referralLinks, pendingClicks, pendingClicksCount] =
       await Promise.all([
         prisma.marketerLead.count({ where: { marketerId } }),
         prisma.tenantMarketer.findMany({
@@ -125,6 +155,33 @@ export class MarketerCabinetService {
           where: { id: marketerId },
           select: { balance: true, commissionPercentage: true },
         }),
+        prisma.promoCode.findMany({
+          where: { marketerId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.referralLink.findMany({
+          where: { marketerId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.referralClick.findMany({
+          where: {
+            converted: false,
+            referralLink: { marketerId, isActive: true },
+          },
+          orderBy: { clickedAt: 'desc' },
+          take: 15,
+          select: {
+            id: true,
+            clickedAt: true,
+            referralLink: { select: { code: true, name: true } },
+          },
+        }),
+        prisma.referralClick.count({
+          where: {
+            converted: false,
+            referralLink: { marketerId, isActive: true },
+          },
+        }),
       ]);
 
     let activeSchools = 0;
@@ -146,6 +203,33 @@ export class MarketerCabinetService {
       },
       balance: Number(marketer?.balance || 0),
       commissionPercentage: Number(marketer?.commissionPercentage || 0),
+      promoCodes: promoCodes.map((p) => ({
+        id: p.id,
+        code: p.code,
+        description: p.description,
+        discountType: p.discountType,
+        discountValue: Number(p.discountValue),
+        usedCount: p.usedCount,
+        usageLimit: p.usageLimit,
+        isActive: p.isActive,
+        validFrom: p.validFrom,
+        validUntil: p.validUntil,
+      })),
+      referralLinks: referralLinks.map((l) => ({
+        id: l.id,
+        code: l.code,
+        name: l.name,
+        description: l.description,
+        url: l.url,
+        isActive: l.isActive,
+      })),
+      pendingClicksCount,
+      pendingClicks: pendingClicks.map((c) => ({
+        id: c.id,
+        clickedAt: c.clickedAt,
+        linkCode: c.referralLink.code,
+        linkName: c.referralLink.name,
+      })),
       urgentTasks,
       publications,
       recentAccruals: accruals.map((a) => ({

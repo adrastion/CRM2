@@ -55,6 +55,15 @@ class ApiCache {
     this.cache.clear();
   }
 
+  /** Удаляет все ключи, начинающиеся с prefix (например `/clients`). */
+  invalidatePrefix(prefix: string): void {
+    const keysToDelete: string[] = [];
+    this.cache.forEach((_entry, key) => {
+      if (key.startsWith(prefix)) keysToDelete.push(key);
+    });
+    keysToDelete.forEach((key) => this.cache.delete(key));
+  }
+
   // Очистка устаревших записей
   cleanup(): void {
     const now = Date.now();

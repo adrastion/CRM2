@@ -17,9 +17,11 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Menu,
   Chip,
   List,
   ListItem,
+  ListItemText,
   IconButton,
   Table,
   TableBody,
@@ -70,7 +72,7 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
 import CompetitionsPanel from '../components/competitions/CompetitionsPanel';
-import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
+import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall, Parent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface DaySchedule {
@@ -194,9 +196,20 @@ const Schedule: React.FC = () => {
     endTime: null as Date | null,
     location: '',
     branchId: '',
-    groupId: '',
+    groupIds: [] as string[],
+    participantIds: [] as string[],
+    parentIds: [] as string[],
+    trainerIds: [] as string[],
   });
   const [eventSaving, setEventSaving] = useState(false);
+  const [createMenuAnchor, setCreateMenuAnchor] = useState<null | HTMLElement>(null);
+  const [scheduleTaskDialog, setScheduleTaskDialog] = useState(false);
+  const [scheduleTaskTitle, setScheduleTaskTitle] = useState('');
+  const [scheduleTaskBody, setScheduleTaskBody] = useState('');
+  const [scheduleTaskDueAt, setScheduleTaskDueAt] = useState('');
+  const [scheduleTaskAssignees, setScheduleTaskAssignees] = useState<any[]>([]);
+  const [scheduleStaffUsers, setScheduleStaffUsers] = useState<any[]>([]);
+  const [scheduleTaskSaving, setScheduleTaskSaving] = useState(false);
   const [createClientDialog, setCreateClientDialog] = useState(false);
   const [addClientDialog, setAddClientDialog] = useState(false); // Диалог добавления существующего клиента
   const [selectedClientsToAdd, setSelectedClientsToAdd] = useState<Client[]>([]); // Выбранные клиенты для добавления
@@ -1461,12 +1474,27 @@ const Schedule: React.FC = () => {
     return brightness > 155;
   };
 
-  // Helper function to add default duration to start time
+  // Helper: при смене начала сохраняем уже выбранную длительность, иначе дефолт
   const addDefaultDuration = (startTime: Date | null): Date | null => {
     if (!startTime) return null;
     const endTime = new Date(startTime);
     endTime.setMinutes(endTime.getMinutes() + defaultTrainingDuration);
     return endTime;
+  };
+
+  const endFromStartPreservingDuration = (
+    newStart: Date | null,
+    prevStart: Date | null,
+    prevEnd: Date | null
+  ): Date | null => {
+    if (!newStart) return null;
+    if (prevStart && prevEnd) {
+      const durationMs = prevEnd.getTime() - prevStart.getTime();
+      if (durationMs > 0) {
+        return new Date(newStart.getTime() + durationMs);
+      }
+    }
+    return addDefaultDuration(newStart);
   };
 
   const getCompetitionsForDate = (date: Date): Competition[] => {
@@ -1509,7 +1537,10 @@ const Schedule: React.FC = () => {
       endTime: end,
       location: '',
       branchId: '',
-      groupId: '',
+      groupIds: [],
+      participantIds: [],
+      parentIds: [],
+      trainerIds: [],
     });
     setEventDialog(true);
   };
@@ -1518,6 +1549,9 @@ const Schedule: React.FC = () => {
     const start = new Date(event.startTime);
     const end = new Date(event.endTime);
     setSelectedSchoolEvent(event);
+    const groupIdsFromEvent =
+      event.groups?.map((g: any) => g.groupId || g.group?.id).filter(Boolean) ||
+      (event.groupId ? [event.groupId] : []);
     setEventFormData({
       title: event.title || '',
       description: event.description || '',
@@ -1527,7 +1561,10 @@ const Schedule: React.FC = () => {
       endTime: end,
       location: event.location || '',
       branchId: event.branchId || '',
-      groupId: event.groupId || '',
+      groupIds: groupIdsFromEvent,
+      participantIds: event.participants?.map((p: any) => p.clientId) || [],
+      parentIds: event.parents?.map((p: any) => p.parentId) || [],
+      trainerIds: event.trainers?.map((t: any) => t.trainerId) || [],
     });
     setEventDetailDialog(false);
     setEventDialog(true);
@@ -1566,7 +1603,11 @@ const Schedule: React.FC = () => {
         endTime: endTime.toISOString(),
         location: eventFormData.location.trim() || null,
         branchId: eventFormData.branchId || null,
-        groupId: eventFormData.groupId || null,
+        groupIds: eventFormData.groupIds,
+        participantIds:
+          eventFormData.type === 'other' ? eventFormData.participantIds : [],
+        parentIds: eventFormData.type === 'other' ? eventFormData.parentIds : [],
+        trainerIds: eventFormData.type === 'other' ? eventFormData.trainerIds : [],
       };
       if (selectedSchoolEvent?.id) {
         await apiService.updateSchoolEvent(selectedSchoolEvent.id, payload);
@@ -1601,6 +1642,13 @@ const Schedule: React.FC = () => {
 
   const schoolEventTypeLabel = (type: string) =>
     type === 'parent_meeting' ? 'Родительское собрание' : 'Мероприятие';
+
+  const eventParentsOptions: Array<Parent & { clientLabel?: string }> = clients.flatMap((client) =>
+    (client.parents || []).map((parent) => ({
+      ...parent,
+      clientLabel: `${client.lastName} ${client.firstName}`.trim(),
+    }))
+  );
 
   const getTrainingsForDate = (date: Date) => {
     let filtered = trainings.filter(training => 
@@ -1997,23 +2045,58 @@ const Schedule: React.FC = () => {
               size="small"
               startIcon={<Add />}
               sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
-              onClick={() => {
-                setSelectedDayForTraining(null);
-                setFormData({ ...formData, date: new Date() });
-                setTrainingTypeDialog(true);
-              }}
+              onClick={(e) => setCreateMenuAnchor(e.currentTarget)}
             >
-              Добавить тренировку
+              Создать
             </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<Add />}
-              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
-              onClick={() => openCreateEventDialog(selectedDate)}
+            <Menu
+              anchorEl={createMenuAnchor}
+              open={Boolean(createMenuAnchor)}
+              onClose={() => setCreateMenuAnchor(null)}
             >
-              Добавить событие
-            </Button>
+              <MenuItem
+                onClick={() => {
+                  setCreateMenuAnchor(null);
+                  setSelectedDayForTraining(null);
+                  setFormData({ ...formData, date: new Date() });
+                  setTrainingTypeDialog(true);
+                }}
+              >
+                Тренировка
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setCreateMenuAnchor(null);
+                  openCreateEventDialog(selectedDate);
+                }}
+              >
+                Событие
+              </MenuItem>
+              <MenuItem
+                onClick={async () => {
+                  setCreateMenuAnchor(null);
+                  setScheduleTaskTitle('');
+                  setScheduleTaskBody('');
+                  const base = selectedDate || new Date();
+                  const due = new Date(base);
+                  due.setHours(18, 0, 0, 0);
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  setScheduleTaskDueAt(
+                    `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`
+                  );
+                  setScheduleTaskAssignees([]);
+                  try {
+                    const users = await apiService.listStaffWorkspaceUsers();
+                    setScheduleStaffUsers(users || []);
+                  } catch {
+                    setScheduleStaffUsers([]);
+                  }
+                  setScheduleTaskDialog(true);
+                }}
+              >
+                Задача
+              </MenuItem>
+            </Menu>
           </Stack>
           )}
         </Box>
@@ -3238,7 +3321,11 @@ const Schedule: React.FC = () => {
                                             label="Начало"
                                             value={daySchedule.startTime}
                                             onChange={(newValue) => {
-                                              const endTime = addDefaultDuration(newValue);
+                                              const endTime = endFromStartPreservingDuration(
+                                                newValue,
+                                                daySchedule.startTime,
+                                                daySchedule.endTime
+                                              );
                                               setFormData({
                                                 ...formData,
                                                 daySchedules: formData.daySchedules.map(ds =>
@@ -3318,7 +3405,11 @@ const Schedule: React.FC = () => {
                                       label="Начало"
                                       value={dateSchedule.startTime}
                                       onChange={(newValue) => {
-                                        const endTime = addDefaultDuration(newValue);
+                                        const endTime = endFromStartPreservingDuration(
+                                          newValue,
+                                          dateSchedule.startTime,
+                                          dateSchedule.endTime
+                                        );
                                         const newSchedules = [...formData.dateSchedules];
                                         newSchedules[index].startTime = newValue;
                                         if (endTime) {
@@ -3509,7 +3600,11 @@ const Schedule: React.FC = () => {
                   label="Время начала"
                   value={formData.startTime}
                       onChange={(newValue) => {
-                        const endTime = addDefaultDuration(newValue);
+                        const endTime = endFromStartPreservingDuration(
+                          newValue,
+                          formData.startTime,
+                          formData.endTime
+                        );
                         setFormData({ ...formData, startTime: newValue, endTime });
                       }}
                   slotProps={{
@@ -3815,7 +3910,11 @@ const Schedule: React.FC = () => {
                                             label="Начало"
                                             value={daySchedule.startTime}
                                             onChange={(newValue) => {
-                                              const endTime = addDefaultDuration(newValue);
+                                              const endTime = endFromStartPreservingDuration(
+                                                newValue,
+                                                daySchedule.startTime,
+                                                daySchedule.endTime
+                                              );
                                               setFormData({
                                                 ...formData,
                                                 daySchedules: formData.daySchedules.map(ds =>
@@ -3895,7 +3994,11 @@ const Schedule: React.FC = () => {
                                       label="Начало"
                                       value={dateSchedule.startTime}
                                       onChange={(newValue) => {
-                                        const endTime = addDefaultDuration(newValue);
+                                        const endTime = endFromStartPreservingDuration(
+                                          newValue,
+                                          dateSchedule.startTime,
+                                          dateSchedule.endTime
+                                        );
                                         const newSchedules = [...formData.dateSchedules];
                                         newSchedules[index].startTime = newValue;
                                         if (endTime) {
@@ -4689,7 +4792,12 @@ const Schedule: React.FC = () => {
         </>
         )}
 
-        <Dialog open={eventDialog} onClose={() => setEventDialog(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={eventDialog}
+          onClose={() => setEventDialog(false)}
+          maxWidth={eventFormData.type === 'other' ? 'md' : 'sm'}
+          fullWidth
+        >
           <DialogTitle>{selectedSchoolEvent ? 'Редактировать событие' : 'Добавить событие'}</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -4779,19 +4887,150 @@ const Schedule: React.FC = () => {
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Группа</InputLabel>
+                  <InputLabel>Группы</InputLabel>
                   <Select
-                    value={eventFormData.groupId}
-                    label="Группа"
-                    onChange={(e) => setEventFormData((prev) => ({ ...prev, groupId: e.target.value }))}
+                    multiple
+                    value={eventFormData.groupIds}
+                    label="Группы"
+                    onChange={(e) =>
+                      setEventFormData((prev) => ({
+                        ...prev,
+                        groupIds: e.target.value as string[],
+                      }))
+                    }
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((groupId) => {
+                          const group = groups.find((g) => g.id === groupId);
+                          return group ? (
+                            <Chip key={groupId} label={group.name} size="small" />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
                   >
-                    <MenuItem value="">Не выбрана</MenuItem>
                     {groups.filter((g) => g.isActive).map((g) => (
-                      <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
+                      <MenuItem key={g.id} value={g.id}>
+                        <Checkbox checked={eventFormData.groupIds.indexOf(g.id) > -1} />
+                        <ListItemText primary={g.name} />
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
+
+              {eventFormData.type === 'other' && (
+                <>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Тренеры</InputLabel>
+                      <Select
+                        multiple
+                        value={eventFormData.trainerIds}
+                        label="Тренеры"
+                        onChange={(e) =>
+                          setEventFormData((prev) => ({
+                            ...prev,
+                            trainerIds: e.target.value as string[],
+                          }))
+                        }
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((trainerId) => {
+                              const trainer = trainers.find((t) => t.id === trainerId);
+                              return trainer?.user ? (
+                                <Chip
+                                  key={trainerId}
+                                  label={`${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()}
+                                  size="small"
+                                />
+                              ) : null;
+                            })}
+                          </Box>
+                        )}
+                      >
+                        {trainers.map((trainer) => (
+                          <MenuItem key={trainer.id} value={trainer.id}>
+                            <Checkbox checked={eventFormData.trainerIds.indexOf(trainer.id) > -1} />
+                            <ListItemText
+                              primary={
+                                trainer.user
+                                  ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
+                                  : `Тренер #${trainer.id}`
+                              }
+                            />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Клиенты</InputLabel>
+                      <Select
+                        multiple
+                        value={eventFormData.participantIds}
+                        label="Клиенты"
+                        onChange={(e) =>
+                          setEventFormData((prev) => ({
+                            ...prev,
+                            participantIds: e.target.value as string[],
+                          }))
+                        }
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.length} выбрано
+                          </Box>
+                        )}
+                      >
+                        {clients.filter((c) => c.isActive !== false).map((client) => (
+                          <MenuItem key={client.id} value={client.id}>
+                            <Checkbox checked={eventFormData.participantIds.indexOf(client.id) > -1} />
+                            <ListItemText
+                              primary={`${client.lastName} ${client.firstName} ${client.middleName || ''}`.trim()}
+                            />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Родители</InputLabel>
+                      <Select
+                        multiple
+                        value={eventFormData.parentIds}
+                        label="Родители"
+                        onChange={(e) =>
+                          setEventFormData((prev) => ({
+                            ...prev,
+                            parentIds: e.target.value as string[],
+                          }))
+                        }
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.length} выбрано
+                          </Box>
+                        )}
+                      >
+                        {eventParentsOptions.map((parent) => (
+                          <MenuItem key={parent.id} value={parent.id}>
+                            <Checkbox checked={eventFormData.parentIds.indexOf(parent.id) > -1} />
+                            <ListItemText
+                              primary={parent.fullName}
+                              secondary={
+                                parent.clientLabel
+                                  ? `Ребёнок: ${parent.clientLabel}`
+                                  : parent.phone || undefined
+                              }
+                            />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
             </Grid>
           </DialogContent>
           <DialogActions>
@@ -4809,7 +5048,7 @@ const Schedule: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-        <Dialog open={eventDetailDialog} onClose={() => setEventDetailDialog(false)} maxWidth="xs" fullWidth>
+        <Dialog open={eventDetailDialog} onClose={() => setEventDetailDialog(false)} maxWidth="sm" fullWidth>
           <DialogTitle>{selectedSchoolEvent?.title || 'Событие'}</DialogTitle>
           <DialogContent>
             {selectedSchoolEvent && (
@@ -4828,11 +5067,55 @@ const Schedule: React.FC = () => {
                 {selectedSchoolEvent.branch?.name && (
                   <Typography variant="body2">Филиал: {selectedSchoolEvent.branch.name}</Typography>
                 )}
-                {selectedSchoolEvent.group?.name && (
+                {selectedSchoolEvent.groups?.length > 0 && (
+                  <Typography variant="body2">
+                    Группы:{' '}
+                    {selectedSchoolEvent.groups
+                      .map((g: any) => g.group?.name)
+                      .filter(Boolean)
+                      .join(', ')}
+                  </Typography>
+                )}
+                {selectedSchoolEvent.group?.name && !selectedSchoolEvent.groups?.length && (
                   <Typography variant="body2">Группа: {selectedSchoolEvent.group.name}</Typography>
                 )}
                 {selectedSchoolEvent.description && (
                   <Typography variant="body2">{selectedSchoolEvent.description}</Typography>
+                )}
+                {selectedSchoolEvent.trainers?.length > 0 && (
+                  <Typography variant="body2">
+                    Тренеры:{' '}
+                    {selectedSchoolEvent.trainers
+                      .map((t: any) =>
+                        t.trainer?.user
+                          ? `${t.trainer.user.lastName} ${t.trainer.user.firstName}`.trim()
+                          : null
+                      )
+                      .filter(Boolean)
+                      .join(', ')}
+                  </Typography>
+                )}
+                {selectedSchoolEvent.participants?.length > 0 && (
+                  <Typography variant="body2">
+                    Клиенты:{' '}
+                    {selectedSchoolEvent.participants
+                      .map((p: any) =>
+                        p.client
+                          ? `${p.client.lastName} ${p.client.firstName}`.trim()
+                          : null
+                      )
+                      .filter(Boolean)
+                      .join(', ')}
+                  </Typography>
+                )}
+                {selectedSchoolEvent.parents?.length > 0 && (
+                  <Typography variant="body2">
+                    Родители:{' '}
+                    {selectedSchoolEvent.parents
+                      .map((p: any) => p.parent?.fullName)
+                      .filter(Boolean)
+                      .join(', ')}
+                  </Typography>
                 )}
               </Stack>
             )}
@@ -4850,6 +5133,81 @@ const Schedule: React.FC = () => {
               sx={{ textTransform: 'none' }}
             >
               Изменить
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={scheduleTaskDialog}
+          onClose={() => setScheduleTaskDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Новая задача</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                label="Заголовок"
+                value={scheduleTaskTitle}
+                onChange={(e) => setScheduleTaskTitle(e.target.value)}
+                required
+              />
+              <TextField
+                fullWidth
+                label="Описание"
+                multiline
+                rows={3}
+                value={scheduleTaskBody}
+                onChange={(e) => setScheduleTaskBody(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Дедлайн"
+                type="datetime-local"
+                value={scheduleTaskDueAt}
+                onChange={(e) => setScheduleTaskDueAt(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              <Autocomplete
+                multiple
+                options={scheduleStaffUsers}
+                getOptionLabel={(u: any) =>
+                  [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ') || u.email || u.id
+                }
+                value={scheduleTaskAssignees}
+                onChange={(_, v) => setScheduleTaskAssignees(v)}
+                renderInput={(params) => <TextField {...params} label="Исполнители" />}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setScheduleTaskDialog(false)} sx={{ textTransform: 'none' }}>
+              Отмена
+            </Button>
+            <Button
+              variant="contained"
+              disabled={scheduleTaskSaving || !scheduleTaskTitle.trim() || scheduleTaskAssignees.length === 0}
+              sx={{ textTransform: 'none' }}
+              onClick={async () => {
+                try {
+                  setScheduleTaskSaving(true);
+                  await apiService.createStaffTask({
+                    title: scheduleTaskTitle.trim(),
+                    body: scheduleTaskBody.trim(),
+                    dueAt: scheduleTaskDueAt ? new Date(scheduleTaskDueAt).toISOString() : null,
+                    assigneeIds: scheduleTaskAssignees.map((u: any) => u.id),
+                    createChat: true,
+                  });
+                  setScheduleTaskDialog(false);
+                } catch (err: any) {
+                  alert(err?.response?.data?.error || 'Не удалось создать задачу');
+                } finally {
+                  setScheduleTaskSaving(false);
+                }
+              }}
+            >
+              {scheduleTaskSaving ? 'Сохранение…' : 'Создать'}
             </Button>
           </DialogActions>
         </Dialog>

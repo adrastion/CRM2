@@ -99,7 +99,7 @@ export const listStaffTasks = asyncHandler(
 
 export const createStaffTask = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const { tenantId, userId } = requireOwner(req);
+    const { tenantId, userId } = requireTenantUser(req);
     const title = String(req.body?.title || '').trim();
     const body = String(req.body?.body || '').trim();
     if (!title) throw badRequest('Укажите заголовок', 'title');
@@ -164,7 +164,7 @@ export const createStaffTask = asyncHandler(
 
 export const updateStaffTask = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const { tenantId, userId } = requireOwner(req);
+    const { tenantId, userId, role } = requireTenantUser(req);
     const { id } = req.params;
 
     const existing = await prisma.staffTask.findFirst({
@@ -172,6 +172,10 @@ export const updateStaffTask = asyncHandler(
       include: { assignees: true },
     });
     if (!existing) throw notFound('Задача не найдена');
+
+    if (role !== 'OWNER' && existing.createdByUserId !== userId) {
+      throw forbidden('Редактировать задачу может владелец или автор');
+    }
 
     const data: {
       title?: string;
@@ -284,10 +288,13 @@ export const updateStaffTaskStatus = asyncHandler(
 
 export const deleteStaffTask = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const { tenantId } = requireOwner(req);
+    const { tenantId, userId, role } = requireTenantUser(req);
     const { id } = req.params;
     const existing = await prisma.staffTask.findFirst({ where: { id, tenantId } });
     if (!existing) throw notFound('Задача не найдена');
+    if (role !== 'OWNER' && existing.createdByUserId !== userId) {
+      throw forbidden('Удалить задачу может владелец или автор');
+    }
     await prisma.staffTask.delete({ where: { id } });
     res.json({ success: true, data: { id } });
   }

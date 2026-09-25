@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiService } from '../services/api';
-
-const REF_CODE_KEY = 'refCode';
+import { REF_CODE_KEY } from '../utils/refCode';
 
 /** Публичный лендинг /ref/:code — трек клика, сохранение кода, редирект. */
 const ReferralLanding: React.FC = () => {
@@ -50,7 +49,7 @@ const ReferralLanding: React.FC = () => {
   return (
     <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh" gap={2}>
       <CircularProgress />
-      <Typography color="text.secondary">{error || 'Переход по реферальной ссылке…'}</Typography>
+      <Typography color="text.secondary">{error || 'Переход по рекламной ссылке…'}</Typography>
     </Box>
   );
 };

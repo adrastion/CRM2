@@ -78,6 +78,10 @@ const Memberships: React.FC = () => {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [formBaseline, setFormBaseline] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeSourceIds, setMergeSourceIds] = useState<string[]>([]);
+  const [merging, setMerging] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -242,6 +246,60 @@ const Memberships: React.FC = () => {
     setPendingSave(null);
   };
 
+  const handleDelete = async () => {
+    if (!editing) return;
+    if (!window.confirm(`Удалить абонемент «${editing.name}»?`)) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await apiService.deleteMembership(editing.id);
+      discardForm();
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось удалить абонемент');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleMerge = async () => {
+    if (!mergeTargetId) {
+      setError('Выберите целевой абонемент');
+      return;
+    }
+    if (mergeSourceIds.length === 0) {
+      setError('Выберите хотя бы один исходный абонемент');
+      return;
+    }
+    if (mergeSourceIds.includes(mergeTargetId)) {
+      setError('Целевой абонемент не должен быть среди исходных');
+      return;
+    }
+    const targetName = items.find((m) => m.id === mergeTargetId)?.name || mergeTargetId;
+    if (
+      !window.confirm(
+        `Объединить ${mergeSourceIds.length} абонемент(ов) в «${targetName}»? Исходные будут деактивированы.`
+      )
+    ) {
+      return;
+    }
+    setMerging(true);
+    setError('');
+    try {
+      await apiService.mergeMemberships(mergeTargetId, mergeSourceIds);
+      setMergeTargetId('');
+      setMergeSourceIds([]);
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось объединить абонементы');
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const mergeSourceOptions = items.filter((m) => m.id !== mergeTargetId);
+  const mergeTargetOptions = items.filter((m) => !mergeSourceIds.includes(m.id));
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
@@ -269,6 +327,76 @@ const Memberships: React.FC = () => {
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
         </Alert>
+      )}
+
+      {items.length >= 2 && (
+        <Box
+          sx={{
+            mb: 2,
+            p: 2,
+            borderRadius: 2,
+            border: `1px solid ${colors.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <Typography fontWeight={600}>Объединить абонементы</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Клиенты и группы переносятся на целевой абонемент; исходные деактивируются.
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Целевой абонемент</InputLabel>
+            <Select
+              label="Целевой абонемент"
+              value={mergeTargetId}
+              onChange={(e) => {
+                const id = e.target.value as string;
+                setMergeTargetId(id);
+                setMergeSourceIds((prev) => prev.filter((s) => s !== id));
+              }}
+            >
+              {mergeTargetOptions.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.name}
+                  {m.isActive === false ? ' (выкл)' : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth>
+            <InputLabel>Исходные абонементы</InputLabel>
+            <Select
+              multiple
+              label="Исходные абонементы"
+              value={mergeSourceIds}
+              onChange={(e) => setMergeSourceIds(e.target.value as string[])}
+              input={<OutlinedInput label="Исходные абонементы" />}
+              renderValue={(selected) =>
+                items
+                  .filter((m) => selected.includes(m.id))
+                  .map((m) => m.name)
+                  .join(', ')
+              }
+            >
+              {mergeSourceOptions.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  <Checkbox checked={mergeSourceIds.includes(m.id)} />
+                  <ListItemText primary={`${m.name}${m.isActive === false ? ' (выкл)' : ''}`} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Box>
+            <Button
+              variant="outlined"
+              onClick={handleMerge}
+              disabled={merging || !mergeTargetId || mergeSourceIds.length === 0}
+            >
+              Объединить
+            </Button>
+          </Box>
+        </Box>
       )}
 
       {loading ? (
@@ -324,6 +452,11 @@ const Memberships: React.FC = () => {
       >
         <DialogTitle>{editing ? 'Редактировать абонемент' : 'Новый абонемент'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          {error && (
+            <Alert severity="error" onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
           <FormControl fullWidth>
             <InputLabel>Категория</InputLabel>
             <Select
@@ -449,11 +582,18 @@ const Memberships: React.FC = () => {
             label="Активен"
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => unsaved.requestClose('closeButton')}>Отмена</Button>
-          <Button variant="contained" onClick={handleSaveClick} disabled={saving}>
-            Сохранить
-          </Button>
+        <DialogActions sx={{ justifyContent: editing ? 'space-between' : 'flex-end' }}>
+          {editing && (
+            <Button color="error" onClick={handleDelete} disabled={saving || deleting}>
+              Удалить
+            </Button>
+          )}
+          <Box display="flex" gap={1}>
+            <Button onClick={() => unsaved.requestClose('closeButton')}>Отмена</Button>
+            <Button variant="contained" onClick={handleSaveClick} disabled={saving || deleting}>
+              Сохранить
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

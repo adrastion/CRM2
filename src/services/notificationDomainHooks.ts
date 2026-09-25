@@ -167,7 +167,7 @@ export async function notifyTrainerSalary(params: {
       ? `Выплачена зарплата ${amountLabel}`
       : `Начислена зарплата ${amountLabel}`,
     body: params.title,
-    data: { url: '/settings', trainerId: params.trainerId },
+    data: { url: '/trainer/earnings', trainerId: params.trainerId },
     eventType: 'salary',
     recipients: [{ actorType: 'USER', actorId: trainer.userId }],
   });

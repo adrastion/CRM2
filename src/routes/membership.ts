@@ -5,7 +5,8 @@ import {
   getMembershipById,
   createMembership,
   updateMembership,
-  deleteMembership
+  deleteMembership,
+  mergeMemberships,
 } from '../controllers/membershipController';
 
 const router = Router();
@@ -15,6 +16,7 @@ router.use(authenticate);
 
 // Membership management routes
 router.get('/', getMemberships);
+router.post('/merge', requireOwnerAdminOrTrainer, mergeMemberships);
 router.get('/:id', getMembershipById);
 router.post('/', requireOwnerAdminOrTrainer, createMembership);
 router.put('/:id', requireOwnerAdminOrTrainer, updateMembership);

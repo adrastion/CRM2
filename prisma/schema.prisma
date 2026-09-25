@@ -39,6 +39,10 @@ model Tenant {
   referralClicks          ReferralClick[]
   referralLinks           ReferralLink[]
   schoolEvents            SchoolEvent[]
+  schoolEventGroups       SchoolEventGroup[]
+  schoolEventParticipants SchoolEventParticipant[]
+  schoolEventParents      SchoolEventParent[]
+  schoolEventTrainers     SchoolEventTrainer[]
   standards               Standard[]
   subscription            Subscription?
   referredBy              TenantMarketer?
@@ -119,6 +123,8 @@ model User {
   trainingCyclesCreated    TrainingCycle[]    @relation("TrainingCycleCreator")
   paymentReceiptsReviewed  PaymentReceipt[]   @relation("PaymentReceiptReviewer")
   accrualAdjustmentsMade   Payment[]          @relation("PaymentAccrualAdjustedBy")
+  financeOperationsCreated FinanceOperation[] @relation("FinanceOperationCreatedBy")
+  clientsCreated           Client[]           @relation("ClientCreatedBy")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -223,17 +229,21 @@ model Client {
   lastLogin                DateTime? // Последний вход
   /// Инкремент при смене пароля / деактивации — инвалидирует JWT ЛК.
   sessionVersion           Int                      @default(0)
+  /// Сотрудник, создавший карточку (для фильтрации PROMOTER).
+  createdByUserId          String?
   achievements             Achievement[]
   attendances              Attendance[]
   clientMemberships        ClientMembership[]
   clientStandards          ClientStandard[]
   tenant                   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy                User?                    @relation("ClientCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   competitionParticipants  CompetitionParticipant[]
   groupMemberships         GroupMembership[]
   parents                  Parent[]
   payments                 Payment[]
   promoCodeUsages          PromoCodeUsage[]
   referralClicks           ReferralClick[]
+  schoolEventParticipants  SchoolEventParticipant[]
   transactions             Transaction[]
   financeOperations        FinanceOperation[]
   supportTickets           SupportTicket[] @relation("ClientSupportTickets")
@@ -245,6 +255,7 @@ model Client {
   @@index([tenantId, email])
   @@index([tenantId, phone])
   @@index([tenantId, createdAt])
+  @@index([createdByUserId])
   @@map("clients")
 }
 
@@ -319,6 +330,7 @@ model Parent {
   client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supportTickets   SupportTicket[] @relation("ParentSupportTickets")
+  schoolEvents     SchoolEventParent[]
 
   @@map("parents")
 }
@@ -436,6 +448,7 @@ model Trainer {
   seniorBranches       Branch[]                     @relation("BranchSeniorTrainer")
   salaryLedgers        TrainerSalaryLedger[]
   documents            TrainerDocument[]
+  schoolEventTrainers  SchoolEventTrainer[]
   tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                 User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   trainings            Training[]                   @relation("TrainingTrainer")
@@ -678,7 +691,7 @@ model Group {
   trainings                 Training[]
   payments                  Payment[]
   financeOperations         FinanceOperation[]
-  schoolEvents              SchoolEvent[]
+  schoolEventGroups         SchoolEventGroup[]
   chatThreads               ChatThread[]
   trainingCycleGroups       TrainingCycleGroup[]
   schoolPaymentMethodGroups SchoolPaymentMethodGroup[]
@@ -976,6 +989,7 @@ model FinanceOperation {
   group       Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy   User?     @relation("FinanceOperationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, externalKey])
   @@index([tenantId, occurredAt])
@@ -985,6 +999,7 @@ model FinanceOperation {
   @@index([tenantId, trainerId])
   @@index([tenantId, groupId])
   @@index([tenantId, branchId])
+  @@index([tenantId, createdById])
   @@map("finance_operations")
 }
 
@@ -1732,26 +1747,93 @@ model Competition {
 
 /// Событие календаря школы: родительские собрания и прочие мероприятия (без посещаемости/биллинга).
 model SchoolEvent {
-  id          String    @id @default(cuid())
-  title       String
-  description String?
+  id           String                   @id @default(cuid())
+  title        String
+  description  String?
   /// parent_meeting | other
-  type        String    @default("other")
-  startTime   DateTime
-  endTime     DateTime
-  location    String?
-  tenantId    String
-  branchId    String?
-  groupId     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  group       Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  type         String                   @default("other")
+  startTime    DateTime
+  endTime      DateTime
+  location     String?
+  tenantId     String
+  branchId     String?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?                  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  groups       SchoolEventGroup[]
+  participants SchoolEventParticipant[]
+  parents      SchoolEventParent[]
+  trainers     SchoolEventTrainer[]
 
   @@index([tenantId, startTime])
   @@index([tenantId, type])
   @@map("school_events")
+}
+
+model SchoolEventGroup {
+  id            String      @id @default(cuid())
+  schoolEventId String
+  groupId       String
+  tenantId      String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  group         Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  schoolEvent   SchoolEvent @relation(fields: [schoolEventId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolEventId, groupId])
+  @@index([tenantId, schoolEventId])
+  @@index([groupId])
+  @@map("school_event_groups")
+}
+
+model SchoolEventParticipant {
+  id            String      @id @default(cuid())
+  schoolEventId String
+  clientId      String
+  tenantId      String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  schoolEvent   SchoolEvent @relation(fields: [schoolEventId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolEventId, clientId])
+  @@index([tenantId, schoolEventId])
+  @@map("school_event_participants")
+}
+
+model SchoolEventParent {
+  id            String      @id @default(cuid())
+  schoolEventId String
+  parentId      String
+  tenantId      String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  parent        Parent      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  schoolEvent   SchoolEvent @relation(fields: [schoolEventId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolEventId, parentId])
+  @@index([tenantId, schoolEventId])
+  @@map("school_event_parents")
+}
+
+model SchoolEventTrainer {
+  id            String      @id @default(cuid())
+  schoolEventId String
+  trainerId     String
+  tenantId      String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  schoolEvent   SchoolEvent @relation(fields: [schoolEventId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trainer       Trainer     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolEventId, trainerId])
+  @@index([tenantId, schoolEventId])
+  @@map("school_event_trainers")
 }
 
 model CompetitionParticipant {

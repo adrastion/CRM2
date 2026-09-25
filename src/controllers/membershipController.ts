@@ -358,3 +358,78 @@ export const deleteMembership = async (req: AuthenticatedRequest, res: Response)
     res.status(500).json({ success: false, error: 'Failed to delete membership' });
   }
 };
+
+export const mergeMemberships = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+
+    const { targetId, sourceIds } = req.body as { targetId?: string; sourceIds?: string[] };
+
+    if (!targetId || typeof targetId !== 'string') {
+      res.status(400).json({ success: false, error: 'targetId is required' });
+      return;
+    }
+    if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
+      res.status(400).json({ success: false, error: 'sourceIds must be a non-empty array' });
+      return;
+    }
+
+    const uniqueSourceIds = [...new Set(sourceIds.map(String).filter(Boolean))];
+    if (uniqueSourceIds.length === 0) {
+      res.status(400).json({ success: false, error: 'sourceIds must be a non-empty array' });
+      return;
+    }
+    if (uniqueSourceIds.includes(targetId)) {
+      res.status(400).json({ success: false, error: 'targetId must not be in sourceIds' });
+      return;
+    }
+
+    const allIds = [targetId, ...uniqueSourceIds];
+    const found = await prisma.membership.findMany({
+      where: { id: { in: allIds }, tenantId },
+      select: { id: true },
+    });
+    const foundIds = new Set(found.map((m) => m.id));
+    if (!foundIds.has(targetId)) {
+      res.status(404).json({ success: false, error: 'Target membership not found' });
+      return;
+    }
+    const missingSources = uniqueSourceIds.filter((id) => !foundIds.has(id));
+    if (missingSources.length > 0) {
+      res.status(404).json({
+        success: false,
+        error: `Source membership(s) not found: ${missingSources.join(', ')}`,
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMembership.updateMany({
+        where: { membershipId: { in: uniqueSourceIds }, tenantId },
+        data: { membershipId: targetId },
+      });
+      await tx.membershipGroup.updateMany({
+        where: { membershipId: { in: uniqueSourceIds } },
+        data: { membershipId: targetId },
+      });
+      await tx.membership.updateMany({
+        where: { id: { in: uniqueSourceIds }, tenantId },
+        data: { isActive: false },
+      });
+    });
+
+    const full = await prisma.membership.findFirst({
+      where: { id: targetId, tenantId },
+      include: membershipInclude(),
+    });
+
+    res.json({ success: true, data: full });
+  } catch (error: any) {
+    console.error('Merge memberships error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to merge memberships' });
+  }
+};

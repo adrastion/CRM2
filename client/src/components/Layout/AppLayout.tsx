@@ -36,12 +36,11 @@ const navigationItems: Array<{
   { label: 'Панель управления', path: '/dashboard', iconName: 'dashboard', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'dashboard', onboarding: 'dashboard' },
   { label: 'Чаты', path: '/chats', iconName: 'chats', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'chats' },
   { label: 'Заметки и задачи', path: '/staff-workspace', iconName: 'knowledge-base', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'staffWorkspace' },
-  { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'clients', onboarding: 'clients-nav' },
+  { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'], tabKey: 'clients', onboarding: 'clients-nav' },
   { label: 'Сотрудники', path: '/trainers', iconName: 'staff', roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
   { label: 'Мой профиль', path: '/trainer/profile', iconName: 'clients', roles: ['TRAINER'], tabKey: 'trainerProfile' },
   { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER'], tabKey: 'trainerEarnings' },
-  { label: 'Группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
-  { label: 'Филиалы', path: '/branches', iconName: 'branches', roles: ['OWNER', 'ADMIN'], tabKey: 'branches', onboarding: 'branches-nav' },
+  { label: 'Филиалы и группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
   { label: 'Календарный план', path: '/schedule', iconName: 'schedule', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'schedule', onboarding: 'schedule-nav' },
   { label: 'Тренировочный план', path: '/training-plan', iconName: 'schedule', roles: ['OWNER', 'TRAINER'], tabKey: 'trainingPlan' },
   { label: 'Абонементы', path: '/memberships', iconName: 'tariffs', roles: ['OWNER', 'ADMIN'], tabKey: 'memberships', onboarding: 'memberships-nav' },
@@ -55,6 +54,7 @@ const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Владелец',
   ADMIN: 'Администратор',
   TRAINER: 'Тренер',
+  PROMOTER: 'Промоутер',
 };
 
 /** Секции панели супер-админа (`/admin/dashboard?section=`). */
@@ -211,6 +211,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   };
 
   const handleAddAccount = () => {
+    // Сначала снимок текущей сессии в реестр, потом сброс React-контекста
+    prepareAddAccount();
     if (isSuperAdminRoute) {
       logoutSuperAdmin();
     } else if (isTesterRoute) {
@@ -218,7 +220,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     } else {
       logout();
     }
-    prepareAddAccount();
     navigate('/auth', { replace: true });
   };
 

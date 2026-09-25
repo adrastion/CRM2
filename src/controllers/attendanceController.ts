@@ -5,7 +5,9 @@ import { deductFromClientBalance } from '../utils/finance';
 import { accrueForAttendance, reverseForAttendance } from '../services/trainerSalaryService';
 import {
   consumeVisitFromActivePack,
+  findActiveClientMembership,
   getActiveMembershipSummary,
+  restoreVisitToActivePack,
 } from '../services/clientMembershipService';
 import * as XLSX from 'xlsx';
 import { notifyAttendanceMarked } from '../services/notificationDomainHooks';
@@ -86,6 +88,7 @@ async function applyClientBillingForPresent(params: {
  * Идемпотентно (уникальность attendanceId в реестре).
  * Не зависит от group.trainingPrice — ставка берётся из настроек тренера.
  * При снятии PRESENT / платного пропуска — откат начисления.
+ * Клиентский абонемент: платный пропуск не начисляет зарплату.
  */
 async function accrueTrainerForAttendanceStatus(params: {
   tenantId: string;
@@ -106,6 +109,18 @@ async function accrueTrainerForAttendanceStatus(params: {
       attendanceId: params.attendanceId,
     }).catch((err) => console.error('Trainer salary reverse failed:', err));
     return;
+  }
+
+  // Клиентский абонемент: пропуск не даёт фикс «за человека»
+  if (isPaidMiss) {
+    const clientPack = await findActiveClientMembership(params.clientId, params.tenantId);
+    if (clientPack) {
+      await reverseForAttendance({
+        tenantId: params.tenantId,
+        attendanceId: params.attendanceId,
+      }).catch((err) => console.error('Trainer salary reverse failed:', err));
+      return;
+    }
   }
 
   const training = await prisma.training.findFirst({
@@ -471,45 +486,50 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
         shouldCharge: false,
       });
     } else if ((status === 'ABSENT' || status === 'EXCUSED') && !finalShouldCharge) {
-      // Если пропуск с shouldCharge=false (галочка не стоит), списываем средства и начисляем тренеру
-      const trainingWithDetails = await prisma.training.findFirst({
-        where: { id: trainingId, tenantId },
-        include: {
-          group: true,
-          trainer: true,
-          substituteTrainer: {
-            include: {
-              user: true
-            }
-          }
-        }
-      });
+      // Платный пропуск: для клиентского абонемента — без списания баланса и без ЗП
+      const onClientPack = Boolean(await findActiveClientMembership(clientId, tenantId));
 
-      if (trainingWithDetails && trainingWithDetails.group) {
-        const trainingPrice = trainingWithDetails.group.trainingPrice 
-          ? Number(trainingWithDetails.group.trainingPrice) 
-          : 0;
+      if (!onClientPack) {
+        const trainingWithDetails = await prisma.training.findFirst({
+          where: { id: trainingId, tenantId },
+          include: {
+            group: true,
+            trainer: true,
+            substituteTrainer: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        });
 
-        if (trainingPrice > 0) {
-          const currentClient = await prisma.client.findFirst({
-            where: { id: clientId, tenantId }
-          });
+        if (trainingWithDetails && trainingWithDetails.group) {
+          const trainingPrice = trainingWithDetails.group.trainingPrice
+            ? Number(trainingWithDetails.group.trainingPrice)
+            : 0;
 
-          if (currentClient) {
-            const clientBalance = Number(currentClient.balance || 0);
-            
-            if (clientBalance >= trainingPrice) {
-              // Снимаем деньги с баланса клиента за пропуск
-              await deductFromClientBalance(
-                clientId,
-                trainingPrice,
-                trainingId,
-                attendance.id,
-                tenantId,
-                `Списание за пропуск тренировки: ${trainingWithDetails.title}`
-              );
-            } else {
-              console.warn(`Insufficient balance for client ${clientId} for missed training. Balance: ${clientBalance}, Required: ${trainingPrice}`);
+          if (trainingPrice > 0) {
+            const currentClient = await prisma.client.findFirst({
+              where: { id: clientId, tenantId },
+            });
+
+            if (currentClient) {
+              const clientBalance = Number(currentClient.balance || 0);
+
+              if (clientBalance >= trainingPrice) {
+                await deductFromClientBalance(
+                  clientId,
+                  trainingPrice,
+                  trainingId,
+                  attendance.id,
+                  tenantId,
+                  `Списание за пропуск тренировки: ${trainingWithDetails.title}`
+                );
+              } else {
+                console.warn(
+                  `Insufficient balance for client ${clientId} for missed training. Balance: ${clientBalance}, Required: ${trainingPrice}`
+                );
+              }
             }
           }
         }
@@ -603,6 +623,11 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
           trainingId: updatedAttendance.trainingId,
           attendanceId: updatedAttendance.id,
         });
+      } else if (previousStatus === 'PRESENT' && status !== 'PRESENT') {
+        await restoreVisitToActivePack(
+          updatedAttendance.clientId,
+          req.tenant.id
+        ).catch((err) => console.error('Restore visit on status change failed:', err));
       }
       await accrueTrainerForAttendanceStatus({
         tenantId: req.tenant.id,
@@ -763,6 +788,10 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
               trainingId,
               attendanceId: updated.id,
             });
+          } else if (wasPresent && status !== 'PRESENT') {
+            await restoreVisitToActivePack(clientId, tenantId).catch((err) =>
+              console.error('Restore visit on bulk status change failed:', err)
+            );
           }
           await accrueTrainerForAttendanceStatus({
             tenantId,

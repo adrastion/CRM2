@@ -29,6 +29,7 @@ export interface ClientsListProps {
 
 const formatBalance = (value?: number) => {
   const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return '0 ₽';
   return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`;
 };
 
@@ -503,7 +504,12 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     sx={{
                       fontWeight: 600,
                       fontSize: typography.label,
-                      color: colors.text,
+                      color:
+                        Number(client.balance ?? 0) < 0
+                          ? SOFT_DANGER
+                          : Number(client.balance ?? 0) > 0
+                            ? colors.success
+                            : colors.text,
                       whiteSpace: 'nowrap',
                     }}
                   >

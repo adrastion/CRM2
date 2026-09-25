@@ -21,7 +21,7 @@ import {
   approveParentAccount,
   assignClientTrial,
 } from '../controllers/clientController';
-import { authenticate, requireOwnerAdminOrTrainer, requireOwnerOrAdmin } from '../middleware/auth';
+import { authenticate, requireOwnerAdminOrTrainer, requireOwnerAdminTrainerOrPromoter, requireOwnerOrAdmin } from '../middleware/auth';
 import { checkSubscriptionLimit } from '../middleware/subscriptionLimits';
 import multer from 'multer';
 import {
@@ -66,7 +66,7 @@ router.post('/import/excel', requireOwnerAdminOrTrainer, upload.single('file'), 
 
 router.get('/', validateClientQuery, getClients);
 router.get('/:id', getClient);
-router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('clients'), validateCreateClient, createClient);
+router.post('/', requireOwnerAdminTrainerOrPromoter, checkSubscriptionLimit('clients'), validateCreateClient, createClient);
 router.put('/:id', requireOwnerAdminOrTrainer, validateUpdateClient, updateClient);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteClient);
 

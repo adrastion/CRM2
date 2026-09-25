@@ -57,6 +57,8 @@ import {
 import { colors, typography } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
+import { useAuth } from '../contexts/AuthContext';
+import { canAssignSeniorTrainer, canCreateBranches } from '../utils/roles';
 
 function trainerDisplayName(trainer?: Trainer | null): string {
   if (!trainer?.user) return '—';
@@ -105,6 +107,9 @@ const Groups: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
+  const { user } = useAuth();
+  const canManageBranches = canCreateBranches(user);
+  const canAssignSenior = canAssignSeniorTrainer(user);
   const [groups, setGroups] = useState<Group[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
@@ -131,8 +136,23 @@ const Groups: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [halls, setHalls] = useState<Hall[]>([]);
+  const [branchHallsDialog, setBranchHallsDialog] = useState(false);
+  const [branchHallsLoading, setBranchHallsLoading] = useState(false);
+  const [branchHallsList, setBranchHallsList] = useState<Hall[]>([]);
+  const [branchHallsBranch, setBranchHallsBranch] = useState<Branch | null>(null);
+  const [hallNameInput, setHallNameInput] = useState('');
   const [createTrainerDialog, setCreateTrainerDialog] = useState(false);
   const [createBranchDialog, setCreateBranchDialog] = useState(false);
+  const [editBranchDialog, setEditBranchDialog] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [branchFormBaseline, setBranchFormBaseline] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    description: '',
+    seniorTrainerId: '',
+  });
   const [trainerFormData, setTrainerFormData] = useState({
     email: '',
     password: '',
@@ -154,6 +174,7 @@ const Groups: React.FC = () => {
     phone: '',
     email: '',
     description: '',
+    seniorTrainerId: '',
   });
   const [trainerFormErrors, setTrainerFormErrors] = useState<Record<string, string>>({});
   const [branchFormErrors, setBranchFormErrors] = useState<Record<string, string>>({});
@@ -469,40 +490,148 @@ const Groups: React.FC = () => {
     }
   };
 
-  const handleCreateBranchFromGroup = async () => {
+  const emptyBranchForm = () => ({
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    description: '',
+    seniorTrainerId: '',
+  });
+
+  const openCreateBranchDialog = () => {
+    const initial = emptyBranchForm();
+    setBranchFormData(initial);
+    setBranchFormBaseline(initial);
+    setBranchFormErrors({});
+    setEditingBranch(null);
+    setCreateBranchDialog(true);
+  };
+
+  const openEditBranchDialog = (branch: Branch) => {
+    const nextForm = {
+      name: branch.name || '',
+      address: branch.address || '',
+      phone: branch.phone || '',
+      email: branch.email || '',
+      description: branch.description || '',
+      seniorTrainerId: branch.seniorTrainerId || '',
+    };
+    setEditingBranch(branch);
+    setBranchFormData(nextForm);
+    setBranchFormBaseline(nextForm);
+    setBranchFormErrors({});
+    setEditBranchDialog(true);
+  };
+
+  const discardCreateBranchForm = () => {
+    setCreateBranchDialog(false);
+    setBranchFormErrors({});
+    setBranchFormData(emptyBranchForm());
+    setBranchFormBaseline(emptyBranchForm());
+  };
+
+  const discardEditBranchForm = () => {
+    setEditBranchDialog(false);
+    setEditingBranch(null);
+    setBranchFormErrors({});
+    setBranchFormData(emptyBranchForm());
+    setBranchFormBaseline(emptyBranchForm());
+  };
+
+  const handleCreateBranchFromGroup = async (): Promise<boolean> => {
     const errors = validateBranchForm(branchFormData);
     setBranchFormErrors(errors);
     
     if (Object.keys(errors).length > 0) {
       setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
       setSnackbarOpen(true);
-      return;
+      return false;
     }
 
     try {
-      const createdBranch = await apiService.createBranch(branchFormData);
+      const payload = {
+        ...branchFormData,
+        seniorTrainerId: branchFormData.seniorTrainerId || null,
+      };
+      const createdBranch = await apiService.createBranch(payload);
       // Обновляем список филиалов
       const branchesRes = await apiService.getBranches();
       setBranches(branchesRes.data);
-      // Автоматически выбираем созданный филиал
+      // Автоматически выбираем созданный филиал (если открыт диалог группы)
       setFormData(prev => ({ ...prev, branchId: createdBranch.id }));
-      // Закрываем диалог и очищаем форму
-      setCreateBranchDialog(false);
-      setBranchFormData({
-        name: '',
-        address: '',
-        phone: '',
-        email: '',
-        description: '',
-      });
-      setBranchFormErrors({});
+      discardCreateBranchForm();
       setSnackbarMessage('Филиал успешно создан');
       setSnackbarOpen(true);
+      return true;
     } catch (err: any) {
       setSnackbarMessage(err.response?.data?.error || 'Ошибка создания филиала');
       setSnackbarOpen(true);
       console.error('Error creating branch:', err);
+      return false;
     }
+  };
+
+  const handleUpdateBranch = async (): Promise<boolean> => {
+    if (!editingBranch) return false;
+
+    const errors = validateBranchForm(branchFormData);
+    setBranchFormErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      setSnackbarMessage('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    try {
+      const payload: Record<string, unknown> = {
+        name: branchFormData.name,
+        address: branchFormData.address,
+        phone: branchFormData.phone,
+        email: branchFormData.email,
+        description: branchFormData.description,
+      };
+      if (canAssignSenior) {
+        payload.seniorTrainerId = branchFormData.seniorTrainerId || null;
+      }
+      await apiService.updateBranch(editingBranch.id, payload);
+      const branchesRes = await apiService.getBranches();
+      setBranches(branchesRes.data);
+      discardEditBranchForm();
+      setSnackbarMessage('Филиал успешно обновлён');
+      setSnackbarOpen(true);
+      return true;
+    } catch (err: any) {
+      setSnackbarMessage(err.response?.data?.error || 'Ошибка обновления филиала');
+      setSnackbarOpen(true);
+      console.error('Error updating branch:', err);
+      return false;
+    }
+  };
+
+  const handleDeleteBranch = async (branchId: string) => {
+    if (!window.confirm('Вы уверены, что хотите удалить этот филиал?')) return;
+    try {
+      await apiService.deleteBranch(branchId);
+      await fetchData();
+      setSnackbarMessage('Филиал удалён');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка удаления филиала');
+      console.error('Error deleting branch:', err);
+    }
+  };
+
+  const openCreateGroupDialog = (branchId?: string) => {
+    const initial = emptyGroupForm();
+    if (branchId) initial.branchId = branchId;
+    setFormData(initial);
+    setCreateFormBaseline(initial);
+    setSelectedClientIds([]);
+    setFormErrors({});
+    setError(null);
+    setOpenDialog(true);
   };
 
   const handleEditGroup = (group: Group) => {
@@ -1189,6 +1318,218 @@ const Groups: React.FC = () => {
     onSave: async () => saveFieldEdit(),
   });
 
+  const createBranchDirty = createBranchDialog && isDirtyValue(branchFormData, branchFormBaseline);
+  const editBranchDirty = editBranchDialog && isDirtyValue(branchFormData, branchFormBaseline);
+
+  const createBranchUnsaved = useUnsavedClose({
+    isDirty: Boolean(createBranchDirty),
+    onDiscard: discardCreateBranchForm,
+    onSave: async () => handleCreateBranchFromGroup(),
+  });
+
+  const editBranchUnsaved = useUnsavedClose({
+    isDirty: Boolean(editBranchDirty),
+    onDiscard: discardEditBranchForm,
+    onSave: async () => handleUpdateBranch(),
+  });
+
+  const branchSections = [
+    ...branches.map((branch) => ({
+      key: branch.id,
+      branch,
+      groups: groups.filter((g) => g.branchId === branch.id),
+    })),
+    ...(groups.some((g) => !g.branchId || !branches.find((b) => b.id === g.branchId))
+      ? [{
+          key: '__unassigned__',
+          branch: null as Branch | null,
+          groups: groups.filter((g) => !g.branchId || !branches.find((b) => b.id === g.branchId)),
+        }]
+      : []),
+  ];
+
+  const renderGroupActions = (group: Group) => (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+      <IconButton
+        size="small"
+        color="primary"
+        title="Создать тренировку для группы"
+        onClick={() => handleOpenTrainingDialog(group)}
+      >
+        <CalendarToday />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="primary"
+        title="Управление участниками"
+        onClick={() => handleOpenMembersDialog(group)}
+      >
+        <People />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="primary"
+        title="Редактировать"
+        onClick={() => handleEditGroup(group)}
+      >
+        <Edit />
+      </IconButton>
+      <IconButton
+        size="small"
+        color="error"
+        title="Удалить"
+        onClick={() => handleDeleteGroup(group.id)}
+      >
+        <Delete />
+      </IconButton>
+    </Box>
+  );
+
+  const renderGroupMobileCard = (group: Group) => {
+    const trainerName = group.trainer?.user
+      ? `${group.trainer.user.lastName} ${group.trainer.user.firstName} ${group.trainer.user.middleName || ''}`.trim()
+      : null;
+    const ageLabel = group.ageMin && group.ageMax
+      ? `${group.ageMin}-${group.ageMax}`
+      : group.ageMin
+      ? `от ${group.ageMin}`
+      : group.ageMax
+      ? `до ${group.ageMax}`
+      : null;
+    const memberCount = group.memberships?.filter((m) => m.isActive).length || 0;
+    return (
+      <Card key={group.id} variant="outlined" sx={{ bgcolor: 'background.default' }}>
+        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                sx={{
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: 'primary.main',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+                onClick={() => handleEditGroup(group)}
+              >
+                {group.name}
+              </Typography>
+              {group.description && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                >
+                  {group.description}
+                </Typography>
+              )}
+            </Box>
+            <Chip
+              label={group.isActive ? 'Активна' : 'Неактивна'}
+              color={group.isActive ? 'success' : 'default'}
+              size="small"
+            />
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1, alignItems: 'center' }}>
+            <SoftFieldChip
+              label={trainerName || '—'}
+              onClick={() => openFieldEdit(group, 'trainer')}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+            <Chip label={`Участников: ${memberCount}`} size="small" variant="outlined" />
+            {group.maxMembers != null && (
+              <Chip label={`Макс: ${group.maxMembers}`} size="small" variant="outlined" />
+            )}
+            {ageLabel && (
+              <Chip label={`Возраст: ${ageLabel}`} size="small" variant="outlined" />
+            )}
+          </Box>
+          <Divider sx={{ mb: 1 }} />
+          {renderGroupActions(group)}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderGroupTable = (sectionGroups: Group[]) => (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Название</TableCell>
+            <TableCell>Описание</TableCell>
+            <TableCell>Тренер</TableCell>
+            <TableCell>Макс. участников</TableCell>
+            <TableCell>Возраст</TableCell>
+            <TableCell>Участников</TableCell>
+            <TableCell>Статус</TableCell>
+            <TableCell>Действия</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sectionGroups.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={8} align="center">
+                <Typography variant="body2" color="text.secondary">
+                  В этом филиале пока нет групп
+                </Typography>
+              </TableCell>
+            </TableRow>
+          ) : (
+            sectionGroups.map((group) => (
+              <TableRow key={group.id}>
+                <TableCell>
+                  <Typography
+                    sx={{
+                      cursor: 'pointer',
+                      color: 'primary.main',
+                      '&:hover': { textDecoration: 'underline' },
+                    }}
+                    onClick={() => handleEditGroup(group)}
+                  >
+                    {group.name}
+                  </Typography>
+                </TableCell>
+                <TableCell>{group.description || '-'}</TableCell>
+                <TableCell>
+                  <SoftFieldChip
+                    label={
+                      group.trainer?.user
+                        ? trainerDisplayName(group.trainer)
+                        : '—'
+                    }
+                    onClick={() => openFieldEdit(group, 'trainer')}
+                  />
+                </TableCell>
+                <TableCell>{group.maxMembers || '-'}</TableCell>
+                <TableCell>
+                  {group.ageMin && group.ageMax
+                    ? `${group.ageMin}-${group.ageMax}`
+                    : group.ageMin
+                    ? `от ${group.ageMin}`
+                    : group.ageMax
+                    ? `до ${group.ageMax}`
+                    : '-'}
+                </TableCell>
+                <TableCell>
+                  {group.memberships?.filter((m) => m.isActive).length || 0}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={group.isActive ? 'Активна' : 'Неактивна'}
+                    color={group.isActive ? 'success' : 'default'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>{renderGroupActions(group)}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -1210,25 +1551,30 @@ const Groups: React.FC = () => {
         }}
       >
         <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
-          Группы
+          Филиалы и группы
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
-          onClick={() => {
-            const initial = emptyGroupForm();
-            setFormData(initial);
-            setCreateFormBaseline(initial);
-            setSelectedClientIds([]);
-            setFormErrors({});
-            setError(null);
-            setOpenDialog(true);
-          }}
-          data-onboarding="add-group-button"
-        >
-          Добавить группу
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+          {canManageBranches && (
+            <Button
+              variant="outlined"
+              startIcon={<Add />}
+              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+              onClick={openCreateBranchDialog}
+              data-onboarding="add-branch-button"
+            >
+              Добавить филиал
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+            onClick={() => openCreateGroupDialog()}
+            data-onboarding="add-group-button"
+          >
+            Добавить группу
+          </Button>
+        </Stack>
       </Box>
 
       {error && (
@@ -1237,277 +1583,89 @@ const Groups: React.FC = () => {
         </Alert>
       )}
 
-      {isMobile ? (
-        <Stack spacing={1.5}>
-          {groups.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
-              Группы не найдены
-            </Typography>
-          ) : (
-            groups.map((group) => {
-              const trainerName = group.trainer?.user
-                ? `${group.trainer.user.lastName} ${group.trainer.user.firstName} ${group.trainer.user.middleName || ''}`.trim()
-                : null;
-              const ageLabel = group.ageMin && group.ageMax
-                ? `${group.ageMin}-${group.ageMax}`
-                : group.ageMin
-                ? `от ${group.ageMin}`
-                : group.ageMax
-                ? `до ${group.ageMax}`
-                : null;
-              const memberCount = group.memberships?.filter(m => m.isActive).length || 0;
-              return (
-                <Card key={group.id} variant="outlined">
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography
-                          sx={{
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            color: 'primary.main',
-                            '&:hover': { textDecoration: 'underline' },
-                          }}
-                          onClick={() => handleEditGroup(group)}
-                        >
-                          {group.name}
-                        </Typography>
-                        {group.description && (
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                          >
-                            {group.description}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Chip
-                        label={group.isActive ? 'Активна' : 'Неактивна'}
-                        color={group.isActive ? 'success' : 'default'}
-                        size="small"
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1, alignItems: 'center' }}>
-                      <SoftFieldChip
-                        label={group.branch?.name || '—'}
-                        onClick={() => openFieldEdit(group, 'branch')}
-                      />
-                      <SoftFieldChip
-                        label={trainerName || '—'}
-                        onClick={() => openFieldEdit(group, 'trainer')}
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
-                      <Chip label={`Участников: ${memberCount}`} size="small" variant="outlined" />
-                      {group.maxMembers != null && (
-                        <Chip label={`Макс: ${group.maxMembers}`} size="small" variant="outlined" />
-                      )}
-                      {ageLabel && (
-                        <Chip label={`Возраст: ${ageLabel}`} size="small" variant="outlined" />
-                      )}
-                    </Box>
-                    <Divider sx={{ mb: 1 }} />
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        title="Создать тренировку для группы"
-                        onClick={() => handleOpenTrainingDialog(group)}
-                      >
-                        <CalendarToday />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        title="Управление участниками"
-                        onClick={() => handleOpenMembersDialog(group)}
-                      >
-                        <People />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        title="Редактировать"
-                        onClick={() => handleEditGroup(group)}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        title="Удалить"
-                        onClick={() => handleDeleteGroup(group.id)}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </Box>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </Stack>
+      {branches.length === 0 && groups.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+          Филиалы и группы не найдены
+        </Typography>
       ) : (
-      <Card>
-        <CardContent>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Название</TableCell>
-                  <TableCell>Описание</TableCell>
-                  <TableCell>Филиал</TableCell>
-                  <TableCell>Тренер</TableCell>
-                  <TableCell>Макс. участников</TableCell>
-                  <TableCell>Возраст</TableCell>
-                  <TableCell>Участников</TableCell>
-                  <TableCell>Статус</TableCell>
-                  <TableCell>Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {groups.length === 0 ? (
-                <TableRow>
-                    <TableCell colSpan={9} align="center">
+        <Stack spacing={2}>
+          {branchSections.map(({ key, branch, groups: sectionGroups }) => (
+            <Card key={key} variant="outlined">
+              <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    justifyContent: 'space-between',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    gap: 1,
+                    mb: 1.5,
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: 16, md: 18 } }}>
+                      {branch ? branch.name : 'Без филиала'}
+                    </Typography>
+                    {branch?.address && (
                       <Typography variant="body2" color="text.secondary">
-                        Группы не найдены
+                        {branch.address}
                       </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  groups.map((group) => (
-                    <TableRow key={group.id}>
-                      <TableCell>
-                        <Typography
-                          sx={{
-                            cursor: 'pointer',
-                            color: 'primary.main',
-                            '&:hover': {
-                              textDecoration: 'underline'
-                            }
-                          }}
-                          onClick={() => {
-                            setEditingGroup(group);
-                            // Парсим schedule из JSON строки, если она есть
-                            let schedule: GroupScheduleItem[] = [];
-                            if (group.schedule) {
-                              if (typeof group.schedule === 'string') {
-                                try {
-                                  schedule = JSON.parse(group.schedule);
-                                } catch (e) {
-                                  console.error('Error parsing schedule:', e);
-                                }
-                              } else if (Array.isArray(group.schedule)) {
-                                schedule = group.schedule;
-                              }
-                            }
-                            setFormData({
-                              name: group.name,
-                              description: group.description || '',
-                              maxMembers: group.maxMembers?.toString() || '',
-                              ageMin: group.ageMin?.toString() || '',
-                              ageMax: group.ageMax?.toString() || '',
-                              color: group.color || DEFAULT_GROUP_COLOR,
-                              branchId: group.branchId,
-                              trainerId: group.trainerId,
-                              schedule: schedule,
-                              isMonthlyPayment: group.isMonthlyPayment || false,
-                              monthlyPaymentAmount: group.monthlyPaymentAmount?.toString() || '',
-                              paymentDueDay: group.paymentDueDay?.toString() || '',
-                              createPaymentsImmediately: false,
-                              salaryScheme: group.salaryScheme
-                                ? normalizeSalaryScheme(group.salaryScheme)
-                                : 'per_training_person',
-                              salaryRate: group.salaryRate != null ? String(group.salaryRate) : '',
-                            });
-                            setEditDialog(true);
-                          }}
-                        >
-                          {group.name}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {group.description || '-'}
-                      </TableCell>
-                  <TableCell>
-                        <SoftFieldChip
-                          label={group.branch?.name || '—'}
-                          onClick={() => openFieldEdit(group, 'branch')}
-                        />
-                  </TableCell>
-                  <TableCell>
-                        <SoftFieldChip
-                          label={
-                            group.trainer?.user
-                              ? trainerDisplayName(group.trainer)
-                              : '—'
-                          }
-                          onClick={() => openFieldEdit(group, 'trainer')}
-                        />
-                  </TableCell>
-                      <TableCell>{group.maxMembers || '-'}</TableCell>
-                  <TableCell>
-                        {group.ageMin && group.ageMax 
-                          ? `${group.ageMin}-${group.ageMax}`
-                          : group.ageMin 
-                          ? `от ${group.ageMin}`
-                          : group.ageMax
-                          ? `до ${group.ageMax}`
-                          : '-'}
-                  </TableCell>
-                  <TableCell>
-                        {group.memberships?.filter(m => m.isActive).length || 0}
-                  </TableCell>
-                  <TableCell>
-                        <Chip
-                          label={group.isActive ? 'Активна' : 'Неактивна'}
-                          color={group.isActive ? 'success' : 'default'}
+                    )}
+                    {branch && (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Групп: {sectionGroups.length}
+                        {branch.isActive === false ? ' · Неактивен' : ''}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'flex-end' }}>
+                    <Button
+                      size="small"
+                      startIcon={<Add />}
+                      sx={{ textTransform: 'none' }}
+                      onClick={() => openCreateGroupDialog(branch?.id)}
+                    >
+                      Группа
+                    </Button>
+                    {canManageBranches && branch && (
+                      <>
+                        <IconButton
                           size="small"
-                        />
-                  </TableCell>
-                  <TableCell>
-                        <IconButton 
-                          size="small" 
-                          color="primary" 
-                          title="Создать тренировку для группы"
-                          onClick={() => handleOpenTrainingDialog(group)}
+                          color="primary"
+                          title="Редактировать филиал"
+                          onClick={() => openEditBranchDialog(branch)}
                         >
-                          <CalendarToday />
-                    </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="primary" 
-                          title="Управление участниками"
-                          onClick={() => handleOpenMembersDialog(group)}
+                          <Edit />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          title="Удалить филиал"
+                          onClick={() => handleDeleteBranch(branch.id)}
                         >
-                          <People />
-                    </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="primary" 
-                          title="Редактировать"
-                          onClick={() => handleEditGroup(group)}
-                        >
-                      <Edit />
-                    </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="error" 
-                          title="Удалить"
-                          onClick={() => handleDeleteGroup(group.id)}
-                        >
-                      <Delete />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-                  ))
+                          <Delete />
+                        </IconButton>
+                      </>
+                    )}
+                  </Box>
+                </Box>
+                {isMobile ? (
+                  <Stack spacing={1}>
+                    {sectionGroups.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 1 }}>
+                        В этом филиале пока нет групп
+                      </Typography>
+                    ) : (
+                      sectionGroups.map((group) => renderGroupMobileCard(group))
+                    )}
+                  </Stack>
+                ) : (
+                  renderGroupTable(sectionGroups)
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
       )}
 
       {/* Диалог добавления группы */}
@@ -1580,14 +1738,16 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              {canManageBranches && (
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setCreateBranchDialog(true)}
+                onClick={openCreateBranchDialog}
                 sx={{ mt: 1 }}
               >
                 + Создать филиал
               </Button>
+              )}
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth required error={!!formErrors.trainerId}>
@@ -1881,14 +2041,16 @@ const Groups: React.FC = () => {
                   </Typography>
                 )}
               </FormControl>
+              {canManageBranches && (
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setCreateBranchDialog(true)}
+                onClick={openCreateBranchDialog}
                 sx={{ mt: 1 }}
               >
                 + Создать филиал
               </Button>
+              )}
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth required error={!!formErrors.trainerId}>
@@ -2822,20 +2984,15 @@ const Groups: React.FC = () => {
       {/* Диалог создания филиала */}
       <Dialog 
         open={createBranchDialog} 
-        onClose={() => {
-          setCreateBranchDialog(false);
-          setBranchFormErrors({});
-          setBranchFormData({
-            name: '',
-            address: '',
-            phone: '',
-            email: '',
-            description: '',
-          });
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            createBranchUnsaved.requestClose(reason);
+          }
         }}
         maxWidth="md" 
         fullWidth
         fullScreen={isNarrow}
+        data-onboarding="branch-form-dialog"
       >
         <DialogTitle>Создать новый филиал</DialogTitle>
         <DialogContent>
@@ -2900,24 +3057,254 @@ const Groups: React.FC = () => {
                 rows={3}
               />
             </Grid>
+            {canAssignSenior && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel id="create-senior-trainer-label">Старший тренер</InputLabel>
+                  <Select
+                    labelId="create-senior-trainer-label"
+                    label="Старший тренер"
+                    value={branchFormData.seniorTrainerId}
+                    onChange={(e) => setBranchFormData(prev => ({ ...prev, seniorTrainerId: String(e.target.value) }))}
+                  >
+                    <MenuItem value="">
+                      <em>Не назначен</em>
+                    </MenuItem>
+                    {trainers.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {[t.user?.lastName, t.user?.firstName].filter(Boolean).join(' ') || t.user?.email || t.id}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setCreateBranchDialog(false);
-            setBranchFormErrors({});
-            setBranchFormData({
-              name: '',
-              address: '',
-              phone: '',
-              email: '',
-              description: '',
-            });
-          }}>
+          <Button onClick={discardCreateBranchForm}>
             Отмена
           </Button>
-          <Button onClick={handleCreateBranchFromGroup} variant="contained">
+          <Button
+            onClick={handleCreateBranchFromGroup}
+            variant="contained"
+            disabled={!branchFormData.name || !branchFormData.address}
+          >
             Создать филиал
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог редактирования филиала */}
+      <Dialog
+        open={editBranchDialog}
+        onClose={(_event, reason) => {
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            editBranchUnsaved.requestClose(reason);
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+        fullScreen={isNarrow}
+      >
+        <DialogTitle>Редактировать филиал</DialogTitle>
+        <DialogContent>
+          {Object.keys(branchFormErrors).length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Пожалуйста, исправьте {Object.keys(branchFormErrors).length} {Object.keys(branchFormErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Название филиала"
+                value={branchFormData.name}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
+                error={!!branchFormErrors.name}
+                helperText={branchFormErrors.name}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Адрес"
+                value={branchFormData.address}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, address: e.target.value }))}
+                required
+                multiline
+                rows={2}
+                error={!!branchFormErrors.address}
+                helperText={branchFormErrors.address}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Телефон"
+                value={branchFormData.phone}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, phone: e.target.value }))}
+                error={!!branchFormErrors.phone}
+                helperText={branchFormErrors.phone}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={branchFormData.email}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, email: e.target.value.toLowerCase() }))}
+                error={!!branchFormErrors.email}
+                helperText={branchFormErrors.email}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Описание"
+                value={branchFormData.description}
+                onChange={(e) => setBranchFormData(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
+              />
+            </Grid>
+            {canAssignSenior && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel id="edit-senior-trainer-label">Старший тренер</InputLabel>
+                  <Select
+                    labelId="edit-senior-trainer-label"
+                    label="Старший тренер"
+                    value={branchFormData.seniorTrainerId}
+                    onChange={(e) => setBranchFormData(prev => ({ ...prev, seniorTrainerId: String(e.target.value) }))}
+                  >
+                    <MenuItem value="">
+                      <em>Не назначен</em>
+                    </MenuItem>
+                    {trainers.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {[t.user?.lastName, t.user?.firstName].filter(Boolean).join(' ') || t.user?.email || t.id}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={async () => {
+              if (!editingBranch) return;
+              setBranchHallsBranch(editingBranch);
+              setBranchHallsDialog(true);
+              setBranchHallsLoading(true);
+              try {
+                const res = await apiService.getHalls({ branchId: editingBranch.id });
+                setBranchHallsList(res.data || []);
+              } catch {
+                setBranchHallsList([]);
+              } finally {
+                setBranchHallsLoading(false);
+              }
+            }}
+            sx={{ mr: 'auto', textTransform: 'none' }}
+          >
+            Залы
+          </Button>
+          <Button onClick={discardEditBranchForm}>Отмена</Button>
+          <Button
+            onClick={handleUpdateBranch}
+            variant="contained"
+            disabled={!branchFormData.name || !branchFormData.address}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={branchHallsDialog}
+        onClose={() => {
+          setBranchHallsDialog(false);
+          setBranchHallsBranch(null);
+          setHallNameInput('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Залы: {branchHallsBranch?.name}</DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={1} sx={{ mt: 1, mb: 2 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Новый зал"
+              value={hallNameInput}
+              onChange={(e) => setHallNameInput(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              disabled={!hallNameInput.trim() || !branchHallsBranch}
+              sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+              onClick={async () => {
+                if (!branchHallsBranch || !hallNameInput.trim()) return;
+                try {
+                  await apiService.createHall({
+                    name: hallNameInput.trim(),
+                    branchId: branchHallsBranch.id,
+                  });
+                  setHallNameInput('');
+                  const res = await apiService.getHalls({ branchId: branchHallsBranch.id });
+                  setBranchHallsList(res.data || []);
+                } catch (err: any) {
+                  setError(err?.response?.data?.error || 'Не удалось создать зал');
+                }
+              }}
+            >
+              Добавить
+            </Button>
+          </Stack>
+          {branchHallsLoading ? (
+            <CircularProgress size={24} />
+          ) : branchHallsList.length === 0 ? (
+            <Typography color="text.secondary">Залов пока нет</Typography>
+          ) : (
+            <Stack spacing={1}>
+              {branchHallsList.map((h) => (
+                <Stack key={h.id} direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography>{h.name}</Typography>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={async () => {
+                      if (!window.confirm(`Удалить зал «${h.name}»?`)) return;
+                      try {
+                        await apiService.deleteHall(h.id);
+                        setBranchHallsList((prev) => prev.filter((x) => x.id !== h.id));
+                      } catch (err: any) {
+                        setError(err?.response?.data?.error || 'Не удалось удалить зал');
+                      }
+                    }}
+                  >
+                    <Delete fontSize="small" />
+                  </IconButton>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setBranchHallsDialog(false);
+              setBranchHallsBranch(null);
+              setHallNameInput('');
+            }}
+          >
+            Закрыть
           </Button>
         </DialogActions>
       </Dialog>
@@ -2991,6 +3378,20 @@ const Groups: React.FC = () => {
         onSave={fieldEditUnsaved.save}
         onDiscard={fieldEditUnsaved.discard}
         onStay={fieldEditUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={createBranchUnsaved.confirmOpen}
+        saving={createBranchUnsaved.saving}
+        onSave={createBranchUnsaved.save}
+        onDiscard={createBranchUnsaved.discard}
+        onStay={createBranchUnsaved.stay}
+      />
+      <UnsavedChangesDialog
+        open={editBranchUnsaved.confirmOpen}
+        saving={editBranchUnsaved.saving}
+        onSave={editBranchUnsaved.save}
+        onDiscard={editBranchUnsaved.discard}
+        onStay={editBranchUnsaved.stay}
       />
 
       {/* Snackbar для отображения ошибок валидации */}

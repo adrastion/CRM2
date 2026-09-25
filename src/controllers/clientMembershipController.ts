@@ -49,7 +49,7 @@ export const getClientMemberships = async (req: AuthenticatedRequest, res: Respo
  */
 export const createClientMembership = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { clientId, membershipId } = req.body;
+    const { clientId, membershipId, startDate } = req.body;
     const tenantId = req.tenant?.id;
 
     if (!tenantId) {
@@ -68,10 +68,20 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
       return;
     }
 
+    if (!startDate) {
+      res.status(400).json({
+        success: false,
+        error: 'Укажите дату начала действия абонемента',
+        field: 'startDate',
+      });
+      return;
+    }
+
     const clientMembership = await issueClientMembership({
       tenantId,
       clientId,
       membershipId,
+      startDate,
     });
 
     const price = Number(clientMembership.membership?.price || 0);
@@ -84,6 +94,7 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
         amount: price,
         title: `${clientName} — ${clientMembership.membership.name}`,
         membershipCatalogId: membershipId,
+        occurredAt: clientMembership.startDate,
       }).catch((err) => console.error('Finance membership issue record failed:', err));
     }
 

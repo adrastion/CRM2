@@ -7,7 +7,7 @@ export interface User {
   lastName: string;
   middleName?: string;
   phone?: string;
-  role: 'OWNER' | 'ADMIN' | 'TRAINER';
+  role: 'OWNER' | 'ADMIN' | 'TRAINER' | 'PROMOTER';
   tenantId: string;
   /** TRAINER, назначенный старшим хотя бы одного филиала */
   isSeniorTrainer?: boolean;
@@ -405,6 +405,8 @@ export interface Client {
   passportDivisionCode?: string;
   passportBirthPlace?: string;
   balance?: number;
+  /** Из /finance/refs — название активной группы (для выбора в операциях). */
+  groupName?: string | null;
   membershipFeePaid?: boolean;
   membershipFeePaidAt?: string;
   membershipFeePaidBy?: string;
@@ -415,6 +417,8 @@ export interface Client {
   debt?: number;
   overduePaymentsCount?: number;
   isActive: boolean;
+  /** Сотрудник, создавший карточку клиента (для роли PROMOTER). */
+  createdByUserId?: string | null;
   /** Есть ли установленный пароль ЛК (без самого хеша). */
   hasPassword?: boolean;
   isAccountApproved?: boolean;
@@ -718,6 +722,17 @@ export interface FinanceOperation {
   groupId?: string | null;
   branchId?: string | null;
   paymentId?: string | null;
+  externalKey?: string | null;
+  createdById?: string | null;
+  createdAt?: string;
+  createdBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+    role: string;
+    email: string;
+  } | null;
   client?: { id: string; firstName: string; lastName: string; middleName?: string | null } | null;
   trainer?: { id: string; firstName: string; lastName: string } | null;
   group?: { id: string; name: string } | null;
@@ -746,12 +761,15 @@ export interface FinanceSalaryRow {
 export interface FinanceMembershipRow {
   clientId: string;
   clientName: string;
+  periodKey: string;
+  periodLabel: string;
   membershipPrice: number;
   paidAmount: number;
   debt: number;
   remaining: number;
   status: 'paid' | 'unpaid' | 'partial';
   latestPaymentId: string | null;
+  interactive: boolean;
   groups: Array<{ id: string; name: string; trainerId?: string; branchId?: string }>;
 }
 

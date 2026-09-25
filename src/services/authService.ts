@@ -489,8 +489,8 @@ export class AuthService {
     role: string;
     tenantId: string;
   }) {
-    if (data.role !== 'ADMIN' && data.role !== 'TRAINER') {
-      throw new Error('Role must be ADMIN or TRAINER');
+    if (data.role !== 'ADMIN' && data.role !== 'TRAINER' && data.role !== 'PROMOTER') {
+      throw new Error('Role must be ADMIN, TRAINER or PROMOTER');
     }
 
     const normalizedEmail = data.email.toLowerCase().trim();

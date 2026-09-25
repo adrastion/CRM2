@@ -22,7 +22,6 @@ import {
   Tabs,
   TextField,
   Typography,
-  Collapse,
   CircularProgress,
   Alert,
   Snackbar,
@@ -72,9 +71,43 @@ const DATE_PRESETS = [
   { key: 'last_month', label: 'Прошлый месяц' },
 ];
 
+/** Типы, доступные в диалоге «Добавить операцию». */
+const ADD_OP_SYSTEM_TYPES: Array<{ code: string; name: string }> = [
+  { code: 'rent', name: 'Аренда' },
+  { code: 'membership_issue', name: 'Выдача абонемента' },
+  { code: 'salary', name: 'Зарплата' },
+  { code: 'bonus', name: 'Премия' },
+];
+
+const CUSTOM_TYPE_VALUE = '__custom__';
+
+type CustomSubject = 'client' | 'trainer';
+
+const formatClientOptionLabel = (c: {
+  lastName?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  balance?: number | null;
+  groupName?: string | null;
+  phone?: string | null;
+  groupMemberships?: Array<{ group?: { name?: string | null } | null }>;
+}) => {
+  const name = [c.lastName, c.firstName, c.middleName].filter(Boolean).join(' ');
+  const group =
+    c.groupName ||
+    c.groupMemberships?.find((gm) => gm.group?.name)?.group?.name ||
+    'без группы';
+  const bal = Number(c.balance ?? 0);
+  const balStr = `${bal.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`;
+  return `${name} — ${group} — ${balStr}`;
+};
+type CustomAllocation = 'accrued' | 'paid' | 'debit' | 'credit';
+
 const formatMoney = (value: number, withSign = false, direction?: string) => {
   const abs = Math.abs(value).toLocaleString('ru-RU');
-  if (!withSign) return `${abs} ₽`;
+  if (!withSign) {
+    return value < 0 ? `−${abs} ₽` : `${abs} ₽`;
+  }
   const sign = direction === 'expense' || value < 0 ? '−' : '+';
   return `${sign}${abs} ₽`;
 };
@@ -85,6 +118,24 @@ const formatDateTime = (iso: string) => {
   } catch {
     return iso;
   }
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  OWNER: 'Владелец',
+  ADMIN: 'Администратор',
+  TRAINER: 'Тренер',
+  MARKETER: 'Маркетолог',
+  CLIENT: 'Клиент',
+};
+
+const formatOperationCreator = (op: FinanceOperation): string => {
+  if (!op.createdBy) return 'Система';
+  const role = ROLE_LABELS[op.createdBy.role] || op.createdBy.role;
+  const name = [op.createdBy.lastName, op.createdBy.firstName, op.createdBy.middleName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return name ? `${role}: ${name}` : role;
 };
 
 interface OpFilters {
@@ -146,6 +197,7 @@ const Finance: React.FC = () => {
   const [snackbar, setSnackbar] = useState('');
   const [deletingOpId, setDeletingOpId] = useState<string | null>(null);
   const [cancelOp, setCancelOp] = useState<FinanceOperation | null>(null);
+  const [detailOp, setDetailOp] = useState<FinanceOperation | null>(null);
 
   const [operations, setOperations] = useState<FinanceOperation[]>([]);
   const [types, setTypes] = useState<FinanceOperationType[]>([]);
@@ -200,8 +252,8 @@ const Finance: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [salarySortBy, setSalarySortBy] = useState<FinanceSummarySortKey>('name');
   const [salarySortDir, setSalarySortDir] = useState<'asc' | 'desc'>('asc');
-  const [membershipSortBy, setMembershipSortBy] = useState<FinanceSummarySortKey>('name');
-  const [membershipSortDir, setMembershipSortDir] = useState<'asc' | 'desc'>('asc');
+  const [membershipSortBy, setMembershipSortBy] = useState<FinanceSummarySortKey>('period');
+  const [membershipSortDir, setMembershipSortDir] = useState<'asc' | 'desc'>('desc');
 
   const [addOpen, setAddOpen] = useState(false);
   const [payoutOpen, setPayoutOpen] = useState(false);
@@ -210,7 +262,7 @@ const Finance: React.FC = () => {
   const [selectedSalary, setSelectedSalary] = useState<FinanceSalaryRow | null>(null);
 
   const [formDirection, setFormDirection] = useState<FinanceDirection>('expense');
-  const [formTypeCode, setFormTypeCode] = useState('other');
+  const [formTypeCode, setFormTypeCode] = useState('rent');
   const [formTitle, setFormTitle] = useState('');
   const [formAmount, setFormAmount] = useState('');
   const [formOccurredAt, setFormOccurredAt] = useState<Date | null>(new Date());
@@ -218,8 +270,13 @@ const Finance: React.FC = () => {
   const [newTypeName, setNewTypeName] = useState('');
   const [formTrainerId, setFormTrainerId] = useState('');
   const [formClientId, setFormClientId] = useState('');
-  const [showTrainerPicker, setShowTrainerPicker] = useState(false);
-  const [showClientPicker, setShowClientPicker] = useState(false);
+  const [formMembershipId, setFormMembershipId] = useState('');
+  const [formMembershipStartDate, setFormMembershipStartDate] = useState<Date | null>(new Date());
+  const [membershipCatalog, setMembershipCatalog] = useState<any[]>([]);
+  const [membershipCatalogLoading, setMembershipCatalogLoading] = useState(false);
+  const [customSubject, setCustomSubject] = useState<CustomSubject>('trainer');
+  const [customAllocation, setCustomAllocation] = useState<CustomAllocation>('accrued');
+  const [savingAdd, setSavingAdd] = useState(false);
 
   const [payoutAmount, setPayoutAmount] = useState('');
   const [receiveAmount, setReceiveAmount] = useState('');
@@ -240,6 +297,8 @@ const Finance: React.FC = () => {
 
   const refsLoadedRef = useRef(false);
 
+  const isCustomType = formTypeCode === CUSTOM_TYPE_VALUE;
+
   const addFormSnapshot = () => ({
     formDirection,
     formTypeCode,
@@ -250,8 +309,9 @@ const Finance: React.FC = () => {
     newTypeName,
     formTrainerId,
     formClientId,
-    showTrainerPicker,
-    showClientPicker,
+    formMembershipId,
+    customSubject,
+    customAllocation,
   });
 
   const activeFilterChips = useMemo(() => {
@@ -410,76 +470,264 @@ const Finance: React.FC = () => {
     }
   };
 
-  const handleCreateType = async () => {
-    if (!newTypeName.trim()) return;
-    const created = await apiService.createFinanceType({
-      name: newTypeName.trim(),
-      defaultDirection: formDirection,
-    });
-    setTypes((prev) => [...prev, created]);
-    setFormTypeCode(created.code);
-    setNewTypeName('');
-    setSnackbar('Тип операции создан');
-  };
-
   const discardAddForm = useCallback(() => {
     setAddOpen(false);
+    setFormTypeCode('rent');
+    setFormDirection('expense');
     setFormTitle('');
     setFormAmount('');
     setFormNotes('');
     setFormTrainerId('');
     setFormClientId('');
-    setShowTrainerPicker(false);
-    setShowClientPicker(false);
+    setFormMembershipId('');
+    setFormMembershipStartDate(new Date());
+    setMembershipCatalog([]);
     setNewTypeName('');
+    setCustomSubject('trainer');
+    setCustomAllocation('accrued');
+    setSavingAdd(false);
     setAddFormBaseline(null);
   }, []);
 
   const openAddDialog = () => {
-    setAddFormBaseline(addFormSnapshot());
+    setFormTypeCode('rent');
+    setFormDirection('expense');
+    setFormTitle('');
+    setFormAmount('');
+    setFormNotes('');
+    setFormTrainerId('');
+    setFormClientId('');
+    setFormMembershipId('');
+    setFormMembershipStartDate(new Date());
+    setNewTypeName('');
+    setCustomSubject('trainer');
+    setCustomAllocation('accrued');
+    setFormOccurredAt(new Date());
+    setAddFormBaseline(null);
     setAddOpen(true);
+    // baseline after reset
+    setTimeout(() => {
+      setAddFormBaseline({
+        formDirection: 'expense',
+        formTypeCode: 'rent',
+        formTitle: '',
+        formAmount: '',
+        formOccurredAt: new Date().toISOString(),
+        formNotes: '',
+        newTypeName: '',
+        formTrainerId: '',
+        formClientId: '',
+        formMembershipId: '',
+        customSubject: 'trainer',
+        customAllocation: 'accrued',
+      });
+    }, 0);
   };
 
-  const handleSaveOperation = async (): Promise<boolean> => {
-    if (formTypeCode === 'bonus' && !formTrainerId) {
-      setError('Выберите тренера для начисления премии');
-      return false;
-    }
-    if (
-      formDirection === 'income' &&
-      (formTypeCode === 'client_payment' || formTypeCode === 'membership') &&
-      !formClientId
-    ) {
-      setError('Выберите клиента для операции');
-      return false;
-    }
-    if (
-      formDirection === 'expense' &&
-      formTypeCode !== 'bonus' &&
-      showClientPicker &&
-      !formClientId
-    ) {
-      setError('Выберите клиента для начисления платежа');
-      return false;
-    }
+  const loadMembershipCatalog = useCallback(async () => {
+    setMembershipCatalogLoading(true);
     try {
-      await apiService.createFinanceOperation({
-        direction: formDirection,
-        typeCode: formTypeCode,
-        title: formTitle,
-        amount: Number(formAmount),
-        occurredAt: formOccurredAt?.toISOString(),
-        notes: formNotes || undefined,
-        trainerId: formTrainerId || undefined,
-        clientId: formClientId || undefined,
-      });
-      discardAddForm();
-      setSnackbar('Операция сохранена');
-      await loadOperations();
-      return true;
+      const res = await apiService.getMemberships({ limit: 200 });
+      setMembershipCatalog(res?.data || []);
+    } catch {
+      setMembershipCatalog([]);
+    } finally {
+      setMembershipCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!addOpen || formTypeCode !== 'membership_issue') return;
+    void loadMembershipCatalog();
+  }, [addOpen, formTypeCode, loadMembershipCatalog]);
+
+  useEffect(() => {
+    if (formTypeCode === 'membership_issue' && formMembershipId) {
+      const pack = membershipCatalog.find((m) => m.id === formMembershipId);
+      if (pack) {
+        setFormTitle(pack.name || 'Выдача абонемента');
+        if (pack.price != null) setFormAmount(String(Number(pack.price)));
+      }
+    }
+  }, [formMembershipId, membershipCatalog, formTypeCode]);
+
+  useEffect(() => {
+    if (!isCustomType) return;
+    if (customSubject === 'trainer') {
+      setCustomAllocation((prev) => (prev === 'debit' || prev === 'credit' ? 'accrued' : prev));
+      setFormClientId('');
+    } else {
+      setCustomAllocation((prev) => (prev === 'accrued' || prev === 'paid' ? 'credit' : prev));
+      setFormTrainerId('');
+    }
+  }, [customSubject, isCustomType]);
+
+  useEffect(() => {
+    if (isCustomType) {
+      if (customAllocation === 'credit') setFormDirection('income');
+      else setFormDirection('expense');
+    } else if (formTypeCode !== CUSTOM_TYPE_VALUE) {
+      setFormDirection('expense');
+    }
+  }, [isCustomType, customAllocation, formTypeCode]);
+
+  const canSaveAddOperation = useMemo(() => {
+    if (formTypeCode === 'rent') {
+      return Boolean(formTitle.trim() && formAmount && Number(formAmount) > 0);
+    }
+    if (formTypeCode === 'membership_issue') {
+      return Boolean(formClientId && formMembershipId && formMembershipStartDate);
+    }
+    if (formTypeCode === 'salary' || formTypeCode === 'bonus') {
+      return Boolean(formTrainerId && formAmount && Number(formAmount) > 0);
+    }
+    if (isCustomType) {
+      const hasSubject =
+        customSubject === 'trainer' ? Boolean(formTrainerId) : Boolean(formClientId);
+      return Boolean(
+        newTypeName.trim() &&
+          hasSubject &&
+          customAllocation &&
+          formAmount &&
+          Number(formAmount) > 0
+      );
+    }
+    return false;
+  }, [
+    formTypeCode,
+    formTitle,
+    formAmount,
+    formClientId,
+    formMembershipId,
+    formMembershipStartDate,
+    formTrainerId,
+    isCustomType,
+    newTypeName,
+    customSubject,
+    customAllocation,
+  ]);
+
+  const handleSaveOperation = async (): Promise<boolean> => {
+    if (!canSaveAddOperation) {
+      setError('Заполните обязательные поля');
+      return false;
+    }
+    setSavingAdd(true);
+    setError(null);
+    try {
+      if (formTypeCode === 'membership_issue') {
+        await apiService.createClientMembership({
+          clientId: formClientId,
+          membershipId: formMembershipId,
+          startDate: formMembershipStartDate!.toISOString(),
+        });
+        discardAddForm();
+        setSnackbar('Абонемент выдан');
+        await loadOperations();
+        await loadMemberships();
+        return true;
+      }
+
+      if (formTypeCode === 'salary') {
+        const trainer = trainers.find((t) => t.id === formTrainerId);
+        const name = trainer?.user
+          ? `${trainer.user.lastName} ${trainer.user.firstName}`.trim()
+          : 'Зарплата';
+        await apiService.payoutTrainerSalary({
+          trainerId: formTrainerId,
+          amount: Number(formAmount),
+          periodLabel: formTitle.trim() || undefined,
+          occurredAt: formOccurredAt?.toISOString(),
+          notes: formNotes || undefined,
+        });
+        discardAddForm();
+        setSnackbar(`Выплата сохранена: ${name}`);
+        await loadOperations();
+        if (tab === 'salary') await loadSalary();
+        return true;
+      }
+
+      if (formTypeCode === 'bonus') {
+        const trainer = trainers.find((t) => t.id === formTrainerId);
+        const name = trainer?.user
+          ? `${trainer.user.lastName} ${trainer.user.firstName}`.trim()
+          : 'Премия';
+        await apiService.createFinanceOperation({
+          direction: 'expense',
+          typeCode: 'bonus',
+          title: formTitle.trim() || `Премия — ${name}`,
+          amount: Number(formAmount),
+          occurredAt: formOccurredAt?.toISOString(),
+          notes: formNotes || undefined,
+          trainerId: formTrainerId,
+        });
+        discardAddForm();
+        setSnackbar('Премия начислена');
+        await loadOperations();
+        if (tab === 'salary') await loadSalary();
+        return true;
+      }
+
+      if (formTypeCode === 'rent') {
+        await apiService.createFinanceOperation({
+          direction: 'expense',
+          typeCode: 'rent',
+          title: formTitle.trim(),
+          amount: Number(formAmount),
+          occurredAt: formOccurredAt?.toISOString(),
+          notes: formNotes || undefined,
+        });
+        discardAddForm();
+        setSnackbar('Операция сохранена');
+        await loadOperations();
+        return true;
+      }
+
+      if (isCustomType) {
+        const created = await apiService.createFinanceType({
+          name: newTypeName.trim(),
+          defaultDirection: formDirection,
+        });
+        setTypes((prev) => [...prev, created]);
+        const title =
+          formTitle.trim() ||
+          (customSubject === 'trainer'
+            ? (() => {
+                const t = trainers.find((tr) => tr.id === formTrainerId);
+                return t?.user
+                  ? `${created.name} — ${t.user.lastName} ${t.user.firstName}`.trim()
+                  : created.name;
+              })()
+            : (() => {
+                const c = clients.find((cl) => cl.id === formClientId);
+                return c ? `${created.name} — ${c.lastName} ${c.firstName}` : created.name;
+              })());
+        await apiService.createFinanceOperation({
+          direction: formDirection,
+          typeCode: created.code,
+          title,
+          amount: Number(formAmount),
+          occurredAt: formOccurredAt?.toISOString(),
+          notes: formNotes || undefined,
+          trainerId: customSubject === 'trainer' ? formTrainerId : undefined,
+          clientId: customSubject === 'client' ? formClientId : undefined,
+          allocation: customAllocation,
+        });
+        discardAddForm();
+        setSnackbar('Операция сохранена');
+        await loadOperations();
+        if (tab === 'salary') await loadSalary();
+        if (tab === 'memberships') await loadMemberships();
+        return true;
+      }
+
+      setError('Неизвестный тип операции');
+      return false;
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось сохранить операцию');
       return false;
+    } finally {
+      setSavingAdd(false);
     }
   };
 
@@ -522,7 +770,7 @@ const Finance: React.FC = () => {
     setAccrualCorrectOpen(true);
     setAccrualHistoryLoading(true);
     try {
-      const month = memDate ? format(memDate, 'yyyy-MM') : format(new Date(), 'yyyy-MM');
+      const month = row.periodKey || (memDate ? format(memDate, 'yyyy-MM') : format(new Date(), 'yyyy-MM'));
       const items = await apiService.getMonthChargesBreakdown({
         clientId: row.clientId,
         month,
@@ -560,6 +808,7 @@ const Finance: React.FC = () => {
       await apiService.correctMembershipAccrual({
         clientId: accrualCorrectRow.clientId,
         paymentId: accrualCorrectRow.latestPaymentId || undefined,
+        periodKey: accrualCorrectRow.periodKey || undefined,
         newAmount,
         reason: accrualReason.trim(),
         occurredAt: accrualOccurredAt?.toISOString(),
@@ -628,6 +877,7 @@ const Finance: React.FC = () => {
         paymentId: selectedMembership.latestPaymentId || undefined,
         clientId: selectedMembership.clientId,
         amount: increment,
+        periodKey: selectedMembership.periodKey || undefined,
       });
       discardReceiveForm();
       setSnackbar(increment < 0 ? 'Выплачено уменьшено' : 'Оплата сохранена');
@@ -649,7 +899,7 @@ const Finance: React.FC = () => {
     if (currentKey === key) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setKey(key);
-      setDir(key === 'name' || key === 'period' ? 'asc' : 'desc');
+      setDir(key === 'name' ? 'asc' : 'desc');
     }
   };
 
@@ -659,13 +909,22 @@ const Finance: React.FC = () => {
     dir: 'asc' | 'desc'
   ): FinanceSummaryRow[] => {
     const mul = dir === 'asc' ? 1 : -1;
+    const periodSortValue = (period: string, id: string): string => {
+      if (/^\d{4}-\d{2}$/.test(period)) return period;
+      const labeled = period.match(/^(\d{2})\.(\d{4})$/);
+      if (labeled) return `${labeled[2]}-${labeled[1]}`;
+      // id = clientId:periodKey, periodKey может быть YYYY-MM или pack:…
+      const fromId = id.includes(':') ? id.split(':').slice(1).join(':') : '';
+      if (/^\d{4}-\d{2}$/.test(fromId) || fromId.startsWith('pack:')) return fromId;
+      return period;
+    };
     return [...rows].sort((a, b) => {
       const pick = (row: FinanceSummaryRow): string | number => {
         switch (key) {
           case 'name':
             return typeof row.name === 'string' ? row.name : row.id;
           case 'period':
-            return row.period;
+            return periodSortValue(row.period, row.id);
           case 'count':
             return typeof row.count === 'number' ? row.count : 0;
           case 'accrued':
@@ -715,33 +974,37 @@ const Finance: React.FC = () => {
   const membershipTableRows: FinanceSummaryRow[] = useMemo(
     () =>
       membershipRows.map((row) => ({
-        id: row.clientId,
+        id: `${row.clientId}:${row.periodKey}`,
         name: <ClientNameLink clientId={row.clientId} name={row.clientName} />,
-        period: memDate ? format(memDate, 'dd.MM.yyyy', { locale: ru }) : '—',
+        period: row.periodLabel || row.periodKey || '—',
         count: '—',
         accrued: row.membershipPrice,
         paid: row.paidAmount,
         remaining: row.remaining,
-        onAccruedClick: () => {
-          void openAccrualCorrectDialog(row);
-        },
-        onPaidClick: () => {
-          setSelectedMembership(row);
-          setReceiveAmount('');
-          setReceiveBaseline('');
-          setChangePackId('');
-          setReceiveOpen(true);
-          void apiService
-            .getMemberships({ limit: 200 })
-            .then((res) =>
-              setCatalogForChange(
-                (res.data || []).filter((m: any) => m.isActive !== false && m.category !== 'GROUP')
-              )
-            )
-            .catch(() => setCatalogForChange([]));
-        },
+        onAccruedClick: row.interactive
+          ? () => {
+              void openAccrualCorrectDialog(row);
+            }
+          : undefined,
+        onPaidClick: row.interactive
+          ? () => {
+              setSelectedMembership(row);
+              setReceiveAmount('');
+              setReceiveBaseline('');
+              setChangePackId('');
+              setReceiveOpen(true);
+              void apiService
+                .getMemberships({ limit: 200 })
+                .then((res) =>
+                  setCatalogForChange(
+                    (res.data || []).filter((m: any) => m.isActive !== false && m.category !== 'GROUP')
+                  )
+                )
+                .catch(() => setCatalogForChange([]));
+            }
+          : undefined,
       })),
-    [membershipRows, memDate]
+    [membershipRows]
   );
 
   const sortedSalaryRows = useMemo(
@@ -978,6 +1241,7 @@ const Finance: React.FC = () => {
                 formatMoney={formatMoney}
                 formatDateTime={formatDateTime}
                 deletingId={deletingOpId}
+                onRowClick={(op) => setDetailOp(op)}
                 onDelete={canDeleteOperations ? (op) => setCancelOp(op) : undefined}
               />
             )}
@@ -1411,7 +1675,7 @@ const Finance: React.FC = () => {
               <MenuItem value="">Выбрать клиента</MenuItem>
               {clients.map((c) => (
                 <MenuItem key={c.id} value={c.id}>
-                  {c.lastName} {c.firstName}
+                  {formatClientOptionLabel(c)}
                 </MenuItem>
               ))}
             </Select>
@@ -1598,41 +1862,52 @@ const Finance: React.FC = () => {
           <DialogTitle>Добавить операцию</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
-              <FormControl>
-                <Typography sx={{ mb: 0.5 }}>Тип движения средств</Typography>
-                <RadioGroup
-                  row
-                  value={formDirection}
-                  onChange={(e) => setFormDirection(e.target.value as FinanceDirection)}
-                >
-                  <FormControlLabel value="income" control={<Radio />} label="Приход" />
-                  <FormControlLabel value="expense" control={<Radio />} label="Расход" />
-                </RadioGroup>
-              </FormControl>
               <FormControl fullWidth>
                 <InputLabel>Тип операции</InputLabel>
                 <Select
                   label="Тип операции"
                   value={formTypeCode}
-                  onChange={(e) => setFormTypeCode(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormTypeCode(v);
+                    setFormTrainerId('');
+                    setFormClientId('');
+                    setFormMembershipId('');
+                    setFormTitle('');
+                    setFormAmount('');
+                    if (v !== CUSTOM_TYPE_VALUE) setNewTypeName('');
+                  }}
                 >
-                  {types.map((t) => (
-                    <MenuItem key={t.id} value={t.code}>
+                  {ADD_OP_SYSTEM_TYPES.map((t) => (
+                    <MenuItem key={t.code} value={t.code}>
                       {t.name}
                     </MenuItem>
                   ))}
+                  <MenuItem value={CUSTOM_TYPE_VALUE}>Добавить тип…</MenuItem>
                 </Select>
               </FormControl>
-              {(formDirection === 'expense' &&
-                (formTypeCode === 'bonus' || formTypeCode === 'salary')) && (
-                <Box>
-                  <Button
-                    onClick={() => setShowTrainerPicker((v) => !v)}
-                    sx={{ textTransform: 'none', color: colors.primary, p: 0, mb: showTrainerPicker ? 1 : 0 }}
-                  >
-                    {showTrainerPicker ? '− Скрыть выбор тренера' : '+ Выбрать тренера'}
-                  </Button>
-                  <Collapse in={showTrainerPicker}>
+
+              {isCustomType && (
+                <>
+                  <TextField
+                    label="Название типа"
+                    fullWidth
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    placeholder="Например: Компенсация"
+                  />
+                  <FormControl>
+                    <Typography sx={{ mb: 0.5 }}>Субъект</Typography>
+                    <RadioGroup
+                      row
+                      value={customSubject}
+                      onChange={(e) => setCustomSubject(e.target.value as CustomSubject)}
+                    >
+                      <FormControlLabel value="trainer" control={<Radio />} label="Тренер" />
+                      <FormControlLabel value="client" control={<Radio />} label="Клиент" />
+                    </RadioGroup>
+                  </FormControl>
+                  {customSubject === 'trainer' ? (
                     <FormControl fullWidth>
                       <InputLabel>Тренер</InputLabel>
                       <Select
@@ -1647,20 +1922,7 @@ const Finance: React.FC = () => {
                         ))}
                       </Select>
                     </FormControl>
-                  </Collapse>
-                </Box>
-              )}
-              {(formDirection === 'income' &&
-                (formTypeCode === 'client_payment' || formTypeCode === 'membership')) ||
-              (formDirection === 'expense' && formTypeCode !== 'bonus') ? (
-                <Box>
-                  <Button
-                    onClick={() => setShowClientPicker((v) => !v)}
-                    sx={{ textTransform: 'none', color: colors.primary, p: 0, mb: showClientPicker ? 1 : 0 }}
-                  >
-                    {showClientPicker ? '− Скрыть выбор клиента' : '+ Выбрать клиента'}
-                  </Button>
-                  <Collapse in={showClientPicker}>
+                  ) : (
                     <FormControl fullWidth>
                       <InputLabel>Клиент</InputLabel>
                       <Select
@@ -1670,48 +1932,141 @@ const Finance: React.FC = () => {
                       >
                         {clients.map((c) => (
                           <MenuItem key={c.id} value={c.id}>
-                            {c.lastName} {c.firstName}
+                            {formatClientOptionLabel(c)}
                           </MenuItem>
                         ))}
                       </Select>
                     </FormControl>
-                  </Collapse>
-                </Box>
-              ) : null}
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  )}
+                  <FormControl fullWidth>
+                    <InputLabel>Куда начислять</InputLabel>
+                    <Select
+                      label="Куда начислять"
+                      value={customAllocation}
+                      onChange={(e) => setCustomAllocation(e.target.value as CustomAllocation)}
+                    >
+                      {customSubject === 'trainer' ? (
+                        [
+                          <MenuItem key="accrued" value="accrued">
+                            Начислено
+                          </MenuItem>,
+                          <MenuItem key="paid" value="paid">
+                            Выплачено
+                          </MenuItem>,
+                        ]
+                      ) : (
+                        [
+                          <MenuItem key="debit" value="debit">
+                            Списать с баланса
+                          </MenuItem>,
+                          <MenuItem key="credit" value="credit">
+                            Пополнить баланс
+                          </MenuItem>,
+                        ]
+                      )}
+                    </Select>
+                  </FormControl>
+                </>
+              )}
+
+              {formTypeCode === 'membership_issue' && (
+                <>
+                  <FormControl fullWidth>
+                    <InputLabel>Клиент</InputLabel>
+                    <Select
+                      label="Клиент"
+                      value={formClientId}
+                      onChange={(e) => setFormClientId(e.target.value)}
+                    >
+                      {clients.map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          {formatClientOptionLabel(c)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl fullWidth>
+                    <InputLabel>Абонемент</InputLabel>
+                    <Select
+                      label="Абонемент"
+                      value={formMembershipId}
+                      onChange={(e) => setFormMembershipId(e.target.value)}
+                      disabled={membershipCatalogLoading}
+                    >
+                      {membershipCatalog.map((m) => (
+                        <MenuItem key={m.id} value={m.id}>
+                          {m.name}
+                          {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <DatePicker
+                    label="С какого числа действует абонемент"
+                    value={formMembershipStartDate}
+                    onChange={setFormMembershipStartDate}
+                    slotProps={{ textField: { fullWidth: true, required: true } }}
+                  />
+                  {membershipCatalogLoading && (
+                    <Box display="flex" justifyContent="center">
+                      <CircularProgress size={24} />
+                    </Box>
+                  )}
+                </>
+              )}
+
+              {(formTypeCode === 'salary' || formTypeCode === 'bonus') && (
+                <FormControl fullWidth>
+                  <InputLabel>Тренер</InputLabel>
+                  <Select
+                    label="Тренер"
+                    value={formTrainerId}
+                    onChange={(e) => setFormTrainerId(e.target.value)}
+                  >
+                    {trainers.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {t.user?.lastName} {t.user?.firstName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {formTypeCode !== 'membership_issue' && (
                 <TextField
+                  label="Наименование операции"
                   fullWidth
-                  size="small"
-                  placeholder="+ Добавить новый тип"
-                  value={newTypeName}
-                  onChange={(e) => setNewTypeName(e.target.value)}
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  required={formTypeCode === 'rent'}
                 />
-                <Button
-                  onClick={handleCreateType}
-                  sx={{ textTransform: 'none', whiteSpace: 'nowrap', width: { xs: '100%', sm: 'auto' } }}
-                >
-                  Создать тип
-                </Button>
-              </Stack>
-              <TextField
-                label="Наименование операции"
-                fullWidth
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-              />
-              <TextField
-                label="Сумма"
-                fullWidth
-                value={formAmount}
-                onChange={(e) => setFormAmount(e.target.value)}
-                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
-              />
-              <DateTimePicker
-                label="Дата и время"
-                value={formOccurredAt}
-                onChange={setFormOccurredAt}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
+              )}
+
+              {formTypeCode !== 'membership_issue' && (
+                <TextField
+                  label="Сумма"
+                  fullWidth
+                  value={formAmount}
+                  onChange={(e) => setFormAmount(e.target.value)}
+                  InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
+                  required
+                />
+              )}
+
+              {formTypeCode === 'membership_issue' && formMembershipId && (
+                <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
+                  Сумма с тарифа: {formatMoney(Number(formAmount) || 0)}
+                </Typography>
+              )}
+
+              {formTypeCode !== 'membership_issue' && (
+                <DateTimePicker
+                  label="Дата и время"
+                  value={formOccurredAt}
+                  onChange={setFormOccurredAt}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              )}
               <TextField
                 label="Комментарий"
                 fullWidth
@@ -1723,16 +2078,16 @@ const Finance: React.FC = () => {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={discardAddForm} sx={{ textTransform: 'none' }}>
+            <Button onClick={discardAddForm} sx={{ textTransform: 'none' }} disabled={savingAdd}>
               Отмена
             </Button>
             <Button
               variant="contained"
-              disabled={!formTitle || !formAmount}
-              onClick={handleSaveOperation}
+              disabled={!canSaveAddOperation || savingAdd}
+              onClick={() => void handleSaveOperation()}
               sx={{ textTransform: 'none', bgcolor: colors.primary }}
             >
-              Сохранить операцию
+              {savingAdd ? 'Сохранение…' : 'Сохранить операцию'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -1801,6 +2156,9 @@ const Finance: React.FC = () => {
             </Typography>
             <Typography sx={{ mb: 1, fontSize: typography.label }}>
               Уже выплачено: {formatMoney(selectedMembership?.paidAmount ?? 0)}
+              {selectedMembership?.periodLabel
+                ? ` · период ${selectedMembership.periodLabel}`
+                : ''}
             </Typography>
             <Typography sx={{ mb: 2, fontSize: typography.hint, color: colors.textMuted }}>
               Плюс увеличивает выплачено, минус уменьшает (например −3000).
@@ -1908,6 +2266,8 @@ const Finance: React.FC = () => {
               ) : null}
             </Typography>
             <Typography sx={{ mb: 2, fontSize: typography.label }}>
+              Период: {accrualCorrectRow?.periodLabel || accrualCorrectRow?.periodKey || '—'}
+              <br />
               Текущее начисление: {formatMoney(accrualCorrectRow?.membershipPrice ?? 0)}
             </Typography>
             <TextField
@@ -2010,6 +2370,97 @@ const Finance: React.FC = () => {
           onDiscard={receiveUnsaved.discard}
           onStay={receiveUnsaved.stay}
         />
+
+        <Dialog open={Boolean(detailOp)} onClose={() => setDetailOp(null)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ fontWeight: 600 }}>Детали операции</DialogTitle>
+          <DialogContent>
+            {detailOp && (
+              <Stack spacing={1.25} sx={{ pt: 0.5 }}>
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Наименование:{' '}
+                  </Box>
+                  {detailOp.title}
+                </Typography>
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Тип:{' '}
+                  </Box>
+                  {detailOp.typeName || detailOp.typeCode}
+                </Typography>
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Направление:{' '}
+                  </Box>
+                  {detailOp.direction === 'income' ? 'Приход' : 'Расход'}
+                </Typography>
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Сумма:{' '}
+                  </Box>
+                  {formatMoney(detailOp.amount, true, detailOp.direction)}
+                </Typography>
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Дата операции:{' '}
+                  </Box>
+                  {formatDateTime(detailOp.occurredAt)}
+                </Typography>
+                {detailOp.createdAt && (
+                  <Typography sx={{ fontSize: typography.label }}>
+                    <Box component="span" sx={{ color: colors.textMuted }}>
+                      Создано в системе:{' '}
+                    </Box>
+                    {formatDateTime(detailOp.createdAt)}
+                  </Typography>
+                )}
+                <Typography sx={{ fontSize: typography.label }}>
+                  <Box component="span" sx={{ color: colors.textMuted }}>
+                    Кто создал:{' '}
+                  </Box>
+                  {formatOperationCreator(detailOp)}
+                </Typography>
+                {detailOp.client && (
+                  <Typography sx={{ fontSize: typography.label }}>
+                    <Box component="span" sx={{ color: colors.textMuted }}>
+                      Клиент:{' '}
+                    </Box>
+                    {detailOp.client.lastName} {detailOp.client.firstName}
+                  </Typography>
+                )}
+                {detailOp.trainer && (
+                  <Typography sx={{ fontSize: typography.label }}>
+                    <Box component="span" sx={{ color: colors.textMuted }}>
+                      Тренер:{' '}
+                    </Box>
+                    {detailOp.trainer.lastName} {detailOp.trainer.firstName}
+                  </Typography>
+                )}
+                {detailOp.group && (
+                  <Typography sx={{ fontSize: typography.label }}>
+                    <Box component="span" sx={{ color: colors.textMuted }}>
+                      Группа:{' '}
+                    </Box>
+                    {detailOp.group.name}
+                  </Typography>
+                )}
+                {detailOp.branch && (
+                  <Typography sx={{ fontSize: typography.label }}>
+                    <Box component="span" sx={{ color: colors.textMuted }}>
+                      Филиал:{' '}
+                    </Box>
+                    {detailOp.branch.name}
+                  </Typography>
+                )}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setDetailOp(null)} sx={{ textTransform: 'none' }}>
+              Закрыть
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Dialog open={Boolean(cancelOp)} onClose={() => setCancelOp(null)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 600 }}>Отменить операцию?</DialogTitle>

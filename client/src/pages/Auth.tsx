@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Button, Divider, Typography } from '@mui/material';
 import { PhoneIphone, MailOutline, LockOutlined, LockReset } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
@@ -16,6 +16,11 @@ import {
   extractApiError,
   hasAnySession,
 } from '../utils/authSession';
+import {
+  listUsableSavedAccounts,
+  SavedAccountSlot,
+  switchToAccountSafe,
+} from '../utils/accountSwitcher';
 import AuthShell from '../components/auth/AuthShell';
 import AuthButton from '../components/auth/AuthButton';
 import PillField from '../components/auth/PillField';
@@ -96,6 +101,10 @@ const Auth: React.FC = () => {
   const [testingMode, setTestingMode] = React.useState(
     () => sessionStorage.getItem('testingMode') === '1'
   );
+  const [savedAccounts, setSavedAccounts] = React.useState<SavedAccountSlot[]>(() =>
+    listUsableSavedAccounts()
+  );
+  const [switchingAccountId, setSwitchingAccountId] = React.useState<string | null>(null);
 
   // Если уже есть активная сессия — сразу уводим в нужный кабинет.
   // Не уводим при блокировке тестирования/ТО: иначе цикл «заглушка → /auth → кабинет → заглушка».
@@ -112,6 +121,39 @@ const Auth: React.FC = () => {
       if (dest) navigate(dest, { replace: true });
     }
   }, [navigate]);
+
+  React.useEffect(() => {
+    setSavedAccounts(listUsableSavedAccounts());
+  }, [step]);
+
+  const continueAsSavedAccount = async (account: SavedAccountSlot) => {
+    setSwitchingAccountId(account.id);
+    setErrors({});
+    try {
+      const result = await switchToAccountSafe(account.id);
+      if (result === 'blocked') {
+        setErrors({
+          form: 'Этот аккаунт сейчас недоступен (техобслуживание или режим тестирования)',
+        });
+        return;
+      }
+      if (result === 'missing' || result === 'invalid') {
+        setSavedAccounts(listUsableSavedAccounts());
+        setErrors({
+          form:
+            result === 'invalid'
+              ? 'Сессия этого аккаунта истекла — войдите заново'
+              : 'Сохранённый аккаунт не найден',
+        });
+        return;
+      }
+      // switchToAccountSafe делает full reload при ok
+    } catch {
+      setErrors({ form: 'Не удалось переключить аккаунт' });
+    } finally {
+      setSwitchingAccountId(null);
+    }
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -436,6 +478,54 @@ const Auth: React.FC = () => {
   /* ---- Шаг 1 ---- */
   const identifyStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3.5 } }}>
+      {savedAccounts.length > 0 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Typography
+            sx={{
+              color: colors.textMuted,
+              fontSize: typography.label,
+              textAlign: 'center',
+              fontWeight: 600,
+            }}
+          >
+            Продолжить без повторного входа
+          </Typography>
+          {savedAccounts.map((account) => (
+            <Button
+              key={account.id}
+              variant="outlined"
+              disabled={switchingAccountId === account.id}
+              onClick={() => void continueAsSavedAccount(account)}
+              sx={{
+                textTransform: 'none',
+                justifyContent: 'flex-start',
+                px: 2,
+                py: 1.25,
+                borderRadius: 2,
+                borderColor: colors.border || 'divider',
+                color: colors.text,
+              }}
+            >
+              <Box sx={{ textAlign: 'left', minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: typography.label }} noWrap>
+                  {account.displayName}
+                </Typography>
+                {account.subtitle && (
+                  <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }} noWrap>
+                    {account.subtitle}
+                  </Typography>
+                )}
+              </Box>
+            </Button>
+          ))}
+          <Divider sx={{ my: 0.5 }}>
+            <Typography sx={{ color: colors.textMuted, fontSize: typography.hint }}>
+              или войти заново
+            </Typography>
+          </Divider>
+        </Box>
+      )}
+
       <Typography
         sx={{
           color: colors.danger,

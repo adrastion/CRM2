@@ -175,6 +175,10 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     }
   }
 
+  if (req.user?.role === 'PROMOTER') {
+    where.createdByUserId = req.user.id;
+  }
+
   if (search) {
     // PostgreSQL supports case-insensitive search
     where.OR = [
@@ -277,6 +281,8 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
 
     return {
       ...sanitizeClientCertificateFields(clientSafe as any),
+      // Decimal → number, иначе на клиенте баланс может отображаться как 0 / NaN
+      balance: Number((clientSafe as any).balance ?? 0),
       parents: parentsSafe,
       hasPassword: Boolean(password),
       password: undefined,
@@ -360,6 +366,17 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
     return;
   }
 
+  if (
+    req.user?.role === 'PROMOTER' &&
+    (client as any).createdByUserId !== req.user.id
+  ) {
+    res.status(404).json({
+      success: false,
+      error: 'Client not found'
+    });
+    return;
+  }
+
   const { password, ...clientSafe } = client as typeof client & { password?: string | null };
   const parentsSafe = (client.parents || []).map((p: any) => {
     const { password: parentPassword, ...parentRest } = p;
@@ -396,62 +413,92 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   // Извлекаем родителей и сертификаты (data URL → диск после create)
   const { parents, birthCertificate, medicalCertificate, ...clientFields } = clientData as any;
 
+  const isPromoter = req.user?.role === 'PROMOTER';
+
+  // PROMOTER может создавать только ограниченный набор полей
+  const allowedPromoterFields = isPromoter
+    ? {
+        firstName: clientFields.firstName,
+        lastName: clientFields.lastName,
+        gender: clientFields.gender || null,
+        phone: clientFields.phone || null,
+        athleteStatus: clientFields.athleteStatus || 'active',
+        dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
+      }
+    : null;
+
   // Преобразуем dateOfBirth в правильный формат DateTime
-  const processedData = {
-    ...clientFields,
-    tenantId,
-    dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
-    birthCertificate: null as string | null,
-    medicalCertificate: null as string | null,
-  };
+  const processedData = isPromoter
+    ? {
+        ...allowedPromoterFields!,
+        tenantId,
+        createdByUserId: req.user!.id,
+        birthCertificate: null as string | null,
+        medicalCertificate: null as string | null,
+      }
+    : {
+        ...clientFields,
+        tenantId,
+        dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
+        birthCertificate: null as string | null,
+        medicalCertificate: null as string | null,
+        createdByUserId: req.user?.id || null,
+      };
 
   // Создаем родителей без токенов подтверждения
-  const parentsData = parents && parents.length > 0 ? parents.map((parent: any) => {
-    return {
-      ...parent,
-      tenantId,
-      isApproved: true // Автоматически подтверждаем без email
-    };
-  }) : undefined;
+  const parentsData =
+    !isPromoter && parents && parents.length > 0
+      ? parents.map((parent: any) => {
+          return {
+            ...parent,
+            tenantId,
+            isApproved: true, // Автоматически подтверждаем без email
+          };
+        })
+      : undefined;
 
   // Создаем клиента вместе с родителями
   let client = await prisma.client.create({
     data: {
       ...processedData,
-      parents: parentsData ? {
-        create: parentsData
-      } : undefined
+      parents: parentsData
+        ? {
+            create: parentsData,
+          }
+        : undefined,
     },
     include: {
       parents: true,
-      tenant: true
-    }
+      tenant: true,
+    },
   });
 
   try {
-    const birthPath = resolveCertificateUpdate(
-      tenantId,
-      client.id,
-      'birth',
-      birthCertificate,
-      null
-    );
-    const medicalPath = resolveCertificateUpdate(
-      tenantId,
-      client.id,
-      'medical',
-      medicalCertificate,
-      null
-    );
-    if (birthPath || medicalPath) {
-      client = await prisma.client.update({
-        where: { id: client.id },
-        data: {
-          ...(birthPath !== undefined ? { birthCertificate: birthPath } : {}),
-          ...(medicalPath !== undefined ? { medicalCertificate: medicalPath } : {}),
-        },
-        include: { parents: true, tenant: true },
-      });
+    if (!isPromoter) {
+      const birthPath = resolveCertificateUpdate(
+        tenantId,
+        client.id,
+        'birth',
+        birthCertificate,
+        null
+      );
+      const medicalPath = resolveCertificateUpdate(
+        tenantId,
+        client.id,
+        'medical',
+        medicalCertificate,
+        null
+      );
+      if (birthPath || medicalPath) {
+        client = await prisma.client.update({
+          where: { id: client.id },
+          data: {
+            ...(birthPath !== undefined ? { birthCertificate: birthPath } : {}),
+            ...(medicalPath !== undefined ? { medicalCertificate: medicalPath } : {}),
+          },
+          include: { parents: true, tenant: true },
+        });
+      }
     }
   } catch (e: any) {
     console.error('Certificate save on create failed:', e);

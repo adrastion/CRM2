@@ -7,14 +7,18 @@ import {
   Chip,
   CircularProgress,
   Grid,
+  IconButton,
   List,
   ListItem,
   ListItemText,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { CheckCircle, ContentCopy } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../../services/api';
 import { colors, typography } from '../../theme/tokens';
+import { adLinkUrl } from '../../utils/refCode';
 
 const money = (n: number) =>
   new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(
@@ -25,6 +29,7 @@ const MarketerDashboard: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -39,6 +44,16 @@ const MarketerDashboard: React.FC = () => {
     })();
   }, []);
 
+  const copyText = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey((cur) => (cur === key ? null : cur)), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" py={6}>
@@ -50,6 +65,13 @@ const MarketerDashboard: React.FC = () => {
   if (!data) return null;
 
   const c = data.clients || {};
+  const promoCodes: any[] = data.promoCodes || [];
+  const referralLinks: any[] = data.referralLinks || [];
+  const pendingClicks: any[] = data.pendingClicks || [];
+  const pendingClicksCount = data.pendingClicksCount ?? pendingClicks.length;
+  const primaryPromo = promoCodes[0];
+  const primaryLink = referralLinks[0];
+  const primaryAdUrl = primaryLink ? adLinkUrl(primaryLink.code) : '';
 
   return (
     <Box>
@@ -76,6 +98,120 @@ const MarketerDashboard: React.FC = () => {
           </Grid>
         ))}
       </Grid>
+
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography sx={{ fontWeight: 600, mb: 1 }}>Личный промокод</Typography>
+              {!primaryPromo ? (
+                <Typography color="text.secondary">Активных промокодов пока нет</Typography>
+              ) : (
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Typography variant="h6" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                      {primaryPromo.code}
+                    </Typography>
+                    <Tooltip title={copiedKey === `promo-${primaryPromo.id}` ? 'Скопировано' : 'Копировать'}>
+                      <IconButton
+                        size="small"
+                        onClick={() => copyText(primaryPromo.code, `promo-${primaryPromo.id}`)}
+                      >
+                        {copiedKey === `promo-${primaryPromo.id}` ? (
+                          <CheckCircle fontSize="small" color="success" />
+                        ) : (
+                          <ContentCopy fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                    <Chip size="small" color="success" label="Активен" />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {primaryPromo.discountType === 'PERCENTAGE'
+                      ? `Скидка ${primaryPromo.discountValue}%`
+                      : `Скидка ${primaryPromo.discountValue} ₽`}
+                    {primaryPromo.description ? ` · ${primaryPromo.description}` : ''}
+                  </Typography>
+                  {promoCodes.length > 1 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Ещё активных: {promoCodes.length - 1}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography sx={{ fontWeight: 600, mb: 1 }}>Рекламная ссылка</Typography>
+              {!primaryLink ? (
+                <Typography color="text.secondary">Активных ссылок пока нет</Typography>
+              ) : (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Школы, пришедшие по ссылке, закрепляются за вами при регистрации.
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                        wordBreak: 'break-all',
+                        flex: 1,
+                      }}
+                    >
+                      {primaryAdUrl}
+                    </Typography>
+                    <Tooltip title={copiedKey === `ref-${primaryLink.id}` ? 'Скопировано' : 'Копировать'}>
+                      <IconButton
+                        size="small"
+                        onClick={() => copyText(primaryAdUrl, `ref-${primaryLink.id}`)}
+                      >
+                        {copiedKey === `ref-${primaryLink.id}` ? (
+                          <CheckCircle fontSize="small" color="success" />
+                        ) : (
+                          <ContentCopy fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Ожидают регистрацию: {pendingClicksCount}
+                  </Typography>
+                  {referralLinks.length > 1 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      Ещё активных ссылок: {referralLinks.length - 1}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {pendingClicks.length > 0 && (
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography sx={{ fontWeight: 600, mb: 1 }}>
+              Переходы / ожидают регистрацию
+            </Typography>
+            <List dense>
+              {pendingClicks.map((click: any) => (
+                <ListItem key={click.id} disableGutters>
+                  <ListItemText
+                    primary={new Date(click.clickedAt).toLocaleString('ru-RU')}
+                    secondary={click.linkName || click.linkCode}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>

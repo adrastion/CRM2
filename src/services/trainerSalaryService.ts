@@ -237,6 +237,7 @@ async function notifySalaryIfCreated(
 
 /**
  * V1: фикс за тренировку с человека — при PRESENT / платном пропуске.
+ * Платный пропуск при активном клиентском абонементе не начисляется.
  */
 export async function accrueForAttendance(params: {
   tenantId: string;
@@ -248,6 +249,12 @@ export async function accrueForAttendance(params: {
   trainingStart?: Date;
   isMissed?: boolean;
 }): Promise<number> {
+  if (params.isMissed) {
+    const { findActiveClientMembership } = await import('./clientMembershipService');
+    const clientPack = await findActiveClientMembership(params.clientId, params.tenantId);
+    if (clientPack) return 0;
+  }
+
   const trainer = await prisma.trainer.findFirst({
     where: { id: params.trainerId, tenantId: params.tenantId },
   });

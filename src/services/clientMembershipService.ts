@@ -297,6 +297,27 @@ export async function consumeVisitFromActivePack(
 }
 
 /**
+ * Вернуть одно посещение на активный клиентский пакет (PRESENT → ABSENT и т.п.).
+ * visitsUsed не уходит ниже 0.
+ */
+export async function restoreVisitToActivePack(
+  clientId: string,
+  tenantId: string
+): Promise<boolean> {
+  const active = await findActiveClientMembership(clientId, tenantId);
+  if (!active) return false;
+
+  const used = active.visitsUsed || 0;
+  if (used <= 0) return false;
+
+  await prisma.clientMembership.update({
+    where: { id: active.id },
+    data: { visitsUsed: used - 1 },
+  });
+  return true;
+}
+
+/**
  * Выдать абонемент клиенту: долг по старым visit-pack переносится в visitsUsed нового.
  * Pending monthly платежи отменяются (схема взаимоисключающая).
  */
@@ -304,6 +325,8 @@ export async function issueClientMembership(params: {
   tenantId: string;
   clientId: string;
   membershipId: string;
+  /** С какого числа действует абонемент (по умолчанию — сегодня) */
+  startDate?: Date | string | null;
   /** Разрешить выдачу даже при групповом биллинге (служебное) */
   allowWhileGroupBilling?: boolean;
   isAutoRenew?: boolean;
@@ -324,20 +347,45 @@ export async function issueClientMembership(params: {
     );
   }
 
+  const startDate = params.startDate ? new Date(params.startDate) : new Date();
+  if (Number.isNaN(startDate.getTime())) {
+    throw Object.assign(new Error('Некорректная дата начала абонемента'), { statusCode: 400 });
+  }
+  startDate.setHours(0, 0, 0, 0);
+
   let endDate: Date | null = null;
   const validityDays = membership.validityDays ?? membership.duration;
   if (membership.periodType === 'CALENDAR_PERIOD' && membership.periodMonths) {
-    endDate = new Date();
+    endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + membership.periodMonths);
   } else if ((membership.type === 'monthly' || membership.periodType === 'FIXED_DAYS') && validityDays) {
-    endDate = new Date();
+    endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + validityDays);
   } else if (membership.periodType === 'VISITS' && validityDays) {
-    endDate = new Date();
+    endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + validityDays);
   }
 
   const visitsTotal = membership.visits ?? null;
+
+  // Занятия с даты начала абонемента до сейчас — сразу списываем с пакета
+  let pastVisits = 0;
+  if (visitsTotal != null) {
+    const rangeEnd = endDate && endDate < new Date() ? endDate : new Date();
+    pastVisits = await prisma.attendance.count({
+      where: {
+        tenantId: params.tenantId,
+        clientId: params.clientId,
+        status: 'PRESENT',
+        training: {
+          startTime: {
+            gte: startDate,
+            lte: rangeEnd,
+          },
+        },
+      },
+    });
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const activeVisitPacks = await tx.clientMembership.findMany({
@@ -363,13 +411,13 @@ export async function issueClientMembership(params: {
       data: { isActive: false },
     });
 
-    const initialUsed = visitsTotal != null ? debt : 0;
+    const initialUsed = visitsTotal != null ? debt + pastVisits : 0;
 
     return tx.clientMembership.create({
       data: {
         clientId: params.clientId,
         membershipId: params.membershipId,
-        startDate: new Date(),
+        startDate,
         endDate,
         visitsTotal,
         visitsUsed: initialUsed,

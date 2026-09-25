@@ -3,14 +3,15 @@
  *
  * OWNER — полный доступ, в т.ч. отмена финансовых операций и управление подпиской.
  * ADMIN — операционное управление; финансы доступны, кроме отмены операций;
- *         может создавать только тренеров (не других администраторов).
+ *         может создавать только тренеров и промоутеров (не других администраторов).
  * TRAINER — ограниченный доступ к своим разделам.
+ * PROMOTER — только свои клиенты (созданные им).
  * Старший тренер — TRAINER с seniorBranchIds: права ≈ ADMIN в рамках своих филиалов.
  */
 
 import type { User } from '../types';
 
-export type SchoolRole = 'OWNER' | 'ADMIN' | 'TRAINER';
+export type SchoolRole = 'OWNER' | 'ADMIN' | 'TRAINER' | 'PROMOTER';
 
 export function isOwner(role?: string | null): boolean {
   return role === 'OWNER';
@@ -18,6 +19,15 @@ export function isOwner(role?: string | null): boolean {
 
 export function isOwnerOrAdmin(role?: string | null): boolean {
   return role === 'OWNER' || role === 'ADMIN';
+}
+
+export function isPromoter(role?: string | null): boolean {
+  return role === 'PROMOTER';
+}
+
+/** OWNER/ADMIN могут создавать учётные записи промоутеров. */
+export function canCreatePromoterUsers(role?: string | null): boolean {
+  return isOwnerOrAdmin(role);
 }
 
 export function isSeniorTrainerUser(user?: Pick<User, 'role' | 'isSeniorTrainer' | 'seniorBranchIds'> | null): boolean {

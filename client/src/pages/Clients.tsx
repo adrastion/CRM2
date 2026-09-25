@@ -48,11 +48,13 @@ import ClientsList from '../components/dashboard/ClientsList';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
+import { isPromoter as roleIsPromoter } from '../utils/roles';
 import { getClientAccountStatus } from '../utils/clientAccountStatus';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { EmojiEvents } from '@mui/icons-material';
 
 const EMPTY_CLIENT_FORM: ClientFormData = {
@@ -71,6 +73,7 @@ const EMPTY_CLIENT_FORM: ClientFormData = {
   schoolOrKindergarten: '',
   photo: '',
   weight: '',
+  athleteStatus: 'active',
   groupIds: [],
   parents: [],
 };
@@ -78,6 +81,7 @@ const EMPTY_CLIENT_FORM: ClientFormData = {
 
 const Clients: React.FC = () => {
   const { user } = useAuth();
+  const isPromoter = roleIsPromoter(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -289,9 +293,8 @@ const Clients: React.FC = () => {
   const [selectedClientForMembership, setSelectedClientForMembership] = useState<Client | null>(null);
   const [catalogMemberships, setCatalogMemberships] = useState<Membership[]>([]);
   const [selectedMembershipId, setSelectedMembershipId] = useState('');
+  const [membershipStartDate, setMembershipStartDate] = useState<Date | null>(new Date());
   const [issuingMembership, setIssuingMembership] = useState(false);
-  const [remainingVisitsInput, setRemainingVisitsInput] = useState('');
-  const [savingRemaining, setSavingRemaining] = useState(false);
   const [createBillingEffectiveFrom, setCreateBillingEffectiveFrom] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -325,6 +328,7 @@ const Clients: React.FC = () => {
     schoolOrKindergarten: '',
     photo: '',
     weight: '',
+    athleteStatus: 'active',
     groupIds: [] as string[],
     // Родители
     parents: [] as Array<{
@@ -363,7 +367,7 @@ const Clients: React.FC = () => {
   const fetchClients = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getClients({ limit: 100 });
+      const response = await apiService.getClients({ limit: 100 }, undefined, false);
       setClients(response.data);
     } catch (err: any) {
       setError('Не удалось загрузить клиентов');
@@ -597,23 +601,34 @@ const Clients: React.FC = () => {
 
     try {
       const { groupIds, ...clientData } = formData;
-      const dataToSend: any = {
-        ...clientData,
-        weight: clientData.weight ? parseFloat(clientData.weight) : null,
-        // Преобразуем пустые строки паспорта в null
-        passportSeries: clientData.passportSeries && clientData.passportSeries.trim() !== '' ? clientData.passportSeries : null,
-        passportNumber: clientData.passportNumber && clientData.passportNumber.trim() !== '' ? clientData.passportNumber : null,
-        passportIssueDate: clientData.passportIssueDate && clientData.passportIssueDate.trim() !== '' ? clientData.passportIssueDate : null,
-        passportIssuedBy: clientData.passportIssuedBy && clientData.passportIssuedBy.trim() !== '' ? clientData.passportIssuedBy : null,
-        passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
-        passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
-      };
-      if (!dataToSend.birthCertificate) delete dataToSend.birthCertificate;
-      if (!dataToSend.medicalCertificate) delete dataToSend.medicalCertificate;
+      const dataToSend: any = isPromoter
+        ? {
+            firstName: clientData.firstName,
+            lastName: clientData.lastName,
+            gender: clientData.gender || null,
+            dateOfBirth: clientData.dateOfBirth || null,
+            phone: clientData.phone || null,
+            athleteStatus: clientData.athleteStatus || 'active',
+          }
+        : {
+            ...clientData,
+            weight: clientData.weight ? parseFloat(clientData.weight) : null,
+            // Преобразуем пустые строки паспорта в null
+            passportSeries: clientData.passportSeries && clientData.passportSeries.trim() !== '' ? clientData.passportSeries : null,
+            passportNumber: clientData.passportNumber && clientData.passportNumber.trim() !== '' ? clientData.passportNumber : null,
+            passportIssueDate: clientData.passportIssueDate && clientData.passportIssueDate.trim() !== '' ? clientData.passportIssueDate : null,
+            passportIssuedBy: clientData.passportIssuedBy && clientData.passportIssuedBy.trim() !== '' ? clientData.passportIssuedBy : null,
+            passportDivisionCode: clientData.passportDivisionCode && clientData.passportDivisionCode.trim() !== '' ? clientData.passportDivisionCode : null,
+            passportBirthPlace: clientData.passportBirthPlace && clientData.passportBirthPlace.trim() !== '' ? clientData.passportBirthPlace : null,
+          };
+      if (!isPromoter) {
+        if (!dataToSend.birthCertificate) delete dataToSend.birthCertificate;
+        if (!dataToSend.medicalCertificate) delete dataToSend.medicalCertificate;
+      }
       const createdClient = await apiService.createClient(dataToSend);
 
       let trialGroupId: string | null = null;
-      if (trialEnabled && trialTrainingId && createdClient?.id) {
+      if (!isPromoter && trialEnabled && trialTrainingId && createdClient?.id) {
         try {
           const membership = await apiService.assignClientTrial(createdClient.id, trialTrainingId);
           trialGroupId = membership?.groupId || membership?.group?.id || null;
@@ -627,7 +642,7 @@ const Clients: React.FC = () => {
       }
 
       // Постоянные группы (пробную группу не дублируем через addClientToGroup)
-      if (groupIds && groupIds.length > 0 && createdClient?.id) {
+      if (!isPromoter && groupIds && groupIds.length > 0 && createdClient?.id) {
         for (const groupId of groupIds) {
           if (trialGroupId && groupId === trialGroupId) continue;
           try {
@@ -1441,35 +1456,39 @@ const Clients: React.FC = () => {
         sortBy={sortBy}
         onSort={handleClientsSort}
         onEdit={handleEditClient}
-        onDelete={handleDeleteClient}
-        onApproveAccount={handleApproveAccount}
-        onRejectAccount={handleRejectAccount}
-        onGroupClick={(client) => {
-          setSelectedClientForGroups(client);
-          setGroupsDialog(true);
-        }}
-        onMembershipClick={async (client) => {
-          setSelectedClientForMembership(client);
-          setSelectedMembershipId('');
-          setRemainingVisitsInput(
-            client.activeMembership?.remaining != null
-              ? String(client.activeMembership.remaining)
-              : ''
-          );
-          setMembershipDialog(true);
-          try {
-            const res = await apiService.getMemberships({ limit: 200 });
-            setCatalogMemberships(
-              (res.data || []).filter(
-                (m: Membership) => m.isActive !== false && (m as any).category !== 'GROUP'
-              )
-            );
-          } catch (err) {
-            console.error(err);
-            setSnackbarMessage('Не удалось загрузить каталог абонементов');
-            setSnackbarOpen(true);
-          }
-        }}
+        onDelete={isPromoter ? undefined : handleDeleteClient}
+        onApproveAccount={isPromoter ? undefined : handleApproveAccount}
+        onRejectAccount={isPromoter ? undefined : handleRejectAccount}
+        onGroupClick={
+          isPromoter
+            ? undefined
+            : (client) => {
+                setSelectedClientForGroups(client);
+                setGroupsDialog(true);
+              }
+        }
+        onMembershipClick={
+          isPromoter
+            ? undefined
+            : async (client) => {
+                setSelectedClientForMembership(client);
+                setSelectedMembershipId('');
+                setMembershipStartDate(new Date());
+                setMembershipDialog(true);
+                try {
+                  const res = await apiService.getMemberships({ limit: 200 });
+                  setCatalogMemberships(
+                    (res.data || []).filter(
+                      (m: Membership) => m.isActive !== false && (m as any).category !== 'GROUP'
+                    )
+                  );
+                } catch (err) {
+                  console.error(err);
+                  setSnackbarMessage('Не удалось загрузить каталог абонементов');
+                  setSnackbarOpen(true);
+                }
+              }
+        }
         toolbarActions={
           <Box
             sx={{
@@ -1480,6 +1499,17 @@ const Clients: React.FC = () => {
               width: '100%',
             }}
           >
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary, width: { xs: '100%', sm: 'auto' } }}
+              onClick={openAddClientDialog}
+              data-onboarding="add-client-button"
+            >
+              Добавить клиента
+            </Button>
+            {!isPromoter && (
+              <>
             <Button
               variant="outlined"
               startIcon={<FileDownload />}
@@ -1498,15 +1528,6 @@ const Clients: React.FC = () => {
               }}
             >
               Импорт из Excel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary, width: { xs: '100%', sm: 'auto' } }}
-              onClick={openAddClientDialog}
-              data-onboarding="add-client-button"
-            >
-              Добавить клиента
             </Button>
             <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
               <InputLabel>Филиал</InputLabel>
@@ -1551,6 +1572,8 @@ const Clients: React.FC = () => {
                 <MenuItem value="registered">Зарегистрирован</MenuItem>
               </Select>
             </FormControl>
+              </>
+            )}
           </Box>
         }
       />
@@ -1574,6 +1597,97 @@ const Clients: React.FC = () => {
               {error}
             </Alert>
           )}
+          {isPromoter ? (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Фамилия"
+                  value={formData.lastName}
+                  onChange={(e) => handleInputChange('lastName', e.target.value)}
+                  required
+                  error={!!formErrors.lastName}
+                  helperText={formErrors.lastName}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Имя"
+                  value={formData.firstName}
+                  onChange={(e) => handleInputChange('firstName', e.target.value)}
+                  required
+                  error={!!formErrors.firstName}
+                  helperText={formErrors.firstName}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Пол</InputLabel>
+                  <Select
+                    value={formData.gender}
+                    label="Пол"
+                    onChange={(e) => handleInputChange('gender', e.target.value)}
+                  >
+                    <MenuItem value="male">Мужской</MenuItem>
+                    <MenuItem value="female">Женский</MenuItem>
+                    <MenuItem value="other">Другой</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Дата рождения"
+                  type="date"
+                  value={formData.dateOfBirth}
+                  onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  error={!!formErrors.dateOfBirth}
+                  helperText={
+                    formErrors.dateOfBirth ||
+                    (formData.dateOfBirth
+                      ? (() => {
+                          const dob = new Date(formData.dateOfBirth);
+                          if (Number.isNaN(dob.getTime())) return undefined;
+                          const today = new Date();
+                          let age = today.getFullYear() - dob.getFullYear();
+                          const m = today.getMonth() - dob.getMonth();
+                          if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age -= 1;
+                          return `Возраст: ${age}`;
+                        })()
+                      : 'Укажите дату рождения (возраст)')
+                  }
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Телефон"
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  placeholder="+1234567890"
+                  error={!!formErrors.phone}
+                  helperText={formErrors.phone}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Статус спортсмена</InputLabel>
+                  <Select
+                    value={formData.athleteStatus || 'active'}
+                    label="Статус спортсмена"
+                    onChange={(e) => handleInputChange('athleteStatus', e.target.value)}
+                  >
+                    <MenuItem value="active">Активен</MenuItem>
+                    <MenuItem value="pause">Пауза</MenuItem>
+                    <MenuItem value="injury">Травма</MenuItem>
+                    <MenuItem value="left">Ушёл</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          ) : (
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {/* Фото клиента слева от первых строк */}
             <Grid item xs={12} sm={3}>
@@ -2404,6 +2518,7 @@ const Clients: React.FC = () => {
               </Box>
             </Grid>
           </Grid>
+          )}
         </DialogContent>
         <DialogActions>
           <Button 
@@ -2954,7 +3069,7 @@ open={editDialogOpen}
           setMembershipDialog(false);
           setSelectedClientForMembership(null);
           setSelectedMembershipId('');
-          setRemainingVisitsInput('');
+          setMembershipStartDate(new Date());
         }}
         maxWidth="sm"
         fullWidth
@@ -2968,6 +3083,7 @@ open={editDialogOpen}
             : ''}
         </DialogTitle>
         <DialogContent>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
           <Box sx={{ mt: 1, mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {selectedClientForMembership?.activeMembership ? (
               <Alert
@@ -3016,56 +3132,6 @@ open={editDialogOpen}
               </Alert>
             )}
 
-            {selectedClientForMembership?.activeMembership?.visitsTotal != null && (
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                <TextField
-                  label="Осталось посещений"
-                  type="number"
-                  value={remainingVisitsInput}
-                  onChange={(e) => setRemainingVisitsInput(e.target.value)}
-                  helperText="Можно уменьшить вручную; отрицательное значение — долг"
-                  fullWidth
-                  inputProps={{ step: 1 }}
-                />
-                <Button
-                  variant="outlined"
-                  disabled={savingRemaining || remainingVisitsInput === ''}
-                  sx={{ textTransform: 'none', whiteSpace: 'nowrap', mt: 0.5 }}
-                  onClick={async () => {
-                    const cm = selectedClientForMembership?.activeMembership;
-                    if (!cm) return;
-                    const remaining = Number(remainingVisitsInput);
-                    if (!Number.isFinite(remaining)) {
-                      setSnackbarMessage('Введите число');
-                      setSnackbarOpen(true);
-                      return;
-                    }
-                    try {
-                      setSavingRemaining(true);
-                      await apiService.updateClientMembership(cm.id, { remaining });
-                      setSnackbarMessage('Остаток обновлён');
-                      setSnackbarOpen(true);
-                      await fetchClients();
-                      const refreshed = (await apiService.getClient(selectedClientForMembership.id)) as Client;
-                      setSelectedClientForMembership(refreshed);
-                      setRemainingVisitsInput(
-                        refreshed.activeMembership?.remaining != null
-                          ? String(refreshed.activeMembership.remaining)
-                          : String(remaining)
-                      );
-                    } catch (err: any) {
-                      setSnackbarMessage(err?.response?.data?.error || 'Не удалось обновить остаток');
-                      setSnackbarOpen(true);
-                    } finally {
-                      setSavingRemaining(false);
-                    }
-                  }}
-                >
-                  {savingRemaining ? '…' : 'Сохранить'}
-                </Button>
-              </Box>
-            )}
-
             <FormControl fullWidth>
               <InputLabel>Выдать другой тариф</InputLabel>
               <Select
@@ -3082,14 +3148,30 @@ open={editDialogOpen}
                 ))}
               </Select>
             </FormControl>
+
+            <DatePicker
+              label="С какого числа действует абонемент"
+              value={membershipStartDate}
+              onChange={setMembershipStartDate}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  required: true,
+                  helperText:
+                    'Посещения с этой даты до сегодня будут сразу списаны с пакета',
+                },
+              }}
+            />
           </Box>
+          </LocalizationProvider>
         </DialogContent>
         <DialogActions>
           <Button
             onClick={() => {
               setMembershipDialog(false);
               setSelectedClientForMembership(null);
-              setRemainingVisitsInput('');
+              setSelectedMembershipId('');
+              setMembershipStartDate(new Date());
             }}
           >
             Закрыть
@@ -3098,6 +3180,7 @@ open={editDialogOpen}
             variant="contained"
             disabled={
               !selectedMembershipId ||
+              !membershipStartDate ||
               !selectedClientForMembership ||
               issuingMembership ||
               Boolean(
@@ -3113,18 +3196,20 @@ open={editDialogOpen}
               )
             }
             onClick={async () => {
-              if (!selectedClientForMembership || !selectedMembershipId) return;
+              if (!selectedClientForMembership || !selectedMembershipId || !membershipStartDate) return;
               try {
                 setIssuingMembership(true);
                 await apiService.createClientMembership({
                   clientId: selectedClientForMembership.id,
                   membershipId: selectedMembershipId,
+                  startDate: membershipStartDate.toISOString(),
                 });
                 setSnackbarMessage('Абонемент выдан');
                 setSnackbarOpen(true);
                 setMembershipDialog(false);
                 setSelectedClientForMembership(null);
-                setRemainingVisitsInput('');
+                setSelectedMembershipId('');
+                setMembershipStartDate(new Date());
                 await fetchClients();
               } catch (err: any) {
                 setSnackbarMessage(err?.response?.data?.error || 'Не удалось выдать абонемент');

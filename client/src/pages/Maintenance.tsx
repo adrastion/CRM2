@@ -6,7 +6,7 @@ import { colors, typography } from '../theme/tokens';
 import {
   canSwitchToSavedAccount,
   getActiveAccountId,
-  listSavedAccounts,
+  listUsableSavedAccounts,
   SavedAccountSlot,
   switchToAccountSafe,
 } from '../utils/accountSwitcher';
@@ -33,7 +33,7 @@ const Maintenance: React.FC<Props> = ({
   const [switchingId, setSwitchingId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const list = listSavedAccounts().sort((a, b) => b.updatedAt - a.updatedAt);
+    const list = listUsableSavedAccounts();
     setAccounts(list);
     setActiveId(getActiveAccountId());
 

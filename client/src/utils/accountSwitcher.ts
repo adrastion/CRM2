@@ -50,6 +50,7 @@ const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Владелец',
   ADMIN: 'Администратор',
   TRAINER: 'Тренер',
+  PROMOTER: 'Промоутер',
 };
 
 function personName(parts: Array<string | undefined | null>): string {
@@ -114,6 +115,59 @@ function writeSavedAccounts(accounts: SavedAccountSlot[]): void {
 
 export function removeSavedAccount(id: string): void {
   writeSavedAccounts(listSavedAccounts().filter((a) => a.id !== id));
+}
+
+/** Bearer-токен из снимка слота (приоритет как у axios-интерцептора). */
+export function getSlotBearerToken(slot: SavedAccountSlot): string | null {
+  const keys = slot.keys || {};
+  return (
+    keys.superAdminToken ||
+    keys.testerToken ||
+    keys.platformStaffToken ||
+    keys.promoCodeAdminToken ||
+    keys.marketerToken ||
+    keys.clientToken ||
+    keys.token ||
+    null
+  );
+}
+
+/** JWT ещё не истёк (если exp нет — считаем токен валидным по наличию). */
+function isBearerTokenAlive(token: string): boolean {
+  const parts = token.split('.');
+  if (parts.length < 2) return token.length > 0;
+  try {
+    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp !== 'number') return true;
+    return payload.exp * 1000 > Date.now() + 3000;
+  } catch {
+    return token.length > 0;
+  }
+}
+
+/** Слот можно переключить: есть живой bearer-токен. */
+export function isSavedAccountUsable(slot: SavedAccountSlot): boolean {
+  const token = getSlotBearerToken(slot);
+  return Boolean(token && isBearerTokenAlive(token));
+}
+
+/**
+ * Убрать из реестра слоты без токена / с просроченным JWT.
+ * Возвращает оставшиеся (пригодные) аккаунты.
+ */
+export function pruneUnusableSavedAccounts(): SavedAccountSlot[] {
+  const all = listSavedAccounts();
+  const usable = all.filter(isSavedAccountUsable);
+  if (usable.length !== all.length) {
+    writeSavedAccounts(usable);
+  }
+  return usable.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** Список только рабочих сохранённых аккаунтов (с авто-очисткой мусора). */
+export function listUsableSavedAccounts(): SavedAccountSlot[] {
+  return pruneUnusableSavedAccounts();
 }
 
 /** Снимок текущих auth-ключей из localStorage. */
@@ -325,26 +379,12 @@ export function upsertSavedAccountFromSession(_session?: UnifiedSession): void {
   upsertFromActiveStorage();
 }
 
-/** Bearer-токен из снимка слота (приоритет как у axios-интерцептора). */
-export function getSlotBearerToken(slot: SavedAccountSlot): string | null {
-  const keys = slot.keys || {};
-  return (
-    keys.superAdminToken ||
-    keys.testerToken ||
-    keys.platformStaffToken ||
-    keys.promoCodeAdminToken ||
-    keys.marketerToken ||
-    keys.clientToken ||
-    keys.token ||
-    null
-  );
-}
-
 /**
  * Можно ли переключиться на слот при maintenance/testing.
  * SUPER_ADMIN всегда можно; при testing — только allowlist (по токену слота).
  */
 export async function canSwitchToSavedAccount(slot: SavedAccountSlot): Promise<boolean> {
+  if (!isSavedAccountUsable(slot)) return false;
   if (slot.accountType === 'SUPER_ADMIN') return true;
 
   const maintenanceOn = sessionStorage.getItem('maintenanceMode') === '1';
@@ -373,9 +413,14 @@ export async function canSwitchToSavedAccount(slot: SavedAccountSlot): Promise<b
  */
 export async function switchToAccountSafe(
   id: string
-): Promise<'ok' | 'blocked' | 'missing'> {
+): Promise<'ok' | 'blocked' | 'missing' | 'invalid'> {
   const slot = listSavedAccounts().find((a) => a.id === id);
   if (!slot) return 'missing';
+
+  if (!isSavedAccountUsable(slot)) {
+    removeSavedAccount(id);
+    return 'invalid';
+  }
 
   const allowed = await canSwitchToSavedAccount(slot);
   if (!allowed) return 'blocked';
@@ -393,13 +438,28 @@ export function switchToAccount(id: string): void {
   const slot = listSavedAccounts().find((a) => a.id === id);
   if (!slot) return;
 
+  if (!isSavedAccountUsable(slot)) {
+    removeSavedAccount(id);
+    window.location.assign('/auth');
+    return;
+  }
+
   clearActiveAuthKeys();
   for (const [key, value] of Object.entries(slot.keys)) {
     localStorage.setItem(key, value);
   }
 
-  upsertFromActiveStorage();
-  window.location.assign(slot.destination || '/auth');
+  // Не делаем upsert здесь: снимок уже полный, а повторный upsert при гонке
+  // с очисткой может затереть слот. Обновим updatedAt точечно.
+  const all = listSavedAccounts();
+  writeSavedAccounts(
+    all
+      .map((a) => (a.id === id ? { ...a, updatedAt: Date.now() } : a))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  );
+
+  const dest = slot.destination && slot.destination !== '/' ? slot.destination : activeDestination();
+  window.location.assign(dest || '/auth');
 }
 
 /**
@@ -411,7 +471,7 @@ export function logoutCurrentAccount(): string | null {
   const activeId = getActiveAccountId();
   if (activeId) removeSavedAccount(activeId);
 
-  const remaining = listSavedAccounts().sort((a, b) => b.updatedAt - a.updatedAt);
+  const remaining = listUsableSavedAccounts();
   clearActiveAuthKeys();
 
   if (remaining.length === 0) return null;
@@ -423,7 +483,9 @@ export function logoutCurrentAccount(): string | null {
     localStorage.setItem(key, value);
   }
   upsertFromActiveStorage();
-  return next.destination || '/auth';
+  return next.destination && next.destination !== '/'
+    ? next.destination
+    : activeDestination() || '/auth';
 }
 
 /**
@@ -449,12 +511,14 @@ export function removeLinkedSlotsForUser(userId: string, keepIds?: Set<string>):
  * Переключиться на школьный слот после отзыва платформенного аккаунта.
  */
 export function fallbackToSchoolAccount(): string | null {
-  const school = listSavedAccounts().find((a) => a.accountType === 'TENANT_USER');
+  const school = listUsableSavedAccounts().find((a) => a.accountType === 'TENANT_USER');
   if (!school) return null;
   clearActiveAuthKeys();
   for (const [key, value] of Object.entries(school.keys)) {
     localStorage.setItem(key, value);
   }
   upsertFromActiveStorage();
-  return school.destination || '/dashboard';
+  return school.destination && school.destination !== '/'
+    ? school.destination
+    : '/dashboard';
 }

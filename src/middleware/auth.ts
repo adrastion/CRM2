@@ -136,6 +136,16 @@ export const requireOwnerOrAdmin = authorize('OWNER', 'ADMIN');
  */
 export const requireOwnerAdminOrTrainer = authorize('OWNER', 'ADMIN', 'TRAINER');
 
+/**
+ * Middleware to check if user is owner, admin, trainer, or promoter
+ */
+export const requireOwnerAdminTrainerOrPromoter = authorize(
+  'OWNER',
+  'ADMIN',
+  'TRAINER',
+  'PROMOTER'
+);
+
 /** OWNER или TRAINER (без ADMIN) — тренировочный план. */
 export const requireOwnerOrTrainer = authorize('OWNER', 'TRAINER');
 

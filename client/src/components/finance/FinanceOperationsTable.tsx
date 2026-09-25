@@ -19,6 +19,7 @@ interface FinanceOperationsTableProps {
   formatMoney: (value: number, withSign?: boolean, direction?: string) => string;
   formatDateTime: (iso: string) => string;
   onDelete?: (op: FinanceOperation) => void;
+  onRowClick?: (op: FinanceOperation) => void;
   deletingId?: string | null;
 }
 
@@ -65,6 +66,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
   formatMoney,
   formatDateTime,
   onDelete,
+  onRowClick,
   deletingId,
 }) => {
   if (operations.length === 0) {
@@ -110,7 +112,10 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
         aria-label="Отменить операцию"
         title="Отменить операцию"
         disabled={deletingId === op.id}
-        onClick={() => onDelete(op)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(op);
+        }}
         sx={{ color: colors.textMuted, '&:hover': { color: '#c62828' } }}
       >
         <DeleteOutline fontSize="small" />
@@ -131,6 +136,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
           return (
             <Box
               key={op.id}
+              onClick={onRowClick ? () => onRowClick(op) : undefined}
               sx={{
                 bgcolor: colors.divider,
                 borderRadius: '16px',
@@ -140,6 +146,8 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
                 flexDirection: 'column',
                 gap: 0.75,
                 minWidth: 0,
+                cursor: onRowClick ? 'pointer' : 'default',
+                '&:hover': onRowClick ? { borderColor: colors.primary } : undefined,
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start' }}>
@@ -201,12 +209,17 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
               return (
                 <Box
                   key={op.id}
+                  onClick={onRowClick ? () => onRowClick(op) : undefined}
                   sx={{
                     display: 'grid',
                     gridTemplateColumns: COLS,
                     gap: 0,
                     minHeight: 44,
                     alignItems: 'stretch',
+                    cursor: onRowClick ? 'pointer' : 'default',
+                    '&:hover .fin-op-cell': onRowClick
+                      ? { filter: 'brightness(0.97)' }
+                      : undefined,
                   }}
                 >
                   <Box

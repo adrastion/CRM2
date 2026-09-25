@@ -25,6 +25,7 @@ import {
   getActiveAccountId,
   removeSavedAccount,
 } from '../utils/accountSwitcher';
+import { clearStoredRefCode, getStoredRefCode } from '../utils/refCode';
 
 export type NotificationPrefs = {
   actorType: string;
@@ -234,6 +235,11 @@ class ApiService {
           if (isLoginEndpoint) {
             return Promise.reject(error);
           }
+
+          const purgeActiveSlot = () => {
+            const activeId = getActiveAccountId();
+            if (activeId) removeSavedAccount(activeId);
+          };
           
           // Check if it's a super admin route
           const isSuperAdminRoute = url.includes('/super-admin/') || 
@@ -253,47 +259,50 @@ class ApiService {
                                         (url.includes('/marketers/') && !localStorage.getItem('marketerToken') && localStorage.getItem('promoCodeAdminToken'));
           
           if (isSuperAdminRoute && localStorage.getItem('superAdminToken')) {
-            const activeId = getActiveAccountId();
-            if (activeId?.startsWith('SUPER_ADMIN:')) removeSavedAccount(activeId);
+            purgeActiveSlot();
             localStorage.removeItem('superAdminToken');
             localStorage.removeItem('superAdmin');
             const schoolDest = fallbackToSchoolAccount();
-            window.location.href = schoolDest || '/';
+            window.location.href = schoolDest || '/auth';
           } else if (isPlatformRoute && localStorage.getItem('testerToken') && !localStorage.getItem('superAdminToken')) {
-            const activeId = getActiveAccountId();
-            if (activeId?.startsWith('TESTER:')) removeSavedAccount(activeId);
+            purgeActiveSlot();
             localStorage.removeItem('testerToken');
             localStorage.removeItem('tester');
             const schoolDest = fallbackToSchoolAccount();
-            window.location.href = schoolDest || '/';
+            window.location.href = schoolDest || '/auth';
           } else if (isMarketerRoute || (localStorage.getItem('marketerToken') && (url.includes('/promo-codes') || url.includes('/referral-links') || url.includes('/marketers')))) {
+            purgeActiveSlot();
             localStorage.removeItem('marketerToken');
             localStorage.removeItem('marketer');
             localStorage.removeItem('marketerTenant');
             window.location.href = '/auth';
           } else if (isPromoCodeAdminRoute) {
+            purgeActiveSlot();
             localStorage.removeItem('promoCodeAdminToken');
             localStorage.removeItem('promoCodeAdmin');
             localStorage.removeItem('promoCodeAdminTenant');
-            window.location.href = '/';
+            window.location.href = '/auth';
           } else if (url.includes('/platform-staff/')) {
+            purgeActiveSlot();
             localStorage.removeItem('platformStaffToken');
             localStorage.removeItem('platformStaff');
-            window.location.href = '/';
+            window.location.href = '/auth';
           } else if (url.includes('/client-auth/')) {
+            purgeActiveSlot();
             localStorage.removeItem('clientToken');
             localStorage.removeItem('client');
             localStorage.removeItem('clientTenant');
             localStorage.removeItem('userType');
-            window.location.href = '/';
+            window.location.href = '/auth';
           } else if (localStorage.getItem('marketerToken') || localStorage.getItem('promoCodeAdminToken')) {
             // Школьный endpoint при активной сессии маркетолога/PCA — не сбрасывать в цикл /
             return Promise.reject(error);
           } else {
+            purgeActiveSlot();
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('tenant');
-            window.location.href = '/';
+            window.location.href = '/auth';
           }
         }
         return Promise.reject(error);
@@ -378,11 +387,12 @@ class ApiService {
   }
 
   async register(data: RegisterForm): Promise<AuthResponse> {
-    const refCode = localStorage.getItem('refCode') || undefined;
+    const refCode = getStoredRefCode();
     const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/register', {
       ...data,
       refCode,
     });
+    if (refCode) clearStoredRefCode();
     return response.data.data!;
   }
 
@@ -478,7 +488,10 @@ class ApiService {
     
     const response = await this.api.get<ApiResponse>('/clients', { params, signal });
     const result = {
-      data: response.data.data || [],
+      data: (response.data.data || []).map((c: any) => ({
+        ...c,
+        balance: Number(c?.balance ?? 0),
+      })),
       pagination: response.data.pagination
     };
     
@@ -1649,13 +1662,17 @@ class ApiService {
     trainerId?: string;
     groupId?: string;
     branchId?: string;
+    allocation?: 'accrued' | 'paid' | 'debit' | 'credit';
   }): Promise<import('../types').FinanceOperation> {
     const response = await this.api.post<ApiResponse>('/finance/operations', data);
+    // Баланс клиента мог измениться — сбрасываем кэш списка клиентов
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
   async deleteFinanceOperation(id: string): Promise<void> {
     await this.api.delete<ApiResponse>(`/finance/operations/${id}`);
+    apiCache.invalidatePrefix('/clients');
   }
 
   async getFinanceSalarySummary(params?: Record<string, any>): Promise<import('../types').FinanceSalaryRow[]> {
@@ -1686,8 +1703,10 @@ class ApiService {
     clientId?: string;
     amount?: number;
     notes?: string;
+    periodKey?: string;
   }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/finance/membership-payments/receive', data);
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
@@ -1697,12 +1716,14 @@ class ApiService {
     notes?: string;
   }): Promise<any> {
     const response = await this.api.put<ApiResponse>('/finance/membership-payments/amount', data);
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
   async correctMembershipAccrual(data: {
     clientId: string;
     paymentId?: string;
+    periodKey?: string;
     newAmount: number;
     reason: string;
     occurredAt?: string;
@@ -1813,6 +1834,14 @@ class ApiService {
     await this.api.delete(`/memberships/${id}`);
   }
 
+  async mergeMemberships(targetId: string, sourceIds: string[]): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/memberships/merge', {
+      targetId,
+      sourceIds,
+    });
+    return response.data.data;
+  }
+
   // Client membership endpoints
   async getClientMemberships(params?: any): Promise<{ data: any[] }> {
     const response = await this.api.get<ApiResponse>('/client-memberships', { params });
@@ -1823,21 +1852,25 @@ class ApiService {
 
   async createClientMembership(data: any): Promise<any> {
     const response = await this.api.post<ApiResponse>('/client-memberships', data);
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
   async updateClientMembership(id: string, data: any): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/client-memberships/${id}`, data);
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
   async markVisitUsed(id: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/client-memberships/${id}/mark-visit`);
+    apiCache.invalidatePrefix('/clients');
     return response.data.data;
   }
 
   async deleteClientMembership(id: string): Promise<void> {
     await this.api.delete(`/client-memberships/${id}`);
+    apiCache.invalidatePrefix('/clients');
   }
 
   // Report endpoints
@@ -2276,7 +2309,7 @@ class ApiService {
   }
 
   async createSubscriptionPayment(planType: string, returnUrl?: string, promoCode?: string): Promise<any> {
-    const refCode = localStorage.getItem('refCode') || undefined;
+    const refCode = getStoredRefCode();
     const response = await this.api.post<ApiResponse>('/subscriptions/payment', {
       planType,
       returnUrl,

@@ -295,7 +295,10 @@ const StaffWorkspace: React.FC = () => {
                         color={n.visibility === 'PERSONAL' ? 'default' : 'primary'}
                       />
                     </Stack>
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', mb: 1 }}
+                    >
                       {n.body || '—'}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -340,11 +343,9 @@ const StaffWorkspace: React.FC = () => {
               <MenuItem value="ALL">Все</MenuItem>
             </TextField>
             <Box flex={1} />
-            {isOwner && (
-              <Button variant="contained" startIcon={<Add />} onClick={openNewTask} sx={{ textTransform: 'none' }}>
-                Новая задача
-              </Button>
-            )}
+            <Button variant="contained" startIcon={<Add />} onClick={openNewTask} sx={{ textTransform: 'none' }}>
+              Новая задача
+            </Button>
           </Stack>
 
           <Stack spacing={1.5}>
@@ -366,7 +367,10 @@ const StaffWorkspace: React.FC = () => {
                         <Chip size="small" label={t.status === 'OPEN' ? 'Открыта' : t.status === 'DONE' ? 'Готово' : t.status} />
                         {overdue && <Chip size="small" color="error" label="Просрочена" />}
                       </Stack>
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', mb: 1 }}
+                      >
                         {t.body || '—'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" display="block">
@@ -397,12 +401,12 @@ const StaffWorkspace: React.FC = () => {
                           Открыть снова
                         </Button>
                       )}
-                      {isOwner && (
+                      {(isOwner || t.createdByUserId === user?.id) && (
                         <IconButton size="small" onClick={() => openEditTask(t)}>
                           <Edit fontSize="small" />
                         </IconButton>
                       )}
-                      {isOwner && (
+                      {(isOwner || t.createdByUserId === user?.id) && (
                         <IconButton
                           size="small"
                           onClick={async () => {
@@ -457,7 +461,7 @@ const StaffWorkspace: React.FC = () => {
             onChange={(e) => setNoteVisibility(e.target.value as any)}
           >
             <MenuItem value="PERSONAL">Личная</MenuItem>
-            <MenuItem value="SHARED">Общая (для сотрудников школы)</MenuItem>
+            <MenuItem value="SHARED">Видят все сотрудники школы</MenuItem>
           </TextField>
         </DialogContent>
         <DialogActions>

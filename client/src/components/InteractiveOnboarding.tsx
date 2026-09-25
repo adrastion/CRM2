@@ -80,18 +80,18 @@ const onboardingSteps: OnboardingStep[] = [
   },
   {
     id: 'branches-nav',
-    title: 'Раздел «Филиалы»',
-    description: 'Переход к филиалам',
+    title: 'Раздел «Филиалы и группы»',
+    description: 'Переход к филиалам и группам',
     content: [
       'Сначала создайте филиал — к нему привязываются группы и залы.',
-      'Нажмите «Филиалы» в меню.',
+      'Нажмите «Филиалы и группы» в меню.',
     ],
-    targetSelector: '[data-onboarding="branches-nav"]',
+    targetSelector: '[data-onboarding="groups-nav"]',
     position: 'right',
     highlight: true,
     action: {
       type: 'click',
-      selector: '[data-onboarding="branches-nav"]',
+      selector: '[data-onboarding="groups-nav"]',
     },
   },
   {
@@ -124,11 +124,11 @@ const onboardingSteps: OnboardingStep[] = [
   },
   {
     id: 'groups-nav',
-    title: 'Раздел «Группы»',
-    description: 'Переход к группам',
+    title: 'Раздел «Филиалы и группы»',
+    description: 'Переход к филиалам и группам',
     content: [
-      'Группы организуют тренировки и оплату.',
-      'Нажмите «Группы» в меню.',
+      'Филиалы и группы организуют тренировки и оплату.',
+      'Нажмите «Филиалы и группы» в меню.',
     ],
     targetSelector: '[data-onboarding="groups-nav"]',
     position: 'right',
@@ -698,7 +698,7 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
                         sel.includes('schedule') ? '/schedule' :
                         sel.includes('dashboard') ? '/dashboard' :
                         sel.includes('trainers') ? '/trainers' :
-                        sel.includes('branches') ? '/branches' :
+                        sel.includes('branches') ? '/groups' :
                         sel.includes('payments') || sel.includes('finance') ? '/finance' :
                         sel.includes('settings') ? '/settings' :
                         sel.includes('faq') ? '/faq' :

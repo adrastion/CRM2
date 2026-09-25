@@ -167,7 +167,7 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
     if (shouldIncludeAdmins) {
       const adminWhere: any = {
         tenantId: req.tenant?.id,
-        role: 'ADMIN'
+        role: { in: ['ADMIN', 'PROMOTER'] },
       };
 
       if (search) {
@@ -192,10 +192,14 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       ]);
     }
 
-    // Объединяем тренеров и администраторов
+    // Объединяем тренеров, администраторов и промоутеров
     const allEmployees = [
       ...trainers.map(t => ({ ...t, employeeType: 'trainer' })),
-      ...admins.map(a => ({ ...a, employeeType: 'admin', user: a }))
+      ...admins.map(a => ({
+        ...a,
+        employeeType: a.role === 'PROMOTER' ? 'promoter' : 'admin',
+        user: a,
+      })),
     ];
 
     res.json({

@@ -16,7 +16,9 @@ const registerSchema = Joi.object({
   password: Joi.string().min(6).required(),
   firstName: Joi.string().min(2).max(50).required(),
   lastName: Joi.string().min(2).max(50).required(),
-  phone: phoneSchema
+  phone: phoneSchema,
+  refCode: Joi.string().trim().max(64).allow('', null).optional(),
+  referralCode: Joi.string().trim().max(64).allow('', null).optional(),
 });
 
 const loginSchema = Joi.object({
@@ -41,7 +43,7 @@ const createUserSchema = Joi.object({
   lastName: Joi.string().min(2).max(50).required(),
   middleName: Joi.string().max(50).allow('', null).optional(),
   phone: phoneSchema,
-  role: Joi.string().valid('ADMIN', 'TRAINER').required()
+  role: Joi.string().valid('ADMIN', 'TRAINER', 'PROMOTER').required()
 });
 
 const changePasswordSchema = Joi.object({
@@ -175,22 +177,22 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
     return;
   }
 
-  // ADMIN может создавать только тренеров; OWNER — администраторов и тренеров
+  // ADMIN может создавать тренеров и промоутеров; OWNER — администраторов, тренеров и промоутеров
   let role = req.body.role as string;
   if (req.user.role === 'ADMIN') {
-    if (role && role !== 'TRAINER') {
+    if (role && role !== 'TRAINER' && role !== 'PROMOTER') {
       res.status(403).json({
         success: false,
-        error: 'Администратор может создавать только тренеров'
+        error: 'Администратор может создавать только тренеров и промоутеров'
       });
       return;
     }
-    role = 'TRAINER';
+    if (!role) role = 'TRAINER';
   } else if (req.user.role === 'OWNER') {
-    if (role !== 'ADMIN' && role !== 'TRAINER') {
+    if (role !== 'ADMIN' && role !== 'TRAINER' && role !== 'PROMOTER') {
       res.status(400).json({
         success: false,
-        error: 'Роль должна быть ADMIN или TRAINER'
+        error: 'Роль должна быть ADMIN, TRAINER или PROMOTER'
       });
       return;
     }
