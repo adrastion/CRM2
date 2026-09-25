@@ -31,9 +31,27 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
     });
   }
 
+  // Onboarding flags — per user (не tenant)
+  let hasCompletedOnboarding = false;
+  let onboardingDeclined = false;
+  if (req.user?.id) {
+    const u = await prisma.user.findFirst({
+      where: { id: req.user.id, tenantId },
+      select: { hasCompletedOnboarding: true, onboardingDeclined: true },
+    });
+    if (u) {
+      hasCompletedOnboarding = u.hasCompletedOnboarding;
+      onboardingDeclined = u.onboardingDeclined;
+    }
+  }
+
   res.json({
     success: true,
-    data: settings,
+    data: {
+      ...settings,
+      hasCompletedOnboarding,
+      onboardingDeclined,
+    },
     message: 'Settings retrieved successfully'
   });
 });
@@ -171,37 +189,46 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 /**
- * Update onboarding status
+ * Update onboarding status (per authenticated school user)
  */
 export const updateOnboardingStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-  const { tenantId } = req;
+  const { tenantId, user } = req;
   const { hasCompletedOnboarding, onboardingDeclined } = req.body;
 
-  if (!tenantId) {
+  if (!tenantId || !user?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется авторизация сотрудника школы'
     });
     return;
   }
 
-  // Обновляем или создаем настройки
-  const settings = await prisma.tenantSettings.upsert({
-    where: { tenantId },
-    update: {
-      hasCompletedOnboarding: hasCompletedOnboarding !== undefined ? hasCompletedOnboarding : undefined,
-      onboardingDeclined: onboardingDeclined !== undefined ? onboardingDeclined : undefined
+  const role = user.role;
+  if (!['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'].includes(role)) {
+    res.status(403).json({
+      success: false,
+      error: 'Обучение доступно только сотрудникам школы'
+    });
+    return;
+  }
+
+  const data: { hasCompletedOnboarding?: boolean; onboardingDeclined?: boolean } = {};
+  if (hasCompletedOnboarding !== undefined) data.hasCompletedOnboarding = Boolean(hasCompletedOnboarding);
+  if (onboardingDeclined !== undefined) data.onboardingDeclined = Boolean(onboardingDeclined);
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data,
+    select: {
+      id: true,
+      hasCompletedOnboarding: true,
+      onboardingDeclined: true,
     },
-    create: {
-      tenantId,
-      hasCompletedOnboarding: hasCompletedOnboarding || false,
-      onboardingDeclined: onboardingDeclined || false
-    }
   });
 
   res.json({
     success: true,
-    data: settings,
+    data: updated,
     message: 'Onboarding status updated successfully'
   });
 });

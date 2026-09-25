@@ -43,7 +43,6 @@ import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
-import PromoCodeAdminsSettings from '../components/settings/PromoCodeAdminsSettings';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
@@ -77,7 +76,6 @@ const Settings: React.FC = () => {
     user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER';
   const notificationsTabIndex = 2;
   const interfaceTabIndex = showNotificationsTab ? 3 : 2;
-  const promoAdminsTabIndex = canEditSchoolSettings ? interfaceTabIndex + 1 : -1;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -548,9 +546,6 @@ const Settings: React.FC = () => {
               <Tab label="Уведомления" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
             )}
             <Tab label="Интерфейс" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-            {canEditSchoolSettings && (
-              <Tab label="Админы промокодов" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 160 } }} />
-            )}
           </Tabs>
 
           {/* Настройки расписания */}
@@ -1101,7 +1096,7 @@ const Settings: React.FC = () => {
               </Grid>
 
               {/* Повторное прохождение обучения */}
-              {user?.role === 'OWNER' && (
+              {user && ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'].includes(user.role) && (
                 <Grid item xs={12} md={6}>
                   <Paper sx={{ p: { xs: 2, sm: 3 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1128,12 +1123,6 @@ const Settings: React.FC = () => {
               )}
             </Grid>
           </TabPanel>
-
-          {canEditSchoolSettings && (
-            <TabPanel value={tabValue} index={promoAdminsTabIndex}>
-              <PromoCodeAdminsSettings />
-            </TabPanel>
-          )}
         </CardContent>
       </Card>
 

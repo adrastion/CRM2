@@ -289,11 +289,13 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return 'maintenance';
   });
   const isSa = Boolean(localStorage.getItem('superAdminToken'));
+  const hasResolvedMaintenanceOnceRef = React.useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      setChecking(true);
+      // Не размонтируем дерево на каждый pathname — иначе сбрасывается обучение и т.п.
+      if (!hasResolvedMaintenanceOnceRef.current) setChecking(true);
       try {
         const status = await apiService.getMaintenanceStatus();
         if (cancelled) return;
@@ -376,7 +378,10 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       } catch {
         /* ignore — leave session flags */
       } finally {
-        if (!cancelled) setChecking(false);
+        if (!cancelled) {
+          hasResolvedMaintenanceOnceRef.current = true;
+          setChecking(false);
+        }
       }
     })();
 
@@ -450,16 +455,19 @@ const AppContent: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const [onboardingOpen, setOnboardingOpen] = React.useState(false);
   const [onboardingLoading, setOnboardingLoading] = React.useState(true);
+  const [onboardingKey, setOnboardingKey] = React.useState(0);
 
   // Сброс устаревшей тёмной темы — новый дизайн только светлый
   React.useEffect(() => {
     localStorage.removeItem('darkMode');
   }, []);
 
+  const SCHOOL_ONBOARDING_ROLES = ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'];
+
   // Check onboarding status when user is authenticated
   React.useEffect(() => {
     const checkOnboardingStatus = async () => {
-      if (!isAuthenticated || !user || user.role !== 'OWNER') {
+      if (!isAuthenticated || !user || !SCHOOL_ONBOARDING_ROLES.includes(user.role)) {
         setOnboardingLoading(false);
         return;
       }
@@ -467,8 +475,7 @@ const AppContent: React.FC = () => {
       try {
         const response = await apiService.getSettings();
         const settings = response.data;
-        
-        // Show onboarding only if user hasn't completed it and hasn't declined
+
         if (!settings?.hasCompletedOnboarding && !settings?.onboardingDeclined) {
           setOnboardingOpen(true);
         }
@@ -480,33 +487,23 @@ const AppContent: React.FC = () => {
     };
 
     checkOnboardingStatus();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user?.id, user?.role]);
 
   // Listen for restart onboarding event
   React.useEffect(() => {
-    const handleRestartOnboarding = async () => {
-      if (!isAuthenticated || !user || user.role !== 'OWNER') {
+    const handleRestartOnboarding = () => {
+      if (!isAuthenticated || !user || !SCHOOL_ONBOARDING_ROLES.includes(user.role)) {
         return;
       }
-
-      try {
-        // Проверяем статус обучения после сброса
-        const response = await apiService.getSettings();
-        const settings = response.data;
-        
-        if (!settings?.hasCompletedOnboarding && !settings?.onboardingDeclined) {
-          setOnboardingOpen(true);
-        }
-      } catch (error) {
-        console.error('Error checking onboarding status:', error);
-      }
+      setOnboardingKey((k) => k + 1);
+      setOnboardingOpen(true);
     };
 
     window.addEventListener('restartOnboarding', handleRestartOnboarding as EventListener);
     return () => {
       window.removeEventListener('restartOnboarding', handleRestartOnboarding as EventListener);
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user?.id, user?.role]);
 
   const handleOnboardingComplete = () => {
     setOnboardingOpen(false);
@@ -524,14 +521,6 @@ const AppContent: React.FC = () => {
       <SiteTrafficTracker />
       <CookieConsentBanner />
       <SupportFAB />
-      {!onboardingLoading && user?.role === 'OWNER' && (
-        <InteractiveOnboarding
-          open={onboardingOpen}
-          onClose={handleOnboardingDecline}
-          onComplete={handleOnboardingComplete}
-          onDecline={handleOnboardingDecline}
-        />
-      )}
       <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/maintenance" element={<Maintenance />} />
@@ -903,6 +892,15 @@ const AppContent: React.FC = () => {
       </Routes>
       </Suspense>
       </MaintenanceGate>
+      {!onboardingLoading && user && SCHOOL_ONBOARDING_ROLES.includes(user.role) && (
+        <InteractiveOnboarding
+          key={`onboarding-${user.id}-${onboardingKey}`}
+          open={onboardingOpen}
+          onClose={handleOnboardingDecline}
+          onComplete={handleOnboardingComplete}
+          onDecline={handleOnboardingDecline}
+        />
+      )}
     </Router>
     </ThemeProvider>
   );

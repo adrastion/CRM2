@@ -108,6 +108,9 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   middleName    String?
+  /// Интерактивное обучение (per-user)
+  hasCompletedOnboarding Boolean @default(false)
+  onboardingDeclined     Boolean @default(false)
   trainer       Trainer?
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   linkedSuperAdmin SuperAdmin?

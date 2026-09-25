@@ -301,7 +301,7 @@ const Memberships: React.FC = () => {
   const mergeTargetOptions = items.filter((m) => !mergeSourceIds.includes(m.id));
 
   return (
-    <Box>
+    <Box data-onboarding="memberships-page">
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
         <Typography sx={{ fontSize: typography.pageTitle, fontWeight: 700, color: colors.text }}>
           Абонементы

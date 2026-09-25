@@ -2044,6 +2044,7 @@ const Schedule: React.FC = () => {
               variant="contained"
               size="small"
               startIcon={<Add />}
+              data-onboarding="schedule-create-button"
               sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
               onClick={(e) => setCreateMenuAnchor(e.currentTarget)}
             >
