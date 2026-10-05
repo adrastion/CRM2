@@ -49,6 +49,7 @@ import {
 } from '../controllers/notificationPrefsController';
 import {
   getPortalNotifications,
+  getPortalNotificationsUnreadCount,
   markPortalNotificationsRead,
 } from '../controllers/inboxNotificationController';
 
@@ -88,6 +89,7 @@ router.get('/membership-catalog', authenticateClient, getPortalMembershipCatalog
 router.post('/change-membership', authenticateClient, changePortalMembership);
 router.get('/trainers/:trainerId/card', authenticateClient, getClientTrainerCard);
 router.get('/notifications', authenticateClient, getPortalNotifications);
+router.get('/notifications/unread-count', authenticateClient, getPortalNotificationsUnreadCount);
 router.post('/notifications/read', authenticateClient, markPortalNotificationsRead);
 
 router.get('/notification-prefs', authenticateClient, getPortalNotificationPrefs);

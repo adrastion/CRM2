@@ -794,6 +794,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async getSchoolNotificationsUnreadCount(): Promise<{ unreadTotal: number }> {
+    const response = await this.api.get<ApiResponse>('/notifications/unread-count');
+    return response.data.data!;
+  }
+
   async markSchoolNotificationsRead(payload: {
     ids?: string[];
     category?: string;
@@ -812,6 +817,11 @@ class ApiService {
     return response.data.data;
   }
 
+  async getPortalNotificationsUnreadCount(): Promise<{ unreadTotal: number }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/notifications/unread-count');
+    return response.data.data!;
+  }
+
   async markPortalNotificationsRead(payload: {
     ids?: string[];
     category?: string;
@@ -819,6 +829,14 @@ class ApiService {
   }): Promise<{ count: number }> {
     const response = await this.api.post<ApiResponse>('/client-auth/notifications/read', payload);
     return response.data.data;
+  }
+
+  /** Batch unread для слотов savedAccounts (токены в теле, без активной сессии). */
+  async getSavedAccountsUnread(
+    accounts: Array<{ id: string; token: string }>
+  ): Promise<{ counts: Record<string, number> }> {
+    const response = await this.api.post<ApiResponse>('/auth/saved-accounts/unread', { accounts });
+    return response.data.data || { counts: {} };
   }
 
   async listSchoolOffers(): Promise<any[]> {

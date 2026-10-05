@@ -300,6 +300,22 @@ export async function listInbox(
   return { items, aggregates, unreadTotal };
 }
 
+/**
+ * Только счётчик непрочитанных (inbox + override чатов), без списка items.
+ * Используется колокольчиком multi-account и лёгкими unread-count эндпоинтами.
+ */
+export async function getActorUnreadTotal(
+  actorType: NotificationActorType,
+  actorId: string,
+  opts?: { chatUnreadOverride?: number }
+): Promise<number> {
+  const { unreadTotal } = await listInbox(actorType, actorId, {
+    limit: 0,
+    chatUnreadOverride: opts?.chatUnreadOverride,
+  });
+  return unreadTotal;
+}
+
 export async function markInboxRead(
   actorType: NotificationActorType,
   actorId: string,

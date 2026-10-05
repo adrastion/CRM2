@@ -6,7 +6,7 @@ import {
   issueClientMembership,
 } from '../services/clientMembershipService';
 import { FinanceService } from '../services/financeService';
-import { accrueForPayment } from '../services/trainerSalaryService';
+import { accrueForPayment, reverseForPayment } from '../services/trainerSalaryService';
 import { applyPersonalDiscount } from '../utils/personalDiscount';
 import {
   dueDateForPeriodKey,
@@ -552,6 +552,7 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
         isMonthlyPayment: payment.isMonthlyPayment,
         paymentType: payment.type,
         paidAt: payment.paidAt,
+        periodKey: payment.periodKey,
       }).catch((err) => console.error('Trainer salary accrue on payment create failed:', err));
     }
 
@@ -638,7 +639,19 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
         isMonthlyPayment: updatedPayment.isMonthlyPayment,
         paymentType: updatedPayment.type,
         paidAt: updatedPayment.paidAt,
+        periodKey: updatedPayment.periodKey,
       }).catch((err) => console.error('Trainer salary accrue on payment update failed:', err));
+    }
+
+    const statusLeftPaid =
+      payment.status === 'paid' &&
+      typeof req.body.status === 'string' &&
+      req.body.status !== 'paid';
+    if (statusLeftPaid && req.tenant?.id) {
+      await reverseForPayment({
+        tenantId: req.tenant.id,
+        paymentId: updatedPayment.id,
+      }).catch((err) => console.error('Trainer salary reverse on payment unpay failed:', err));
     }
 
     res.json({
@@ -976,12 +989,14 @@ async function calculateSubstituteTrainerSalaries(
 export const deletePayment = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
 
     const payment = await prisma.payment.findFirst({
-      where: {
-        id,
-        tenantId: req.tenant?.id
-      }
+      where: { id, tenantId },
     });
 
     if (!payment) {
@@ -992,9 +1007,51 @@ export const deletePayment = async (req: AuthenticatedRequest, res: Response) =>
       return;
     }
 
-    await prisma.payment.delete({
-      where: { id }
+    // Откат связанных finance-op (баланс клиента, charge/income) через deleteOperation
+    const linkedOps = await prisma.financeOperation.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { paymentId: payment.id },
+          { externalKey: `membership_charge:${payment.id}` },
+        ],
+      },
+      select: { id: true },
     });
+
+    let reversedViaOps = false;
+    for (const op of linkedOps) {
+      try {
+        await FinanceService.deleteOperation(tenantId, op.id);
+        reversedViaOps = true;
+      } catch (err) {
+        console.error('Finance op reverse on payment delete failed:', err);
+      }
+    }
+
+    // Legacy: paid без income-op — откат ЗП и кредита кошелька вручную
+    if (payment.status === 'paid' && !reversedViaOps) {
+      await reverseForPayment({
+        tenantId,
+        paymentId: payment.id,
+      }).catch((err) => console.error('Trainer salary reverse on payment delete failed:', err));
+      const amt = Number(payment.amount);
+      if (Number.isFinite(amt) && amt > 0) {
+        await prisma.client
+          .update({
+            where: { id: payment.clientId },
+            data: { balance: { decrement: amt } },
+          })
+          .catch((err) => console.error('Client balance reverse on payment delete failed:', err));
+      }
+    }
+
+    // deleteOperation мог отменить платёж — удаляем запись, если ещё есть
+    const still = await prisma.payment.findUnique({ where: { id } });
+    if (still) {
+      await prisma.transaction.deleteMany({ where: { paymentId: id, tenantId } }).catch(() => undefined);
+      await prisma.payment.delete({ where: { id } });
+    }
 
     res.json({
       success: true,

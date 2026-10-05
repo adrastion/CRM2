@@ -7,7 +7,14 @@ import path from 'path';
 import fs from 'fs';
 import { absoluteUploadPath, safeUnlink, decodeUploadOriginalName, contentDispositionAttachment } from '../utils/fileStorage';
 
-const STATUS_ORDER: DevNoteStatus[] = ['IDEA', 'IN_PROGRESS', 'DONE'];
+const STATUS_ORDER: DevNoteStatus[] = [
+  'IDEA',
+  'IN_PROGRESS',
+  'AWAITING_DESIGN',
+  'NEEDS_DISCUSSION',
+  'SHELVED',
+  'DONE',
+];
 
 const noteInclude = {
   createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },

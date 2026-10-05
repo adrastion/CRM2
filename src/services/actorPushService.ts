@@ -167,6 +167,59 @@ export async function removeActorPushSubscription(
   await removeSubscription(actorType, actorId, endpoint);
 }
 
+/** Id слота savedAccounts + имя школы для multi-account push. */
+async function resolvePushAccountContext(
+  actorType: NotificationActorType,
+  actorId: string
+): Promise<{ accountId: string; accountType: string; tenantName: string | null }> {
+  if (actorType === 'USER') {
+    const user = await prisma.user.findUnique({
+      where: { id: actorId },
+      select: { tenant: { select: { name: true } } },
+    });
+    return {
+      accountId: `TENANT_USER:${actorId}`,
+      accountType: 'TENANT_USER',
+      tenantName: user?.tenant?.name || null,
+    };
+  }
+  if (actorType === 'CLIENT') {
+    const client = await prisma.client.findUnique({
+      where: { id: actorId },
+      select: { tenant: { select: { name: true } } },
+    });
+    return {
+      accountId: `CLIENT:${actorId}`,
+      accountType: 'CLIENT',
+      tenantName: client?.tenant?.name || null,
+    };
+  }
+  if (actorType === 'PARENT') {
+    const parent = await prisma.parent.findUnique({
+      where: { id: actorId },
+      select: { tenant: { select: { name: true } } },
+    });
+    return {
+      accountId: `PARENT:${actorId}`,
+      accountType: 'PARENT',
+      tenantName: parent?.tenant?.name || null,
+    };
+  }
+  if (actorType === 'SUPER_ADMIN') {
+    return { accountId: `SUPER_ADMIN:${actorId}`, accountType: 'SUPER_ADMIN', tenantName: null };
+  }
+  if (actorType === 'TESTER') {
+    return { accountId: `TESTER:${actorId}`, accountType: 'TESTER', tenantName: null };
+  }
+  return { accountId: `${actorType}:${actorId}`, accountType: actorType, tenantName: null };
+}
+
+function withTenantPrefix(title: string, tenantName: string | null): string {
+  if (!tenantName) return title;
+  if (title.includes(tenantName)) return title;
+  return `«${tenantName}» · ${title}`;
+}
+
 export async function sendPushToActor(
   actorType: NotificationActorType,
   actorId: string,
@@ -179,8 +232,17 @@ export async function sendPushToActor(
   const applySchedule = actorType === 'USER';
   if (!canReceivePushNow(prefs, eventType, new Date(), { applySchedule })) return;
 
+  const ctx = await resolvePushAccountContext(actorType, actorId);
+  const enrichedTitle = withTenantPrefix(title, ctx.tenantName);
+  const enrichedData: Record<string, unknown> = {
+    ...data,
+    accountId: ctx.accountId,
+    accountType: ctx.accountType,
+    tenantName: ctx.tenantName,
+  };
+
   const subscriptions = await getSubscriptionsForActor(actorType, actorId);
-  await sendToSubscriptions(subscriptions, title, body, data, (endpoint) =>
+  await sendToSubscriptions(subscriptions, enrichedTitle, body, enrichedData, (endpoint) =>
     removeSubscription(actorType, actorId, endpoint)
   );
 }

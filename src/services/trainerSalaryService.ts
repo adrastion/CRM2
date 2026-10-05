@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { monthlyPeriodKey } from '../utils/monthlyPaymentPeriod';
 
 export const SALARY_SCHEMES = [
   'per_training_person',
@@ -142,9 +143,7 @@ function formatPersonName(client: {
 }
 
 function periodKeyFromDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
+  return monthlyPeriodKey(d);
 }
 
 async function createLedgerAndUpdateBalance(params: {
@@ -379,6 +378,72 @@ export async function reverseForAttendance(params: {
 }
 
 /**
+ * Откат начисления тренеру по paymentId (отмена дохода / отмена оплаты).
+ * Идемпотентно: если записей нет — no-op.
+ */
+export async function reverseForPayment(params: {
+  tenantId: string;
+  paymentId: string;
+}): Promise<number> {
+  const rows = await prisma.trainerSalaryLedger.findMany({
+    where: {
+      tenantId: params.tenantId,
+      paymentId: params.paymentId,
+      kind: { in: ['membership_share', 'membership_percent'] },
+    },
+  });
+
+  let reversed = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      const amount = Number(row.amount);
+      await tx.trainerSalaryLedger.delete({ where: { id: row.id } });
+      if (Number.isFinite(amount) && amount !== 0) {
+        await tx.trainer.update({
+          where: { id: row.trainerId },
+          data: { balance: { decrement: amount } },
+        });
+        reversed += amount;
+      }
+    }
+
+    await tx.financeOperation.deleteMany({
+      where: {
+        tenantId: params.tenantId,
+        externalKey: { startsWith: `salary_accrual:payment:${params.paymentId}:` },
+      },
+    });
+  });
+
+  return reversed;
+}
+
+/** Есть ли ещё незакрытый счёт клиента по группе/периоду (частичная оплата). */
+async function hasOpenChargeForPeriod(params: {
+  tenantId: string;
+  clientId: string;
+  groupId: string | null;
+  periodKey: string;
+}): Promise<boolean> {
+  const open = await prisma.payment.findMany({
+    where: {
+      tenantId: params.tenantId,
+      clientId: params.clientId,
+      status: { in: ['pending', 'overdue', 'awaiting_confirmation'] },
+      amount: { gt: 0 },
+      ...(params.groupId ? { groupId: params.groupId } : {}),
+    },
+    select: { id: true, periodKey: true, dueDate: true, createdAt: true },
+    take: 50,
+  });
+  return open.some((p) => {
+    if (p.periodKey === params.periodKey) return true;
+    if (p.periodKey) return false;
+    return monthlyPeriodKey(p.dueDate || p.createdAt) === params.periodKey;
+  });
+}
+
+/**
  * V2/V3: при оплате абонемента / месячного платежа клиентом группы тренера.
  */
 export async function accrueForPayment(params: {
@@ -390,6 +455,7 @@ export async function accrueForPayment(params: {
   isMonthlyPayment?: boolean;
   paymentType?: string;
   paidAt?: Date | null;
+  periodKey?: string | null;
 }): Promise<number> {
   const paymentAmount = Number(params.amount);
   if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return 0;
@@ -436,6 +502,33 @@ export async function accrueForPayment(params: {
     if (!byGroup.has(m.groupId)) byGroup.set(m.groupId, m);
   }
 
+  // Без groupId: не раздавать полную сумму visit-группам; monthly — percent делим, fixed по группам
+  let splitPercentAcrossGroups = false;
+  if (!params.groupId && byGroup.size > 1) {
+    const monthly = [...byGroup.values()].filter((m) => m.group.isMonthlyPayment);
+    byGroup.clear();
+    if (monthly.length === 1) {
+      byGroup.set(monthly[0].groupId, monthly[0]);
+    } else if (monthly.length > 1) {
+      for (const m of monthly) byGroup.set(m.groupId, m);
+      splitPercentAcrossGroups = true;
+    } else {
+      // Нет monthly — клиентский пакет / неоднозначные visit-группы
+      return 0;
+    }
+  }
+
+  const periodKey =
+    (typeof params.periodKey === 'string' && params.periodKey) ||
+    periodKeyFromDate(params.paidAt || new Date());
+
+  const percentGroupCount = splitPercentAcrossGroups
+    ? [...byGroup.values()].filter((m) => {
+        const t = m.group.trainer;
+        return t?.isActive && resolveGroupScheme(m.group, t) === 'percent_month';
+      }).length || 1
+    : 1;
+
   for (const [, m] of byGroup) {
     const trainer = m.group.trainer;
     if (!trainer?.isActive) continue;
@@ -445,6 +538,30 @@ export async function accrueForPayment(params: {
 
     if (scheme === 'fixed_per_student_month') {
       if (rate <= 0) continue;
+
+      // Фикс с ученика — один раз за период на группу, и только когда долг по периоду закрыт
+      const stillOpen = await hasOpenChargeForPeriod({
+        tenantId: params.tenantId,
+        clientId: params.clientId,
+        groupId: m.groupId,
+        periodKey,
+      });
+      if (stillOpen) continue;
+
+      const sharePeriodKey = `student:${params.clientId}:${m.groupId}:${periodKey}`;
+      const already = await prisma.trainerSalaryLedger.findFirst({
+        where: {
+          tenantId: params.tenantId,
+          trainerId: trainer.id,
+          kind: 'membership_share',
+          clientId: params.clientId,
+          groupId: m.groupId,
+          periodKey: sharePeriodKey,
+        },
+        select: { id: true },
+      });
+      if (already) continue;
+
       const result = await createLedgerAndUpdateBalance({
         tenantId: params.tenantId,
         trainerId: trainer.id,
@@ -457,6 +574,7 @@ export async function accrueForPayment(params: {
         clientId: params.clientId,
         groupId: m.groupId,
         paymentId: params.paymentId,
+        periodKey: sharePeriodKey,
       });
       if (result.created) {
         const { FinanceService } = await import('./financeService');
@@ -475,7 +593,9 @@ export async function accrueForPayment(params: {
       total += result.amount;
     } else if (scheme === 'percent_month') {
       if (rate <= 0) continue;
-      const amount = Math.round(((paymentAmount * rate) / 100) * 100) / 100;
+      const base =
+        splitPercentAcrossGroups ? paymentAmount / percentGroupCount : paymentAmount;
+      const amount = Math.round(((base * rate) / 100) * 100) / 100;
       if (amount <= 0) continue;
       const result = await createLedgerAndUpdateBalance({
         tenantId: params.tenantId,

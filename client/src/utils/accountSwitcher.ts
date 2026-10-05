@@ -114,7 +114,13 @@ function writeSavedAccounts(accounts: SavedAccountSlot[]): void {
 }
 
 export function removeSavedAccount(id: string): void {
+  const slot = listSavedAccounts().find((a) => a.id === id);
   writeSavedAccounts(listSavedAccounts().filter((a) => a.id !== id));
+  if (slot) {
+    void import('./actorPush')
+      .then((m) => m.unsubscribePushForRemovedSlot(slot))
+      .catch(() => undefined);
+  }
 }
 
 /** Bearer-токен из снимка слота (приоритет как у axios-интерцептора). */
@@ -371,6 +377,10 @@ export function upsertFromActiveStorage(extra?: {
   }
 
   writeSavedAccounts(without);
+  // Авто-подписка push для текущего school/portal, если permission уже granted
+  void import('./actorPush')
+    .then((m) => m.maybeAutoSubscribeActivePush())
+    .catch(() => undefined);
   return slot;
 }
 
@@ -457,6 +467,13 @@ export function switchToAccount(id: string): void {
       .map((a) => (a.id === id ? { ...a, updatedAt: Date.now() } : a))
       .sort((a, b) => b.updatedAt - a.updatedAt)
   );
+
+  const pendingNext = sessionStorage.getItem('pendingSwitchNext');
+  if (pendingNext) {
+    sessionStorage.removeItem('pendingSwitchNext');
+    window.location.assign(pendingNext);
+    return;
+  }
 
   const dest = slot.destination && slot.destination !== '/' ? slot.destination : activeDestination();
   window.location.assign(dest || '/auth');

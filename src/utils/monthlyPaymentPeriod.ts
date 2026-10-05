@@ -1,10 +1,80 @@
 import { prisma } from '../lib/prisma';
 
-/** Ключ периода ежемесячного платежа: YYYY-MM (локальная дата / Europe/Moscow-friendly). */
-export function monthlyPeriodKey(date: Date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
+/** Рабочий TZ школы для periodKey / границ месяца. */
+export const SCHOOL_BILLING_TIMEZONE = 'Europe/Moscow';
+
+function zonedParts(
+  date: Date,
+  timeZone: string
+): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value || 0);
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
+
+/**
+ * UTC-момент, соответствующий локальным y-m-d hh:mm:ss.ms в timeZone.
+ */
+export function zonedLocalToUtc(
+  y: number,
+  m: number,
+  d: number,
+  hh: number,
+  mm: number,
+  ss: number,
+  ms: number,
+  timeZone: string = SCHOOL_BILLING_TIMEZONE
+): Date {
+  let guess = new Date(Date.UTC(y, m - 1, d, hh, mm, ss, ms));
+  for (let i = 0; i < 4; i++) {
+    const p = zonedParts(guess, timeZone);
+    const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second, 0);
+    const desired = Date.UTC(y, m - 1, d, hh, mm, ss, 0);
+    guess = new Date(guess.getTime() + (desired - asUtc));
+  }
+  if (ms) guess = new Date(guess.getTime() + ms);
+  return guess;
+}
+
+/** Ключ периода ежемесячного платежа: YYYY-MM в Europe/Moscow. */
+export function monthlyPeriodKey(
+  date: Date = new Date(),
+  timeZone: string = SCHOOL_BILLING_TIMEZONE
+): string {
+  const p = zonedParts(date, timeZone);
+  return `${p.year}-${String(p.month).padStart(2, '0')}`;
+}
+
+/** Границы календарного месяца periodKey в TZ (включительно). */
+export function periodKeyBounds(
+  periodKey: string,
+  timeZone: string = SCHOOL_BILLING_TIMEZONE
+): { start: Date; end: Date } {
+  const [yStr, mStr] = periodKey.split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const start = zonedLocalToUtc(y, m, 1, 0, 0, 0, 0, timeZone);
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const end = new Date(zonedLocalToUtc(nextY, nextM, 1, 0, 0, 0, 0, timeZone).getTime() - 1);
+  return { start, end };
 }
 
 export function isMonthlyPaymentPayload(data: {
@@ -61,15 +131,14 @@ export function resolveMonthlyPeriodKey(params: {
 }
 
 /**
- * dueDate = paymentDueDay в месяце periodKey (YYYY-MM), конец дня.
+ * dueDate = paymentDueDay в месяце periodKey (YYYY-MM), конец дня (MSK).
  */
 export function dueDateForPeriodKey(periodKey: string, paymentDueDay: number): Date {
   const [yStr, mStr] = periodKey.split('-');
   const y = Number(yStr);
-  const m = Number(mStr) - 1;
+  const m = Number(mStr);
   const day = Math.min(Math.max(1, paymentDueDay || 1), 28);
-  const d = new Date(y, m, day, 23, 59, 59, 999);
-  return d;
+  return zonedLocalToUtc(y, m, day, 23, 59, 59, 999);
 }
 
 /** Есть ли незакрытый ежемесячный счёт по клиенту+группе. */

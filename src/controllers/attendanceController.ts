@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
-import { deductFromClientBalance } from '../utils/finance';
+import { deductFromClientBalance, refundTrainingPaymentForAttendance } from '../utils/finance';
 import { accrueForAttendance, reverseForAttendance } from '../services/trainerSalaryService';
 import {
   consumeVisitFromActivePack,
@@ -134,6 +134,12 @@ async function accrueTrainerForAttendanceStatus(params: {
     },
   });
   if (!training) return;
+
+  // Сначала откат (в т.ч. у предыдущего тренера при смене замены) — unique по (trainerId, attendanceId)
+  await reverseForAttendance({
+    tenantId: params.tenantId,
+    attendanceId: params.attendanceId,
+  }).catch((err) => console.error('Trainer salary reverse before accrue failed:', err));
 
   const trainerId = training.substituteTrainerId || training.trainerId;
   await accrueForAttendance({
@@ -628,6 +634,10 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
           updatedAttendance.clientId,
           req.tenant.id
         ).catch((err) => console.error('Restore visit on status change failed:', err));
+        await refundTrainingPaymentForAttendance(
+          updatedAttendance.id,
+          req.tenant.id
+        ).catch((err) => console.error('Refund training payment on status change failed:', err));
       }
       await accrueTrainerForAttendanceStatus({
         tenantId: req.tenant.id,
@@ -677,6 +687,14 @@ export const deleteAttendance = async (req: AuthenticatedRequest, res: Response)
         tenantId: req.tenant.id,
         attendanceId: attendance.id,
       }).catch((err) => console.error('Trainer salary reverse on delete failed:', err));
+      if (attendance.status === 'PRESENT') {
+        await restoreVisitToActivePack(attendance.clientId, req.tenant.id).catch((err) =>
+          console.error('Restore visit on delete failed:', err)
+        );
+      }
+      await refundTrainingPaymentForAttendance(attendance.id, req.tenant.id).catch((err) =>
+        console.error('Refund training payment on delete failed:', err)
+      );
     }
 
     await prisma.attendance.delete({
@@ -791,6 +809,9 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
           } else if (wasPresent && status !== 'PRESENT') {
             await restoreVisitToActivePack(clientId, tenantId).catch((err) =>
               console.error('Restore visit on bulk status change failed:', err)
+            );
+            await refundTrainingPaymentForAttendance(updated.id, tenantId).catch((err) =>
+              console.error('Refund training payment on bulk status change failed:', err)
             );
           }
           await accrueTrainerForAttendanceStatus({

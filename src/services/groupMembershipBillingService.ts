@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { periodKeyBounds, SCHOOL_BILLING_TIMEZONE } from '../utils/monthlyPaymentPeriod';
 
 export type GroupBillingPlan = {
   membershipId: string;
@@ -77,9 +78,7 @@ export async function getPeriodAttendanceStats(params: {
   clientId: string;
   periodKey: string;
 }): Promise<{ scheduled: number; present: number; firstPresentDay: number | null }> {
-  const [y, m] = params.periodKey.split('-').map(Number);
-  const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
-  const end = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+  const { start, end } = periodKeyBounds(params.periodKey);
 
   const trainings = await prisma.training.findMany({
     where: {
@@ -105,8 +104,14 @@ export async function getPeriodAttendanceStats(params: {
   });
 
   const present = attendance.length;
-  const firstPresentDay =
-    attendance.length > 0 ? new Date(attendance[0].training.startTime).getUTCDate() : null;
+  let firstPresentDay: number | null = null;
+  if (attendance.length > 0) {
+    const dayFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: SCHOOL_BILLING_TIMEZONE,
+      day: 'numeric',
+    });
+    firstPresentDay = Number(dayFmt.format(attendance[0].training.startTime));
+  }
 
   return { scheduled, present, firstPresentDay };
 }

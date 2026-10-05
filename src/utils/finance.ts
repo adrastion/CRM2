@@ -286,6 +286,43 @@ export async function deductFromClientBalance(
 }
 
 /**
+ * Возврат списаний training_payment при снятии PRESENT / удалении посещения.
+ * Идемпотентно: удаляет связанные транзакции и возвращает сумму на баланс.
+ */
+export async function refundTrainingPaymentForAttendance(
+  attendanceId: string,
+  tenantId: string
+): Promise<number> {
+  const txs = await prisma.transaction.findMany({
+    where: {
+      tenantId,
+      attendanceId,
+      type: 'training_payment',
+    },
+  });
+  if (txs.length === 0) return 0;
+
+  let refunded = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const t of txs) {
+      const amount = Number(t.amount); // отрицательное при списании
+      if (!t.clientId || !Number.isFinite(amount) || amount === 0) {
+        await tx.transaction.delete({ where: { id: t.id } });
+        continue;
+      }
+      await tx.client.update({
+        where: { id: t.clientId },
+        data: { balance: { increment: -amount } },
+      });
+      refunded += -amount;
+      await tx.transaction.delete({ where: { id: t.id } });
+    }
+  });
+
+  return refunded;
+}
+
+/**
  * Начисляет заработок тренеру и создает транзакцию
  */
 export async function addToTrainerBalance(

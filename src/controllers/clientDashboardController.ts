@@ -40,6 +40,16 @@ function normalizePhone(phone: string | null | undefined): string | null {
   return digits.length > 0 ? digits : null;
 }
 
+/** Точное совпадение нормализованных телефонов (без substring/contains). */
+function phonesMatchExact(
+  a: string | null | undefined,
+  bNorm: string | null
+): boolean {
+  if (!bNorm) return false;
+  const aNorm = normalizePhone(a);
+  return Boolean(aNorm && aNorm === bNorm);
+}
+
 /** Спортсмены, доступные текущему аккаунту (один номер — несколько детей). */
 async function findLinkedAthletes(
   tenantId: string,
@@ -56,16 +66,29 @@ async function findLinkedAthletes(
 
     const phone = normalizePhone(parent.phone);
     const email = parent.email?.toLowerCase().trim() || null;
+    if (!phone && !email) return [];
+
+    // contains по последним 10 цифрам — только кандидаты; фильтр — точное совпадение
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
     const orConditions: Array<Record<string, unknown>> = [];
-    if (phone) orConditions.push({ phone: { contains: phone } });
+    if (phoneTail) orConditions.push({ phone: { contains: phoneTail } });
     if (email) orConditions.push({ email: { equals: email, mode: 'insensitive' } });
-    if (orConditions.length === 0) return [];
 
     const parents = await prisma.parent.findMany({
       where: { tenantId, OR: orConditions },
-      select: { clientId: true },
+      select: { clientId: true, phone: true, email: true },
     });
-    const clientIds = [...new Set(parents.map((p) => p.clientId))];
+    const clientIds = [
+      ...new Set(
+        parents
+          .filter(
+            (p) =>
+              phonesMatchExact(p.phone, phone) ||
+              (email && p.email?.toLowerCase().trim() === email)
+          )
+          .map((p) => p.clientId)
+      ),
+    ];
     if (clientIds.length === 0) return [];
 
     return prisma.client.findMany({
@@ -84,21 +107,32 @@ async function findLinkedAthletes(
 
     const phone = normalizePhone(authClient.phone);
     const email = authClient.email?.toLowerCase().trim() || null;
-    const orConditions: Array<Record<string, unknown>> = [];
-    if (phone) orConditions.push({ phone: { contains: phone } });
-    if (email) orConditions.push({ email: { equals: email, mode: 'insensitive' } });
-    if (orConditions.length === 0) {
+    if (!phone && !email) {
       return prisma.client.findMany({
         where: { id: clientAuthId, tenantId, isActive: true },
         select: { id: true, firstName: true, lastName: true },
       });
     }
 
-    return prisma.client.findMany({
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (phoneTail) orConditions.push({ phone: { contains: phoneTail } });
+    if (email) orConditions.push({ email: { equals: email, mode: 'insensitive' } });
+
+    const candidates = await prisma.client.findMany({
       where: { tenantId, isActive: true, OR: orConditions },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
+
+    return candidates
+      .filter(
+        (c) =>
+          c.id === clientAuthId ||
+          phonesMatchExact(c.phone, phone) ||
+          (email && c.email?.toLowerCase().trim() === email)
+      )
+      .map(({ id, firstName, lastName }) => ({ id, firstName, lastName }));
   }
 
   return [];
@@ -777,14 +811,20 @@ export const changePortalMembership = asyncHandler(
       }
     }
 
-    const { changeClientMembershipPack } = await import('../services/clientMembershipService');
+    const { schedulePortalMembershipChange } = await import('../services/clientMembershipService');
     try {
-      const result = await changeClientMembershipPack({
+      const result = await schedulePortalMembershipChange({
         tenantId,
         clientId,
         membershipId,
       });
-      res.json({ success: true, data: result });
+      res.json({
+        success: true,
+        data: result,
+        message: result.activated
+          ? 'Тариф активирован'
+          : 'Заявка на смену тарифа создана. Пакет активируется после оплаты.',
+      });
     } catch (err: any) {
       const status = err?.statusCode || 500;
       res.status(status).json({

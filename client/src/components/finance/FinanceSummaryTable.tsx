@@ -185,7 +185,15 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
               </Box>
               <Box>
                 <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>Остаток</Typography>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 600 }}>{formatMoney(row.remaining)}</Typography>
+                <Typography
+                  sx={{
+                    fontSize: typography.label,
+                    fontWeight: 600,
+                    color: row.remaining < 0 ? colors.danger : colors.text,
+                  }}
+                >
+                  {formatMoney(row.remaining)}
+                </Typography>
               </Box>
             </Box>
           </Box>
@@ -266,7 +274,13 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                   <Box sx={cellSx(3, false)}>{accruedNode(row)}</Box>
                   <Box sx={cellSx(4, false)}>{paidNode(row)}</Box>
                   <Box sx={cellSx(5, true)}>
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
+                    <Typography
+                      sx={{
+                        fontSize: typography.label,
+                        fontWeight: 600,
+                        color: row.remaining < 0 ? colors.danger : colors.text,
+                      }}
+                    >
                       {formatMoney(row.remaining)}
                     </Typography>
                   </Box>

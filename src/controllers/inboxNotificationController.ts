@@ -2,14 +2,18 @@ import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
-import { listInbox, markInboxRead } from '../services/notificationFanout';
+import { listInbox, markInboxRead, fanoutNotification } from '../services/notificationFanout';
 import {
   getUnreadTotalForActor,
   resolveClientActor,
   resolveStaffActor,
 } from '../services/chatService';
+import {
+  getSchoolUserUnreadTotal,
+  getPortalActorUnreadTotal,
+  batchSavedAccountsUnread,
+} from '../services/savedAccountsUnreadService';
 import { prisma } from '../lib/prisma';
-import { fanoutNotification } from '../services/notificationFanout';
 
 export const getSchoolNotifications = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -24,6 +28,18 @@ export const getSchoolNotifications = asyncHandler(
       chatUnreadOverride: chatUnread,
     });
     res.json({ success: true, data });
+  }
+);
+
+export const getSchoolNotificationsUnreadCount = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.user?.id) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const tenantId = req.tenant?.id || req.user.tenantId;
+    const unreadTotal = await getSchoolUserUnreadTotal(req.user.id, tenantId);
+    res.json({ success: true, data: { unreadTotal } });
   }
 );
 
@@ -64,6 +80,21 @@ export const getPortalNotifications = asyncHandler(
   }
 );
 
+export const getPortalNotificationsUnreadCount = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const actorType = req.userType === 'parent' ? 'PARENT' : 'CLIENT';
+    const actorId = req.userType === 'parent' ? req.parent?.id : req.client?.id;
+    if (!actorId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const tenantId =
+      (req.userType === 'parent' ? req.parent?.tenantId : req.client?.tenantId) || '';
+    const unreadTotal = await getPortalActorUnreadTotal(actorType, actorId, tenantId);
+    res.json({ success: true, data: { unreadTotal } });
+  }
+);
+
 export const markPortalNotificationsRead = asyncHandler(
   async (req: ClientRequest, res: Response<ApiResponse>) => {
     const actorType = req.userType === 'parent' ? 'PARENT' : 'CLIENT';
@@ -78,6 +109,26 @@ export const markPortalNotificationsRead = asyncHandler(
       all: req.body?.all === true,
     });
     res.json({ success: true, data: { count } });
+  }
+);
+
+/**
+ * Batch unread по токенам из savedAccounts (без активной сессии).
+ * Body: { accounts: [{ id, token }] } — max 8.
+ */
+export const getSavedAccountsUnread = asyncHandler(
+  async (req: any, res: Response<ApiResponse>) => {
+    const raw = Array.isArray(req.body?.accounts) ? req.body.accounts : [];
+    const accounts = raw
+      .slice(0, 8)
+      .map((a: any) => ({
+        id: String(a?.id || ''),
+        token: String(a?.token || ''),
+      }))
+      .filter((a: { id: string; token: string }) => a.id && a.token);
+
+    const counts = await batchSavedAccountsUnread(accounts);
+    res.json({ success: true, data: { counts } });
   }
 );
 
@@ -106,7 +157,6 @@ export const publishSchoolOffer = asyncHandler(
       select: { id: true, tenantId: true },
     });
 
-    // Fan-out по tenant группам
     const byTenant = new Map<string, string[]>();
     for (const o of owners) {
       const list = byTenant.get(o.tenantId) || [];

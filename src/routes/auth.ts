@@ -52,6 +52,7 @@ import { authenticate, requireOwnerOrAdmin, requireOwner } from '../middleware/a
 import { loginRateLimiter } from '../middleware/loginRateLimit';
 import { ensureCsrfCookie } from '../middleware/authCookies';
 import { registerMarketer } from '../controllers/marketerController';
+import { getSavedAccountsUnread } from '../controllers/inboxNotificationController';
 
 const router = Router();
 
@@ -75,6 +76,9 @@ router.post(
   validatePromoCodeAdminLogin,
   promoCodeAdminLogin
 );
+
+/** Batch unread по токенам savedAccounts (каждый JWT сам за себя). */
+router.post('/saved-accounts/unread', loginRateLimiter, getSavedAccountsUnread);
 
 // Сброс пароля по коду (User / Client / Parent)
 router.post('/password-reset/request', validatePasswordResetRequest, requestPasswordResetCode);

@@ -1031,6 +1031,45 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
           }
         });
 
+        // Смена замены при уже отмеченных PRESENT — перенести ЗП на актуального тренера
+        const substituteChanged =
+          updateData.substituteTrainerId !== undefined &&
+          (training.substituteTrainerId || null) !== (updatedTraining.substituteTrainerId || null);
+        if (substituteChanged && req.tenant?.id) {
+          const presentRows = await prisma.attendance.findMany({
+            where: {
+              trainingId: updatedTraining.id,
+              tenantId: req.tenant.id,
+              status: 'PRESENT',
+            },
+            select: { id: true, clientId: true, shouldCharge: true, status: true },
+          });
+          const { reverseForAttendance, accrueForAttendance } = await import(
+            '../services/trainerSalaryService'
+          );
+          const trainerId =
+            updatedTraining.substituteTrainerId || updatedTraining.trainerId;
+          for (const row of presentRows) {
+            await reverseForAttendance({
+              tenantId: req.tenant.id,
+              attendanceId: row.id,
+            }).catch((err) =>
+              console.error('Salary reverse on substitute change failed:', err)
+            );
+            await accrueForAttendance({
+              tenantId: req.tenant.id,
+              trainerId,
+              trainingId: updatedTraining.id,
+              attendanceId: row.id,
+              clientId: row.clientId,
+              trainingTitle: updatedTraining.title,
+              trainingStart: updatedTraining.startTime,
+            }).catch((err) =>
+              console.error('Salary reaccrue on substitute change failed:', err)
+            );
+          }
+        }
+
         if (timeChanged && req.tenant?.id) {
           const whenLabel = format(updatedTraining.startTime, 'd MMMM, HH:mm', { locale: ru });
           void notifyTrainingScheduleChange({

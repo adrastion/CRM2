@@ -37,7 +37,13 @@ import {
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
 
-export type DevNoteStatus = 'IDEA' | 'IN_PROGRESS' | 'DONE';
+export type DevNoteStatus =
+  | 'IDEA'
+  | 'IN_PROGRESS'
+  | 'AWAITING_DESIGN'
+  | 'NEEDS_DISCUSSION'
+  | 'SHELVED'
+  | 'DONE';
 
 interface DevNoteAttachment {
   id: string;
@@ -61,12 +67,18 @@ interface DevNote {
 const STATUS_LABELS: Record<DevNoteStatus, string> = {
   IDEA: 'Идея',
   IN_PROGRESS: 'В работе',
+  AWAITING_DESIGN: 'Ожидает дизайна',
+  NEEDS_DISCUSSION: 'Требует обсуждения/ответа внутри',
+  SHELVED: 'На долгую полку',
   DONE: 'Готово',
 };
 
-const STATUS_COLORS: Record<DevNoteStatus, 'default' | 'info' | 'warning' | 'success'> = {
+const STATUS_COLORS: Record<DevNoteStatus, 'default' | 'info' | 'warning' | 'success' | 'secondary' | 'error'> = {
   IDEA: 'info',
   IN_PROGRESS: 'warning',
+  AWAITING_DESIGN: 'secondary',
+  NEEDS_DISCUSSION: 'error',
+  SHELVED: 'default',
   DONE: 'success',
 };
 
@@ -236,9 +248,11 @@ const SuperAdminDevNotesTab: React.FC = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <MenuItem value="ALL">Все</MenuItem>
-              <MenuItem value="IDEA">Идея</MenuItem>
-              <MenuItem value="IN_PROGRESS">В работе</MenuItem>
-              <MenuItem value="DONE">Готово</MenuItem>
+              {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
+                <MenuItem key={key} value={key}>
+                  {STATUS_LABELS[key]}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
@@ -325,9 +339,11 @@ const SuperAdminDevNotesTab: React.FC = () => {
                               />
                             )}
                           >
-                            <MenuItem value="IDEA">Идея</MenuItem>
-                            <MenuItem value="IN_PROGRESS">В работе</MenuItem>
-                            <MenuItem value="DONE">Готово</MenuItem>
+                            {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
+                              <MenuItem key={key} value={key}>
+                                {STATUS_LABELS[key]}
+                              </MenuItem>
+                            ))}
                           </Select>
                         </FormControl>
                       </TableCell>
@@ -389,9 +405,11 @@ const SuperAdminDevNotesTab: React.FC = () => {
               value={status}
               onChange={(e) => setStatus(e.target.value as DevNoteStatus)}
             >
-              <MenuItem value="IDEA">Идея</MenuItem>
-              <MenuItem value="IN_PROGRESS">В работе</MenuItem>
-              <MenuItem value="DONE">Готово</MenuItem>
+              {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
+                <MenuItem key={key} value={key}>
+                  {STATUS_LABELS[key]}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
 

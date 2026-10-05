@@ -536,11 +536,13 @@ export async function changeClientMembershipPack(params: {
     orderBy: { createdAt: 'desc' },
   });
   if (pending && newPrice >= 0) {
+    const oldAmt = Number(pending.amount);
     await prisma.payment.update({
       where: { id: pending.id },
       data: {
         originalAmount: pending.originalAmount ?? pending.amount,
         amount: newPrice,
+        membershipId: params.membershipId,
         notes: [
           pending.notes,
           `Смена тарифа → ${renewed.membership?.name || params.membershipId}`,
@@ -550,6 +552,14 @@ export async function changeClientMembershipPack(params: {
           .join(' / '),
       },
     });
+    // Баланс = остаток: изменение начисления сразу двигает баланс
+    const delta = newPrice - oldAmt;
+    if (Math.abs(delta) > 0.005) {
+      await prisma.client.update({
+        where: { id: params.clientId },
+        data: { balance: { decrement: delta } },
+      });
+    }
   }
 
   if (!params.skipFinanceRecord && newPrice > 0) {
@@ -570,6 +580,157 @@ export async function changeClientMembershipPack(params: {
     newPrice,
     updatedPaymentId: pending?.id || null,
   };
+}
+
+const PORTAL_PACK_CHANGE_TAG = '[portal-pack-change]';
+
+/**
+ * Заявка на смену тарифа из ЛК: пакет НЕ активируется до оплаты.
+ * Создаёт/обновляет pending-счёт; выдача пакета — в applyPaidMembershipCatalogIfNeeded.
+ */
+export async function schedulePortalMembershipChange(params: {
+  tenantId: string;
+  clientId: string;
+  membershipId: string;
+}) {
+  const membership = await prisma.membership.findFirst({
+    where: { id: params.membershipId, tenantId: params.tenantId },
+  });
+  if (!membership) {
+    throw Object.assign(new Error('Membership not found'), { statusCode: 404 });
+  }
+  if (membership.category === 'GROUP') {
+    throw Object.assign(new Error('Групповой абонемент нельзя выдать клиенту лично'), {
+      statusCode: 400,
+    });
+  }
+  if (await clientHasGroupBilling(params.clientId, params.tenantId)) {
+    throw Object.assign(
+      new Error('Клиент в группе с ежемесячной оплатой — клиентский абонемент недоступен'),
+      { statusCode: 400 }
+    );
+  }
+
+  const newPrice = Number(membership.price || 0);
+
+  // Бесплатный тариф — активируем сразу без счёта
+  if (newPrice <= 0) {
+    const result = await changeClientMembershipPack({
+      ...params,
+      skipFinanceRecord: true,
+    });
+    return {
+      activated: true as const,
+      membership: result.membership,
+      previousDebt: result.previousDebt,
+      newPrice: 0,
+      pendingPaymentId: result.updatedPaymentId,
+    };
+  }
+
+  const pending = await prisma.payment.findFirst({
+    where: {
+      tenantId: params.tenantId,
+      clientId: params.clientId,
+      status: { in: ['pending', 'overdue'] },
+      OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const noteLine = `${PORTAL_PACK_CHANGE_TAG} Заявка на тариф: ${membership.name}`;
+
+  if (pending) {
+    const oldAmt = Number(pending.amount);
+    const updated = await prisma.payment.update({
+      where: { id: pending.id },
+      data: {
+        originalAmount: pending.originalAmount ?? pending.amount,
+        amount: newPrice,
+        membershipId: params.membershipId,
+        type: 'membership',
+        notes: [pending.notes?.replace(/\[portal-pack-change\][^\n]*/g, '').trim(), noteLine]
+          .filter(Boolean)
+          .join(' / '),
+      },
+    });
+    const delta = newPrice - oldAmt;
+    if (Math.abs(delta) > 0.005) {
+      await prisma.client.update({
+        where: { id: params.clientId },
+        data: { balance: { decrement: delta } },
+      });
+    }
+    return {
+      activated: false as const,
+      membership: null,
+      previousDebt: 0,
+      newPrice,
+      pendingPaymentId: updated.id,
+      membershipName: membership.name,
+    };
+  }
+
+  const created = await prisma.payment.create({
+    data: {
+      tenantId: params.tenantId,
+      clientId: params.clientId,
+      amount: newPrice,
+      originalAmount: newPrice,
+      type: 'membership',
+      status: 'pending',
+      membershipId: params.membershipId,
+      isMonthlyPayment: true,
+      notes: noteLine,
+      dueDate: new Date(),
+    },
+  });
+
+  await FinanceService.recordMembershipCharge({
+    tenantId: params.tenantId,
+    clientId: params.clientId,
+    paymentId: created.id,
+    amount: newPrice,
+    title: `Заявка на тариф: ${membership.name}`,
+    occurredAt: new Date(),
+  }).catch((e) => console.error('portal pack change charge failed', e));
+
+  return {
+    activated: false as const,
+    membership: null,
+    previousDebt: 0,
+    newPrice,
+    pendingPaymentId: created.id,
+    membershipName: membership.name,
+  };
+}
+
+/**
+ * После оплаты счёта с [portal-pack-change] — выдать каталожный пакет (без повторного finance).
+ */
+export async function applyPaidMembershipCatalogIfNeeded(params: {
+  tenantId: string;
+  clientId: string;
+  membershipCatalogId: string;
+  paymentId: string;
+}) {
+  const payment = await prisma.payment.findFirst({
+    where: { id: params.paymentId, tenantId: params.tenantId },
+    select: { notes: true, status: true },
+  });
+  if (!payment || payment.status !== 'paid') return null;
+  if (!(payment.notes || '').includes(PORTAL_PACK_CHANGE_TAG)) return null;
+
+  const active = await findActiveClientMembership(params.clientId, params.tenantId);
+  if (active?.membershipId === params.membershipCatalogId) {
+    return active;
+  }
+
+  return issueClientMembership({
+    tenantId: params.tenantId,
+    clientId: params.clientId,
+    membershipId: params.membershipCatalogId,
+  });
 }
 
 export async function cleanupExpiredMembershipMonthlyGroups(): Promise<number> {

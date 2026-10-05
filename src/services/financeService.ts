@@ -431,6 +431,30 @@ export class FinanceService {
         paymentId = payment.id;
       }
 
+      // Ручное начисление: pending-счёт + дебет кошелька до создания op (paymentId на операции)
+      if (isClientCharge && !paymentId) {
+        const chargePay = await tx.payment.create({
+          data: {
+            tenantId,
+            clientId: input.clientId!,
+            amount,
+            originalAmount: amount,
+            type: 'membership',
+            status: 'pending',
+            isMonthlyPayment: true,
+            branchId: input.branchId || null,
+            groupId: input.groupId || null,
+            notes: input.notes?.trim() || `Начисление: ${title}`,
+            dueDate: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+          },
+        });
+        paymentId = chargePay.id;
+        await tx.client.update({
+          where: { id: input.clientId! },
+          data: { balance: { decrement: amount } },
+        });
+      }
+
       const op = await tx.financeOperation.create({
         data: {
           tenantId,
@@ -508,21 +532,6 @@ export class FinanceService {
         }
       }
 
-      if (isClientCharge) {
-        await tx.payment.create({
-          data: {
-            tenantId,
-            clientId: input.clientId!,
-            amount,
-            type: 'membership',
-            status: 'pending',
-            isMonthlyPayment: true,
-            notes: input.notes?.trim() || `Начисление: ${title}`,
-            dueDate: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-          },
-        });
-      }
-
       return op;
     });
   }
@@ -539,14 +548,11 @@ export class FinanceService {
     tenantId: string;
     paidAt?: Date | null;
     notes?: string | null;
+    membershipId?: string | null;
   }, clientName?: string) {
     if (payment.status !== 'paid') return null;
 
-    const existing = await prisma.financeOperation.findUnique({
-      where: { paymentId: payment.id },
-    });
-    if (existing) return existing;
-
+    const amount = Number(payment.amount);
     const isMembership = payment.type === 'membership' || payment.type === 'monthly' || payment.type === 'monthly_payment';
     const typeCode = isMembership ? 'membership' : 'client_payment';
     const title = clientName
@@ -555,27 +561,62 @@ export class FinanceService {
         ? 'Оплата абонемента'
         : 'Принятие оплаты от клиента';
 
-    const amount = Number(payment.amount);
-    const op = await this.createOperation(payment.tenantId, {
-      direction: 'income',
-      typeCode,
-      title,
-      amount,
-      occurredAt: payment.paidAt || new Date(),
-      notes: payment.notes,
-      clientId: payment.clientId,
-      branchId: payment.branchId,
-      groupId: payment.groupId,
-      paymentId: payment.id,
+    // create + balance increment атомарно; при гонке unique на paymentId — без повторного increment
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.financeOperation.findUnique({
+        where: { paymentId: payment.id },
+      });
+      if (existing) return { op: existing, created: false };
+
+      try {
+        const op = await tx.financeOperation.create({
+          data: {
+            tenantId: payment.tenantId,
+            direction: 'income',
+            typeCode,
+            title,
+            amount,
+            occurredAt: payment.paidAt || new Date(),
+            notes: payment.notes || null,
+            clientId: payment.clientId,
+            branchId: payment.branchId || null,
+            groupId: payment.groupId || null,
+            paymentId: payment.id,
+          },
+        });
+        await tx.client.update({
+          where: { id: payment.clientId },
+          data: { balance: { increment: amount } },
+        });
+        return { op, created: true };
+      } catch (e: any) {
+        // unique violation на paymentId — параллельный вызов уже создал op
+        if (e?.code === 'P2002') {
+          const again = await tx.financeOperation.findUnique({
+            where: { paymentId: payment.id },
+          });
+          if (again) return { op: again, created: false };
+        }
+        throw e;
+      }
     });
 
-    // Пополнение кошелька клиента (идемпотентно через наличие income-op выше)
-    await prisma.client.update({
-      where: { id: payment.clientId },
-      data: { balance: { increment: amount } },
-    }).catch(() => undefined);
+    // Отложенная смена тарифа из ЛК (пакет активируется только после оплаты)
+    if (result.created && payment.membershipId) {
+      try {
+        const { applyPaidMembershipCatalogIfNeeded } = await import('./clientMembershipService');
+        await applyPaidMembershipCatalogIfNeeded({
+          tenantId: payment.tenantId,
+          clientId: payment.clientId,
+          membershipCatalogId: payment.membershipId,
+          paymentId: payment.id,
+        });
+      } catch (e) {
+        console.error('applyPaidMembershipCatalogIfNeeded failed', e);
+      }
+    }
 
-    return op;
+    return result.op;
   }
 
   /**
@@ -590,6 +631,7 @@ export class FinanceService {
       amount: number;
       notes?: string | null;
       createdById?: string | null;
+      periodKey?: string | null;
     }
   ) {
     const requested = Math.abs(Number(input.amount));
@@ -604,6 +646,8 @@ export class FinanceService {
       branchId: string | null;
       groupId: string | null;
       membershipId: string | null;
+      periodKey: string | null;
+      notes: string | null;
     } | null = null;
 
     if (input.paymentId) {
@@ -622,7 +666,22 @@ export class FinanceService {
     });
     if (!client) throw badRequest('Клиент не найден', 'clientId');
 
-    const paidPayments = await prisma.payment.findMany({
+    const packFromInput =
+      typeof input.periodKey === 'string' && input.periodKey.startsWith('pack:')
+        ? input.periodKey.slice('pack:'.length)
+        : null;
+    const packFromRef =
+      ref?.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/)?.[1] || null;
+    const packId = packFromInput || packFromRef;
+
+    const periodKeyFilter =
+      typeof input.periodKey === 'string' && /^\d{4}-\d{2}$/.test(input.periodKey)
+        ? input.periodKey
+        : ref?.periodKey && /^\d{4}-\d{2}$/.test(ref.periodKey)
+          ? ref.periodKey
+          : null;
+
+    let paidPayments = await prisma.payment.findMany({
       where: {
         tenantId,
         clientId,
@@ -633,8 +692,13 @@ export class FinanceService {
           { type: 'monthly_payment' },
           { isMonthlyPayment: true },
         ],
+        ...(periodKeyFilter ? { periodKey: periodKeyFilter } : {}),
       },
     });
+    if (packId) {
+      const marker = `clientMembershipId=${packId}`;
+      paidPayments = paidPayments.filter((p) => (p.notes || '').includes(marker));
+    }
     const currentPaid = paidPayments.reduce((s, p) => s + Number(p.amount), 0);
     if (currentPaid <= 0) {
       throw badRequest('Нечего уменьшать: выплачено уже 0');
@@ -642,6 +706,7 @@ export class FinanceService {
 
     const reduceBy = Math.min(requested, currentPaid);
     const clientName = `${client.lastName} ${client.firstName}`.trim();
+    const packNote = packId ? `clientMembershipId=${packId}` : null;
 
     const correction = await prisma.payment.create({
       data: {
@@ -655,9 +720,14 @@ export class FinanceService {
         branchId: ref?.branchId ?? null,
         groupId: ref?.groupId ?? null,
         membershipId: ref?.membershipId ?? null,
-        notes:
+        periodKey: periodKeyFilter || (ref?.periodKey && /^\d{4}-\d{2}$/.test(ref.periodKey) ? ref.periodKey : null),
+        notes: [
+          packNote,
           input.notes?.trim() ||
-          `Корректировка выплачено −${reduceBy.toLocaleString('ru-RU')} ₽`,
+            `Корректировка выплачено −${reduceBy.toLocaleString('ru-RU')} ₽`,
+        ]
+          .filter(Boolean)
+          .join(' / '),
       },
       include: { client: true },
     });
@@ -844,6 +914,7 @@ export class FinanceService {
     if (!op) throw notFound('Операция не найдена');
 
     const amount = Number(op.amount);
+    let reverseSalaryPaymentId: string | null = null;
 
     await prisma.$transaction(async (tx) => {
       if (op.typeCode === 'salary' && op.direction === 'expense' && op.trainerId) {
@@ -952,6 +1023,24 @@ export class FinanceService {
         }
       }
 
+      // Ручное начисление (other/purchase/…): откат дебета + отмена pending
+      const manualChargeTypes = new Set(['other', 'purchase', 'advertising', 'rent']);
+      if (
+        op.direction === 'expense' &&
+        op.clientId &&
+        manualChargeTypes.has(op.typeCode) &&
+        op.paymentId
+      ) {
+        await tx.client.update({
+          where: { id: op.clientId },
+          data: { balance: { increment: amount } },
+        });
+        await tx.payment.update({
+          where: { id: op.paymentId },
+          data: { status: 'cancelled', paidAt: null },
+        }).catch(() => undefined);
+      }
+
       if (
         (op.typeCode === 'membership' || op.typeCode === 'client_payment') &&
         op.direction === 'income' &&
@@ -962,6 +1051,7 @@ export class FinanceService {
           data: { balance: { decrement: amount } },
         });
         if (op.paymentId) {
+          reverseSalaryPaymentId = op.paymentId;
           await tx.payment.update({
             where: { id: op.paymentId },
             data: { status: 'cancelled', paidAt: null },
@@ -1076,6 +1166,18 @@ export class FinanceService {
       await tx.financeOperation.delete({ where: { id: op.id } });
     });
 
+    if (reverseSalaryPaymentId) {
+      try {
+        const { reverseForPayment } = await import('./trainerSalaryService');
+        await reverseForPayment({
+          tenantId,
+          paymentId: reverseSalaryPaymentId,
+        });
+      } catch (e) {
+        console.error('reverseForPayment on income cancel failed', e);
+      }
+    }
+
     return { deleted: true, id: operationId };
   }
 
@@ -1165,6 +1267,7 @@ export class FinanceService {
       notes?: string | null;
     }): string => {
       // Выдача клиентского абонемента — отдельная строка на каждый пакет
+      if (p.periodKey && p.periodKey.startsWith('pack:')) return p.periodKey;
       const packMatch = p.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/);
       if (packMatch) return `pack:${packMatch[1]}`;
       if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;
@@ -1272,7 +1375,6 @@ export class FinanceService {
       const clientName =
         `${client.lastName} ${client.firstName}${client.middleName ? ` ${client.middleName}` : ''}`.trim();
       const groups = client.groupMemberships.map((gm) => gm.group);
-      const clientBalance = Number(client.balance);
       const packMeta = new Map(
         client.clientMemberships.map((cm) => [
           cm.id,
@@ -1291,17 +1393,18 @@ export class FinanceService {
         byPeriod.get(key)!.push(p);
       }
 
+      const clientRows: PeriodAgg[] = [];
+
       // Клиент без платежей — одна строка текущего месяца (ожидаемое начисление с группы)
       if (byPeriod.size === 0) {
         const now = new Date();
         const periodKey = calendarMonthOf(now);
-        if (filters.periodKey && filters.periodKey !== periodKey) continue;
         const membershipPrice = applyPersonalDiscount(
           Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0),
           client.personalDiscountType,
           client.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
         ).amount;
-        rows.push({
+        clientRows.push({
           clientId: client.id,
           clientName,
           periodKey,
@@ -1309,97 +1412,157 @@ export class FinanceService {
           membershipPrice,
           paidAmount: 0,
           debt: membershipPrice,
-          remaining: clientBalance,
+          remaining: 0,
           status: membershipPrice > 0 ? 'unpaid' : 'paid',
           latestPaymentId: null,
           groups,
           interactive: true,
           sortAt: now.getTime(),
         });
-        continue;
+      } else {
+        const periodEntries = [...byPeriod.entries()].map(([periodKey, payments]) => {
+          const sortAt = Math.max(...payments.map((p) => p.createdAt.getTime()));
+          return { periodKey, payments, sortAt };
+        });
+        periodEntries.sort((a, b) => b.sortAt - a.sortAt);
+        const latestPeriodKey = periodEntries[0]?.periodKey;
+
+        for (const { periodKey, payments, sortAt } of periodEntries) {
+          // Пополнение кошелька ([allocation:credit]) гасит счета отдельно —
+          // сам credit-платёж не должен удваивать paid/membershipPrice в сводке.
+          const isWalletCredit = (p: { notes?: string | null }) =>
+            (p.notes || '').includes('[allocation:credit]');
+          const pending = payments.filter(
+            (p) =>
+              !p.isAccrualAdjustment &&
+              !isWalletCredit(p) &&
+              (p.status === 'pending' || p.status === 'overdue')
+          );
+          const paid = payments.filter(
+            (p) => !p.isAccrualAdjustment && !isWalletCredit(p) && p.status === 'paid'
+          );
+          const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
+          const paidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
+          const latest =
+            payments.find((p) => !p.isAccrualAdjustment) || payments[0] || null;
+
+          // Начислено не должно меняться от оплат:
+          // • есть originalAmount на счёте → берём его (устойчиво даже если paid-слайс
+          //   когда-то уехал без clientMembershipId);
+          // • иначе классика due + paidTowardCharge (взаимно компенсируются).
+          // Excess / top-up с [payment-excess] в начисление не входят.
+          const isExcessPay = (p: { notes?: string | null }) =>
+            (p.notes || '').includes('[payment-excess]');
+          const paidTowardCharge = paid
+            .filter((p) => Number(p.amount) > 0 && !isExcessPay(p))
+            .reduce((s, p) => s + Number(p.amount), 0);
+
+          let membershipPrice = 0;
+          if (pending.length > 0) {
+            const allHaveOriginal = pending.every(
+              (p) => p.originalAmount != null && Number.isFinite(Number(p.originalAmount))
+            );
+            if (allHaveOriginal) {
+              membershipPrice =
+                Math.round(
+                  pending.reduce((s, p) => s + Number(p.originalAmount), 0) * 100
+                ) / 100;
+            } else {
+              membershipPrice = Math.round((dueAmount + paidTowardCharge) * 100) / 100;
+              // Дописать originalAmount на единственный счёт — дальше Accrued не зависит от периода оплат
+              if (pending.length === 1 && membershipPrice > 0) {
+                const only = pending[0];
+                if (only.originalAmount == null) {
+                  await prisma.payment.update({
+                    where: { id: only.id },
+                    data: { originalAmount: membershipPrice },
+                  });
+                }
+              }
+            }
+          } else {
+            membershipPrice = Math.round(paidTowardCharge * 100) / 100;
+          }
+
+          if (membershipPrice <= 0 && pending.length === 0 && paidTowardCharge <= 0) {
+            membershipPrice = applyPersonalDiscount(
+              Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0),
+              client.personalDiscountType,
+              client.personalDiscountValue != null
+                ? Number(client.personalDiscountValue)
+                : null
+            ).amount;
+          }
+
+          let status: 'paid' | 'unpaid' | 'partial' = 'unpaid';
+          if (dueAmount <= 0 && paidAmount > 0) status = 'paid';
+          else if (dueAmount > 0 && paidAmount > 0) status = 'partial';
+          else if (dueAmount <= 0 && paidAmount <= 0) status = 'paid';
+
+          const hasUnpaid = dueAmount > 0;
+          const interactive = hasUnpaid || periodKey === latestPeriodKey;
+
+          // Для оплаты всегда предпочитаем незакрытый счёт, иначе следующий receive
+          // попадает в paid-слайс и создаёт orphan без clientMembershipId.
+          const latestPaymentId =
+            pending[0]?.id ||
+            paid.find((p) => Number(p.amount) > 0)?.id ||
+            latest?.id ||
+            null;
+
+          let periodLabel = formatPeriodLabel(periodKey);
+          if (periodKey.startsWith('pack:')) {
+            const packId = periodKey.slice('pack:'.length);
+            const meta = packMeta.get(packId);
+            if (meta?.startDate) {
+              periodLabel = meta.endDate
+                ? `${fmtDate(meta.startDate)} — ${fmtDate(meta.endDate)}`
+                : `${fmtDate(meta.startDate)} — …`;
+            } else {
+              const created = payments[0]?.createdAt || new Date();
+              periodLabel = `${fmtDate(created)} — …`;
+            }
+          }
+
+          clientRows.push({
+            clientId: client.id,
+            clientName,
+            periodKey,
+            periodLabel,
+            membershipPrice,
+            paidAmount,
+            debt: dueAmount,
+            remaining: 0,
+            status,
+            latestPaymentId,
+            groups,
+            interactive,
+            sortAt,
+          });
+        }
       }
 
-      const periodEntries = [...byPeriod.entries()].map(([periodKey, payments]) => {
-        const sortAt = Math.max(...payments.map((p) => p.createdAt.getTime()));
-        return { periodKey, payments, sortAt };
-      });
-      periodEntries.sort((a, b) => b.sortAt - a.sortAt);
-      const latestPeriodKey = periodEntries[0]?.periodKey;
+      // Остаток = пред. остаток клиента − начислено + выплачено (от старых периодов к новым)
+      clientRows.sort((a, b) => a.sortAt - b.sortAt || a.periodKey.localeCompare(b.periodKey));
+      let running = 0;
+      for (const row of clientRows) {
+        running = running - Number(row.membershipPrice) + Number(row.paidAmount);
+        row.remaining = Math.round(running * 100) / 100;
+      }
 
-      for (const { periodKey, payments, sortAt } of periodEntries) {
-        if (filters.periodKey) {
-          if (periodKey.startsWith('pack:')) {
-            const month = calendarMonthOf(payments[0]?.createdAt || new Date());
-            if (month !== filters.periodKey) continue;
-          } else if (periodKey !== filters.periodKey) {
-            continue;
-          }
-        }
-
-        const pending = payments.filter(
-          (p) =>
-            !p.isAccrualAdjustment &&
-            (p.status === 'pending' || p.status === 'overdue')
-        );
-        const paid = payments.filter((p) => !p.isAccrualAdjustment && p.status === 'paid');
-        const chargePayments = payments.filter(
-          (p) =>
-            !p.isAccrualAdjustment &&
-            p.status !== 'cancelled' &&
-            p.status !== 'adjustment' &&
-            Number(p.amount) > 0
-        );
-        const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
-        const paidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
-        const latest =
-          payments.find((p) => !p.isAccrualAdjustment) || payments[0] || null;
-        const membershipPrice =
-          chargePayments.length > 0
-            ? chargePayments.reduce((s, p) => s + Number(p.amount), 0)
-            : applyPersonalDiscount(
-                Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0),
-                client.personalDiscountType,
-                client.personalDiscountValue != null ? Number(client.personalDiscountValue) : null
-              ).amount;
-
-        let status: 'paid' | 'unpaid' | 'partial' = 'unpaid';
-        if (dueAmount <= 0 && paidAmount > 0) status = 'paid';
-        else if (dueAmount > 0 && paidAmount > 0) status = 'partial';
-        else if (dueAmount <= 0 && paidAmount <= 0) status = 'paid';
-
-        const hasUnpaid = dueAmount > 0;
-        const interactive = hasUnpaid || periodKey === latestPeriodKey;
-
-        let periodLabel = formatPeriodLabel(periodKey);
-        if (periodKey.startsWith('pack:')) {
-          const packId = periodKey.slice('pack:'.length);
-          const meta = packMeta.get(packId);
-          if (meta?.startDate) {
-            periodLabel = meta.endDate
-              ? `${fmtDate(meta.startDate)} — ${fmtDate(meta.endDate)}`
-              : `${fmtDate(meta.startDate)} — …`;
-          } else {
-            const created = payments[0]?.createdAt || new Date();
-            periodLabel = `${fmtDate(created)} — …`;
-          }
-        }
-
-        rows.push({
-          clientId: client.id,
-          clientName,
-          periodKey,
-          periodLabel,
-          membershipPrice,
-          paidAmount,
-          debt: dueAmount,
-          remaining: clientBalance,
-          status,
-          latestPaymentId: latest?.id || null,
-          groups,
-          interactive,
-          sortAt,
+      // Итоговый остаток = баланс клиента
+      const latestRemaining = clientRows.length
+        ? clientRows[clientRows.length - 1].remaining
+        : 0;
+      const currentBalance = Number(client.balance);
+      if (Math.abs(latestRemaining - currentBalance) > 0.005) {
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { balance: latestRemaining },
         });
       }
+
+      rows.push(...clientRows);
     }
 
     // Новые периоды / выдачи сверху
@@ -1411,6 +1574,13 @@ export class FinanceService {
 
     return rows
       .filter((r) => {
+        if (filters.periodKey) {
+          if (r.periodKey.startsWith('pack:')) {
+            if (calendarMonthOf(new Date(r.sortAt)) !== filters.periodKey) return false;
+          } else if (r.periodKey !== filters.periodKey) {
+            return false;
+          }
+        }
         if (filters.amountFrom != null && r.membershipPrice < filters.amountFrom) return false;
         if (filters.amountTo != null && r.membershipPrice > filters.amountTo) return false;
         return true;
@@ -1453,6 +1623,7 @@ export class FinanceService {
       createdAt: Date;
       notes?: string | null;
     }): string => {
+      if (p.periodKey && p.periodKey.startsWith('pack:')) return p.periodKey;
       const packMatch = p.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/);
       if (packMatch) return `pack:${packMatch[1]}`;
       if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;

@@ -380,6 +380,110 @@ export const getReceiptFile = asyncHandler(
   }
 );
 
+/** Применить сумму чека к одному awaiting/pending счёту (полная или частичная оплата). */
+async function applyClaimedToPayment(params: {
+  tenantId: string;
+  payment: {
+    id: string;
+    amount: unknown;
+    type: string;
+    isMonthlyPayment: boolean;
+    branchId?: string | null;
+    groupId?: string | null;
+    membershipId?: string | null;
+    periodKey?: string | null;
+    dueDate?: Date | null;
+    originalAmount?: unknown;
+    notes?: string | null;
+    clientId: string;
+  };
+  clientName: string;
+  applyAmount: number;
+  reviewedByUserId?: string | null;
+}): Promise<{ paidId: string; applied: number }> {
+  const due = Number(params.payment.amount);
+  const apply = Math.min(params.applyAmount, due);
+  if (!(apply > 0)) return { paidId: params.payment.id, applied: 0 };
+
+  const paidAt = new Date();
+
+  if (apply >= due) {
+    const updated = await prisma.payment.update({
+      where: { id: params.payment.id },
+      data: {
+        status: 'paid',
+        paidAt,
+        paymentMethod: 'transfer',
+        amount: due,
+      },
+    });
+    await FinanceService.recordPaymentIncome(
+      {
+        ...updated,
+        amount: due,
+      },
+      params.clientName
+    );
+    await accrueForPayment({
+      tenantId: params.tenantId,
+      paymentId: updated.id,
+      clientId: updated.clientId,
+      amount: due,
+      groupId: updated.groupId,
+      isMonthlyPayment: Boolean(updated.isMonthlyPayment),
+      paymentType: updated.type || undefined,
+      paidAt: updated.paidAt,
+      periodKey: updated.periodKey,
+    }).catch((err) => console.error('Trainer salary accrue on receipt confirm failed:', err));
+    return { paidId: updated.id, applied: due };
+  }
+
+  // Частичная: уменьшаем долг, создаём paid на apply
+  await prisma.payment.update({
+    where: { id: params.payment.id },
+    data: {
+      status: 'pending',
+      amount: due - apply,
+      paidAt: null,
+    },
+  });
+
+  const paidSlice = await prisma.payment.create({
+    data: {
+      tenantId: params.tenantId,
+      clientId: params.payment.clientId,
+      amount: apply,
+      type: params.payment.type,
+      status: 'paid',
+      paidAt,
+      paymentMethod: 'transfer',
+      isMonthlyPayment: params.payment.isMonthlyPayment,
+      branchId: params.payment.branchId,
+      groupId: params.payment.groupId,
+      membershipId: params.payment.membershipId,
+      periodKey: params.payment.periodKey,
+      dueDate: params.payment.dueDate,
+      originalAmount: params.payment.originalAmount as any,
+      notes: params.payment.notes,
+    },
+  });
+
+  await FinanceService.recordPaymentIncome(paidSlice, params.clientName);
+  await accrueForPayment({
+    tenantId: params.tenantId,
+    paymentId: paidSlice.id,
+    clientId: paidSlice.clientId,
+    amount: apply,
+    groupId: paidSlice.groupId,
+    isMonthlyPayment: Boolean(paidSlice.isMonthlyPayment),
+    paymentType: paidSlice.type || undefined,
+    paidAt: paidSlice.paidAt,
+    periodKey: paidSlice.periodKey,
+  }).catch((err) => console.error('Trainer salary accrue on receipt partial failed:', err));
+
+  return { paidId: paidSlice.id, applied: apply };
+}
+
 export const confirmPaymentReceipt = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const tenantId = requireTenant(req);
@@ -396,15 +500,10 @@ export const confirmPaymentReceipt = asyncHandler(
     if (!payment.receipt) throw badRequest('Чек отсутствует');
 
     const clientName = `${payment.client.lastName} ${payment.client.firstName}`.trim();
-    const updated = await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        status: 'paid',
-        paidAt: new Date(),
-        paymentMethod: 'transfer',
-      },
-      include: { client: true },
-    });
+    const claimed = Number(payment.receipt.claimedAmount);
+    if (!Number.isFinite(claimed) || claimed <= 0) {
+      throw badRequest('В чеке некорректная сумма');
+    }
 
     await prisma.paymentReceipt.update({
       where: { id: payment.receipt.id },
@@ -414,32 +513,83 @@ export const confirmPaymentReceipt = asyncHandler(
       },
     });
 
-    await FinanceService.recordPaymentIncome(updated, clientName);
-    await accrueForPayment({
+    // Распределяем claimed по долгам клиента: сначала этот платёж, затем остальные pending
+    let remaining = claimed;
+    const paidIds: string[] = [];
+    const first = await applyClaimedToPayment({
       tenantId,
-      paymentId: updated.id,
-      clientId: updated.clientId,
-      amount: Number(updated.amount),
-      groupId: updated.groupId,
-      isMonthlyPayment: Boolean(updated.isMonthlyPayment),
-      paymentType: updated.type || undefined,
-      paidAt: updated.paidAt,
-    }).catch((err) => console.error('Trainer salary accrue on receipt confirm failed:', err));
+      payment,
+      clientName,
+      applyAmount: remaining,
+      reviewedByUserId: req.user?.id,
+    });
+    remaining -= first.applied;
+    if (first.applied > 0) paidIds.push(first.paidId);
 
+    if (remaining > 0.005) {
+      const otherDebts = await prisma.payment.findMany({
+        where: {
+          tenantId,
+          clientId: payment.clientId,
+          id: { not: payment.id },
+          status: { in: ['pending', 'overdue', 'awaiting_confirmation'] },
+          amount: { gt: 0 },
+        },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      });
+      for (const debt of otherDebts) {
+        if (remaining <= 0.005) break;
+        // awaiting другого счёта без отдельного confirm — только pending/overdue
+        if (debt.status === 'awaiting_confirmation') continue;
+        const step = await applyClaimedToPayment({
+          tenantId,
+          payment: debt,
+          clientName,
+          applyAmount: remaining,
+        });
+        remaining -= step.applied;
+        if (step.applied > 0) paidIds.push(step.paidId);
+      }
+    }
+
+    // Если claimed меньше долга — исходный счёт мог остаться pending (частичная оплата)
+    // Если после полного apply исходный всё ещё awaiting — сбросить в pending (не должно случиться)
+    const still = await prisma.payment.findUnique({ where: { id: payment.id } });
+    if (still?.status === 'awaiting_confirmation') {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'pending' },
+      });
+    }
+
+    const appliedTotal = claimed - Math.max(0, remaining);
     void notifyClientPaymentReceived({
       tenantId,
       clientId: payment.clientId,
-      amount: Number(payment.amount),
+      amount: appliedTotal,
     }).catch((err) => console.error('[Notifications] payment:', err));
     void notifyFinanceChange({
       tenantId,
       title: 'Оплата подтверждена по чеку',
-      body: Number(payment.amount).toLocaleString('ru-RU'),
+      body: appliedTotal.toLocaleString('ru-RU'),
       branchId: payment.branchId,
       excludeUserId: req.user?.id,
     }).catch((err) => console.error('[Notifications] finance:', err));
 
-    res.json({ success: true, data: { payment: updated } });
+    const primary = await prisma.payment.findUnique({
+      where: { id: paidIds[0] || payment.id },
+      include: { client: true },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        payment: primary,
+        appliedAmount: appliedTotal,
+        paidPaymentIds: paidIds,
+        unappliedClaimed: Math.max(0, remaining),
+      },
+    });
   }
 );
 

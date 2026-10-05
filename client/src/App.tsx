@@ -16,6 +16,7 @@ import SupportFAB from './components/SupportFAB';
 import SiteTrafficTracker from './components/SiteTrafficTracker';
 import CookieConsentBanner from './components/CookieConsentBanner';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
+import SwitchAccountFromPush from './components/SwitchAccountFromPush';
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import('./pages/Landing'));
@@ -517,6 +518,7 @@ const AppContent: React.FC = () => {
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
     <Router>
+      <SwitchAccountFromPush />
       <MaintenanceGate>
       <SiteTrafficTracker />
       <CookieConsentBanner />

@@ -14,19 +14,52 @@ function normalizePhone(phone: string | null | undefined): string | null {
   return digits.length > 0 ? digits : null;
 }
 
+function phonesMatchExact(
+  a: string | null | undefined,
+  bNorm: string | null
+): boolean {
+  if (!bNorm) return false;
+  const aNorm = normalizePhone(a);
+  return Boolean(aNorm && aNorm === bNorm);
+}
+
+type PortalClientResolve =
+  | { ok: true; clientId: string; tenantId: string; userType?: string }
+  | { ok: false; status: 401 | 403; error: string };
+
 /** Разрешённые clientId для portal-токена (сам клиент / linked / дети родителя). */
-async function resolvePortalClientId(req: Request): Promise<{
-  clientId: string;
-  tenantId: string;
-  userType?: string;
-} | null> {
+async function resolvePortalClientId(req: Request): Promise<PortalClientResolve> {
   const authClientId = (req as any).client?.id as string | undefined;
   const authParentId = (req as any).parent?.id as string | undefined;
   const userType = (req as any).userType as string | undefined;
   const tenantId = ((req as any).client?.tenantId || (req as any).parent?.tenantId) as string | undefined;
-  if (!tenantId || (!authClientId && !authParentId)) return null;
+  if (!tenantId || (!authClientId && !authParentId)) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
 
-  const requestedId = (req.query.clientId as string | undefined) || authClientId;
+  // Финансовые и данные ЛК — только после подтверждения аккаунта школой
+  if (userType === 'client' && authClientId) {
+    const self = await prisma.client.findUnique({
+      where: { id: authClientId },
+      select: { isAccountApproved: true },
+    });
+    if (!self?.isAccountApproved) {
+      return { ok: false, status: 403, error: 'Аккаунт не подтверждён' };
+    }
+  } else if (userType === 'parent' && authParentId) {
+    const parent = await prisma.parent.findUnique({
+      where: { id: authParentId },
+      select: { isAccountApproved: true },
+    });
+    if (!parent?.isAccountApproved) {
+      return { ok: false, status: 403, error: 'Аккаунт не подтверждён' };
+    }
+  }
+
+  const requestedId =
+    (typeof req.query.clientId === 'string' && req.query.clientId.trim()) ||
+    (typeof (req.body as any)?.clientId === 'string' && (req.body as any).clientId.trim()) ||
+    null;
   const allowedIds = new Set<string>();
 
   if (userType === 'client' && authClientId) {
@@ -37,15 +70,22 @@ async function resolvePortalClientId(req: Request): Promise<{
     });
     const phone = normalizePhone(self?.phone);
     const email = self?.email?.toLowerCase().trim() || null;
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
     const or: Array<Record<string, unknown>> = [];
-    if (phone) or.push({ phone: { contains: phone } });
+    if (phoneTail) or.push({ phone: { contains: phoneTail } });
     if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (or.length) {
       const siblings = await prisma.client.findMany({
         where: { tenantId, isActive: true, OR: or },
-        select: { id: true },
+        select: { id: true, phone: true, email: true },
       });
-      siblings.forEach((c) => allowedIds.add(c.id));
+      siblings
+        .filter(
+          (c) =>
+            phonesMatchExact(c.phone, phone) ||
+            (email && c.email?.toLowerCase().trim() === email)
+        )
+        .forEach((c) => allowedIds.add(c.id));
     }
   } else if (userType === 'parent' && authParentId) {
     const parent = await prisma.parent.findUnique({
@@ -55,22 +95,39 @@ async function resolvePortalClientId(req: Request): Promise<{
     if (parent?.clientId) allowedIds.add(parent.clientId);
     const phone = normalizePhone(parent?.phone);
     const email = parent?.email?.toLowerCase().trim() || null;
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
     const or: Array<Record<string, unknown>> = [];
-    if (phone) or.push({ phone: { contains: phone } });
+    if (phoneTail) or.push({ phone: { contains: phoneTail } });
     if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (or.length) {
       const parents = await prisma.parent.findMany({
         where: { tenantId, OR: or },
-        select: { clientId: true },
+        select: { clientId: true, phone: true, email: true },
       });
-      parents.forEach((p) => allowedIds.add(p.clientId));
+      parents
+        .filter(
+          (p) =>
+            phonesMatchExact(p.phone, phone) ||
+            (email && p.email?.toLowerCase().trim() === email)
+        )
+        .forEach((p) => allowedIds.add(p.clientId));
     }
   }
 
-  const clientId =
-    requestedId && allowedIds.has(requestedId) ? requestedId : [...allowedIds][0];
-  if (!clientId) return null;
-  return { clientId, tenantId, userType };
+  // Чужой clientId — 403, а не тихий fallback
+  if (requestedId) {
+    if (!allowedIds.has(requestedId)) {
+      return { ok: false, status: 403, error: 'Нет доступа к этому спортсмену' };
+    }
+    return { ok: true, clientId: requestedId, tenantId, userType };
+  }
+  const clientId = authClientId && allowedIds.has(authClientId)
+    ? authClientId
+    : [...allowedIds][0];
+  if (!clientId) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
+  return { ok: true, clientId, tenantId, userType };
 }
 
 /**
@@ -1060,15 +1117,22 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
     });
     const phone = normalizePhone(self?.phone);
     const email = self?.email?.toLowerCase().trim() || null;
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
     const or: Array<Record<string, unknown>> = [];
-    if (phone) or.push({ phone: { contains: phone } });
+    if (phoneTail) or.push({ phone: { contains: phoneTail } });
     if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (or.length) {
       const siblings = await prisma.client.findMany({
         where: { tenantId, isActive: true, OR: or },
-        select: { id: true },
+        select: { id: true, phone: true, email: true },
       });
-      siblings.forEach((c) => allowedIds.add(c.id));
+      siblings
+        .filter(
+          (c) =>
+            phonesMatchExact(c.phone, phone) ||
+            (email && c.email?.toLowerCase().trim() === email)
+        )
+        .forEach((c) => allowedIds.add(c.id));
     }
   } else if (userType === 'parent' && authParentId) {
     const parent = await prisma.parent.findUnique({
@@ -1078,20 +1142,32 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
     if (parent?.clientId) allowedIds.add(parent.clientId);
     const phone = normalizePhone(parent?.phone);
     const email = parent?.email?.toLowerCase().trim() || null;
+    const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
     const or: Array<Record<string, unknown>> = [];
-    if (phone) or.push({ phone: { contains: phone } });
+    if (phoneTail) or.push({ phone: { contains: phoneTail } });
     if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (or.length) {
       const parents = await prisma.parent.findMany({
         where: { tenantId, OR: or },
-        select: { clientId: true },
+        select: { clientId: true, phone: true, email: true },
       });
-      parents.forEach((p) => allowedIds.add(p.clientId));
+      parents
+        .filter(
+          (p) =>
+            phonesMatchExact(p.phone, phone) ||
+            (email && p.email?.toLowerCase().trim() === email)
+        )
+        .forEach((p) => allowedIds.add(p.clientId));
     }
   }
 
+  if (requestedId && !allowedIds.has(requestedId)) {
+    return res.status(403).json({ success: false, error: 'Нет доступа к этому спортсмену' });
+  }
   const clientId =
-    requestedId && allowedIds.has(requestedId) ? requestedId : [...allowedIds][0];
+    (requestedId && allowedIds.has(requestedId) ? requestedId : null) ||
+    (authClientId && allowedIds.has(authClientId) ? authClientId : null) ||
+    [...allowedIds][0];
 
   if (!clientId) {
     return res.status(404).json({ success: false, error: 'Athlete not found' });
@@ -1203,8 +1279,8 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
  */
 export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const resolved = await resolvePortalClientId(req);
-  if (!resolved) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
   }
   const { clientId, tenantId } = resolved;
 
@@ -1322,8 +1398,8 @@ export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Resp
  */
 export const getClientPayments = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const resolved = await resolvePortalClientId(req);
-  if (!resolved) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
   }
   const { clientId, tenantId } = resolved;
 
@@ -1376,8 +1452,8 @@ export const getClientPayments = asyncHandler(async (req: Request, res: Response
  */
 export const getPortalPaymentMethods = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const resolved = await resolvePortalClientId(req);
-  if (!resolved) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
   }
   const { clientId, tenantId } = resolved;
 
@@ -1442,8 +1518,8 @@ export const getPortalPaymentMethods = asyncHandler(async (req: Request, res: Re
  */
 export const getPortalPaymentMethodQr = asyncHandler(async (req: Request, res: Response) => {
   const resolved = await resolvePortalClientId(req);
-  if (!resolved) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (resolved.ok === false) {
+    res.status(resolved.status).json({ success: false, error: resolved.error });
     return;
   }
   const { tenantId } = resolved;
@@ -1472,8 +1548,8 @@ export const getPortalPaymentMethodQr = asyncHandler(async (req: Request, res: R
  */
 export const submitPortalPaymentReceipt = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const resolved = await resolvePortalClientId(req);
-  if (!resolved) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (resolved.ok === false) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
   }
   const { clientId, tenantId, userType } = resolved;
   const paymentId = req.params.id;

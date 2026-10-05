@@ -1,6 +1,13 @@
 import { apiService } from '../services/api';
+import {
+  getSlotBearerToken,
+  listUsableSavedAccounts,
+  type SavedAccountSlot,
+} from './accountSwitcher';
 
 export type ActorPushChannel = 'school' | 'portal' | 'superAdmin' | 'tester';
+
+const API_BASE = process.env.REACT_APP_API_URL || '/api';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -109,6 +116,17 @@ export async function subscribeActorPush(channel: ActorPushChannel): Promise<boo
   }
 }
 
+/** Сколько school/portal слотов ещё в реестре (им нужен общий browser endpoint). */
+function remainingInboxPushSlots(excludeId?: string): number {
+  return listUsableSavedAccounts().filter(
+    (a) =>
+      a.id !== excludeId &&
+      (a.accountType === 'TENANT_USER' ||
+        a.accountType === 'CLIENT' ||
+        a.accountType === 'PARENT')
+  ).length;
+}
+
 export async function unsubscribeActorPush(channel: ActorPushChannel): Promise<boolean> {
   try {
     if (!('serviceWorker' in navigator)) return false;
@@ -116,10 +134,78 @@ export async function unsubscribeActorPush(channel: ActorPushChannel): Promise<b
     const subscription = await registration.pushManager.getSubscription();
     if (!subscription) return true;
     await postUnsubscribe(channel, subscription.endpoint);
-    await subscription.unsubscribe();
+    // Не снимаем browser subscription, если другие аккаунты ещё на устройстве
+    if (remainingInboxPushSlots() === 0) {
+      await subscription.unsubscribe();
+    }
     return true;
   } catch (e) {
     console.error('[actorPush] unsubscribe failed', e);
     return false;
+  }
+}
+
+function channelForSlot(slot: SavedAccountSlot): ActorPushChannel | null {
+  if (slot.accountType === 'TENANT_USER') return 'school';
+  if (slot.accountType === 'CLIENT' || slot.accountType === 'PARENT') return 'portal';
+  return null;
+}
+
+/**
+ * Отписать только актёра удалённого слота (Bearer из снимка), без смены активной сессии.
+ * Browser PushSubscription не трогаем, если остались другие inbox-аккаунты.
+ */
+export async function unsubscribePushForRemovedSlot(slot: SavedAccountSlot): Promise<void> {
+  const channel = channelForSlot(slot);
+  const token = getSlotBearerToken(slot);
+  if (!channel || !token) return;
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+
+    const path =
+      channel === 'school'
+        ? '/push-notifications/unsubscribe'
+        : '/client-auth/push/unsubscribe';
+
+    await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    });
+
+    if (remainingInboxPushSlots(slot.id) === 0) {
+      await subscription.unsubscribe();
+    }
+  } catch (e) {
+    console.warn('[actorPush] unsubscribe for removed slot failed', e);
+  }
+}
+
+/**
+ * Если разрешение уже granted — подписать текущий school/portal аккаунт
+ * (не отписывая других актёров с тем же endpoint).
+ */
+export async function maybeAutoSubscribeActivePush(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const hasSchool = Boolean(localStorage.getItem('token') && localStorage.getItem('user'));
+  const hasPortal = Boolean(localStorage.getItem('clientToken') && localStorage.getItem('client'));
+
+  try {
+    if (hasSchool) {
+      await subscribeActorPush('school');
+    } else if (hasPortal) {
+      await subscribeActorPush('portal');
+    }
+  } catch {
+    /* ignore */
   }
 }

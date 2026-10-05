@@ -35,7 +35,7 @@ router.use(authenticate);
 router.use(requireOwnerAdminOrSenior);
 
 router.get('/types', listFinanceTypes);
-router.post('/types', createFinanceType);
+router.post('/types', requireOwnerOrAdmin, createFinanceType);
 router.get('/refs', getFinanceRefs);
 
 router.get('/operations', listFinanceOperations);

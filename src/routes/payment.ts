@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
+import { authenticate, requireOwnerOrAdmin } from '../middleware/auth';
 import {
   getPayments,
   getPaymentById,
@@ -15,14 +15,13 @@ const router = Router();
 // All routes require authentication
 router.use(authenticate);
 
-// Payment management routes
+// Чтение — все аутентифицированные роли маршрута; запись денег — OWNER/ADMIN
 router.get('/', getPayments);
 router.get('/:id', getPaymentById);
-router.post('/', requireOwnerAdminOrTrainer, createPayment);
-router.put('/:id', requireOwnerAdminOrTrainer, updatePayment);
-router.delete('/:id', requireOwnerAdminOrTrainer, deletePayment);
-// Monthly payments
-router.post('/monthly/create', requireOwnerAdminOrTrainer, createMonthlyPayments);
-router.post('/:id/recalculate', requireOwnerAdminOrTrainer, recalculateMonthlyPayment);
+router.post('/', requireOwnerOrAdmin, createPayment);
+router.put('/:id', requireOwnerOrAdmin, updatePayment);
+router.delete('/:id', requireOwnerOrAdmin, deletePayment);
+router.post('/monthly/create', requireOwnerOrAdmin, createMonthlyPayments);
+router.post('/:id/recalculate', requireOwnerOrAdmin, recalculateMonthlyPayment);
 
 export default router;

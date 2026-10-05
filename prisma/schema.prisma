@@ -1616,6 +1616,9 @@ model PlatformChangelogEntry {
 enum DevNoteStatus {
   IDEA
   IN_PROGRESS
+  AWAITING_DESIGN
+  NEEDS_DISCUSSION
+  SHELVED
   DONE
 }
 

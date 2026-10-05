@@ -32,6 +32,7 @@ import {
   canSwitchToSavedAccount,
   type SavedAccountSlot,
 } from '../../utils/accountSwitcher';
+import { useMultiAccountUnread } from '../../hooks/useMultiAccountUnread';
 
 export interface ShellNavItem {
   key: string;
@@ -130,6 +131,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   const [slotAccess, setSlotAccess] = React.useState<Record<string, boolean>>({});
   const searchWrapRef = React.useRef<HTMLDivElement | null>(null);
   const mobileSearchRef = React.useRef<HTMLDivElement | null>(null);
+  const { counts: accountUnreadCounts, otherAccountsUnread } = useMultiAccountUnread({
+    menuOpen: Boolean(menuAnchor),
+  });
 
   React.useEffect(() => {
     if (!menuAnchor) return;
@@ -589,6 +593,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               cursor: 'pointer',
               fontFamily: 'inherit',
               px: 0.5,
+              position: 'relative',
             }}
           >
             <Box
@@ -604,9 +609,34 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                 justifyContent: 'center',
                 fontSize: 14,
                 fontWeight: 700,
+                position: 'relative',
               }}
             >
               {userName.slice(0, 1).toUpperCase() || '—'}
+              {otherAccountsUnread > 0 && (
+                <Box
+                  aria-label={`Непрочитанные на других аккаунтах: ${otherAccountsUnread}`}
+                  sx={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    minWidth: 16,
+                    height: 16,
+                    px: 0.4,
+                    borderRadius: '999px',
+                    bgcolor: colors.danger,
+                    color: colors.white,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: `2px solid ${colors.card}`,
+                  }}
+                >
+                  {otherAccountsUnread > 9 ? '9+' : otherAccountsUnread}
+                </Box>
+              )}
             </Box>
             <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'left', minWidth: 0 }}>
               <Typography
@@ -654,6 +684,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               const blockedReason = maintenanceOn
                 ? 'Во время техобслуживания доступен только супер-админ'
                 : 'Аккаунт не в списке тестирования';
+              const unread = !isActive ? accountUnreadCounts[account.id] || 0 : 0;
               return (
                 <MenuItem
                   key={account.id}
@@ -680,10 +711,32 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     }
                     primaryTypographyProps={{
                       noWrap: true,
-                      sx: { maxWidth: 200, fontWeight: isActive ? 700 : 500 },
+                      sx: { maxWidth: 180, fontWeight: isActive ? 700 : 500 },
                     }}
-                    secondaryTypographyProps={{ noWrap: true, sx: { maxWidth: 200 } }}
+                    secondaryTypographyProps={{ noWrap: true, sx: { maxWidth: 180 } }}
                   />
+                  {unread > 0 && (
+                    <Box
+                      component="span"
+                      sx={{
+                        ml: 1,
+                        minWidth: 22,
+                        height: 22,
+                        px: 0.75,
+                        borderRadius: '999px',
+                        bgcolor: colors.danger,
+                        color: colors.white,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {unread > 99 ? '99+' : unread}
+                    </Box>
+                  )}
                 </MenuItem>
               );
             })}

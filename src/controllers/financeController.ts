@@ -4,7 +4,7 @@ import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { FinanceService, FinanceDirection } from '../services/financeService';
 import { accrueForPayment } from '../services/trainerSalaryService';
-import { badRequest } from '../utils/httpError';
+import { badRequest, forbidden } from '../utils/httpError';
 import {
   notifyClientDebt,
   notifyClientPaymentReceived,
@@ -27,6 +27,53 @@ function parseDate(value: unknown): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
+/** clientMembershipId из notes — ключ периода pack:… в сводке абонементов. */
+function extractPackMembershipId(notes?: string | null): string | null {
+  return notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/)?.[1] || null;
+}
+
+/**
+ * Склеивает notes оплаты со счётом: clientMembershipId нельзя терять,
+ * иначе оплата уезжает в календарный месяц и «Начислено» прыгает.
+ */
+function mergeChargeNotes(
+  baseNotes: string | null | undefined,
+  extraNotes?: string | null,
+  flags: string[] = []
+): string | null {
+  const packId =
+    extractPackMembershipId(baseNotes) || extractPackMembershipId(extraNotes);
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const push = (s: string) => {
+    const t = s.trim();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    parts.push(t);
+  };
+  if (packId) push(`clientMembershipId=${packId}`);
+  for (const raw of [baseNotes, extraNotes]) {
+    for (const chunk of String(raw || '').split(' / ')) {
+      const t = chunk.trim();
+      if (!t || t.startsWith('clientMembershipId=') || t === '[payment-excess]') continue;
+      push(t);
+    }
+  }
+  for (const f of flags) push(f);
+  return parts.length ? parts.join(' / ') : null;
+}
+
+function calendarPeriodKeyFromPayment(p: {
+  periodKey?: string | null;
+  dueDate?: Date | null;
+  createdAt: Date;
+}): string | null {
+  if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;
+  const d = p.dueDate || p.createdAt;
+  if (!d) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** Начисление тренеру (фикс % / фикс с ученика) после оплаты в разделе «Финансы». */
 async function accrueTrainerFromPaidPayment(
   tenantId: string,
@@ -38,6 +85,7 @@ async function accrueTrainerFromPaidPayment(
     isMonthlyPayment?: boolean | null;
     type?: string | null;
     paidAt?: Date | null;
+    periodKey?: string | null;
   }
 ) {
   await accrueForPayment({
@@ -49,7 +97,83 @@ async function accrueTrainerFromPaidPayment(
     isMonthlyPayment: Boolean(payment.isMonthlyPayment),
     paymentType: payment.type || undefined,
     paidAt: payment.paidAt,
+    periodKey: payment.periodKey,
   }).catch((err) => console.error('Trainer salary accrue on finance payment failed:', err));
+}
+
+/** Тренеры, доступные старшему по филиалам (null = без ограничений). */
+async function resolveAllowedTrainerIdsForFinance(
+  req: AuthenticatedRequest
+): Promise<string[] | null> {
+  if (!req.user || !req.tenant?.id) return [];
+  if (req.user.role === 'OWNER' || req.user.role === 'ADMIN') return null;
+  const { resolveAccessibleBranchIds } = await import('../utils/branchAccess');
+  const access = await resolveAccessibleBranchIds(req.user, req.tenant.id);
+  if (access.allAccess) return null;
+  if (access.branchIds.length === 0) return [];
+  const trainers = await prisma.trainer.findMany({
+    where: {
+      tenantId: req.tenant.id,
+      isActive: true,
+      OR: [
+        { branches: { some: { branchId: { in: access.branchIds } } } },
+        { groups: { some: { branchId: { in: access.branchIds }, isActive: true } } },
+        { seniorBranches: { some: { id: { in: access.branchIds } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return trainers.map((t) => t.id);
+}
+
+/** Senior может работать только с клиентами своих филиалов. */
+async function assertSeniorCanAccessClient(
+  req: AuthenticatedRequest,
+  clientId: string
+): Promise<void> {
+  if (!req.user || !req.tenant?.id) throw badRequest('Требуется авторизация');
+  if (req.user.role === 'OWNER' || req.user.role === 'ADMIN') return;
+  if (req.user.role !== 'TRAINER') {
+    throw badRequest('Недостаточно прав');
+  }
+  const { getSeniorBranchIds } = await import('../utils/branchAccess');
+  const branchIds = await getSeniorBranchIds(req.user.id, req.tenant.id);
+  if (branchIds.length === 0) {
+    throw forbidden('Нет доступа');
+  }
+  const inGroup = await prisma.groupMembership.findFirst({
+    where: {
+      clientId,
+      isActive: true,
+      leftAt: null,
+      group: { tenantId: req.tenant.id, branchId: { in: branchIds } },
+    },
+    select: { id: true },
+  });
+  if (inGroup) return;
+  const pay = await prisma.payment.findFirst({
+    where: {
+      tenantId: req.tenant.id,
+      clientId,
+      branchId: { in: branchIds },
+    },
+    select: { id: true },
+  });
+  if (pay) return;
+  throw forbidden('Клиент вне ваших филиалов');
+}
+
+async function assertSeniorCanAccessPayment(
+  req: AuthenticatedRequest,
+  paymentId: string
+): Promise<{ clientId: string; branchId: string | null }> {
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, tenantId: req.tenant?.id },
+    select: { id: true, clientId: true, branchId: true },
+  });
+  if (!payment) throw badRequest('Платёж не найден', 'paymentId');
+  await assertSeniorCanAccessClient(req, payment.clientId);
+  return payment;
 }
 
 export const listFinanceTypes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -130,6 +254,15 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
         });
         return;
       }
+      if (req.body.clientId) {
+        await assertSeniorCanAccessClient(req, String(req.body.clientId));
+      }
+      if (req.body.trainerId) {
+        const allowed = await resolveAllowedTrainerIdsForFinance(req);
+        if (allowed && !allowed.includes(String(req.body.trainerId))) {
+          throw forbidden('Тренер вне ваших филиалов');
+        }
+      }
     }
   }
 
@@ -178,8 +311,16 @@ export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest
     return;
   }
 
+  const trainerId = String(req.body.trainerId || '');
+  if (!trainerId) throw badRequest('Укажите trainerId', 'trainerId');
+  const allowedTrainerIds = await resolveAllowedTrainerIdsForFinance(req);
+  if (allowedTrainerIds && !allowedTrainerIds.includes(trainerId)) {
+    res.status(403).json({ success: false, error: 'Нет доступа к выплате этому тренеру' });
+    return;
+  }
+
   const op = await FinanceService.payoutTrainerSalary(req.tenant.id, {
-    trainerId: req.body.trainerId,
+    trainerId,
     amount: req.body.amount,
     periodLabel: req.body.periodLabel,
     occurredAt: req.body.occurredAt,
@@ -196,7 +337,7 @@ export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest
 
   void notifyTrainerSalary({
     tenantId: req.tenant.id,
-    trainerId: String(req.body.trainerId),
+    trainerId,
     kind: 'payout',
     amount: Number(req.body.amount),
     title: req.body.periodLabel ? String(req.body.periodLabel) : undefined,
@@ -211,8 +352,21 @@ export const getSalarySummary = asyncHandler(async (req: AuthenticatedRequest, r
     return;
   }
 
+  const requestedIds = parseList(req.query.trainerIds);
+  const allowedTrainerIds = await resolveAllowedTrainerIdsForFinance(req);
+  let trainerIds = requestedIds;
+  if (allowedTrainerIds) {
+    trainerIds = requestedIds?.length
+      ? requestedIds.filter((id) => allowedTrainerIds.includes(id))
+      : allowedTrainerIds;
+    if (trainerIds.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+  }
+
   const data = await FinanceService.salarySummary(req.tenant.id, {
-    trainerIds: parseList(req.query.trainerIds),
+    trainerIds,
     dateFrom: parseDate(req.query.dateFrom),
     dateTo: parseDate(req.query.dateTo),
     amountFrom: req.query.amountFrom != null ? Number(req.query.amountFrom) : undefined,
@@ -288,8 +442,19 @@ export const receiveMembershipPayment = asyncHandler(
       throw badRequest('Некорректная сумма', 'amount');
     }
 
+    const rawPeriodKey = typeof periodKey === 'string' && periodKey.trim() ? periodKey.trim() : null;
     const periodKeyStr =
-      typeof periodKey === 'string' && /^\d{4}-\d{2}$/.test(periodKey) ? periodKey : null;
+      rawPeriodKey && /^\d{4}-\d{2}$/.test(rawPeriodKey) ? rawPeriodKey : null;
+    const packIdFromPeriod =
+      rawPeriodKey && rawPeriodKey.startsWith('pack:')
+        ? rawPeriodKey.slice('pack:'.length)
+        : null;
+
+    if (paymentId) {
+      await assertSeniorCanAccessPayment(req, String(paymentId));
+    } else if (clientId) {
+      await assertSeniorCanAccessClient(req, String(clientId));
+    }
 
     // Отрицательная сумма: уменьшить «выплачено» (4000 + (−3000) → 1000)
     if (increment < 0) {
@@ -299,6 +464,8 @@ export const receiveMembershipPayment = asyncHandler(
         amount: increment,
         notes: notes ?? null,
         createdById: req.user?.id,
+        // Важен pack:… — иначе корректировка уезжает в другой период сводки
+        periodKey: rawPeriodKey,
       });
       const debtClientId = result.payment?.clientId || clientId;
       if (debtClientId) {
@@ -318,53 +485,112 @@ export const receiveMembershipPayment = asyncHandler(
       return;
     }
 
-    let pendingPayment = paymentId
-      ? await prisma.payment.findFirst({
-          where: { id: paymentId, tenantId: req.tenant.id, status: { in: ['pending', 'overdue'] } },
-          include: { client: true },
-        })
-      : await prisma.payment.findFirst({
-          where: {
-            tenantId: req.tenant.id,
-            clientId,
-            status: { in: ['pending', 'overdue'] },
-            ...(periodKeyStr ? { periodKey: periodKeyStr } : {}),
-          },
-          orderBy: { dueDate: 'asc' },
-          include: { client: true },
-        });
+    type PayWithClient = {
+      id: string;
+      tenantId: string;
+      clientId: string;
+      amount: unknown;
+      originalAmount: unknown;
+      type: string;
+      status: string;
+      paidAt: Date | null;
+      isMonthlyPayment: boolean;
+      branchId: string | null;
+      groupId: string | null;
+      membershipId: string | null;
+      periodKey: string | null;
+      dueDate: Date | null;
+      createdAt: Date;
+      notes: string | null;
+      client: { id: string; firstName: string; lastName: string; middleName?: string | null };
+    };
 
-    // Если по periodKey не нашли — fallback на dueDate/createdAt в том же месяце
-    if (!pendingPayment && !paymentId && clientId && periodKeyStr) {
+    const findPendingInScope = async (
+      scopeClientId: string,
+      opts: { packId?: string | null; calendarKey?: string | null; preferId?: string | null }
+    ): Promise<PayWithClient | null> => {
       const allPending = await prisma.payment.findMany({
         where: {
-          tenantId: req.tenant.id,
-          clientId,
+          tenantId,
+          clientId: scopeClientId,
           status: { in: ['pending', 'overdue'] },
+          OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
         },
         orderBy: { dueDate: 'asc' },
         include: { client: true },
       });
-      pendingPayment =
-        allPending.find((p) => {
-          if (p.periodKey === periodKeyStr) return true;
-          const d = p.dueDate || p.createdAt;
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          return key === periodKeyStr;
-        }) || null;
-    }
+      if (opts.preferId) {
+        const byId = allPending.find((p) => p.id === opts.preferId);
+        if (byId) return byId;
+      }
+      if (opts.packId) {
+        const marker = `clientMembershipId=${opts.packId}`;
+        const byPack = allPending.find((p) => (p.notes || '').includes(marker));
+        if (byPack) return byPack;
+      }
+      if (opts.calendarKey) {
+        const byMonth = allPending.find((p) => {
+          if (p.periodKey === opts.calendarKey) return true;
+          return calendarPeriodKeyFromPayment(p) === opts.calendarKey;
+        });
+        if (byMonth) return byMonth;
+      }
+      return allPending[0] || null;
+    };
 
-    let paidReference: (typeof pendingPayment) = null;
-    if (!pendingPayment && paymentId) {
-      paidReference = await prisma.payment.findFirst({
+    let pendingPayment: PayWithClient | null = null;
+    let paidReference: PayWithClient | null = null;
+
+    if (paymentId) {
+      const byId = await prisma.payment.findFirst({
         where: { id: paymentId, tenantId: req.tenant.id },
         include: { client: true },
       });
+      if (byId && (byId.status === 'pending' || byId.status === 'overdue')) {
+        pendingPayment = byId;
+      } else if (byId) {
+        paidReference = byId;
+      }
     }
 
-    const targetClientId = clientId || pendingPayment?.clientId || paidReference?.clientId;
+    const targetClientId =
+      clientId || pendingPayment?.clientId || paidReference?.clientId || null;
+
+    // После частичной оплаты latestPaymentId часто указывает на paid-слайс.
+    // Нельзя создавать «orphan» оплату — сначала гасим оставшийся pending того же пакета/периода.
+    if (!pendingPayment && targetClientId) {
+      const packId =
+        packIdFromPeriod ||
+        extractPackMembershipId(paidReference?.notes) ||
+        null;
+      pendingPayment = await findPendingInScope(String(targetClientId), {
+        packId,
+        calendarKey:
+          periodKeyStr ||
+          (paidReference ? calendarPeriodKeyFromPayment(paidReference) : null),
+        preferId: null,
+      });
+      // Если periodKey = pack:… и pending этого пакета нет — не хватать чужой счёт
+      if (packId && pendingPayment) {
+        const marker = `clientMembershipId=${packId}`;
+        if (!(pendingPayment.notes || '').includes(marker)) {
+          pendingPayment = null;
+        }
+      } else if (periodKeyStr && pendingPayment && !paidReference) {
+        const key = calendarPeriodKeyFromPayment(pendingPayment);
+        if (pendingPayment.periodKey !== periodKeyStr && key !== periodKeyStr) {
+          pendingPayment = null;
+        }
+      }
+    }
+
     if (!pendingPayment && paidReference?.status === 'paid' && targetClientId) {
       const clientName = `${paidReference.client.lastName} ${paidReference.client.firstName}`.trim();
+      const yyyyMm =
+        periodKeyStr ||
+        (paidReference.periodKey && /^\d{4}-\d{2}$/.test(paidReference.periodKey)
+          ? paidReference.periodKey
+          : null);
       const extra = await prisma.payment.create({
         data: {
           tenantId: req.tenant.id,
@@ -377,8 +603,8 @@ export const receiveMembershipPayment = asyncHandler(
           branchId: paidReference.branchId,
           groupId: paidReference.groupId,
           membershipId: paidReference.membershipId,
-          periodKey: periodKeyStr || paidReference.periodKey,
-          notes: notes ?? null,
+          periodKey: yyyyMm,
+          notes: mergeChargeNotes(paidReference.notes, notes, ['[payment-excess]']),
         },
         include: { client: true },
       });
@@ -395,6 +621,7 @@ export const receiveMembershipPayment = asyncHandler(
       });
       if (!client) throw badRequest('Клиент не найден', 'clientId');
       const clientName = `${client.lastName} ${client.firstName}`.trim();
+      const packNote = packIdFromPeriod ? `clientMembershipId=${packIdFromPeriod}` : null;
       const extra = await prisma.payment.create({
         data: {
           tenantId: req.tenant.id,
@@ -405,7 +632,7 @@ export const receiveMembershipPayment = asyncHandler(
           paidAt: new Date(),
           isMonthlyPayment: true,
           periodKey: periodKeyStr,
-          notes: notes ?? null,
+          notes: mergeChargeNotes(packNote, notes, ['[payment-excess]']),
         },
         include: { client: true },
       });
@@ -423,15 +650,24 @@ export const receiveMembershipPayment = asyncHandler(
     const clientName = `${pendingPayment.client.lastName} ${pendingPayment.client.firstName}`.trim();
     const pendingAmt = Number(pendingPayment.amount);
     let resultPayment = pendingPayment;
+    const chargePeriodKey =
+      pendingPayment.periodKey && /^\d{4}-\d{2}$/.test(pendingPayment.periodKey)
+        ? pendingPayment.periodKey
+        : periodKeyStr;
 
     if (increment >= pendingAmt) {
+      const chargeOriginal =
+        pendingPayment.originalAmount != null
+          ? Number(pendingPayment.originalAmount)
+          : pendingAmt;
       resultPayment = await prisma.payment.update({
         where: { id: pendingPayment.id },
         data: {
           status: 'paid',
           paidAt: new Date(),
           amount: pendingAmt,
-          notes: notes ?? pendingPayment.notes,
+          originalAmount: chargeOriginal,
+          notes: mergeChargeNotes(pendingPayment.notes, notes),
         },
         include: { client: true },
       });
@@ -452,7 +688,8 @@ export const receiveMembershipPayment = asyncHandler(
             branchId: pendingPayment.branchId,
             groupId: pendingPayment.groupId,
             membershipId: pendingPayment.membershipId,
-            notes: notes ?? null,
+            periodKey: chargePeriodKey,
+            notes: mergeChargeNotes(pendingPayment.notes, notes, ['[payment-excess]']),
           },
           include: { client: true },
         });
@@ -461,9 +698,16 @@ export const receiveMembershipPayment = asyncHandler(
         resultPayment = extra;
       }
     } else {
+      const chargeOriginal =
+        pendingPayment.originalAmount != null
+          ? Number(pendingPayment.originalAmount)
+          : pendingAmt;
       await prisma.payment.update({
         where: { id: pendingPayment.id },
-        data: { amount: pendingAmt - increment },
+        data: {
+          amount: pendingAmt - increment,
+          originalAmount: chargeOriginal,
+        },
       });
 
       resultPayment = await prisma.payment.create({
@@ -478,9 +722,10 @@ export const receiveMembershipPayment = asyncHandler(
           branchId: pendingPayment.branchId,
           groupId: pendingPayment.groupId,
           membershipId: pendingPayment.membershipId,
+          periodKey: chargePeriodKey,
           dueDate: pendingPayment.dueDate,
-          originalAmount: pendingPayment.originalAmount,
-          notes: notes ?? null,
+          originalAmount: chargeOriginal,
+          notes: mergeChargeNotes(pendingPayment.notes, notes),
         },
         include: { client: true },
       });
@@ -520,6 +765,7 @@ export const correctMembershipAccrual = asyncHandler(
 
     const { clientId, paymentId, newAmount, reason, occurredAt, periodKey } = req.body;
     if (!clientId) throw badRequest('Укажите clientId', 'clientId');
+    await assertSeniorCanAccessClient(req, String(clientId));
 
     const result = await FinanceService.correctMembershipAccrual(req.tenant.id, {
       clientId: String(clientId),
@@ -554,15 +800,29 @@ export const updateMembershipAmount = asyncHandler(
       where: { id: paymentId, tenantId: req.tenant.id },
     });
     if (!payment) throw badRequest('Платёж не найден', 'paymentId');
+    await assertSeniorCanAccessClient(req, payment.clientId);
 
+    const oldAmt = Number(payment.amount);
     const updated = await prisma.payment.update({
       where: { id: payment.id },
       data: {
-        originalAmount: payment.originalAmount ?? payment.amount,
+        // Намеренная смена начисления: originalAmount = новая сумма счёта
+        originalAmount: newAmount,
         amount: newAmount,
         notes: notes ?? payment.notes,
       },
     });
+
+    // Начисление pending влияет на остаток/баланс: Δ = new − old → decrement
+    if (
+      (payment.status === 'pending' || payment.status === 'overdue') &&
+      Math.abs(newAmount - oldAmt) > 0.005
+    ) {
+      await prisma.client.update({
+        where: { id: payment.clientId },
+        data: { balance: { decrement: newAmount - oldAmt } },
+      });
+    }
 
     if (
       (payment.status === 'pending' || payment.status === 'overdue') &&
@@ -596,6 +856,7 @@ export const changeMembershipPack = asyncHandler(
     const { clientId, membershipId } = req.body;
     if (!clientId) throw badRequest('Укажите clientId', 'clientId');
     if (!membershipId) throw badRequest('Укажите membershipId', 'membershipId');
+    await assertSeniorCanAccessClient(req, String(clientId));
 
     const { changeClientMembershipPack } = await import('../services/clientMembershipService');
     try {

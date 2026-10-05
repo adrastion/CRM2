@@ -192,9 +192,41 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       ]);
     }
 
+    // TRAINER не должен видеть чужие балансы и ставки ЗП
+    const isPrivileged = req.user?.role === 'OWNER' || req.user?.role === 'ADMIN';
+    let myTrainerId: string | null = null;
+    if (!isPrivileged && req.user?.id) {
+      const me = await prisma.trainer.findFirst({
+        where: { userId: req.user.id, tenantId: req.tenant?.id, isActive: true },
+        select: { id: true },
+      });
+      myTrainerId = me?.id || null;
+    }
+    const sanitizeTrainer = (t: (typeof trainers)[number]) => {
+      const base = { ...t, employeeType: 'trainer' as const };
+      if (isPrivileged || t.id === myTrainerId) return base;
+      const {
+        balance: _b,
+        salaryRate: _sr,
+        salaryAmount: _sa,
+        salaryPercentage: _sp,
+        salaryScheme: _ss,
+        salaryType: _st,
+        ...safe
+      } = base as typeof base & {
+        balance?: unknown;
+        salaryRate?: unknown;
+        salaryAmount?: unknown;
+        salaryPercentage?: unknown;
+        salaryScheme?: unknown;
+        salaryType?: unknown;
+      };
+      return safe;
+    };
+
     // Объединяем тренеров, администраторов и промоутеров
     const allEmployees = [
-      ...trainers.map(t => ({ ...t, employeeType: 'trainer' })),
+      ...trainers.map(sanitizeTrainer),
       ...admins.map(a => ({
         ...a,
         employeeType: a.role === 'PROMOTER' ? 'promoter' : 'admin',
