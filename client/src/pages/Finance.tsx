@@ -716,8 +716,8 @@ const Finance: React.FC = () => {
         discardAddForm();
         setSnackbar('Операция сохранена');
         await loadOperations();
-        if (tab === 'salary') await loadSalary();
-        if (tab === 'memberships') await loadMemberships();
+        if (tab === 'salary' || customSubject === 'trainer') await loadSalary();
+        if (customSubject === 'client') await loadMemberships();
         return true;
       }
 
@@ -1189,7 +1189,7 @@ const Finance: React.FC = () => {
         >
           <Tab value="operations" label="Все операции" sx={tabSx(tab === 'operations')} />
           <Tab value="salary" label="Зарплата тренеров" sx={tabSx(tab === 'salary')} />
-          <Tab value="memberships" label="Оплата абонементов" sx={tabSx(tab === 'memberships')} />
+          <Tab value="memberships" label="Операции клиентов" sx={tabSx(tab === 'memberships')} />
         </Tabs>
 
         <Box
@@ -1283,6 +1283,7 @@ const Finance: React.FC = () => {
                 countColumnLabel={
                   salaryTrainingsMode === 'conducted' ? 'Проведённые' : 'Все занятия'
                 }
+                remainingColumnLabel="Баланс"
                 rows={sortedSalaryRows}
                 sortBy={salarySortBy}
                 onSort={(key) => handleSummarySort(key, salarySortBy, setSalarySortBy, setSalarySortDir)}
@@ -1325,13 +1326,15 @@ const Finance: React.FC = () => {
             ) : (
               <FinanceSummaryTable
                 nameColumnLabel="Клиент"
+                paidColumnLabel="Оплачено"
+                remainingColumnLabel="Баланс"
                 rows={sortedMembershipRows}
                 sortBy={membershipSortBy}
                 onSort={(key) =>
                   handleSummarySort(key, membershipSortBy, setMembershipSortBy, setMembershipSortDir)
                 }
                 formatMoney={(v) => formatMoney(v)}
-                emptyMessage="Нет данных по абонементам"
+                emptyMessage="Нет данных по операциям клиентов"
               />
             )}
           </>
@@ -1650,7 +1653,7 @@ const Finance: React.FC = () => {
           </Button>
         </Drawer>
 
-        {/* Filters drawer — Оплата абонементов */}
+        {/* Filters drawer — Операции клиентов */}
         <Drawer
           anchor="right"
           open={membershipFiltersOpen}
@@ -1862,6 +1865,11 @@ const Finance: React.FC = () => {
           <DialogTitle>Добавить операцию</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
+              {error && (
+                <Alert severity="error" onClose={() => setError(null)}>
+                  {error}
+                </Alert>
+              )}
               <FormControl fullWidth>
                 <InputLabel>Тип операции</InputLabel>
                 <Select

@@ -27,13 +27,17 @@ function parseDate(value: unknown): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-/** clientMembershipId из notes — ключ периода pack:… в сводке абонементов. */
+/** clientMembershipId / clientDebitId из notes — ключи периодов pack:… / debit:… */
 function extractPackMembershipId(notes?: string | null): string | null {
   return notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/)?.[1] || null;
 }
 
+function extractClientDebitId(notes?: string | null): string | null {
+  return notes?.match(/clientDebitId=([a-zA-Z0-9_-]+)/)?.[1] || null;
+}
+
 /**
- * Склеивает notes оплаты со счётом: clientMembershipId нельзя терять,
+ * Склеивает notes оплаты со счётом: clientMembershipId / clientDebitId нельзя терять,
  * иначе оплата уезжает в календарный месяц и «Начислено» прыгает.
  */
 function mergeChargeNotes(
@@ -43,6 +47,7 @@ function mergeChargeNotes(
 ): string | null {
   const packId =
     extractPackMembershipId(baseNotes) || extractPackMembershipId(extraNotes);
+  const debitId = extractClientDebitId(baseNotes) || extractClientDebitId(extraNotes);
   const seen = new Set<string>();
   const parts: string[] = [];
   const push = (s: string) => {
@@ -52,10 +57,18 @@ function mergeChargeNotes(
     parts.push(t);
   };
   if (packId) push(`clientMembershipId=${packId}`);
+  if (debitId) push(`clientDebitId=${debitId}`);
   for (const raw of [baseNotes, extraNotes]) {
     for (const chunk of String(raw || '').split(' / ')) {
       const t = chunk.trim();
-      if (!t || t.startsWith('clientMembershipId=') || t === '[payment-excess]') continue;
+      if (
+        !t ||
+        t.startsWith('clientMembershipId=') ||
+        t.startsWith('clientDebitId=') ||
+        t === '[payment-excess]'
+      ) {
+        continue;
+      }
       push(t);
     }
   }
@@ -246,7 +259,12 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     const { canManageBranch, getSeniorBranchIds } = await import('../utils/branchAccess');
     const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant.id);
     if (seniorIds.length > 0) {
-      const branchId = req.body.branchId as string | undefined;
+      let branchId = req.body.branchId as string | undefined;
+      // Диалог «Добавить операцию» не спрашивает филиал — берём первый доступный
+      if (!branchId) {
+        branchId = seniorIds[0];
+        req.body.branchId = branchId;
+      }
       if (!branchId || !(await canManageBranch(req.user, branchId, req.tenant.id))) {
         res.status(403).json({
           success: false,
@@ -449,6 +467,10 @@ export const receiveMembershipPayment = asyncHandler(
       rawPeriodKey && rawPeriodKey.startsWith('pack:')
         ? rawPeriodKey.slice('pack:'.length)
         : null;
+    const debitIdFromPeriod =
+      rawPeriodKey && rawPeriodKey.startsWith('debit:')
+        ? rawPeriodKey.slice('debit:'.length)
+        : null;
 
     if (paymentId) {
       await assertSeniorCanAccessPayment(req, String(paymentId));
@@ -507,7 +529,12 @@ export const receiveMembershipPayment = asyncHandler(
 
     const findPendingInScope = async (
       scopeClientId: string,
-      opts: { packId?: string | null; calendarKey?: string | null; preferId?: string | null }
+      opts: {
+        packId?: string | null;
+        debitId?: string | null;
+        calendarKey?: string | null;
+        preferId?: string | null;
+      }
     ): Promise<PayWithClient | null> => {
       const allPending = await prisma.payment.findMany({
         where: {
@@ -522,6 +549,14 @@ export const receiveMembershipPayment = asyncHandler(
       if (opts.preferId) {
         const byId = allPending.find((p) => p.id === opts.preferId);
         if (byId) return byId;
+      }
+      if (opts.debitId) {
+        const marker = `clientDebitId=${opts.debitId}`;
+        const byDebit =
+          allPending.find((p) => (p.notes || '').includes(marker)) ||
+          allPending.find((p) => p.periodKey === `debit:${opts.debitId}`) ||
+          allPending.find((p) => p.id === opts.debitId);
+        if (byDebit) return byDebit;
       }
       if (opts.packId) {
         const marker = `clientMembershipId=${opts.packId}`;
@@ -563,19 +598,33 @@ export const receiveMembershipPayment = asyncHandler(
         packIdFromPeriod ||
         extractPackMembershipId(paidReference?.notes) ||
         null;
+      const debitId =
+        debitIdFromPeriod ||
+        extractClientDebitId(paidReference?.notes) ||
+        (paidReference?.periodKey?.startsWith('debit:')
+          ? paidReference.periodKey.slice('debit:'.length)
+          : null);
       pendingPayment = await findPendingInScope(String(targetClientId), {
         packId,
+        debitId,
         calendarKey:
           periodKeyStr ||
           (paidReference ? calendarPeriodKeyFromPayment(paidReference) : null),
         preferId: null,
       });
-      // Если periodKey = pack:… и pending этого пакета нет — не хватать чужой счёт
+      // Если periodKey = pack:/debit:… и pending этого события нет — не хватать чужой счёт
       if (packId && pendingPayment) {
         const marker = `clientMembershipId=${packId}`;
         if (!(pendingPayment.notes || '').includes(marker)) {
           pendingPayment = null;
         }
+      } else if (debitId && pendingPayment) {
+        const marker = `clientDebitId=${debitId}`;
+        const sameDebit =
+          (pendingPayment.notes || '').includes(marker) ||
+          pendingPayment.periodKey === `debit:${debitId}` ||
+          pendingPayment.id === debitId;
+        if (!sameDebit) pendingPayment = null;
       } else if (periodKeyStr && pendingPayment && !paidReference) {
         const key = calendarPeriodKeyFromPayment(pendingPayment);
         if (pendingPayment.periodKey !== periodKeyStr && key !== periodKeyStr) {
@@ -651,7 +700,10 @@ export const receiveMembershipPayment = asyncHandler(
     const pendingAmt = Number(pendingPayment.amount);
     let resultPayment = pendingPayment;
     const chargePeriodKey =
-      pendingPayment.periodKey && /^\d{4}-\d{2}$/.test(pendingPayment.periodKey)
+      pendingPayment.periodKey &&
+      (/^\d{4}-\d{2}$/.test(pendingPayment.periodKey) ||
+        pendingPayment.periodKey.startsWith('pack:') ||
+        pendingPayment.periodKey.startsWith('debit:'))
         ? pendingPayment.periodKey
         : periodKeyStr;
 

@@ -20,6 +20,8 @@ export interface FinanceSummaryRow {
 interface FinanceSummaryTableProps {
   nameColumnLabel: string;
   countColumnLabel?: string;
+  paidColumnLabel?: string;
+  remainingColumnLabel?: string;
   rows: FinanceSummaryRow[];
   sortBy: FinanceSummarySortKey;
   onSort: (key: FinanceSummarySortKey) => void;
@@ -57,10 +59,12 @@ const SortHeader: React.FC<{
   </Box>
 );
 
-/** Таблица «Зарплата тренеров» / «Оплата абонементов» по макету Figma 268:893 / 290:1556. */
+/** Таблица «Зарплата тренеров» / «Операции клиентов» по макету Figma 268:893 / 290:1556. */
 const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
   nameColumnLabel,
   countColumnLabel = 'Кол-во занятий',
+  paidColumnLabel = 'Выплачено',
+  remainingColumnLabel = 'Остаток',
   rows,
   sortBy,
   onSort,
@@ -138,7 +142,11 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
       <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.5 }}>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, px: 0.5, mb: 0.5 }}>
           <SortHeader label={nameColumnLabel} active={sortBy === 'name'} onClick={() => onSort('name')} />
-          <SortHeader label="Остаток" active={sortBy === 'remaining'} onClick={() => onSort('remaining')} />
+          <SortHeader
+            label={remainingColumnLabel}
+            active={sortBy === 'remaining'}
+            onClick={() => onSort('remaining')}
+          />
         </Box>
         {rows.map((row) => (
           <Box
@@ -180,11 +188,15 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
                 {accruedNode(row)}
               </Box>
               <Box>
-                <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>Выплачено</Typography>
+                <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+                  {paidColumnLabel}
+                </Typography>
                 {paidNode(row)}
               </Box>
               <Box>
-                <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>Остаток</Typography>
+                <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+                  {remainingColumnLabel}
+                </Typography>
                 <Typography
                   sx={{
                     fontSize: typography.label,
@@ -217,8 +229,12 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
             <SortHeader label="Период" active={sortBy === 'period'} onClick={() => onSort('period')} />
             <SortHeader label={countColumnLabel} active={sortBy === 'count'} onClick={() => onSort('count')} />
             <SortHeader label="Начислено" active={sortBy === 'accrued'} onClick={() => onSort('accrued')} />
-            <SortHeader label="Выплачено" active={sortBy === 'paid'} onClick={() => onSort('paid')} />
-            <SortHeader label="Остаток" active={sortBy === 'remaining'} onClick={() => onSort('remaining')} />
+            <SortHeader label={paidColumnLabel} active={sortBy === 'paid'} onClick={() => onSort('paid')} />
+            <SortHeader
+              label={remainingColumnLabel}
+              active={sortBy === 'remaining'}
+              onClick={() => onSort('remaining')}
+            />
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>

@@ -87,15 +87,34 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
     const price = Number(clientMembership.membership?.price || 0);
     if (price > 0) {
       const clientName = `${clientMembership.client.lastName} ${clientMembership.client.firstName}`.trim();
-      await FinanceService.recordMembershipIssue({
-        tenantId,
-        clientId,
-        clientMembershipId: clientMembership.id,
-        amount: price,
-        title: `${clientName} — ${clientMembership.membership.name}`,
-        membershipCatalogId: membershipId,
-        occurredAt: clientMembership.startDate,
-      }).catch((err) => console.error('Finance membership issue record failed:', err));
+      try {
+        await FinanceService.recordMembershipIssue({
+          tenantId,
+          clientId,
+          clientMembershipId: clientMembership.id,
+          amount: price,
+          title: `${clientName} — ${clientMembership.membership.name}`,
+          membershipCatalogId: membershipId,
+          occurredAt: clientMembership.startDate,
+        });
+      } catch (financeErr: any) {
+        console.error('Finance membership issue record failed:', financeErr);
+        res.status(500).json({
+          success: false,
+          error:
+            financeErr?.message ||
+            'Абонемент создан, но финансовая запись не сохранилась. Проверьте раздел Финансы.',
+          data: {
+            ...clientMembership,
+            remaining:
+              clientMembership.visitsTotal != null
+                ? clientMembership.visitsTotal - clientMembership.visitsUsed
+                : null,
+            summary: toMembershipSummary(clientMembership),
+          },
+        });
+        return;
+      }
     }
 
     res.status(201).json({

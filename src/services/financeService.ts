@@ -455,6 +455,40 @@ export class FinanceService {
         });
       }
 
+      // Списание с баланса — отдельная строка в сводке (как выдача абонемента): pending-счёт
+      if (isClientDebit && !paymentId) {
+        const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date();
+        const debitPay = await tx.payment.create({
+          data: {
+            tenantId,
+            clientId: input.clientId!,
+            amount,
+            originalAmount: amount,
+            type: 'membership',
+            status: 'pending',
+            isMonthlyPayment: true,
+            branchId: input.branchId || null,
+            groupId: input.groupId || null,
+            dueDate: occurredAt,
+            notes: notesWithTag || `Списание с баланса / ${title}`,
+          },
+        });
+        // Уникальный период debit:{id} — своя строка в «Операции клиентов»
+        await tx.payment.update({
+          where: { id: debitPay.id },
+          data: {
+            periodKey: `debit:${debitPay.id}`,
+            notes: [
+              notesWithTag || `Списание с баланса / ${title}`,
+              `clientDebitId=${debitPay.id}`,
+            ]
+              .filter(Boolean)
+              .join(' / '),
+          },
+        });
+        paymentId = debitPay.id;
+      }
+
       const op = await tx.financeOperation.create({
         data: {
           tenantId,
@@ -674,6 +708,15 @@ export class FinanceService {
       ref?.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/)?.[1] || null;
     const packId = packFromInput || packFromRef;
 
+    const debitFromInput =
+      typeof input.periodKey === 'string' && input.periodKey.startsWith('debit:')
+        ? input.periodKey.slice('debit:'.length)
+        : null;
+    const debitFromRef =
+      ref?.notes?.match(/clientDebitId=([a-zA-Z0-9_-]+)/)?.[1] ||
+      (ref?.periodKey?.startsWith('debit:') ? ref.periodKey.slice('debit:'.length) : null);
+    const debitId = debitFromInput || debitFromRef;
+
     const periodKeyFilter =
       typeof input.periodKey === 'string' && /^\d{4}-\d{2}$/.test(input.periodKey)
         ? input.periodKey
@@ -698,6 +741,14 @@ export class FinanceService {
     if (packId) {
       const marker = `clientMembershipId=${packId}`;
       paidPayments = paidPayments.filter((p) => (p.notes || '').includes(marker));
+    } else if (debitId) {
+      const marker = `clientDebitId=${debitId}`;
+      paidPayments = paidPayments.filter(
+        (p) =>
+          (p.notes || '').includes(marker) ||
+          p.periodKey === `debit:${debitId}` ||
+          p.id === debitId
+      );
     }
     const currentPaid = paidPayments.reduce((s, p) => s + Number(p.amount), 0);
     if (currentPaid <= 0) {
@@ -707,6 +758,17 @@ export class FinanceService {
     const reduceBy = Math.min(requested, currentPaid);
     const clientName = `${client.lastName} ${client.firstName}`.trim();
     const packNote = packId ? `clientMembershipId=${packId}` : null;
+    const debitNote = debitId ? `clientDebitId=${debitId}` : null;
+    const scopedPeriodKey =
+      periodKeyFilter ||
+      (packId ? `pack:${packId}` : null) ||
+      (debitId ? `debit:${debitId}` : null) ||
+      (ref?.periodKey &&
+      (/^\d{4}-\d{2}$/.test(ref.periodKey) ||
+        ref.periodKey.startsWith('pack:') ||
+        ref.periodKey.startsWith('debit:'))
+        ? ref.periodKey
+        : null);
 
     const correction = await prisma.payment.create({
       data: {
@@ -720,9 +782,10 @@ export class FinanceService {
         branchId: ref?.branchId ?? null,
         groupId: ref?.groupId ?? null,
         membershipId: ref?.membershipId ?? null,
-        periodKey: periodKeyFilter || (ref?.periodKey && /^\d{4}-\d{2}$/.test(ref.periodKey) ? ref.periodKey : null),
+        periodKey: scopedPeriodKey,
         notes: [
           packNote,
+          debitNote,
           input.notes?.trim() ||
             `Корректировка выплачено −${reduceBy.toLocaleString('ru-RU')} ₽`,
         ]
@@ -805,7 +868,6 @@ export class FinanceService {
       });
       if (!existingPay) {
         const occurredAt = params.occurredAt || new Date();
-        const periodKey = `${occurredAt.getFullYear()}-${String(occurredAt.getMonth() + 1).padStart(2, '0')}`;
         await prisma.payment.create({
           data: {
             tenantId: params.tenantId,
@@ -814,11 +876,10 @@ export class FinanceService {
             amount,
             originalAmount: amount,
             type: 'membership',
-            status: 'paid',
-            paidAt: occurredAt,
-            periodKey,
+            status: 'pending',
+            dueDate: occurredAt,
             isMonthlyPayment: false,
-            notes: `Списание при выдаче абонемента / ${noteMarker}`,
+            notes: `Выдача абонемента / ${noteMarker}`,
           },
         });
       }
@@ -1095,6 +1156,12 @@ export class FinanceService {
             data: { balance: Number(client.balance) + amount },
           });
         }
+        if (op.paymentId) {
+          await tx.payment.update({
+            where: { id: op.paymentId },
+            data: { status: 'cancelled', paidAt: null },
+          });
+        }
       }
       if (op.trainerId && notes.includes('[allocation:paid]')) {
         await tx.trainer.update({
@@ -1266,10 +1333,14 @@ export class FinanceService {
       createdAt: Date;
       notes?: string | null;
     }): string => {
-      // Выдача клиентского абонемента — отдельная строка на каждый пакет
-      if (p.periodKey && p.periodKey.startsWith('pack:')) return p.periodKey;
+      // Выдача абонемента / ручное списание — отдельная строка на каждое событие
+      if (p.periodKey && (p.periodKey.startsWith('pack:') || p.periodKey.startsWith('debit:'))) {
+        return p.periodKey;
+      }
       const packMatch = p.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/);
       if (packMatch) return `pack:${packMatch[1]}`;
+      const debitMatch = p.notes?.match(/clientDebitId=([a-zA-Z0-9_-]+)/);
+      if (debitMatch) return `debit:${debitMatch[1]}`;
       if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;
       const d = p.dueDate || p.createdAt;
       const y = d.getFullYear();
@@ -1282,12 +1353,13 @@ export class FinanceService {
 
     const formatPeriodLabel = (key: string): string => {
       if (key.startsWith('pack:')) return 'Абонемент';
+      if (key.startsWith('debit:')) return 'Списание';
       const [yStr, mStr] = key.split('-');
       const y = Number(yStr);
       const m = Number(mStr);
       if (!y || !m) return key;
       const from = new Date(y, m - 1, 1);
-      const to = new Date(y, m, 0); // последний день месяца
+      const to = new Date(y, m, 0);
       return `${fmtDate(from)} — ${fmtDate(to)}`;
     };
 
@@ -1395,7 +1467,12 @@ export class FinanceService {
 
       const clientRows: PeriodAgg[] = [];
 
-      // Клиент без платежей — одна строка текущего месяца (ожидаемое начисление с группы)
+      const isWalletCredit = (p: { notes?: string | null }) =>
+        (p.notes || '').includes('[allocation:credit]');
+      const isExcessPay = (p: { notes?: string | null }) =>
+        (p.notes || '').includes('[payment-excess]');
+
+      // Клиент без платежей — строка текущего месяца; Баланс = кошелёк
       if (byPeriod.size === 0) {
         const now = new Date();
         const periodKey = calendarMonthOf(now);
@@ -1412,7 +1489,7 @@ export class FinanceService {
           membershipPrice,
           paidAmount: 0,
           debt: membershipPrice,
-          remaining: 0,
+          remaining: Number(client.balance),
           status: membershipPrice > 0 ? 'unpaid' : 'paid',
           latestPaymentId: null,
           groups,
@@ -1428,10 +1505,12 @@ export class FinanceService {
         const latestPeriodKey = periodEntries[0]?.periodKey;
 
         for (const { periodKey, payments, sortAt } of periodEntries) {
-          // Пополнение кошелька ([allocation:credit]) гасит счета отдельно —
-          // сам credit-платёж не должен удваивать paid/membershipPrice в сводке.
-          const isWalletCredit = (p: { notes?: string | null }) =>
-            (p.notes || '').includes('[allocation:credit]');
+          // Credit кошелька → Оплачено; списание (debit) — отдельный pending-счёт в периоде debit:…
+          const walletCredits = payments.filter(
+            (p) => !p.isAccrualAdjustment && isWalletCredit(p) && p.status === 'paid'
+          );
+          const walletCreditSum = walletCredits.reduce((s, p) => s + Number(p.amount), 0);
+
           const pending = payments.filter(
             (p) =>
               !p.isAccrualAdjustment &&
@@ -1439,20 +1518,34 @@ export class FinanceService {
               (p.status === 'pending' || p.status === 'overdue')
           );
           const paid = payments.filter(
-            (p) => !p.isAccrualAdjustment && !isWalletCredit(p) && p.status === 'paid'
+            (p) =>
+              !p.isAccrualAdjustment &&
+              !isWalletCredit(p) &&
+              p.status === 'paid'
           );
           const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
-          const paidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
+          const chargePaidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
+
+          // Счета, погашенные этим credit, уже в chargePaidAmount — не дублировать
+          let settledByCredit = 0;
+          for (const c of walletCredits) {
+            const settleMatch = (c.notes || '').match(/\[settled:([^\]]+)\]/);
+            if (!settleMatch) continue;
+            const ids = new Set(
+              settleMatch[1]
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            );
+            for (const p of paid) {
+              if (ids.has(p.id)) settledByCredit += Number(p.amount);
+            }
+          }
+          const paidAmount =
+            Math.round((chargePaidAmount + walletCreditSum - settledByCredit) * 100) / 100;
           const latest =
             payments.find((p) => !p.isAccrualAdjustment) || payments[0] || null;
 
-          // Начислено не должно меняться от оплат:
-          // • есть originalAmount на счёте → берём его (устойчиво даже если paid-слайс
-          //   когда-то уехал без clientMembershipId);
-          // • иначе классика due + paidTowardCharge (взаимно компенсируются).
-          // Excess / top-up с [payment-excess] в начисление не входят.
-          const isExcessPay = (p: { notes?: string | null }) =>
-            (p.notes || '').includes('[payment-excess]');
           const paidTowardCharge = paid
             .filter((p) => Number(p.amount) > 0 && !isExcessPay(p))
             .reduce((s, p) => s + Number(p.amount), 0);
@@ -1469,7 +1562,6 @@ export class FinanceService {
                 ) / 100;
             } else {
               membershipPrice = Math.round((dueAmount + paidTowardCharge) * 100) / 100;
-              // Дописать originalAmount на единственный счёт — дальше Accrued не зависит от периода оплат
               if (pending.length === 1 && membershipPrice > 0) {
                 const only = pending[0];
                 if (only.originalAmount == null) {
@@ -1480,11 +1572,13 @@ export class FinanceService {
                 }
               }
             }
-          } else {
+          } else if (paidTowardCharge > 0) {
             membershipPrice = Math.round(paidTowardCharge * 100) / 100;
           }
 
-          if (membershipPrice <= 0 && pending.length === 0 && paidTowardCharge <= 0) {
+          // Не подставлять месячный тариф, если в периоде только credit или пусто
+          const hasRealChargeActivity = pending.length > 0 || paidTowardCharge > 0;
+          if (membershipPrice <= 0 && !hasRealChargeActivity && walletCreditSum <= 0) {
             membershipPrice = applyPersonalDiscount(
               Number(client.groupMemberships[0]?.group?.monthlyPaymentAmount || 0),
               client.personalDiscountType,
@@ -1502,11 +1596,10 @@ export class FinanceService {
           const hasUnpaid = dueAmount > 0;
           const interactive = hasUnpaid || periodKey === latestPeriodKey;
 
-          // Для оплаты всегда предпочитаем незакрытый счёт, иначе следующий receive
-          // попадает в paid-слайс и создаёт orphan без clientMembershipId.
           const latestPaymentId =
             pending[0]?.id ||
             paid.find((p) => Number(p.amount) > 0)?.id ||
+            walletCredits[0]?.id ||
             latest?.id ||
             null;
 
@@ -1522,6 +1615,9 @@ export class FinanceService {
               const created = payments[0]?.createdAt || new Date();
               periodLabel = `${fmtDate(created)} — …`;
             }
+          } else if (periodKey.startsWith('debit:')) {
+            const created = payments[0]?.dueDate || payments[0]?.createdAt || new Date();
+            periodLabel = `Списание · ${fmtDate(created)}`;
           }
 
           clientRows.push({
@@ -1542,24 +1638,16 @@ export class FinanceService {
         }
       }
 
-      // Остаток = пред. остаток клиента − начислено + выплачено (от старых периодов к новым)
+      // Цепочка для истории; итоговый Баланс = фактический кошелёк (не перезаписываем Client.balance)
       clientRows.sort((a, b) => a.sortAt - b.sortAt || a.periodKey.localeCompare(b.periodKey));
       let running = 0;
       for (const row of clientRows) {
         running = running - Number(row.membershipPrice) + Number(row.paidAmount);
         row.remaining = Math.round(running * 100) / 100;
       }
-
-      // Итоговый остаток = баланс клиента
-      const latestRemaining = clientRows.length
-        ? clientRows[clientRows.length - 1].remaining
-        : 0;
-      const currentBalance = Number(client.balance);
-      if (Math.abs(latestRemaining - currentBalance) > 0.005) {
-        await prisma.client.update({
-          where: { id: client.id },
-          data: { balance: latestRemaining },
-        });
+      if (clientRows.length > 0) {
+        clientRows[clientRows.length - 1].remaining =
+          Math.round(Number(client.balance) * 100) / 100;
       }
 
       rows.push(...clientRows);
@@ -1575,7 +1663,7 @@ export class FinanceService {
     return rows
       .filter((r) => {
         if (filters.periodKey) {
-          if (r.periodKey.startsWith('pack:')) {
+          if (r.periodKey.startsWith('pack:') || r.periodKey.startsWith('debit:')) {
             if (calendarMonthOf(new Date(r.sortAt)) !== filters.periodKey) return false;
           } else if (r.periodKey !== filters.periodKey) {
             return false;
@@ -1623,9 +1711,13 @@ export class FinanceService {
       createdAt: Date;
       notes?: string | null;
     }): string => {
-      if (p.periodKey && p.periodKey.startsWith('pack:')) return p.periodKey;
+      if (p.periodKey && (p.periodKey.startsWith('pack:') || p.periodKey.startsWith('debit:'))) {
+        return p.periodKey;
+      }
       const packMatch = p.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/);
       if (packMatch) return `pack:${packMatch[1]}`;
+      const debitMatch = p.notes?.match(/clientDebitId=([a-zA-Z0-9_-]+)/);
+      if (debitMatch) return `debit:${debitMatch[1]}`;
       if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;
       const d = p.dueDate || p.createdAt;
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
