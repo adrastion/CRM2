@@ -146,6 +146,7 @@ export const clientSchemas = {
     passportBirthPlace: Joi.string().max(500).optional().allow('', null),
     parents: Joi.array().items(
       Joi.object({
+        id: Joi.string().optional(),
         fullName: Joi.string().min(2).max(100).required(),
         phone: phoneSchema,
         email: Joi.string().email().optional().allow('', null),
@@ -190,6 +191,7 @@ export const clientSchemas = {
     passportBirthPlace: Joi.string().max(500).optional().allow('', null),
     parents: Joi.array().items(
       Joi.object({
+        id: Joi.string().optional(),
         fullName: Joi.string().min(2).max(100).required(),
         phone: phoneSchema,
         email: Joi.string().email().optional().allow('', null),

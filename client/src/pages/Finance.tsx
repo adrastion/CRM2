@@ -702,20 +702,20 @@ const Finance: React.FC = () => {
                 const c = clients.find((cl) => cl.id === formClientId);
                 return c ? `${created.name} — ${c.lastName} ${c.firstName}` : created.name;
               })());
-        await apiService.createFinanceOperation({
-          direction: formDirection,
+      await apiService.createFinanceOperation({
+        direction: formDirection,
           typeCode: created.code,
           title,
-          amount: Number(formAmount),
-          occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
+        amount: Number(formAmount),
+        occurredAt: formOccurredAt?.toISOString(),
+        notes: formNotes || undefined,
           trainerId: customSubject === 'trainer' ? formTrainerId : undefined,
           clientId: customSubject === 'client' ? formClientId : undefined,
           allocation: customAllocation,
         });
         discardAddForm();
-        setSnackbar('Операция сохранена');
-        await loadOperations();
+      setSnackbar('Операция сохранена');
+      await loadOperations();
         if (tab === 'salary' || customSubject === 'trainer') await loadSalary();
         if (customSubject === 'client') await loadMemberships();
         return true;
@@ -988,11 +988,11 @@ const Finance: React.FC = () => {
           : undefined,
         onPaidClick: row.interactive
           ? () => {
-              setSelectedMembership(row);
-              setReceiveAmount('');
+          setSelectedMembership(row);
+          setReceiveAmount('');
               setReceiveBaseline('');
               setChangePackId('');
-              setReceiveOpen(true);
+          setReceiveOpen(true);
               void apiService
                 .getMemberships({ limit: 200 })
                 .then((res) =>
@@ -1979,20 +1979,20 @@ const Finance: React.FC = () => {
 
               {formTypeCode === 'membership_issue' && (
                 <>
-                  <FormControl fullWidth>
-                    <InputLabel>Клиент</InputLabel>
-                    <Select
-                      label="Клиент"
-                      value={formClientId}
-                      onChange={(e) => setFormClientId(e.target.value)}
-                    >
-                      {clients.map((c) => (
-                        <MenuItem key={c.id} value={c.id}>
+                    <FormControl fullWidth>
+                      <InputLabel>Клиент</InputLabel>
+                      <Select
+                        label="Клиент"
+                        value={formClientId}
+                        onChange={(e) => setFormClientId(e.target.value)}
+                      >
+                        {clients.map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
                           {formatClientOptionLabel(c)}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   <FormControl fullWidth>
                     <InputLabel>Абонемент</InputLabel>
                     <Select
@@ -2041,22 +2041,22 @@ const Finance: React.FC = () => {
               )}
 
               {formTypeCode !== 'membership_issue' && (
-                <TextField
-                  label="Наименование операции"
-                  fullWidth
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
+              <TextField
+                label="Наименование операции"
+                fullWidth
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
                   required={formTypeCode === 'rent'}
-                />
+              />
               )}
 
               {formTypeCode !== 'membership_issue' && (
-                <TextField
-                  label="Сумма"
-                  fullWidth
-                  value={formAmount}
-                  onChange={(e) => setFormAmount(e.target.value)}
-                  InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
+              <TextField
+                label="Сумма"
+                fullWidth
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
                   required
                 />
               )}
@@ -2068,12 +2068,12 @@ const Finance: React.FC = () => {
               )}
 
               {formTypeCode !== 'membership_issue' && (
-                <DateTimePicker
-                  label="Дата и время"
-                  value={formOccurredAt}
-                  onChange={setFormOccurredAt}
-                  slotProps={{ textField: { fullWidth: true } }}
-                />
+              <DateTimePicker
+                label="Дата и время"
+                value={formOccurredAt}
+                onChange={setFormOccurredAt}
+                slotProps={{ textField: { fullWidth: true } }}
+              />
               )}
               <TextField
                 label="Комментарий"

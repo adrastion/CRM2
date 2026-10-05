@@ -192,15 +192,20 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
     if (!data?.id || mode !== 'staff') return;
     setSaving(true);
     try {
-      const parentsPayload = (draft.parents || data.parents || []).map((p: any) => ({
-        fullName: p.fullName,
-        phone: p.phone || null,
-        email: p.email || null,
-        workplace: p.workplace || null,
-        workplaceContact: p.workplaceContact || null,
-        relationType: p.relationType || null,
-        isPrimaryContact: Boolean(p.isPrimaryContact),
-      }));
+      const parentsPayload = (draft.parents || data.parents || []).map((p: any) => {
+        const id =
+          typeof p.id === 'string' && p.id && !p.id.startsWith('new-') ? p.id : undefined;
+        return {
+          ...(id ? { id } : {}),
+          fullName: p.fullName,
+          phone: p.phone || null,
+          email: p.email || null,
+          workplace: p.workplace || null,
+          workplaceContact: p.workplaceContact || null,
+          relationType: p.relationType || null,
+          isPrimaryContact: Boolean(p.isPrimaryContact),
+        };
+      });
       const payload: any = {
         firstName: draft.firstName,
         lastName: draft.lastName,

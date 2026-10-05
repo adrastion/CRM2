@@ -20,3 +20,5 @@ export const badRequest = (message: string, field?: string) => new HttpError(400
 export const unauthorized = (message: string, field?: string) => new HttpError(401, message, { field });
 export const forbidden = (message: string, field?: string) => new HttpError(403, message, { field });
 export const notFound = (message: string, field?: string) => new HttpError(404, message, { field });
+export const serviceUnavailable = (message: string, field?: string) =>
+  new HttpError(503, message, { field });

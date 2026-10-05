@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { normalizeEmail } from '../utils/identifier';
-import { badRequest, unauthorized } from '../utils/httpError';
+import { badRequest, unauthorized, serviceUnavailable } from '../utils/httpError';
 import { EmailOtpService, OtpAccountType } from './emailOtpService';
 import { emailService } from './emailService';
 import { PublicAccount } from './unifiedAuthService';
@@ -133,7 +133,11 @@ export class PasswordResetService {
     } catch (err: any) {
       // Rate-limit / validation — пробрасываем клиенту
       if (err?.statusCode === 400 || err?.status === 400) throw err;
+      if (err instanceof Error && (err as any).statusCode) throw err;
       console.error('password reset email failed:', err);
+      throw serviceUnavailable(
+        'Не удалось отправить письмо с кодом. Попробуйте позже или обратитесь в школу.'
+      );
     }
 
     return { message: NEUTRAL_MSG };

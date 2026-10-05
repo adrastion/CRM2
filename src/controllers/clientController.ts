@@ -17,7 +17,31 @@ import {
   sanitizeClientCertificateFields,
 } from '../utils/clientCertificates';
 import { notifyAthleteCreated } from '../services/notificationDomainHooks';
+import { normalizeEmail } from '../utils/identifier';
 
+/** Контактные поля родителя без ЛК (пароль, sessionVersion и т.п.). */
+function mapParentContactFields(parent: any, tenantId: string) {
+  const rawEmail = typeof parent.email === 'string' ? parent.email.trim() : '';
+  const email = rawEmail ? normalizeEmail(rawEmail) : null;
+  return {
+    fullName: String(parent.fullName || '').trim(),
+    phone: parent.phone || null,
+    email: email || null,
+    workplace: parent.workplace || null,
+    workplaceContact: parent.workplaceContact || null,
+    relationType: parent.relationType || null,
+    isPrimaryContact: Boolean(parent.isPrimaryContact),
+    tenantId,
+    isApproved: true,
+  };
+}
+
+function parentPayloadId(parent: any): string | null {
+  if (typeof parent?.id !== 'string' || !parent.id || parent.id.startsWith('new-')) {
+    return null;
+  }
+  return parent.id;
+}
 /**
  * Approve parent account registration
  * Only OWNER or ADMIN can approve
@@ -445,16 +469,10 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
         createdByUserId: req.user?.id || null,
       };
 
-  // Создаем родителей без токенов подтверждения
+  // Создаем родителей без токенов подтверждения и без ЛК-полей из payload
   const parentsData =
     !isPromoter && parents && parents.length > 0
-      ? parents.map((parent: any) => {
-          return {
-            ...parent,
-            tenantId,
-            isApproved: true, // Автоматически подтверждаем без email
-          };
-        })
+      ? parents.map((parent: any) => mapParentContactFields(parent, tenantId))
       : undefined;
 
   // Создаем клиента вместе с родителями
@@ -607,26 +625,49 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     return;
   }
 
-  // Если есть родители, обновляем их
+  // Родителей обновляем upsert'ом, чтобы не сбрасывать пароль/ЛК
   if (parents !== undefined) {
-    // Удаляем всех существующих родителей
-    await prisma.parent.deleteMany({
-      where: { clientId: id, tenantId }
+    const existing = await prisma.parent.findMany({
+      where: { clientId: id, tenantId },
+      select: { id: true },
     });
+    const existingIds = new Set(existing.map((p) => p.id));
+    const keepIds = new Set<string>();
 
-    // Создаем новых родителей, если они есть
-    if (parents.length > 0) {
-      const parentsData = parents.map((parent: any) => {
-        return {
-          ...parent,
-          tenantId,
-          isApproved: true // Автоматически подтверждаем без email
-        };
+    for (const parent of parents) {
+      const contact = mapParentContactFields(parent, tenantId!);
+      const pid = parentPayloadId(parent);
+
+      if (pid && existingIds.has(pid)) {
+        keepIds.add(pid);
+        await prisma.parent.update({
+          where: { id: pid },
+          data: {
+            fullName: contact.fullName,
+            phone: contact.phone,
+            email: contact.email,
+            workplace: contact.workplace,
+            workplaceContact: contact.workplaceContact,
+            relationType: contact.relationType,
+            isPrimaryContact: contact.isPrimaryContact,
+            isApproved: true,
+          },
+        });
+      } else {
+        await prisma.parent.create({
+          data: {
+            ...contact,
+            clientId: id,
+          },
+        });
+      }
+    }
+
+    const toDelete = [...existingIds].filter((eid) => !keepIds.has(eid));
+    if (toDelete.length > 0) {
+      await prisma.parent.deleteMany({
+        where: { id: { in: toDelete }, clientId: id, tenantId },
       });
-      
-      processedData.parents = {
-        create: parentsData
-      };
     }
   }
 
@@ -1223,10 +1264,7 @@ export const importClients = asyncHandler(async (req: AuthenticatedRequest, res:
           data: {
             ...processedData,
             parents: parentsData && parentsData.length > 0 ? {
-              create: parentsData.map((parent: any) => ({
-                ...parent,
-                tenantId
-              }))
+              create: parentsData.map((parent: any) => mapParentContactFields(parent, tenantId))
             } : undefined
           }
         });

@@ -343,13 +343,9 @@ const Auth: React.FC = () => {
     setResetToken('');
     setForgotAccounts([]);
     setForgotAccount(null);
-    if (identifierType === 'email' && (email || identifier)) {
-      setForgotEmail(email || identifier);
-      goToStep('forgot_email');
-    } else {
-      setForgotEmail('');
-      goToStep('forgot_email');
-    }
+    const candidate = (email || '').trim() || (identifierType === 'email' ? (identifier || '').trim() : '');
+    setForgotEmail(candidate.includes('@') ? candidate.toLowerCase() : '');
+    goToStep('forgot_email');
   };
 
   const submitForgotRequest = async () => {
@@ -599,6 +595,25 @@ const Auth: React.FC = () => {
             </AuthButton>
           </>
         )}
+      </Box>
+
+      <Box sx={{ textAlign: 'center' }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={startForgotPassword}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Забыли пароль?
+        </Typography>
       </Box>
     </Box>
   );
@@ -857,6 +872,7 @@ const Auth: React.FC = () => {
       staffAccounts={forgotStaffAccounts}
       loading={loading}
       error={errors.form}
+      submitLabel="Продолжить"
       onSubmit={(account) => {
         setForgotAccount(account);
         goToStep('forgot_new_password');
@@ -869,8 +885,15 @@ const Auth: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
       {forgotAccount && (
         <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
-          Новый пароль для: {forgotAccount.displayName}
-          {forgotAccount.tenant?.name ? ` (${forgotAccount.tenant.name})` : ''}
+          Новый пароль для:{' '}
+          {forgotAccount.accountType === 'PARENT'
+            ? `${forgotAccount.displayName} (Родитель${
+                forgotAccount.childName ? ` · ${forgotAccount.childName}` : ''
+              })`
+            : forgotAccount.accountType === 'CLIENT'
+              ? `${forgotAccount.displayName} (Ученик)`
+              : forgotAccount.displayName}
+          {forgotAccount.tenant?.name ? ` · ${forgotAccount.tenant.name}` : ''}
         </Typography>
       )}
       <PillField

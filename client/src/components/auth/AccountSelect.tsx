@@ -10,6 +10,8 @@ interface AccountSelectProps {
   staffAccounts: PublicAccount[];
   loading?: boolean;
   error?: string;
+  /** Подпись кнопки подтверждения (по умолчанию «Войти»). */
+  submitLabel?: string;
   onSubmit: (account: PublicAccount) => void;
   onBack: () => void;
 }
@@ -28,6 +30,10 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function accountLabel(a: PublicAccount): string {
+  if (a.accountType === 'PARENT') {
+    const org = a.tenant?.name;
+    return org ? `${a.displayName} · ${org}` : a.displayName || 'Родитель';
+  }
   return a.tenant?.name || a.displayName;
 }
 
@@ -72,8 +78,9 @@ const SelectColumn: React.FC<{
   heading?: string;
   accounts: PublicAccount[];
   loading?: boolean;
+  submitLabel?: string;
   onSubmit: (a: PublicAccount) => void;
-}> = ({ heading, accounts, loading, onSubmit }) => {
+}> = ({ heading, accounts, loading, submitLabel = 'Войти', onSubmit }) => {
   const [value, setValue] = React.useState<string | null>(
     accounts.length > 0 ? `${accounts[0].accountType}:${accounts[0].id}` : null
   );
@@ -116,7 +123,7 @@ const SelectColumn: React.FC<{
 
       <Box sx={{ display: 'flex', justifyContent: 'center', pt: { xs: 0, md: 1 } }}>
         <AuthButton onClick={submit} loading={loading}>
-          Войти
+          {submitLabel}
         </AuthButton>
       </Box>
     </Box>
@@ -136,6 +143,7 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
   staffAccounts,
   loading,
   error,
+  submitLabel,
   onSubmit,
   onBack,
 }) => {
@@ -195,6 +203,7 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
               heading="Войти в аккаунт как клиент"
               accounts={clientAccounts}
               loading={loading}
+              submitLabel={submitLabel}
               onSubmit={onSubmit}
             />
           </Box>
@@ -210,6 +219,7 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
               heading="Войти в аккаунт как Сотрудник"
               accounts={staffAccounts}
               loading={loading}
+              submitLabel={submitLabel}
               onSubmit={onSubmit}
             />
           </Box>
@@ -226,6 +236,7 @@ const AccountSelect: React.FC<AccountSelectProps> = ({
         heading="В аккаунт какой организации вы хотите войти?"
         accounts={hasClients ? clientAccounts : staffAccounts}
         loading={loading}
+        submitLabel={submitLabel}
         onSubmit={onSubmit}
       />
       {errorBanner}

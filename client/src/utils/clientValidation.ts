@@ -30,6 +30,7 @@ export interface ClientFormData {
   passportBirthPlace?: string;
   groupIds: string[];
   parents: Array<{
+    id?: string;
     fullName: string;
     phone: string;
     email: string;

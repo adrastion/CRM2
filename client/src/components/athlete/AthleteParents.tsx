@@ -125,23 +125,45 @@ const AthleteParents: React.FC<Props> = ({ parents, mode, editing, onChange, onR
                     />
                     <TextField
                       size="small"
-                      select
-                      label="Тип связи"
-                      value={p.relationType || 'other'}
+                      label="Email"
+                      type="email"
+                      value={p.email || ''}
                       onChange={(e) => {
                         const next = [...parents];
-                        next[index] = { ...p, relationType: e.target.value };
+                        next[index] = { ...p, email: e.target.value };
                         onChange(next);
                       }}
+                      error={Boolean(
+                        (p.email || '').trim() &&
+                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((p.email || '').trim())
+                      )}
+                      helperText={
+                        (p.email || '').trim() &&
+                        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((p.email || '').trim())
+                          ? 'Некорректный email'
+                          : undefined
+                      }
                       fullWidth
-                    >
-                      {Object.entries(RELATION_LABELS).map(([k, v]) => (
-                        <MenuItem key={k} value={k}>
-                          {v}
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                    />
                   </Stack>
+                  <TextField
+                    size="small"
+                    select
+                    label="Тип связи"
+                    value={p.relationType || 'other'}
+                    onChange={(e) => {
+                      const next = [...parents];
+                      next[index] = { ...p, relationType: e.target.value };
+                      onChange(next);
+                    }}
+                    fullWidth
+                  >
+                    {Object.entries(RELATION_LABELS).map(([k, v]) => (
+                      <MenuItem key={k} value={k}>
+                        {v}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                   <TextField
                     size="small"
                     label="Место работы"
@@ -185,6 +207,9 @@ const AthleteParents: React.FC<Props> = ({ parents, mode, editing, onChange, onR
                   </Box>
                   <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
                     Телефон: {p.phone || '—'}
+                  </Typography>
+                  <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
+                    Email: {p.email || '—'}
                   </Typography>
                   <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
                     Место работы: {p.workplace || '—'}

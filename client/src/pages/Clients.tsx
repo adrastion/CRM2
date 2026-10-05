@@ -332,6 +332,7 @@ const Clients: React.FC = () => {
     groupIds: [] as string[],
     // Родители
     parents: [] as Array<{
+      id?: string;
       fullName: string;
       phone: string;
       email: string;
@@ -806,6 +807,7 @@ const Clients: React.FC = () => {
         .map((gm: any) => gm.group?.id)
         .filter(Boolean) || [],
       parents: client.parents?.map(p => ({
+        id: p.id,
         fullName: p.fullName || '',
         phone: p.phone || '',
         email: p.email || '',
@@ -2381,6 +2383,7 @@ const Clients: React.FC = () => {
                                     setFormData({
                                       ...formData,
                                       parents: updatedClient.parents?.map((p: any) => ({
+                                        id: p.id,
                                         fullName: p.fullName || '',
                                         phone: p.phone || '',
                                         email: p.email || '',
