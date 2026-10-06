@@ -659,7 +659,6 @@ export interface Membership {
   paymentWindowEndDay?: number | null;
   recalcMode?: string | null;
   missThresholdPercent?: number | null;
-  midMonthHalfChargeEnabled?: boolean;
   validityDays?: number | null;
   periodType?: string | null;
   periodMonths?: number | null;

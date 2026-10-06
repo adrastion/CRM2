@@ -33,7 +33,8 @@ type FormState = {
   name: string;
   description: string;
   price: string;
-  category: 'CLIENT' | 'GROUP';
+  /** Пусто при создании, пока пользователь не выбрал категорию. */
+  category: '' | 'CLIENT' | 'GROUP';
   type: 'visits' | 'monthly';
   visits: string;
   validityDays: string;
@@ -42,7 +43,6 @@ type FormState = {
   paymentWindowEndDay: string;
   recalcMode: 'PAY_ATTENDED' | 'MISS_THRESHOLD';
   missThresholdPercent: string;
-  midMonthHalfChargeEnabled: boolean;
   groupIds: string[];
   isActive: boolean;
 };
@@ -51,7 +51,7 @@ const emptyForm = (): FormState => ({
   name: '',
   description: '',
   price: '',
-  category: 'CLIENT',
+  category: '',
   type: 'visits',
   visits: '',
   validityDays: '',
@@ -60,7 +60,6 @@ const emptyForm = (): FormState => ({
   paymentWindowEndDay: '6',
   recalcMode: 'MISS_THRESHOLD',
   missThresholdPercent: '50',
-  midMonthHalfChargeEnabled: true,
   groupIds: [],
   isActive: true,
 });
@@ -142,7 +141,6 @@ const Memberships: React.FC = () => {
       paymentWindowEndDay: m.paymentWindowEndDay != null ? String(m.paymentWindowEndDay) : '6',
       recalcMode: (m.recalcMode as FormState['recalcMode']) || 'MISS_THRESHOLD',
       missThresholdPercent: m.missThresholdPercent != null ? String(m.missThresholdPercent) : '50',
-      midMonthHalfChargeEnabled: m.midMonthHalfChargeEnabled !== false,
       groupIds: (m.membershipGroups || []).map((g) => g.groupId),
       isActive: m.isActive !== false,
     };
@@ -153,6 +151,9 @@ const Memberships: React.FC = () => {
   };
 
   const buildPayload = (f: FormState, fromDate: string) => {
+    if (!f.category) {
+      throw new Error('Категория не выбрана');
+    }
     const payload: Record<string, unknown> = {
       name: f.name.trim(),
       description: f.description.trim() || null,
@@ -166,7 +167,6 @@ const Memberships: React.FC = () => {
       payload.paymentWindowEndDay = Number(f.paymentWindowEndDay) || 6;
       payload.recalcMode = f.recalcMode;
       payload.missThresholdPercent = Number(f.missThresholdPercent) || 50;
-      payload.midMonthHalfChargeEnabled = f.midMonthHalfChargeEnabled;
       payload.groupBindings = f.groupIds.map((groupId) => ({
         groupId,
         effectiveFrom: fromDate,
@@ -199,6 +199,10 @@ const Memberships: React.FC = () => {
   };
 
   const doSave = async (f: FormState, fromDate: string): Promise<boolean> => {
+    if (!f.category) {
+      setError('Выберите категорию абонемента');
+      return false;
+    }
     if (!f.name.trim()) {
       setError('Укажите название');
       return false;
@@ -451,26 +455,69 @@ const Memberships: React.FC = () => {
         fullWidth
       >
         <DialogTitle>{editing ? 'Редактировать абонемент' : 'Новый абонемент'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+        <DialogContent
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            // Иначе floating label Select «Категория» уезжает под DialogTitle
+            pt: '20px !important',
+          }}
+        >
           {error && (
             <Alert severity="error" onClose={() => setError('')}>
               {error}
             </Alert>
           )}
-          <FormControl fullWidth>
-            <InputLabel>Категория</InputLabel>
+          <FormControl fullWidth required>
+            <InputLabel id="membership-category-label" shrink>
+              Категория
+            </InputLabel>
             <Select
+              labelId="membership-category-label"
               label="Категория"
+              notched
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value as 'CLIENT' | 'GROUP' })}
+              displayEmpty
+              renderValue={(selected) => {
+                if (!selected) return <em style={{ opacity: 0.6 }}>Выберите категорию</em>;
+                if (selected === 'CLIENT') return 'Клиентский (на человека)';
+                return 'Групповой (ежемесячная оплата группы)';
+              }}
+              onChange={(e) =>
+                setForm({ ...form, category: e.target.value as '' | 'CLIENT' | 'GROUP' })
+              }
             >
               <MenuItem value="CLIENT">Клиентский (на человека)</MenuItem>
               <MenuItem value="GROUP">Групповой (ежемесячная оплата группы)</MenuItem>
             </Select>
           </FormControl>
-          <TextField label="Название" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth required />
-          <TextField label="Цена" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} fullWidth required />
-          <TextField label="Описание" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth multiline minRows={2} />
+          <TextField
+            label="Название"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            fullWidth
+            required
+            disabled={!form.category}
+          />
+          <TextField
+            label="Цена"
+            type="number"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            fullWidth
+            required
+            disabled={!form.category}
+          />
+          <TextField
+            label="Описание"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            fullWidth
+            multiline
+            minRows={2}
+            disabled={!form.category}
+          />
 
           {form.category === 'CLIENT' ? (
             <>
@@ -499,7 +546,9 @@ const Memberships: React.FC = () => {
                 helperText="Необязательно — срок без учёта числа тренировок"
               />
             </>
-          ) : (
+          ) : null}
+
+          {form.category === 'GROUP' ? (
             <>
               <Box display="flex" gap={2}>
                 <TextField
@@ -523,8 +572,9 @@ const Memberships: React.FC = () => {
                 С дня после окончания окна ученикам уходит уведомление о неоплате.
               </Typography>
               <FormControl fullWidth>
-                <InputLabel>Перерасчёт пропусков</InputLabel>
+                <InputLabel id="membership-recalc-label">Перерасчёт пропусков</InputLabel>
                 <Select
+                  labelId="membership-recalc-label"
                   label="Перерасчёт пропусков"
                   value={form.recalcMode}
                   onChange={(e) => setForm({ ...form, recalcMode: e.target.value as FormState['recalcMode'] })}
@@ -542,18 +592,10 @@ const Memberships: React.FC = () => {
                   fullWidth
                 />
               )}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.midMonthHalfChargeEnabled}
-                    onChange={(e) => setForm({ ...form, midMonthHalfChargeEnabled: e.target.checked })}
-                  />
-                }
-                label="Правило mid-month 50% (на следующий месяц)"
-              />
               <FormControl fullWidth>
-                <InputLabel>Группы</InputLabel>
+                <InputLabel id="membership-groups-label">Группы</InputLabel>
                 <Select
+                  labelId="membership-groups-label"
                   multiple
                   label="Группы"
                   value={form.groupIds}
@@ -575,10 +617,16 @@ const Memberships: React.FC = () => {
                 </Select>
               </FormControl>
             </>
-          )}
+          ) : null}
 
           <FormControlLabel
-            control={<Switch checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />}
+            control={
+              <Switch
+                checked={form.isActive}
+                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                disabled={!form.category}
+              />
+            }
             label="Активен"
           />
         </DialogContent>
@@ -590,7 +638,11 @@ const Memberships: React.FC = () => {
           )}
           <Box display="flex" gap={1}>
             <Button onClick={() => unsaved.requestClose('closeButton')}>Отмена</Button>
-            <Button variant="contained" onClick={handleSaveClick} disabled={saving || deleting}>
+            <Button
+              variant="contained"
+              onClick={handleSaveClick}
+              disabled={saving || deleting || !form.category}
+            >
               Сохранить
             </Button>
           </Box>

@@ -749,7 +749,6 @@ model Membership {
   /// PAY_ATTENDED | MISS_THRESHOLD
   recalcMode            String?
   missThresholdPercent  Decimal?
-  midMonthHalfChargeEnabled Boolean @default(true)
   /// Опциональный срок действия клиентского пакета в днях (если задан отдельно от duration)
   validityDays          Int?
   /// VISITS | FIXED_DAYS | CALENDAR_PERIOD

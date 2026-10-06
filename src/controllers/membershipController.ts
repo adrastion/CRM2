@@ -115,7 +115,6 @@ export const createMembership = async (req: AuthenticatedRequest, res: Response)
       paymentWindowEndDay,
       recalcMode,
       missThresholdPercent,
-      midMonthHalfChargeEnabled = true,
       validityDays,
       periodType,
       periodMonths,
@@ -163,7 +162,6 @@ export const createMembership = async (req: AuthenticatedRequest, res: Response)
         paymentWindowEndDay: cat === 'GROUP' ? parseOptionalInt(paymentWindowEndDay) ?? 6 : null,
         recalcMode: cat === 'GROUP' ? recalcMode || 'MISS_THRESHOLD' : null,
         missThresholdPercent: cat === 'GROUP' ? parseOptionalFloat(missThresholdPercent) ?? 50 : null,
-        midMonthHalfChargeEnabled: cat === 'GROUP' ? midMonthHalfChargeEnabled !== false : true,
         validityDays: cat === 'CLIENT' ? parseOptionalInt(validityDays) ?? parseOptionalInt(duration) : null,
         periodType: cat === 'CLIENT' ? resolvedPeriodType : null,
         periodMonths: cat === 'CLIENT' ? parseOptionalInt(periodMonths) : null,
@@ -235,7 +233,6 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
       paymentWindowEndDay,
       recalcMode,
       missThresholdPercent,
-      midMonthHalfChargeEnabled,
       validityDays,
       periodType,
       periodMonths,
@@ -257,7 +254,6 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
     if (paymentWindowEndDay !== undefined) updateData.paymentWindowEndDay = parseOptionalInt(paymentWindowEndDay);
     if (recalcMode !== undefined) updateData.recalcMode = recalcMode;
     if (missThresholdPercent !== undefined) updateData.missThresholdPercent = parseOptionalFloat(missThresholdPercent);
-    if (midMonthHalfChargeEnabled !== undefined) updateData.midMonthHalfChargeEnabled = midMonthHalfChargeEnabled;
     if (validityDays !== undefined) updateData.validityDays = parseOptionalInt(validityDays);
     if (periodType !== undefined) updateData.periodType = periodType;
     if (periodMonths !== undefined) updateData.periodMonths = parseOptionalInt(periodMonths);
