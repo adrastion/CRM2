@@ -52,6 +52,12 @@ import {
   getPortalNotificationsUnreadCount,
   markPortalNotificationsRead,
 } from '../controllers/inboxNotificationController';
+import {
+  attachPortalNewsRole,
+  getPlatformNewsFile,
+  getPlatformNewsImage,
+  listPlatformNewsForRole,
+} from '../controllers/platformChangelogController';
 
 const router = Router();
 
@@ -98,6 +104,11 @@ router.get('/push/vapid-key', authenticateClient, getSharedVapidKey);
 router.post('/push/subscribe', authenticateClient, subscribePortalPush);
 router.post('/push/unsubscribe', authenticateClient, unsubscribePortalPush);
 router.get('/push/status', authenticateClient, portalPushStatus);
+
+/** Новости платформы (фильтр по CLIENT / PARENT). */
+router.get('/news', authenticateClient, attachPortalNewsRole, listPlatformNewsForRole);
+router.get('/news/:id/image', authenticateClient, attachPortalNewsRole, getPlatformNewsImage);
+router.get('/news/:id/file', authenticateClient, attachPortalNewsRole, getPlatformNewsFile);
 
 // Документы (договоры + личные сертификаты)
 router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);

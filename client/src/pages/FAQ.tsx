@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -8,7 +8,11 @@ import {
   AccordionDetails,
   Paper,
   Grid,
+  Tabs,
+  Tab,
 } from '@mui/material';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { KnowledgeMaterialsPanel } from './KnowledgeBase';
 import {
   ExpandMore,
   HelpOutline,
@@ -548,9 +552,30 @@ OWNER/ADMIN могут подтвердить или отклонить заяв
   },
 ];
 
+type FaqTab = 'questions' | 'materials';
+
+const tabFromHash = (hash: string): FaqTab => (hash === '#materials' ? 'materials' : 'questions');
+
 const FAQ: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<FaqTab>(() => tabFromHash(location.hash));
   const [expanded, setExpanded] = useState<string | false>(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Все');
+
+  useEffect(() => {
+    setActiveTab(tabFromHash(location.hash));
+  }, [location.hash]);
+
+  const handleTabChange = (_: React.SyntheticEvent, value: FaqTab) => {
+    setActiveTab(value);
+    navigate(value === 'materials' ? '/faq#materials' : '/faq', { replace: true });
+  };
+
+  const goToQuestionsTab = useCallback(() => {
+    setActiveTab('questions');
+    navigate('/faq', { replace: true });
+  }, [navigate]);
 
   const categories = ['Все', ...Array.from(new Set(faqData.map(item => item.category)))];
 
@@ -575,6 +600,22 @@ const FAQ: React.FC = () => {
         </Typography>
       </Box>
 
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: { xs: 2.5, md: 4 } }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="fullWidth"
+          aria-label="Разделы справки"
+        >
+          <Tab label="Вопросы" value="questions" />
+          <Tab label="Подробные материалы" value="materials" />
+        </Tabs>
+      </Box>
+
+      {activeTab === 'materials' ? (
+        <KnowledgeMaterialsPanel onGoToFaq={goToQuestionsTab} />
+      ) : (
+        <>
       {/* Категории */}
       <Box sx={{ mb: { xs: 2.5, md: 4 }, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
         {categories.map((category) => (
@@ -695,6 +736,8 @@ const FAQ: React.FC = () => {
           Email: Скоро будет | Telegram: Скоро будет
         </Typography>
       </Box>
+        </>
+      )}
     </Container>
       <PublicFooter />
     </Box>

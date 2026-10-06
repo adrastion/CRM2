@@ -1601,13 +1601,17 @@ model TesterPushSubscription {
 }
 
 model PlatformChangelogEntry {
-  id          String     @id @default(cuid())
-  title       String
-  body        String     @db.Text
-  createdById String
-  createdBy   SuperAdmin @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  title          String
+  body           String     @db.Text
+  /// Роли аудитории: SUPER_ADMIN, TESTER, OWNER, ADMIN, TRAINER, PROMOTER, CLIENT, PARENT, MARKETER, PLATFORM_STAFF, …
+  audienceRoles  String[]   @default([])
+  imageUrl       String?
+  fileUrl        String?
+  createdById    String
+  createdBy      SuperAdmin @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   @@index([createdAt])
   @@map("platform_changelog_entries")

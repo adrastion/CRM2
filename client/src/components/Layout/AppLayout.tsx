@@ -48,7 +48,7 @@ const navigationItems: Array<{
   { label: 'Финансы', path: '/finance', iconName: 'finance', roles: ['OWNER', 'ADMIN'], tabKey: 'finance', onboarding: 'payments-nav' },
   { label: 'Настройки', path: '/settings', iconName: 'settings', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'settings', onboarding: 'settings-nav' },
   { label: 'FAQ', path: '/faq', iconName: 'faq', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'faq', onboarding: 'faq-nav' },
-  { label: 'База знаний', path: '/knowledge-base', iconName: 'knowledge-base', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'knowledgeBase', onboarding: 'knowledge-base-nav' },
+  { label: 'Новости', path: '/news', iconName: 'issued-tariffs', roles: ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'], tabKey: 'news', onboarding: 'news-nav' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -81,7 +81,7 @@ const SA_DASHBOARD_SECTIONS: Array<{
   { section: 'planner', label: 'Планировщик', iconName: 'schedule' },
   { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
   { section: 'chats', label: 'Чаты', iconName: 'chats' },
-  { section: 'changelog', label: 'Изменения', iconName: 'issued-tariffs' },
+  { section: 'changelog', label: 'Новости', iconName: 'issued-tariffs' },
 ];
 
 const SA_SECTION_TITLES: Record<string, string> = Object.fromEntries(
@@ -305,6 +305,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
               label: 'Реклама',
               iconName: 'tariffs',
               onClick: () => navigate('/marketer/ads'),
+            },
+            {
+              key: '/marketer/news',
+              label: 'Новости',
+              iconName: 'issued-tariffs',
+              onClick: () => navigate('/marketer/news'),
             },
           ]
         : isPromoCodeAdminRoute

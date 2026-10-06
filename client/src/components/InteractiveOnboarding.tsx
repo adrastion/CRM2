@@ -28,6 +28,28 @@ export interface InteractiveOnboardingProps {
 
 const SETTLE_MS = 200;
 
+function parseOnboardingPath(stepPath: string): { pathname: string; hash: string } {
+  const hashIndex = stepPath.indexOf('#');
+  if (hashIndex === -1) {
+    return { pathname: stepPath, hash: '' };
+  }
+  return {
+    pathname: stepPath.slice(0, hashIndex),
+    hash: stepPath.slice(hashIndex),
+  };
+}
+
+function isOnOnboardingPath(stepPath: string): boolean {
+  const { pathname, hash } = parseOnboardingPath(stepPath);
+  if (pathname && window.location.pathname !== pathname) {
+    return false;
+  }
+  if (hash && window.location.hash !== hash) {
+    return false;
+  }
+  return true;
+}
+
 function sleep(ms: number) {
   return new Promise<void>((r) => window.setTimeout(r, ms));
 }
@@ -81,7 +103,7 @@ const InteractiveOnboarding: React.FC<InteractiveOnboardingProps> = ({
     (async () => {
       setBusy(true);
       try {
-        if (step.path && window.location.pathname !== step.path) {
+        if (step.path && !isOnOnboardingPath(step.path)) {
           navigate(step.path);
           await sleep(SETTLE_MS);
         }

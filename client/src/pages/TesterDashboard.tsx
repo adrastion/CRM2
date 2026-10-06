@@ -8,7 +8,9 @@ import {
   Tabs,
   Typography,
   Divider,
+  Button,
 } from '@mui/material';
+import { Download } from '@mui/icons-material';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 import { useTesterAuth } from '../contexts/TesterAuthContext';
@@ -19,11 +21,54 @@ interface ChangelogEntry {
   title: string;
   body: string;
   createdAt: string;
+  imageUrl?: string | null;
+  fileUrl?: string | null;
   createdBy?: { firstName?: string; lastName?: string; email?: string };
 }
 
+const TesterNewsImage: React.FC<{ id: string; hasImage: boolean }> = ({ id, hasImage }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hasImage) return;
+    let revoked: string | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const blob = await apiService.downloadPlatformNewsImageBlob(id, 'sa');
+        if (cancelled) return;
+        const u = URL.createObjectURL(blob);
+        revoked = u;
+        setUrl(u);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [id, hasImage]);
+  if (!hasImage || !url) return null;
+  return (
+    <Box
+      component="img"
+      src={url}
+      alt=""
+      sx={{
+        mt: 1.5,
+        display: 'block',
+        width: '100%',
+        maxHeight: 360,
+        objectFit: 'contain',
+        borderRadius: 1,
+        bgcolor: 'action.hover',
+      }}
+    />
+  );
+};
+
 /**
- * Панель тестировщика: платформенные чаты + список изменений.
+ * Панель тестировщика: платформенные чаты + новости.
  */
 const TesterDashboard: React.FC = () => {
   const { tester } = useTesterAuth();
@@ -40,7 +85,7 @@ const TesterDashboard: React.FC = () => {
       const data = await apiService.listPlatformChangelog();
       setEntries(data || []);
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось загрузить изменения');
+      setError(e?.response?.data?.error || 'Не удалось загрузить новости');
     } finally {
       setLoading(false);
     }
@@ -63,7 +108,7 @@ const TesterDashboard: React.FC = () => {
       <Paper sx={{ mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>
           <Tab label="Чаты" />
-          <Tab label="Изменения" />
+          <Tab label="Новости" />
           <Tab label="Уведомления" />
         </Tabs>
       </Paper>
@@ -89,7 +134,7 @@ const TesterDashboard: React.FC = () => {
               <CircularProgress />
             </Box>
           ) : entries.length === 0 ? (
-            <Typography color="text.secondary">Пока нет записей об изменениях</Typography>
+            <Typography color="text.secondary">Пока нет новостей</Typography>
           ) : (
             entries.map((e) => (
               <Paper key={e.id} sx={{ p: 2, mb: 2 }}>
@@ -98,12 +143,24 @@ const TesterDashboard: React.FC = () => {
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {new Date(e.createdAt).toLocaleString('ru-RU')}
-                  {e.createdBy
-                    ? ` · ${[e.createdBy.lastName, e.createdBy.firstName].filter(Boolean).join(' ') || e.createdBy.email}`
-                    : ''}
                 </Typography>
                 <Divider sx={{ my: 1.5 }} />
                 <Typography sx={{ whiteSpace: 'pre-wrap' }}>{e.body}</Typography>
+                <TesterNewsImage id={e.id} hasImage={Boolean(e.imageUrl)} />
+                {e.fileUrl && (
+                  <Button
+                    size="small"
+                    startIcon={<Download />}
+                    sx={{ mt: 1.5, textTransform: 'none' }}
+                    onClick={async () => {
+                      const blob = await apiService.downloadPlatformNewsFileBlob(e.id, 'sa');
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                    }}
+                  >
+                    Скачать файл
+                  </Button>
+                )}
               </Paper>
             ))
           )}
@@ -111,10 +168,7 @@ const TesterDashboard: React.FC = () => {
       )}
 
       {tab === 2 && (
-        <Box sx={{ maxWidth: 720 }}>
-          <Typography variant="h6" gutterBottom>
-            Уведомления
-          </Typography>
+        <Box sx={{ maxWidth: 640 }}>
           <NotificationSettingsPanel actor="tester" showChangelog />
         </Box>
       )}

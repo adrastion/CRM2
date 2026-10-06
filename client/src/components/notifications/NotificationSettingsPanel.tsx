@@ -312,7 +312,7 @@ const NotificationSettingsPanel: React.FC<Props> = ({
                 color="primary"
               />
             }
-            label="Новые публикации в «Изменения»"
+            label="Новые публикации в «Новости»"
           />
         )}
         {actor === 'school' && (schoolRole === 'OWNER' || schoolRole === 'ADMIN') && (

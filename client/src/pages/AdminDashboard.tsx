@@ -3126,7 +3126,7 @@ const AdminDashboard: React.FC = () => {
             Уведомления
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Чаты и публикации в «Изменения». Алерты нагрузки сервера настраиваются во вкладке «Нагрузка сервера».
+            Чаты и публикации в «Новости». Алерты нагрузки сервера настраиваются во вкладке «Нагрузка сервера».
           </Typography>
           <NotificationSettingsPanel actor="superAdmin" showChangelog />
           <SchoolOffersPanel />

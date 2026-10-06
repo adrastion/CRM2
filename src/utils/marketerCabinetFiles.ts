@@ -9,6 +9,10 @@ const MIME: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
   '.pdf': 'application/pdf',
   '.doc': 'application/msword',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -23,7 +27,7 @@ export function isHttpUrl(value?: string | null): boolean {
 
 export function isStoredUploadPath(value?: string | null): boolean {
   if (!value || isHttpUrl(value)) return false;
-  return value.startsWith('marketer-cabinet/');
+  return value.startsWith('marketer-cabinet/') || value.startsWith('platform-news/');
 }
 
 export function sendStoredUpload(

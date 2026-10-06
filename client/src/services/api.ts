@@ -95,12 +95,20 @@ class ApiService {
         
         // Не перезаписываем Authorization, если уже задан (проверка доступа слота и т.п.)
         const existingAuth = config.headers?.Authorization || config.headers?.authorization;
-        if (!existingAuth) {
+        const url = String(config.url || '');
+        // CRUD новостей — только SA; не даём школьному/другому Bearer перебить токен.
+        const forceSuperAdmin =
+          Boolean(superAdminToken) &&
+          (url.includes('/platform/changelog') || url.includes('/admin-dashboard/'));
+
+        if (forceSuperAdmin) {
+          config.headers.Authorization = `Bearer ${superAdminToken}`;
+        } else if (!existingAuth) {
           if (superAdminToken) {
             config.headers.Authorization = `Bearer ${superAdminToken}`;
           } else if (testerToken) {
             config.headers.Authorization = `Bearer ${testerToken}`;
-          } else if (platformStaffToken && (config.url?.includes('/platform-staff/') || config.url?.includes('/platform-staff/auth/'))) {
+          } else if (platformStaffToken && (url.includes('/platform-staff/') || url.includes('/platform-staff/auth/'))) {
             config.headers.Authorization = `Bearer ${platformStaffToken}`;
           } else if (promoCodeAdminToken) {
             config.headers.Authorization = `Bearer ${promoCodeAdminToken}`;
@@ -120,6 +128,18 @@ class ApiService {
             config.headers['X-CSRF-Token'] = decodeURIComponent(match[1]);
           }
         }
+
+        // FormData: убрать application/json из defaults, иначе multer не увидит файлы.
+        if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+          const headers = config.headers as any;
+          if (headers && typeof headers.delete === 'function') {
+            headers.delete('Content-Type');
+          } else if (headers) {
+            delete headers['Content-Type'];
+            delete headers['content-type'];
+          }
+        }
+
         return config;
       },
       (error) => {
@@ -3599,19 +3619,144 @@ class ApiService {
     return response.data.data || [];
   }
 
-  async createPlatformChangelog(data: { title: string; body: string }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/platform/changelog', data);
+  async createPlatformChangelog(data: {
+    title: string;
+    body: string;
+    audienceRoles?: string[];
+    image?: File | null;
+    file?: File | null;
+  }): Promise<any> {
+    const hasFiles = Boolean(data.image || data.file);
+    if (!hasFiles) {
+      const response = await this.api.post<ApiResponse>('/platform/changelog', {
+        title: data.title,
+        body: data.body,
+        audienceRoles: data.audienceRoles || [],
+      });
+      return response.data.data;
+    }
+    const form = new FormData();
+    form.append('title', data.title);
+    form.append('body', data.body);
+    if (data.audienceRoles?.length) {
+      form.append('audienceRoles', JSON.stringify(data.audienceRoles));
+    }
+    if (data.image) form.append('image', data.image);
+    if (data.file) form.append('file', data.file);
+    const response = await this.api.post<ApiResponse>('/platform/changelog', form, {
+      timeout: 60000,
+    });
     return response.data.data;
   }
 
-  async updatePlatformChangelog(id: string, data: { title?: string; body?: string }): Promise<any> {
-    const response = await this.api.put<ApiResponse>(`/platform/changelog/${id}`, data);
+  async updatePlatformChangelog(
+    id: string,
+    data: {
+      title?: string;
+      body?: string;
+      audienceRoles?: string[];
+      image?: File | null;
+      file?: File | null;
+      clearImage?: boolean;
+      clearFile?: boolean;
+    }
+  ): Promise<any> {
+    const hasFiles = Boolean(data.image || data.file);
+    if (!hasFiles) {
+      const response = await this.api.put<ApiResponse>(`/platform/changelog/${id}`, {
+        title: data.title,
+        body: data.body,
+        audienceRoles: data.audienceRoles,
+        clearImage: data.clearImage || undefined,
+        clearFile: data.clearFile || undefined,
+      });
+      return response.data.data;
+    }
+    const form = new FormData();
+    if (data.title !== undefined) form.append('title', data.title);
+    if (data.body !== undefined) form.append('body', data.body);
+    if (data.audienceRoles) {
+      form.append('audienceRoles', JSON.stringify(data.audienceRoles));
+    }
+    if (data.clearImage) form.append('clearImage', 'true');
+    if (data.clearFile) form.append('clearFile', 'true');
+    if (data.image) form.append('image', data.image);
+    if (data.file) form.append('file', data.file);
+    const response = await this.api.put<ApiResponse>(`/platform/changelog/${id}`, form, {
+      timeout: 60000,
+    });
     return response.data.data;
   }
 
   async deletePlatformChangelog(id: string): Promise<any> {
     const response = await this.api.delete<ApiResponse>(`/platform/changelog/${id}`);
     return response.data.data;
+  }
+
+  /** Лента новостей для школы (фильтр по роли JWT). */
+  async listPlatformNews(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/platform/news');
+    return response.data.data || [];
+  }
+
+  async downloadPlatformNewsImageBlob(id: string, source: 'school' | 'sa' | 'portal' | 'marketer' = 'school'): Promise<Blob> {
+    const path =
+      source === 'sa'
+        ? `/platform/changelog/${id}/image`
+        : source === 'portal'
+          ? `/client-auth/news/${id}/image`
+          : source === 'marketer'
+            ? `/marketers/me/news/${id}/image`
+            : `/platform/news/${id}/image`;
+    const response = await this.api.get(path, { responseType: 'blob', timeout: 60000 });
+    const blob = response.data as Blob;
+    if (blob?.type?.includes('application/json')) {
+      const text = await blob.text();
+      let message = 'Не удалось загрузить изображение';
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error) message = String(parsed.error);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    return blob;
+  }
+
+  async downloadPlatformNewsFileBlob(id: string, source: 'school' | 'sa' | 'portal' | 'marketer' = 'school'): Promise<Blob> {
+    const path =
+      source === 'sa'
+        ? `/platform/changelog/${id}/file`
+        : source === 'portal'
+          ? `/client-auth/news/${id}/file`
+          : source === 'marketer'
+            ? `/marketers/me/news/${id}/file`
+            : `/platform/news/${id}/file`;
+    const response = await this.api.get(path, { responseType: 'blob', timeout: 60000 });
+    const blob = response.data as Blob;
+    if (blob?.type?.includes('application/json')) {
+      const text = await blob.text();
+      let message = 'Не удалось скачать файл';
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error) message = String(parsed.error);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    return blob;
+  }
+
+  async listPortalNews(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/client-auth/news');
+    return response.data.data || [];
+  }
+
+  async listMarketerPlatformNews(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/news');
+    return response.data.data || [];
   }
 }
 

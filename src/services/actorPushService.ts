@@ -304,43 +304,81 @@ export async function notifyChatMessagePush(args: {
 }
 
 /**
- * Push о новой публикации в «Изменения» для SA и Tester.
+ * Push о новой публикации в «Новости» с учётом аудитории.
  */
 export async function notifyChangelogPush(args: {
   title: string;
   authorSuperAdminId: string;
   entryId: string;
+  audienceRoles?: string[];
 }): Promise<void> {
   try {
-    const [sas, testers] = await Promise.all([
-      prisma.superAdmin.findMany({ where: { isActive: true }, select: { id: true } }),
-      prisma.tester.findMany({ where: { isActive: true }, select: { id: true } }),
-    ]);
-    const title = 'Новое в «Изменения»';
+    const roles = new Set(
+      (args.audienceRoles?.length ? args.audienceRoles : ['TESTER']).map((r) => r.toUpperCase())
+    );
+    const title = 'Новости платформы';
     const body = args.title;
-    const data = {
-      type: 'platform_changelog',
-      entryId: args.entryId,
-      url: '/admin/dashboard?section=changelog',
-    };
+    const tasks: Promise<unknown>[] = [];
 
-    await Promise.allSettled([
-      ...sas
-        .filter((s) => s.id !== args.authorSuperAdminId)
-        .map((s) =>
+    // SA всегда видит все новости — пуш остальным SA при любой публикации.
+    {
+      const sas = await prisma.superAdmin.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      });
+      const data = {
+        type: 'platform_changelog',
+        entryId: args.entryId,
+        url: '/admin/dashboard?section=changelog',
+      };
+      for (const s of sas) {
+        if (s.id === args.authorSuperAdminId) continue;
+        tasks.push(
           sendPushToActor('SUPER_ADMIN', s.id, title, body, data, 'platform_changelog')
-        ),
-      ...testers.map((t) =>
-        sendPushToActor(
-          'TESTER',
-          t.id,
-          title,
-          body,
-          { ...data, url: '/tester/dashboard?tab=changelog' },
-          'platform_changelog'
-        )
-      ),
-    ]);
+        );
+      }
+    }
+
+    if (roles.has('TESTER')) {
+      const testers = await prisma.tester.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      });
+      for (const t of testers) {
+        tasks.push(
+          sendPushToActor(
+            'TESTER',
+            t.id,
+            title,
+            body,
+            {
+              type: 'platform_changelog',
+              entryId: args.entryId,
+              url: '/tester/dashboard?tab=changelog',
+            },
+            'platform_changelog'
+          )
+        );
+      }
+    }
+
+    const schoolRoles = ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'].filter((r) => roles.has(r));
+    if (schoolRoles.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { isActive: true, role: { in: schoolRoles } },
+        select: { id: true },
+      });
+      const data = {
+        type: 'platform_changelog',
+        entryId: args.entryId,
+        url: '/news',
+      };
+      for (const u of users) {
+        tasks.push(sendPushToActor('USER', u.id, title, body, data, 'platform_changelog'));
+      }
+    }
+
+    await Promise.allSettled(tasks);
   } catch (e) {
     console.error('[ActorPush] changelog notify failed', e);
   }

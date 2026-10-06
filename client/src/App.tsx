@@ -34,7 +34,6 @@ const Schedule = lazy(() => import('./pages/Schedule'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Memberships = lazy(() => import('./pages/Memberships'));
 const FAQWrapper = lazy(() => import('./components/FAQWrapper'));
-const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrapper'));
 const PrivacyPolicyWrapper = lazy(() => import('./components/PrivacyPolicyWrapper'));
@@ -51,6 +50,8 @@ const MarketerCalendar = lazy(() => import('./pages/marketer/MarketerCalendar'))
 const MarketerChats = lazy(() => import('./pages/marketer/MarketerChats'));
 const MarketerFinance = lazy(() => import('./pages/marketer/MarketerFinance'));
 const MarketerAds = lazy(() => import('./pages/marketer/MarketerAds'));
+const MarketerNews = lazy(() => import('./pages/marketer/MarketerNews'));
+const News = lazy(() => import('./pages/News'));
 const ReferralLanding = lazy(() => import('./pages/ReferralLanding'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -729,10 +730,18 @@ const AppContent: React.FC = () => {
           path="/knowledge-base"
           element={
             <ProtectedRoute>
-              <AppLayout>
-                <KnowledgeBase />
-              </AppLayout>
+              <Navigate to="/faq#materials" replace />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/news"
+          element={
+            <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
+              <AppLayout pageTitle="Новости">
+                <News />
+              </AppLayout>
+            </RoleRoute>
           }
         />
         <Route path="/super-admin/login" element={<Navigate to="/auth" replace />} />
@@ -862,6 +871,16 @@ const AppContent: React.FC = () => {
             <ProtectedMarketerRoute>
               <AppLayout>
                 <MarketerAds />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/news"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout pageTitle="Новости">
+                <MarketerNews />
               </AppLayout>
             </ProtectedMarketerRoute>
           }

@@ -199,6 +199,7 @@ const Settings: React.FC = () => {
             finance: true,
             settings: true,
             faq: true,
+            news: true,
           };
           setVisibleTabs(defaultTabs);
         }
@@ -491,6 +492,7 @@ const Settings: React.FC = () => {
     finance: 'Финансы',
     settings: 'Настройки',
     faq: 'FAQ',
+    news: 'Новости',
   };
 
   if (loading) {

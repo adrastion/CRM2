@@ -724,7 +724,12 @@ const knowledgeSections: KnowledgeSection[] = [
   },
 ];
 
-const KnowledgeBase: React.FC = () => {
+export interface KnowledgeMaterialsPanelProps {
+  /** When embedded in FAQ, switch to the questions tab instead of navigating away */
+  onGoToFaq?: () => void;
+}
+
+export const KnowledgeMaterialsPanel: React.FC<KnowledgeMaterialsPanelProps> = ({ onGoToFaq }) => {
   const navigate = useNavigate();
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
@@ -735,39 +740,11 @@ const KnowledgeBase: React.FC = () => {
   const selectedSectionData = knowledgeSections.find(s => s.id === selectedSection);
 
   return (
-    <Container
-      maxWidth="lg"
-      sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 }, overflowX: 'hidden' }}
-      data-onboarding="knowledge-base-page"
-    >
-      {/* Breadcrumbs */}
-      <Breadcrumbs
-        separator={<NavigateNext fontSize="small" />}
-        sx={{ mb: 3, '& .MuiBreadcrumbs-ol': { flexWrap: 'wrap' } }}
-      >
-        <Link
-          color="inherit"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('/dashboard');
-          }}
-          sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-        >
-          <Home sx={{ mr: 0.5 }} fontSize="inherit" />
-          Панель управления
-        </Link>
-        <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
-          <MenuBook sx={{ mr: 0.5 }} fontSize="inherit" />
-          База знаний
-        </Typography>
-      </Breadcrumbs>
-
-      {/* Header */}
+    <Box data-onboarding="knowledge-base-page" sx={{ overflowX: 'hidden' }}>
       <Box sx={{ mb: { xs: 2.5, md: 4 }, textAlign: 'center' }}>
         <MenuBook sx={{ fontSize: { xs: 28, md: 36 }, color: 'primary.main', mb: 1.5 }} />
-        <Typography variant="h5" component="h1" gutterBottom fontWeight="bold" sx={{ fontSize: { xs: 20, md: 24 } }}>
-          База знаний
+        <Typography variant="h5" component="h2" gutterBottom fontWeight="bold" sx={{ fontSize: { xs: 20, md: 24 } }}>
+          Подробные материалы
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2, fontSize: { xs: 14, md: 16 } }}>
           Подробное руководство по использованию системы для новых пользователей
@@ -884,12 +861,12 @@ const KnowledgeBase: React.FC = () => {
           Нужна помощь?
         </Typography>
         <Typography variant="body1" sx={{ mb: 3, fontSize: { xs: 14, md: 16 } }}>
-          Если вы не нашли ответ на свой вопрос в базе знаний, обратитесь к разделу FAQ или свяжитесь с нашей службой поддержки.
+          Если вы не нашли ответ на свой вопрос, перейдите на вкладку «Вопросы» или свяжитесь с нашей службой поддержки.
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Chip
             label="Перейти к FAQ"
-            onClick={() => navigate('/faq')}
+            onClick={() => (onGoToFaq ? onGoToFaq() : navigate('/faq'))}
             sx={{
               backgroundColor: 'white',
               color: 'primary.main',
@@ -913,6 +890,40 @@ const KnowledgeBase: React.FC = () => {
           />
         </Box>
       </Paper>
+    </Box>
+  );
+};
+
+const KnowledgeBase: React.FC = () => {
+  const navigate = useNavigate();
+
+  return (
+    <Container
+      maxWidth="lg"
+      sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 }, overflowX: 'hidden' }}
+    >
+      <Breadcrumbs
+        separator={<NavigateNext fontSize="small" />}
+        sx={{ mb: 3, '& .MuiBreadcrumbs-ol': { flexWrap: 'wrap' } }}
+      >
+        <Link
+          color="inherit"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('/dashboard');
+          }}
+          sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+        >
+          <Home sx={{ mr: 0.5 }} fontSize="inherit" />
+          Панель управления
+        </Link>
+        <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
+          <MenuBook sx={{ mr: 0.5 }} fontSize="inherit" />
+          База знаний
+        </Typography>
+      </Breadcrumbs>
+      <KnowledgeMaterialsPanel />
     </Container>
   );
 };

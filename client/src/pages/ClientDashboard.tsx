@@ -39,6 +39,7 @@ import DesignIcon from '../components/common/DesignIcon';
 import { NavIconName } from '../assets/icons/registry';
 import { colors, radii, typography } from '../theme/tokens';
 import { useChatUnreadBadge } from '../hooks/useChatUnreadBadge';
+import PlatformNewsFeed from '../components/PlatformNewsFeed';
 
 /** Пункты меню личного кабинета клиента. */
 const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
@@ -48,6 +49,7 @@ const NAV: Array<{ key: string; label: string; iconName: NavIconName }> = [
   { key: 'documents', label: 'Документы', iconName: 'faq' },
   { key: 'plan', label: 'Календарный план', iconName: 'schedule' },
   { key: 'payments', label: 'Платежи', iconName: 'tariffs' },
+  { key: 'news', label: 'Новости', iconName: 'issued-tariffs' },
   { key: 'notifications', label: 'Уведомления', iconName: 'settings' },
 ];
 
@@ -200,6 +202,8 @@ const ClientDashboard: React.FC = () => {
     }
   };
 
+  const loadPortalNews = React.useCallback(() => apiService.listPortalNews(), []);
+
   if (loading && !data) {
     return (
       <Box
@@ -271,12 +275,14 @@ const ClientDashboard: React.FC = () => {
       pending &&
       item.key !== 'chats' &&
       item.key !== 'dashboard' &&
-      item.key !== 'notifications',
+      item.key !== 'notifications' &&
+      item.key !== 'news',
     onClick:
       pending &&
       item.key !== 'chats' &&
       item.key !== 'dashboard' &&
-      item.key !== 'notifications'
+      item.key !== 'notifications' &&
+      item.key !== 'news'
         ? undefined
         : [
               'dashboard',
@@ -286,6 +292,7 @@ const ClientDashboard: React.FC = () => {
               'payments',
               'chats',
               'notifications',
+              'news',
             ].includes(item.key)
           ? () => setActiveKey(item.key)
           : undefined,
@@ -548,9 +555,11 @@ const ClientDashboard: React.FC = () => {
             ? 'Платежи'
             : activeKey === 'chats'
               ? 'Чаты'
-              : activeKey === 'notifications'
-                ? 'Уведомления'
-                : 'Панель управления';
+              : activeKey === 'news'
+                ? 'Новости'
+                : activeKey === 'notifications'
+                  ? 'Уведомления'
+                  : 'Панель управления';
 
   const cardContent = (
     <AthleteCard
@@ -606,6 +615,14 @@ const ClientDashboard: React.FC = () => {
     </Box>
   );
 
+  const newsContent = (
+    <PlatformNewsFeed
+      loadEntries={loadPortalNews}
+      source="portal"
+      emptyText="Нет новостей"
+    />
+  );
+
   const mainContent =
     activeKey === 'card'
       ? cardContent
@@ -617,9 +634,11 @@ const ClientDashboard: React.FC = () => {
             ? paymentsContent
             : activeKey === 'chats'
               ? chatsContent
-              : activeKey === 'notifications'
-                ? notificationsContent
-                : content;
+              : activeKey === 'news'
+                ? newsContent
+                : activeKey === 'notifications'
+                  ? notificationsContent
+                  : content;
 
   return (
     <DashboardShell

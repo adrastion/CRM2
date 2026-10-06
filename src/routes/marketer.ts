@@ -32,6 +32,12 @@ import {
 import { authenticatePromoCodeAdmin } from '../middleware/promoCodeAdminAuth';
 import { authenticateMarketer } from '../middleware/marketerAuth';
 import { loginRateLimiter } from '../middleware/loginRateLimit';
+import {
+  attachMarketerNewsRole,
+  getPlatformNewsFile,
+  getPlatformNewsImage,
+  listPlatformNewsForRole,
+} from '../controllers/platformChangelogController';
 
 const router = Router();
 
@@ -58,6 +64,11 @@ router.get('/me/publications/:id/image', authenticateMarketer, downloadMarketerP
 router.get('/me/publications/:id/file', authenticateMarketer, downloadMarketerPublicationFile);
 router.get('/me/closing-docs', authenticateMarketer, listMarketerClosingDocs);
 router.get('/me/closing-docs/:id/file', authenticateMarketer, downloadMarketerClosingDoc);
+
+/** Новости платформы для маркетолога. */
+router.get('/me/news', authenticateMarketer, attachMarketerNewsRole, listPlatformNewsForRole);
+router.get('/me/news/:id/image', authenticateMarketer, attachMarketerNewsRole, getPlatformNewsImage);
+router.get('/me/news/:id/file', authenticateMarketer, attachMarketerNewsRole, getPlatformNewsFile);
 
 router.use(authenticatePromoCodeAdmin);
 
