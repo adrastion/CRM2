@@ -98,6 +98,7 @@ import SuperAdminTermsTab from './SuperAdminTermsTab';
 import SuperAdminPrivacyTab from './SuperAdminPrivacyTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 import SuperAdminPlannerTab from './SuperAdminPlannerTab';
+import SuperAdminClientIdeasTab from '../components/SuperAdminClientIdeasTab';
 import {
   SuperAdminPlatformChatsTab,
   SuperAdminPlatformChangelogTab,
@@ -127,6 +128,7 @@ const SA_SECTIONS = [
   'notifications',
   'planner',
   'development',
+  'client-ideas',
   'chats',
   'changelog',
 ] as const;
@@ -3136,6 +3138,8 @@ const AdminDashboard: React.FC = () => {
       {section === 'planner' && <SuperAdminPlannerTab />}
 
       {section === 'development' && <SuperAdminDevNotesTab />}
+
+      {section === 'client-ideas' && <SuperAdminClientIdeasTab />}
 
       {section === 'chats' && <SuperAdminPlatformChatsTab />}
 

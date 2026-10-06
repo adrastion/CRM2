@@ -58,6 +58,11 @@ import {
   getPlatformNewsImage,
   listPlatformNewsForRole,
 } from '../controllers/platformChangelogController';
+import {
+  attachIdeaActorFromPortal,
+  createFeatureIdea,
+  listMyFeatureIdeas,
+} from '../controllers/clientFeatureIdeaController';
 
 const router = Router();
 
@@ -109,6 +114,10 @@ router.get('/push/status', authenticateClient, portalPushStatus);
 router.get('/news', authenticateClient, attachPortalNewsRole, listPlatformNewsForRole);
 router.get('/news/:id/image', authenticateClient, attachPortalNewsRole, getPlatformNewsImage);
 router.get('/news/:id/file', authenticateClient, attachPortalNewsRole, getPlatformNewsFile);
+
+/** Идеи для разработчика. */
+router.get('/feature-ideas', authenticateClient, attachIdeaActorFromPortal, listMyFeatureIdeas);
+router.post('/feature-ideas', authenticateClient, attachIdeaActorFromPortal, createFeatureIdea);
 
 // Документы (договоры + личные сертификаты)
 router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);

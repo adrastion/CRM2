@@ -51,7 +51,9 @@ const MarketerChats = lazy(() => import('./pages/marketer/MarketerChats'));
 const MarketerFinance = lazy(() => import('./pages/marketer/MarketerFinance'));
 const MarketerAds = lazy(() => import('./pages/marketer/MarketerAds'));
 const MarketerNews = lazy(() => import('./pages/marketer/MarketerNews'));
+const MarketerFeedback = lazy(() => import('./pages/marketer/MarketerFeedback'));
 const News = lazy(() => import('./pages/News'));
+const Feedback = lazy(() => import('./pages/Feedback'));
 const ReferralLanding = lazy(() => import('./pages/ReferralLanding'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -744,6 +746,16 @@ const AppContent: React.FC = () => {
             </RoleRoute>
           }
         />
+        <Route
+          path="/feedback"
+          element={
+            <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
+              <AppLayout pageTitle="Связь с разработчиком">
+                <Feedback />
+              </AppLayout>
+            </RoleRoute>
+          }
+        />
         <Route path="/super-admin/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/admin/dashboard"
@@ -881,6 +893,16 @@ const AppContent: React.FC = () => {
             <ProtectedMarketerRoute>
               <AppLayout pageTitle="Новости">
                 <MarketerNews />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/feedback"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout pageTitle="Связь с разработчиком">
+                <MarketerFeedback />
               </AppLayout>
             </ProtectedMarketerRoute>
           }

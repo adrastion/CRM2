@@ -200,6 +200,7 @@ const Settings: React.FC = () => {
             settings: true,
             faq: true,
             news: true,
+            feedback: true,
           };
           setVisibleTabs(defaultTabs);
         }
@@ -493,6 +494,7 @@ const Settings: React.FC = () => {
     settings: 'Настройки',
     faq: 'FAQ',
     news: 'Новости',
+    feedback: 'Связь с разработчиком',
   };
 
   if (loading) {

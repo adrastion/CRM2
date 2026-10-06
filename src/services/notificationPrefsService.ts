@@ -18,7 +18,8 @@ export type NotificationEventType =
   | 'payment'
   | 'training_reminder'
   | 'schedule_change'
-  | 'task_reminder';
+  | 'task_reminder'
+  | 'feature_idea';
 
 export type ScheduleMode = 'ALWAYS' | 'WINDOW';
 

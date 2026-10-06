@@ -54,6 +54,11 @@ import {
   deleteDevNoteAttachment,
 } from '../controllers/superAdminDevNoteController';
 import {
+  listFeatureIdeasAdmin,
+  acceptFeatureIdea,
+  rejectFeatureIdea,
+} from '../controllers/clientFeatureIdeaController';
+import {
   listPlannerEvents,
   createPlannerEvent,
   updatePlannerEvent,
@@ -254,6 +259,11 @@ router.delete(
   '/dev-notes/:id/attachments/:attachmentId',
   deleteDevNoteAttachment
 );
+
+// Идеи клиентов («Связь с разработчиком»)
+router.get('/feature-ideas', listFeatureIdeasAdmin);
+router.post('/feature-ideas/:id/accept', acceptFeatureIdea);
+router.post('/feature-ideas/:id/reject', rejectFeatureIdea);
 
 // Планировщик платформы (календарь SA)
 router.get('/planner/events', listPlannerEvents);

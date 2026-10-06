@@ -49,6 +49,7 @@ const navigationItems: Array<{
   { label: 'Настройки', path: '/settings', iconName: 'settings', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'settings', onboarding: 'settings-nav' },
   { label: 'FAQ', path: '/faq', iconName: 'faq', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'faq', onboarding: 'faq-nav' },
   { label: 'Новости', path: '/news', iconName: 'issued-tariffs', roles: ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'], tabKey: 'news', onboarding: 'news-nav' },
+  { label: 'Связь с разработчиком', path: '/feedback', iconName: 'chats', roles: ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'], tabKey: 'feedback', onboarding: 'feedback-nav' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -80,6 +81,7 @@ const SA_DASHBOARD_SECTIONS: Array<{
   { section: 'notifications', label: 'Уведомления', iconName: 'faq' },
   { section: 'planner', label: 'Планировщик', iconName: 'schedule' },
   { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
+  { section: 'client-ideas', label: 'Идеи клиентов', iconName: 'faq' },
   { section: 'chats', label: 'Чаты', iconName: 'chats' },
   { section: 'changelog', label: 'Новости', iconName: 'issued-tariffs' },
 ];
@@ -311,6 +313,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
               label: 'Новости',
               iconName: 'issued-tariffs',
               onClick: () => navigate('/marketer/news'),
+            },
+            {
+              key: '/marketer/feedback',
+              label: 'Связь с разработчиком',
+              iconName: 'chats',
+              onClick: () => navigate('/marketer/feedback'),
             },
           ]
         : isPromoCodeAdminRoute

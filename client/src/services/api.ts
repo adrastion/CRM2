@@ -3758,6 +3758,46 @@ class ApiService {
     const response = await this.api.get<ApiResponse>('/marketers/me/news');
     return response.data.data || [];
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Идеи для разработчика                                              */
+  /* ------------------------------------------------------------------ */
+
+  private featureIdeasBase(source: 'school' | 'portal' | 'marketer' = 'school'): string {
+    if (source === 'portal') return '/client-auth/feature-ideas';
+    if (source === 'marketer') return '/marketers/me/feature-ideas';
+    return '/feature-ideas';
+  }
+
+  async listMyFeatureIdeas(source: 'school' | 'portal' | 'marketer' = 'school'): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(this.featureIdeasBase(source));
+    return response.data.data || [];
+  }
+
+  async createFeatureIdea(
+    data: { title: string; body: string },
+    source: 'school' | 'portal' | 'marketer' = 'school'
+  ): Promise<any> {
+    const response = await this.api.post<ApiResponse>(this.featureIdeasBase(source), data);
+    return response.data.data;
+  }
+
+  async adminListFeatureIdeas(params?: { status?: string }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/feature-ideas', { params });
+    return response.data.data || [];
+  }
+
+  async adminAcceptFeatureIdea(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/admin-dashboard/feature-ideas/${id}/accept`, {});
+    return response.data.data;
+  }
+
+  async adminRejectFeatureIdea(id: string, rejectReason?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/admin-dashboard/feature-ideas/${id}/reject`, {
+      rejectReason: rejectReason || undefined,
+    });
+    return response.data.data;
+  }
 }
 
 export const apiService = new ApiService();

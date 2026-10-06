@@ -38,6 +38,11 @@ import {
   getPlatformNewsImage,
   listPlatformNewsForRole,
 } from '../controllers/platformChangelogController';
+import {
+  attachIdeaActorFromMarketer,
+  createFeatureIdea,
+  listMyFeatureIdeas,
+} from '../controllers/clientFeatureIdeaController';
 
 const router = Router();
 
@@ -69,6 +74,9 @@ router.get('/me/closing-docs/:id/file', authenticateMarketer, downloadMarketerCl
 router.get('/me/news', authenticateMarketer, attachMarketerNewsRole, listPlatformNewsForRole);
 router.get('/me/news/:id/image', authenticateMarketer, attachMarketerNewsRole, getPlatformNewsImage);
 router.get('/me/news/:id/file', authenticateMarketer, attachMarketerNewsRole, getPlatformNewsFile);
+
+router.get('/me/feature-ideas', authenticateMarketer, attachIdeaActorFromMarketer, listMyFeatureIdeas);
+router.post('/me/feature-ideas', authenticateMarketer, attachIdeaActorFromMarketer, createFeatureIdea);
 
 router.use(authenticatePromoCodeAdmin);
 
