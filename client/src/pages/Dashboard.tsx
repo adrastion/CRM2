@@ -20,6 +20,7 @@ import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { useCreateFlows } from '../contexts/CreateFlowsContext';
 import { apiService } from '../services/api';
 import { DashboardStats } from '../types';
 import Panel from '../components/dashboard/Panel';
@@ -125,6 +126,7 @@ const QuickAction: React.FC<{
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, tenant } = useAuth();
+  const { openCreateClient, openCreateTraining, openAddFinanceOperation } = useCreateFlows();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [expandedActivityKeys, setExpandedActivityKeys] = useState<Record<string, boolean>>({});
@@ -341,20 +343,20 @@ const Dashboard: React.FC = () => {
             title="Добавить клиента"
             description="Зарегистрировать нового клиента"
             iconName="add-client"
-            onClick={() => navigate('/clients')}
+            onClick={openCreateClient}
           />
           <QuickAction
             title="Запланировать тренировку"
             description="Создать занятие в расписании"
             iconName="schedule-training"
-            onClick={() => navigate('/schedule')}
+            onClick={openCreateTraining}
           />
           {!isTrainer ? (
             <QuickAction
               title="Записать платеж"
               description="Обработать оплату клиента"
               iconName="record-payment"
-              onClick={() => navigate('/finance')}
+              onClick={openAddFinanceOperation}
             />
           ) : (
             <QuickAction

@@ -44,7 +44,11 @@ async function findResettableAccounts(email: string): Promise<ResetAccountRef[]>
 
   const [users, clients, parents] = await Promise.all([
     prisma.user.findMany({
-      where: { email: normalized, isActive: true, password: { not: '' } },
+      where: {
+        email: { equals: normalized, mode: 'insensitive' },
+        isActive: true,
+        password: { not: '' },
+      },
       include: { tenant: { select: { id: true, name: true, subdomain: true } } },
     }),
     prisma.client.findMany({
@@ -126,15 +130,22 @@ export class PasswordResetService {
         purpose: 'reset',
       });
       const firstName = accounts[0]?.displayName?.split(/\s+/)[1] || accounts[0]?.displayName;
-      await emailService.sendPasswordResetCodeEmail(email, {
-        firstName,
-        code,
-      });
+      try {
+        await emailService.sendPasswordResetCodeEmail(email, {
+          firstName,
+          code,
+        });
+      } catch (sendErr: any) {
+        await EmailOtpService.invalidate({ email, purpose: 'reset' });
+        console.error('password reset email failed:', sendErr);
+        throw serviceUnavailable(
+          'Не удалось отправить письмо с кодом. Попробуйте позже или обратитесь в школу.'
+        );
+      }
     } catch (err: any) {
-      // Rate-limit / validation — пробрасываем клиенту
-      if (err?.statusCode === 400 || err?.status === 400) throw err;
-      if (err instanceof Error && (err as any).statusCode) throw err;
-      console.error('password reset email failed:', err);
+      // Rate-limit / validation / serviceUnavailable — пробрасываем клиенту
+      if (err?.statusCode || err?.status) throw err;
+      console.error('password reset request failed:', err);
       throw serviceUnavailable(
         'Не удалось отправить письмо с кодом. Попробуйте позже или обратитесь в школу.'
       );

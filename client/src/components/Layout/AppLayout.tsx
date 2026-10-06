@@ -10,6 +10,7 @@ import DashboardShell, {
   GlobalSearchResultItem,
 } from '../dashboard/DashboardShell';
 import SalaryPayoutBanner from '../SalaryPayoutBanner';
+import { CreateFlowsProvider } from '../../contexts/CreateFlowsContext';
 import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwitcher';
 import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
@@ -431,25 +432,27 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   return (
     <Box>
       {!isPlatformShell && <SalaryPayoutBanner />}
-      <DashboardShell
-        pageTitle={resolvedPageTitle}
-        navItems={navItems}
-        activeKey={activeKey}
-        userName={userName || tenant?.name || 'Профиль'}
-        userRole={userRole}
-        notificationsChannel={isPlatformShell ? null : 'school'}
-        onLogout={handleLogout}
-        onAddAccount={handleAddAccount}
-        hideSearch={isPlatformShell}
-        searchValue={searchValue}
-        onSearchChange={setSearchValue}
-        searchResults={searchResults}
-        searchLoading={searchLoading}
-        onSearchResultClick={handleSearchResultClick}
-        searchMaxWidth={{ sm: 560, md: 720 }}
-      >
-        {children}
-      </DashboardShell>
+      <CreateFlowsProvider>
+        <DashboardShell
+          pageTitle={resolvedPageTitle}
+          navItems={navItems}
+          activeKey={activeKey}
+          userName={userName || tenant?.name || 'Профиль'}
+          userRole={userRole}
+          notificationsChannel={isPlatformShell ? null : 'school'}
+          onLogout={handleLogout}
+          onAddAccount={handleAddAccount}
+          hideSearch={isPlatformShell}
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
+          onSearchResultClick={handleSearchResultClick}
+          searchMaxWidth={{ sm: 560, md: 720 }}
+        >
+          {children}
+        </DashboardShell>
+      </CreateFlowsProvider>
     </Box>
   );
 };

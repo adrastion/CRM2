@@ -124,4 +124,11 @@ export class EmailOtpService {
     await prisma.emailOtp.delete({ where: { id: otp.id } }).catch(() => undefined);
     return { email };
   }
+
+  /** Удаляет активные OTP (например, если письмо не удалось отправить). */
+  static async invalidate(params: { email: string; purpose: OtpPurpose }): Promise<void> {
+    const email = normalizeEmail(params.email);
+    if (!email) return;
+    await prisma.emailOtp.deleteMany({ where: { email, purpose: params.purpose } });
+  }
 }

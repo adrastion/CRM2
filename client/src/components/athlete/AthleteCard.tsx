@@ -190,14 +190,30 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
 
   const save = async () => {
     if (!data?.id || mode !== 'staff') return;
+
+    const parentsSource = draft.parents || data.parents || [];
+    for (let i = 0; i < parentsSource.length; i += 1) {
+      const p = parentsSource[i] as any;
+      const name = String(p.fullName || '').trim();
+      if (name.length < 2) {
+        setSnack(`У представителя ${i + 1} укажите ФИО (минимум 2 символа)`);
+        return;
+      }
+      const email = String(p.email || '').trim();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setSnack(`У представителя ${i + 1} некорректный email`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const parentsPayload = (draft.parents || data.parents || []).map((p: any) => {
+      const parentsPayload = parentsSource.map((p: any) => {
         const id =
           typeof p.id === 'string' && p.id && !p.id.startsWith('new-') ? p.id : undefined;
         return {
           ...(id ? { id } : {}),
-          fullName: p.fullName,
+          fullName: String(p.fullName || '').trim(),
           phone: p.phone || null,
           email: p.email || null,
           workplace: p.workplace || null,

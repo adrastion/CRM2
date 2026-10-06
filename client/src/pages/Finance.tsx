@@ -38,6 +38,7 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canCancelFinanceOperations } from '../utils/roles';
+import { useSearchParams } from 'react-router-dom';
 import ClientNameLink from '../components/ClientNameLink';
 import FinanceOperationsTable from '../components/finance/FinanceOperationsTable';
 import FinanceSummaryTable, {
@@ -45,11 +46,11 @@ import FinanceSummaryTable, {
   FinanceSummarySortKey,
 } from '../components/finance/FinanceSummaryTable';
 import SchoolPaymentMethodsPanel from '../components/finance/SchoolPaymentMethodsPanel';
+import AddFinanceOperationDialog from '../components/finance/AddFinanceOperationDialog';
 import { colors, radii, typography } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
-  FinanceDirection,
   FinanceMembershipRow,
   FinanceOperation,
   FinanceOperationType,
@@ -71,18 +72,6 @@ const DATE_PRESETS = [
   { key: 'last_month', label: 'Прошлый месяц' },
 ];
 
-/** Типы, доступные в диалоге «Добавить операцию». */
-const ADD_OP_SYSTEM_TYPES: Array<{ code: string; name: string }> = [
-  { code: 'rent', name: 'Аренда' },
-  { code: 'membership_issue', name: 'Выдача абонемента' },
-  { code: 'salary', name: 'Зарплата' },
-  { code: 'bonus', name: 'Премия' },
-];
-
-const CUSTOM_TYPE_VALUE = '__custom__';
-
-type CustomSubject = 'client' | 'trainer';
-
 const formatClientOptionLabel = (c: {
   lastName?: string | null;
   firstName?: string | null;
@@ -101,8 +90,6 @@ const formatClientOptionLabel = (c: {
   const balStr = `${bal.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`;
   return `${name} — ${group} — ${balStr}`;
 };
-type CustomAllocation = 'accrued' | 'paid' | 'debit' | 'credit';
-
 const formatMoney = (value: number, withSign = false, direction?: string) => {
   const abs = Math.abs(value).toLocaleString('ru-RU');
   if (!withSign) {
@@ -190,6 +177,7 @@ const financeErrorMessage = (e: any) => {
 
 const Finance: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canDeleteOperations = canCancelFinanceOperations(user?.role);
   const [tab, setTab] = useState<FinanceTab>('operations');
   const [loading, setLoading] = useState(true);
@@ -261,26 +249,9 @@ const Finance: React.FC = () => {
   const [selectedMembership, setSelectedMembership] = useState<FinanceMembershipRow | null>(null);
   const [selectedSalary, setSelectedSalary] = useState<FinanceSalaryRow | null>(null);
 
-  const [formDirection, setFormDirection] = useState<FinanceDirection>('expense');
-  const [formTypeCode, setFormTypeCode] = useState('rent');
-  const [formTitle, setFormTitle] = useState('');
-  const [formAmount, setFormAmount] = useState('');
-  const [formOccurredAt, setFormOccurredAt] = useState<Date | null>(new Date());
-  const [formNotes, setFormNotes] = useState('');
-  const [newTypeName, setNewTypeName] = useState('');
-  const [formTrainerId, setFormTrainerId] = useState('');
-  const [formClientId, setFormClientId] = useState('');
-  const [formMembershipId, setFormMembershipId] = useState('');
-  const [formMembershipStartDate, setFormMembershipStartDate] = useState<Date | null>(new Date());
-  const [membershipCatalog, setMembershipCatalog] = useState<any[]>([]);
-  const [membershipCatalogLoading, setMembershipCatalogLoading] = useState(false);
-  const [customSubject, setCustomSubject] = useState<CustomSubject>('trainer');
-  const [customAllocation, setCustomAllocation] = useState<CustomAllocation>('accrued');
-  const [savingAdd, setSavingAdd] = useState(false);
 
   const [payoutAmount, setPayoutAmount] = useState('');
   const [receiveAmount, setReceiveAmount] = useState('');
-  const [addFormBaseline, setAddFormBaseline] = useState<Record<string, unknown> | null>(null);
   const [payoutBaseline, setPayoutBaseline] = useState('');
   const [receiveBaseline, setReceiveBaseline] = useState('');
   const [changePackId, setChangePackId] = useState('');
@@ -296,23 +267,6 @@ const Finance: React.FC = () => {
   const [accrualHistoryLoading, setAccrualHistoryLoading] = useState(false);
 
   const refsLoadedRef = useRef(false);
-
-  const isCustomType = formTypeCode === CUSTOM_TYPE_VALUE;
-
-  const addFormSnapshot = () => ({
-    formDirection,
-    formTypeCode,
-    formTitle,
-    formAmount,
-    formOccurredAt: formOccurredAt?.toISOString() ?? null,
-    formNotes,
-    newTypeName,
-    formTrainerId,
-    formClientId,
-    formMembershipId,
-    customSubject,
-    customAllocation,
-  });
 
   const activeFilterChips = useMemo(() => {
     const chips: string[] = [];
@@ -472,264 +426,35 @@ const Finance: React.FC = () => {
 
   const discardAddForm = useCallback(() => {
     setAddOpen(false);
-    setFormTypeCode('rent');
-    setFormDirection('expense');
-    setFormTitle('');
-    setFormAmount('');
-    setFormNotes('');
-    setFormTrainerId('');
-    setFormClientId('');
-    setFormMembershipId('');
-    setFormMembershipStartDate(new Date());
-    setMembershipCatalog([]);
-    setNewTypeName('');
-    setCustomSubject('trainer');
-    setCustomAllocation('accrued');
-    setSavingAdd(false);
-    setAddFormBaseline(null);
   }, []);
 
   const openAddDialog = () => {
-    setFormTypeCode('rent');
-    setFormDirection('expense');
-    setFormTitle('');
-    setFormAmount('');
-    setFormNotes('');
-    setFormTrainerId('');
-    setFormClientId('');
-    setFormMembershipId('');
-    setFormMembershipStartDate(new Date());
-    setNewTypeName('');
-    setCustomSubject('trainer');
-    setCustomAllocation('accrued');
-    setFormOccurredAt(new Date());
-    setAddFormBaseline(null);
     setAddOpen(true);
-    // baseline after reset
-    setTimeout(() => {
-      setAddFormBaseline({
-        formDirection: 'expense',
-        formTypeCode: 'rent',
-        formTitle: '',
-        formAmount: '',
-        formOccurredAt: new Date().toISOString(),
-        formNotes: '',
-        newTypeName: '',
-        formTrainerId: '',
-        formClientId: '',
-        formMembershipId: '',
-        customSubject: 'trainer',
-        customAllocation: 'accrued',
-      });
-    }, 0);
   };
 
-  const loadMembershipCatalog = useCallback(async () => {
-    setMembershipCatalogLoading(true);
-    try {
-      const res = await apiService.getMemberships({ limit: 200 });
-      setMembershipCatalog(res?.data || []);
-    } catch {
-      setMembershipCatalog([]);
-    } finally {
-      setMembershipCatalogLoading(false);
-    }
-  }, []);
-
+  // Deep link ?create=1 — сразу диалог «Добавить операцию»
   useEffect(() => {
-    if (!addOpen || formTypeCode !== 'membership_issue') return;
-    void loadMembershipCatalog();
-  }, [addOpen, formTypeCode, loadMembershipCatalog]);
-
-  useEffect(() => {
-    if (formTypeCode === 'membership_issue' && formMembershipId) {
-      const pack = membershipCatalog.find((m) => m.id === formMembershipId);
-      if (pack) {
-        setFormTitle(pack.name || 'Выдача абонемента');
-        if (pack.price != null) setFormAmount(String(Number(pack.price)));
-      }
+    if (searchParams.get('create') !== '1') return;
+    if (!addOpen) {
+      openAddDialog();
     }
-  }, [formMembershipId, membershipCatalog, formTypeCode]);
+    const next = new URLSearchParams(searchParams);
+    next.delete('create');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, addOpen, setSearchParams]);
 
-  useEffect(() => {
-    if (!isCustomType) return;
-    if (customSubject === 'trainer') {
-      setCustomAllocation((prev) => (prev === 'debit' || prev === 'credit' ? 'accrued' : prev));
-      setFormClientId('');
-    } else {
-      setCustomAllocation((prev) => (prev === 'accrued' || prev === 'paid' ? 'credit' : prev));
-      setFormTrainerId('');
-    }
-  }, [customSubject, isCustomType]);
-
-  useEffect(() => {
-    if (isCustomType) {
-      if (customAllocation === 'credit') setFormDirection('income');
-      else setFormDirection('expense');
-    } else if (formTypeCode !== CUSTOM_TYPE_VALUE) {
-      setFormDirection('expense');
-    }
-  }, [isCustomType, customAllocation, formTypeCode]);
-
-  const canSaveAddOperation = useMemo(() => {
-    if (formTypeCode === 'rent') {
-      return Boolean(formTitle.trim() && formAmount && Number(formAmount) > 0);
-    }
-    if (formTypeCode === 'membership_issue') {
-      return Boolean(formClientId && formMembershipId && formMembershipStartDate);
-    }
-    if (formTypeCode === 'salary' || formTypeCode === 'bonus') {
-      return Boolean(formTrainerId && formAmount && Number(formAmount) > 0);
-    }
-    if (isCustomType) {
-      const hasSubject =
-        customSubject === 'trainer' ? Boolean(formTrainerId) : Boolean(formClientId);
-      return Boolean(
-        newTypeName.trim() &&
-          hasSubject &&
-          customAllocation &&
-          formAmount &&
-          Number(formAmount) > 0
-      );
-    }
-    return false;
-  }, [
-    formTypeCode,
-    formTitle,
-    formAmount,
-    formClientId,
-    formMembershipId,
-    formMembershipStartDate,
-    formTrainerId,
-    isCustomType,
-    newTypeName,
-    customSubject,
-    customAllocation,
-  ]);
-
-  const handleSaveOperation = async (): Promise<boolean> => {
-    if (!canSaveAddOperation) {
-      setError('Заполните обязательные поля');
-      return false;
-    }
-    setSavingAdd(true);
-    setError(null);
-    try {
-      if (formTypeCode === 'membership_issue') {
-        await apiService.createClientMembership({
-          clientId: formClientId,
-          membershipId: formMembershipId,
-          startDate: formMembershipStartDate!.toISOString(),
-        });
-        discardAddForm();
-        setSnackbar('Абонемент выдан');
-        await loadOperations();
-        await loadMemberships();
-        return true;
-      }
-
-      if (formTypeCode === 'salary') {
-        const trainer = trainers.find((t) => t.id === formTrainerId);
-        const name = trainer?.user
-          ? `${trainer.user.lastName} ${trainer.user.firstName}`.trim()
-          : 'Зарплата';
-        await apiService.payoutTrainerSalary({
-          trainerId: formTrainerId,
-          amount: Number(formAmount),
-          periodLabel: formTitle.trim() || undefined,
-          occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
-        });
-        discardAddForm();
-        setSnackbar(`Выплата сохранена: ${name}`);
-        await loadOperations();
-        if (tab === 'salary') await loadSalary();
-        return true;
-      }
-
-      if (formTypeCode === 'bonus') {
-        const trainer = trainers.find((t) => t.id === formTrainerId);
-        const name = trainer?.user
-          ? `${trainer.user.lastName} ${trainer.user.firstName}`.trim()
-          : 'Премия';
-        await apiService.createFinanceOperation({
-          direction: 'expense',
-          typeCode: 'bonus',
-          title: formTitle.trim() || `Премия — ${name}`,
-          amount: Number(formAmount),
-          occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
-          trainerId: formTrainerId,
-        });
-        discardAddForm();
-        setSnackbar('Премия начислена');
-        await loadOperations();
-        if (tab === 'salary') await loadSalary();
-        return true;
-      }
-
-      if (formTypeCode === 'rent') {
-        await apiService.createFinanceOperation({
-          direction: 'expense',
-          typeCode: 'rent',
-          title: formTitle.trim(),
-          amount: Number(formAmount),
-          occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
-        });
-        discardAddForm();
-        setSnackbar('Операция сохранена');
-        await loadOperations();
-        return true;
-      }
-
-      if (isCustomType) {
-        const created = await apiService.createFinanceType({
-          name: newTypeName.trim(),
-          defaultDirection: formDirection,
-        });
-        setTypes((prev) => [...prev, created]);
-        const title =
-          formTitle.trim() ||
-          (customSubject === 'trainer'
-            ? (() => {
-                const t = trainers.find((tr) => tr.id === formTrainerId);
-                return t?.user
-                  ? `${created.name} — ${t.user.lastName} ${t.user.firstName}`.trim()
-                  : created.name;
-              })()
-            : (() => {
-                const c = clients.find((cl) => cl.id === formClientId);
-                return c ? `${created.name} — ${c.lastName} ${c.firstName}` : created.name;
-              })());
-      await apiService.createFinanceOperation({
-        direction: formDirection,
-          typeCode: created.code,
-          title,
-        amount: Number(formAmount),
-        occurredAt: formOccurredAt?.toISOString(),
-        notes: formNotes || undefined,
-          trainerId: customSubject === 'trainer' ? formTrainerId : undefined,
-          clientId: customSubject === 'client' ? formClientId : undefined,
-          allocation: customAllocation,
-        });
-        discardAddForm();
-      setSnackbar('Операция сохранена');
-      await loadOperations();
-        if (tab === 'salary' || customSubject === 'trainer') await loadSalary();
-        if (customSubject === 'client') await loadMemberships();
-        return true;
-      }
-
-      setError('Неизвестный тип операции');
-      return false;
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось сохранить операцию');
-      return false;
-    } finally {
-      setSavingAdd(false);
-    }
-  };
+  const handleAddFinanceSuccess = useCallback(
+    async (payload: { message: string; refresh?: Array<'operations' | 'salary' | 'memberships' | 'types'> }) => {
+      setSnackbar(payload.message);
+      const refresh = payload.refresh || ['operations'];
+      if (refresh.includes('operations')) await loadOperations();
+      if (refresh.includes('salary')) await loadSalary();
+      if (refresh.includes('memberships')) await loadMemberships();
+      if (refresh.includes('types')) await loadTypes();
+    },
+    [loadOperations, loadSalary, loadMemberships, loadTypes]
+  );
 
   const handleConfirmCancelOperation = async () => {
     if (!cancelOp) return;
@@ -1067,12 +792,6 @@ const Finance: React.FC = () => {
     '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
   };
 
-  const addDirty = addOpen && addFormBaseline != null && isDirtyValue(addFormSnapshot(), addFormBaseline);
-  const addUnsaved = useUnsavedClose({
-    isDirty: Boolean(addDirty),
-    onDiscard: discardAddForm,
-    onSave: handleSaveOperation,
-  });
 
   const payoutDirty = payoutOpen && isDirtyValue(payoutAmount, payoutBaseline);
   const payoutUnsaved = useUnsavedClose({
@@ -1851,254 +1570,11 @@ const Finance: React.FC = () => {
           </Button>
         </Drawer>
 
-        {/* Add operation */}
-        <Dialog
+        <AddFinanceOperationDialog
           open={addOpen}
-          onClose={(_event, reason) => {
-            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-              addUnsaved.requestClose(reason);
-            }
-          }}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>Добавить операцию</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              {error && (
-                <Alert severity="error" onClose={() => setError(null)}>
-                  {error}
-                </Alert>
-              )}
-              <FormControl fullWidth>
-                <InputLabel>Тип операции</InputLabel>
-                <Select
-                  label="Тип операции"
-                  value={formTypeCode}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormTypeCode(v);
-                    setFormTrainerId('');
-                    setFormClientId('');
-                    setFormMembershipId('');
-                    setFormTitle('');
-                    setFormAmount('');
-                    if (v !== CUSTOM_TYPE_VALUE) setNewTypeName('');
-                  }}
-                >
-                  {ADD_OP_SYSTEM_TYPES.map((t) => (
-                    <MenuItem key={t.code} value={t.code}>
-                      {t.name}
-                    </MenuItem>
-                  ))}
-                  <MenuItem value={CUSTOM_TYPE_VALUE}>Добавить тип…</MenuItem>
-                </Select>
-              </FormControl>
-
-              {isCustomType && (
-                <>
-                  <TextField
-                    label="Название типа"
-                    fullWidth
-                    value={newTypeName}
-                    onChange={(e) => setNewTypeName(e.target.value)}
-                    placeholder="Например: Компенсация"
-                  />
-                  <FormControl>
-                    <Typography sx={{ mb: 0.5 }}>Субъект</Typography>
-                    <RadioGroup
-                      row
-                      value={customSubject}
-                      onChange={(e) => setCustomSubject(e.target.value as CustomSubject)}
-                    >
-                      <FormControlLabel value="trainer" control={<Radio />} label="Тренер" />
-                      <FormControlLabel value="client" control={<Radio />} label="Клиент" />
-                    </RadioGroup>
-                  </FormControl>
-                  {customSubject === 'trainer' ? (
-                    <FormControl fullWidth>
-                      <InputLabel>Тренер</InputLabel>
-                      <Select
-                        label="Тренер"
-                        value={formTrainerId}
-                        onChange={(e) => setFormTrainerId(e.target.value)}
-                      >
-                        {trainers.map((t) => (
-                          <MenuItem key={t.id} value={t.id}>
-                            {t.user?.lastName} {t.user?.firstName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <FormControl fullWidth>
-                      <InputLabel>Клиент</InputLabel>
-                      <Select
-                        label="Клиент"
-                        value={formClientId}
-                        onChange={(e) => setFormClientId(e.target.value)}
-                      >
-                        {clients.map((c) => (
-                          <MenuItem key={c.id} value={c.id}>
-                            {formatClientOptionLabel(c)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                  <FormControl fullWidth>
-                    <InputLabel>Куда начислять</InputLabel>
-                    <Select
-                      label="Куда начислять"
-                      value={customAllocation}
-                      onChange={(e) => setCustomAllocation(e.target.value as CustomAllocation)}
-                    >
-                      {customSubject === 'trainer' ? (
-                        [
-                          <MenuItem key="accrued" value="accrued">
-                            Начислено
-                          </MenuItem>,
-                          <MenuItem key="paid" value="paid">
-                            Выплачено
-                          </MenuItem>,
-                        ]
-                      ) : (
-                        [
-                          <MenuItem key="debit" value="debit">
-                            Списать с баланса
-                          </MenuItem>,
-                          <MenuItem key="credit" value="credit">
-                            Пополнить баланс
-                          </MenuItem>,
-                        ]
-                      )}
-                    </Select>
-                  </FormControl>
-                </>
-              )}
-
-              {formTypeCode === 'membership_issue' && (
-                <>
-                    <FormControl fullWidth>
-                      <InputLabel>Клиент</InputLabel>
-                      <Select
-                        label="Клиент"
-                        value={formClientId}
-                        onChange={(e) => setFormClientId(e.target.value)}
-                      >
-                        {clients.map((c) => (
-                          <MenuItem key={c.id} value={c.id}>
-                          {formatClientOptionLabel(c)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  <FormControl fullWidth>
-                    <InputLabel>Абонемент</InputLabel>
-                    <Select
-                      label="Абонемент"
-                      value={formMembershipId}
-                      onChange={(e) => setFormMembershipId(e.target.value)}
-                      disabled={membershipCatalogLoading}
-                    >
-                      {membershipCatalog.map((m) => (
-                        <MenuItem key={m.id} value={m.id}>
-                          {m.name}
-                          {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <DatePicker
-                    label="С какого числа действует абонемент"
-                    value={formMembershipStartDate}
-                    onChange={setFormMembershipStartDate}
-                    slotProps={{ textField: { fullWidth: true, required: true } }}
-                  />
-                  {membershipCatalogLoading && (
-                    <Box display="flex" justifyContent="center">
-                      <CircularProgress size={24} />
-                    </Box>
-                  )}
-                </>
-              )}
-
-              {(formTypeCode === 'salary' || formTypeCode === 'bonus') && (
-                <FormControl fullWidth>
-                  <InputLabel>Тренер</InputLabel>
-                  <Select
-                    label="Тренер"
-                    value={formTrainerId}
-                    onChange={(e) => setFormTrainerId(e.target.value)}
-                  >
-                    {trainers.map((t) => (
-                      <MenuItem key={t.id} value={t.id}>
-                        {t.user?.lastName} {t.user?.firstName}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-
-              {formTypeCode !== 'membership_issue' && (
-              <TextField
-                label="Наименование операции"
-                fullWidth
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-                  required={formTypeCode === 'rent'}
-              />
-              )}
-
-              {formTypeCode !== 'membership_issue' && (
-              <TextField
-                label="Сумма"
-                fullWidth
-                value={formAmount}
-                onChange={(e) => setFormAmount(e.target.value)}
-                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
-                  required
-                />
-              )}
-
-              {formTypeCode === 'membership_issue' && formMembershipId && (
-                <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
-                  Сумма с тарифа: {formatMoney(Number(formAmount) || 0)}
-                </Typography>
-              )}
-
-              {formTypeCode !== 'membership_issue' && (
-              <DateTimePicker
-                label="Дата и время"
-                value={formOccurredAt}
-                onChange={setFormOccurredAt}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
-              )}
-              <TextField
-                label="Комментарий"
-                fullWidth
-                multiline
-                minRows={2}
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={discardAddForm} sx={{ textTransform: 'none' }} disabled={savingAdd}>
-              Отмена
-            </Button>
-            <Button
-              variant="contained"
-              disabled={!canSaveAddOperation || savingAdd}
-              onClick={() => void handleSaveOperation()}
-              sx={{ textTransform: 'none', bgcolor: colors.primary }}
-            >
-              {savingAdd ? 'Сохранение…' : 'Сохранить операцию'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          onClose={discardAddForm}
+          onSuccess={(payload) => { void handleAddFinanceSuccess(payload); }}
+        />
 
         <Dialog
           open={payoutOpen}
@@ -2356,14 +1832,6 @@ const Finance: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-
-        <UnsavedChangesDialog
-          open={addUnsaved.confirmOpen}
-          saving={addUnsaved.saving}
-          onSave={addUnsaved.save}
-          onDiscard={addUnsaved.discard}
-          onStay={addUnsaved.stay}
-        />
         <UnsavedChangesDialog
           open={payoutUnsaved.confirmOpen}
           saving={payoutUnsaved.saving}

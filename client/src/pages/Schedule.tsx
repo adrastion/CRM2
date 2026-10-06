@@ -1545,6 +1545,21 @@ const Schedule: React.FC = () => {
     setEventDialog(true);
   };
 
+  // Deep link ?create=1 — выбор типа / форма новой тренировки (с дашборда)
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+
+    if (!openDialog && !trainingTypeDialog) {
+      setSelectedDayForTraining(null);
+      setFormData((prev) => ({ ...prev, date: new Date() }));
+      setTrainingTypeDialog(true);
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('create');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, openDialog, trainingTypeDialog, setSearchParams]);
+
   const openEditEventDialog = (event: any) => {
     const start = new Date(event.startTime);
     const end = new Date(event.endTime);

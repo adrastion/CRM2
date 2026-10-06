@@ -20,19 +20,39 @@ import { notifyAthleteCreated } from '../services/notificationDomainHooks';
 import { normalizeEmail } from '../utils/identifier';
 
 /** Контактные поля родителя без ЛК (пароль, sessionVersion и т.п.). */
-function mapParentContactFields(parent: any, tenantId: string) {
+function mapParentContactFields(parent: any, tenantId: string, opts?: { forCreate?: boolean }) {
   const rawEmail = typeof parent.email === 'string' ? parent.email.trim() : '';
   const email = rawEmail ? normalizeEmail(rawEmail) : null;
-  return {
+  const forCreate = Boolean(opts?.forCreate);
+
+  const base: Record<string, unknown> = {
     fullName: String(parent.fullName || '').trim(),
     phone: parent.phone || null,
     email: email || null,
     workplace: parent.workplace || null,
     workplaceContact: parent.workplaceContact || null,
-    relationType: parent.relationType || null,
-    isPrimaryContact: Boolean(parent.isPrimaryContact),
     tenantId,
     isApproved: true,
+  };
+
+  // При update не затираем поля, которых нет в payload (форма Clients их раньше не слала)
+  if (forCreate || parent.relationType !== undefined) {
+    base.relationType = parent.relationType || null;
+  }
+  if (forCreate || parent.isPrimaryContact !== undefined) {
+    base.isPrimaryContact = Boolean(parent.isPrimaryContact);
+  }
+
+  return base as {
+    fullName: string;
+    phone: string | null;
+    email: string | null;
+    workplace: string | null;
+    workplaceContact: string | null;
+    relationType?: string | null;
+    isPrimaryContact?: boolean;
+    tenantId: string;
+    isApproved: boolean;
   };
 }
 
@@ -439,14 +459,15 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   const isPromoter = req.user?.role === 'PROMOTER';
 
-  // PROMOTER может создавать только ограниченный набор полей
+  // PROMOTER может создавать только ограниченный набор полей.
+  // Статус спортсмена не выбирает — всегда active; без группы в CRM отображается как «Лид».
   const allowedPromoterFields = isPromoter
     ? {
         firstName: clientFields.firstName,
         lastName: clientFields.lastName,
         gender: clientFields.gender || null,
         phone: clientFields.phone || null,
-        athleteStatus: clientFields.athleteStatus || 'active',
+        athleteStatus: 'active',
         dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : undefined,
       }
     : null;
@@ -472,7 +493,7 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   // Создаем родителей без токенов подтверждения и без ЛК-полей из payload
   const parentsData =
     !isPromoter && parents && parents.length > 0
-      ? parents.map((parent: any) => mapParentContactFields(parent, tenantId))
+      ? parents.map((parent: any) => mapParentContactFields(parent, tenantId, { forCreate: true }))
       : undefined;
 
   // Создаем клиента вместе с родителями
@@ -625,59 +646,67 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     return;
   }
 
-  // Родителей обновляем upsert'ом, чтобы не сбрасывать пароль/ЛК
-  if (parents !== undefined) {
-    const existing = await prisma.parent.findMany({
-      where: { clientId: id, tenantId },
-      select: { id: true },
-    });
-    const existingIds = new Set(existing.map((p) => p.id));
-    const keepIds = new Set<string>();
+  const client = await prisma.$transaction(async (tx) => {
+    // Родителей обновляем upsert'ом, чтобы не сбрасывать пароль/ЛК
+    if (parents !== undefined) {
+      const existing = await tx.parent.findMany({
+        where: { clientId: id, tenantId },
+        select: { id: true },
+      });
+      const existingIds = new Set(existing.map((p) => p.id));
+      const keepIds = new Set<string>();
 
-    for (const parent of parents) {
-      const contact = mapParentContactFields(parent, tenantId!);
-      const pid = parentPayloadId(parent);
+      for (const parent of parents) {
+        const pid = parentPayloadId(parent);
 
-      if (pid && existingIds.has(pid)) {
-        keepIds.add(pid);
-        await prisma.parent.update({
-          where: { id: pid },
-          data: {
+        if (pid && existingIds.has(pid)) {
+          keepIds.add(pid);
+          const contact = mapParentContactFields(parent, tenantId!);
+          const updateData: Record<string, unknown> = {
             fullName: contact.fullName,
             phone: contact.phone,
             email: contact.email,
             workplace: contact.workplace,
             workplaceContact: contact.workplaceContact,
-            relationType: contact.relationType,
-            isPrimaryContact: contact.isPrimaryContact,
             isApproved: true,
-          },
-        });
-      } else {
-        await prisma.parent.create({
-          data: {
-            ...contact,
-            clientId: id,
-          },
+          };
+          if (contact.relationType !== undefined) {
+            updateData.relationType = contact.relationType;
+          }
+          if (contact.isPrimaryContact !== undefined) {
+            updateData.isPrimaryContact = contact.isPrimaryContact;
+          }
+          await tx.parent.update({
+            where: { id: pid },
+            data: updateData,
+          });
+        } else {
+          const contact = mapParentContactFields(parent, tenantId!, { forCreate: true });
+          await tx.parent.create({
+            data: {
+              ...contact,
+              clientId: id,
+            },
+          });
+        }
+      }
+
+      const toDelete = [...existingIds].filter((eid) => !keepIds.has(eid));
+      if (toDelete.length > 0) {
+        await tx.parent.deleteMany({
+          where: { id: { in: toDelete }, clientId: id, tenantId },
         });
       }
     }
 
-    const toDelete = [...existingIds].filter((eid) => !keepIds.has(eid));
-    if (toDelete.length > 0) {
-      await prisma.parent.deleteMany({
-        where: { id: { in: toDelete }, clientId: id, tenantId },
-      });
-    }
-  }
-
-  const client = await prisma.client.update({
-    where: { id },
-    data: processedData,
-    include: {
-      parents: true,
-      tenant: true
-    }
+    return tx.client.update({
+      where: { id },
+      data: processedData,
+      include: {
+        parents: true,
+        tenant: true,
+      },
+    });
   });
 
   res.json({
@@ -1264,7 +1293,9 @@ export const importClients = asyncHandler(async (req: AuthenticatedRequest, res:
           data: {
             ...processedData,
             parents: parentsData && parentsData.length > 0 ? {
-              create: parentsData.map((parent: any) => mapParentContactFields(parent, tenantId))
+              create: parentsData.map((parent: any) =>
+                mapParentContactFields(parent, tenantId, { forCreate: true })
+              )
             } : undefined
           }
         });

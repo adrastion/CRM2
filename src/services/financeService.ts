@@ -363,10 +363,10 @@ export class FinanceService {
 
     if (isClientCharge || isClientDebit || isClientCredit || (input.clientId && input.direction === 'expense')) {
       if (input.clientId) {
-        const client = await prisma.client.findFirst({
+      const client = await prisma.client.findFirst({
           where: { id: input.clientId, tenantId },
-        });
-        if (!client) throw badRequest('Клиент не найден', 'clientId');
+      });
+      if (!client) throw badRequest('Клиент не найден', 'clientId');
       }
     }
 
@@ -606,16 +606,16 @@ export class FinanceService {
         const op = await tx.financeOperation.create({
           data: {
             tenantId: payment.tenantId,
-            direction: 'income',
-            typeCode,
-            title,
+      direction: 'income',
+      typeCode,
+      title,
             amount,
-            occurredAt: payment.paidAt || new Date(),
+      occurredAt: payment.paidAt || new Date(),
             notes: payment.notes || null,
-            clientId: payment.clientId,
+      clientId: payment.clientId,
             branchId: payment.branchId || null,
             groupId: payment.groupId || null,
-            paymentId: payment.id,
+      paymentId: payment.id,
           },
         });
         await tx.client.update({
@@ -1523,7 +1523,7 @@ export class FinanceService {
               !isWalletCredit(p) &&
               p.status === 'paid'
           );
-          const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
+      const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
           const chargePaidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
 
           // Счета, погашенные этим credit, уже в chargePaidAmount — не дублировать
@@ -1588,10 +1588,10 @@ export class FinanceService {
             ).amount;
           }
 
-          let status: 'paid' | 'unpaid' | 'partial' = 'unpaid';
-          if (dueAmount <= 0 && paidAmount > 0) status = 'paid';
-          else if (dueAmount > 0 && paidAmount > 0) status = 'partial';
-          else if (dueAmount <= 0 && paidAmount <= 0) status = 'paid';
+      let status: 'paid' | 'unpaid' | 'partial' = 'unpaid';
+      if (dueAmount <= 0 && paidAmount > 0) status = 'paid';
+      else if (dueAmount > 0 && paidAmount > 0) status = 'partial';
+      else if (dueAmount <= 0 && paidAmount <= 0) status = 'paid';
 
           const hasUnpaid = dueAmount > 0;
           const interactive = hasUnpaid || periodKey === latestPeriodKey;
@@ -1621,15 +1621,15 @@ export class FinanceService {
           }
 
           clientRows.push({
-            clientId: client.id,
+        clientId: client.id,
             clientName,
             periodKey,
             periodLabel,
-            membershipPrice,
-            paidAmount,
-            debt: dueAmount,
+        membershipPrice,
+        paidAmount,
+        debt: dueAmount,
             remaining: 0,
-            status,
+        status,
             latestPaymentId,
             groups,
             interactive,
@@ -1669,9 +1669,9 @@ export class FinanceService {
             return false;
           }
         }
-        if (filters.amountFrom != null && r.membershipPrice < filters.amountFrom) return false;
-        if (filters.amountTo != null && r.membershipPrice > filters.amountTo) return false;
-        return true;
+      if (filters.amountFrom != null && r.membershipPrice < filters.amountFrom) return false;
+      if (filters.amountTo != null && r.membershipPrice > filters.amountTo) return false;
+      return true;
       })
       .map(({ sortAt: _s, ...rest }) => rest);
   }

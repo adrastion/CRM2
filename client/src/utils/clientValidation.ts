@@ -36,6 +36,8 @@ export interface ClientFormData {
     email: string;
     workplace: string;
     workplaceContact: string;
+    relationType?: string;
+    isPrimaryContact?: boolean;
   }>;
 }
 
@@ -153,14 +155,12 @@ export const validateClientForm = (formData: ClientFormData): ValidationErrors =
   const weightError = validateField('weight', formData.weight);
   if (weightError) errors.weight = weightError;
 
-  // Validate parents
+  // Validate parents — любая строка в массиве должна иметь корректное ФИО (как на сервере)
   if (formData.parents && Array.isArray(formData.parents)) {
     formData.parents.forEach((parent, index) => {
-      if (parent.fullName && parent.fullName.trim() !== '') {
-        const fullNameError = validateField('parent_fullName', parent.fullName, formData, index);
-        if (fullNameError) {
-          errors[`parent_${index}_fullName`] = fullNameError;
-        }
+      const fullNameError = validateField('parent_fullName', parent.fullName, formData, index);
+      if (fullNameError) {
+        errors[`parent_${index}_fullName`] = fullNameError;
       }
 
       if (parent.email && parent.email.trim() !== '') {
