@@ -190,6 +190,8 @@ export async function computeGroupMonthlyCharge(params: {
   clientId: string;
   /** Период, за который выставляем счёт (YYYY-MM) */
   billPeriodKey: string;
+  /** При доначислении задним числом не режем сумму по посещаемости прошлого месяца */
+  skipAttendanceRecalc?: boolean;
 }): Promise<{
   amount: number;
   originalAmount: number;
@@ -220,30 +222,31 @@ export async function computeGroupMonthlyCharge(params: {
     joinReason = proration.reason;
   }
 
-  // Предыдущий месяц для перерасчёта посещаемости
-  const [y, m] = billPeriodKey.split('-').map(Number);
-  const prev = m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
-  const statsPeriodKey = `${prev.y}-${String(prev.m).padStart(2, '0')}`;
-
-  const stats = await getPeriodAttendanceStats({
-    groupId: plan.groupId,
-    clientId,
-    periodKey: statsPeriodKey,
-  });
-
   let percent = 100;
   let attendanceReason: string | null = null;
 
-  if (stats.scheduled > 0) {
-    const missRate = ((stats.scheduled - stats.present) / stats.scheduled) * 100;
-    const attendRate = stats.present / stats.scheduled;
+  if (!params.skipAttendanceRecalc) {
+    const [y, m] = billPeriodKey.split('-').map(Number);
+    const prev = m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
+    const statsPeriodKey = `${prev.y}-${String(prev.m).padStart(2, '0')}`;
 
-    if (plan.recalcMode === 'PAY_ATTENDED') {
-      percent = Math.round(attendRate * 10000) / 100;
-      attendanceReason = `Только посещённые: ${stats.present}/${stats.scheduled}`;
-    } else if (plan.recalcMode === 'MISS_THRESHOLD' && missRate >= plan.missThresholdPercent) {
-      percent = Math.round(attendRate * 10000) / 100;
-      attendanceReason = `Пропуск ${missRate.toFixed(0)}% ≥ ${plan.missThresholdPercent}%: перерасчёт на посещённые`;
+    const stats = await getPeriodAttendanceStats({
+      groupId: plan.groupId,
+      clientId,
+      periodKey: statsPeriodKey,
+    });
+
+    if (stats.scheduled > 0) {
+      const missRate = ((stats.scheduled - stats.present) / stats.scheduled) * 100;
+      const attendRate = stats.present / stats.scheduled;
+
+      if (plan.recalcMode === 'PAY_ATTENDED') {
+        percent = Math.round(attendRate * 10000) / 100;
+        attendanceReason = `Только посещённые: ${stats.present}/${stats.scheduled}`;
+      } else if (plan.recalcMode === 'MISS_THRESHOLD' && missRate >= plan.missThresholdPercent) {
+        percent = Math.round(attendRate * 10000) / 100;
+        attendanceReason = `Пропуск ${missRate.toFixed(0)}% ≥ ${plan.missThresholdPercent}%: перерасчёт на посещённые`;
+      }
     }
   }
 

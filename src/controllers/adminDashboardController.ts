@@ -1576,6 +1576,64 @@ export const getRevenueForecast = asyncHandler(async (req: AuthenticatedRequest,
 });
 
 /**
+ * Полное необратимое удаление школы и всех её данных.
+ */
+export const deleteTenant = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const { tenantId } = req.params;
+  if (!tenantId) {
+    res.status(400).json({ success: false, error: 'Укажите ID школы' });
+    return;
+  }
+
+  const confirmSubdomain =
+    typeof req.body?.confirmSubdomain === 'string' ? req.body.confirmSubdomain.trim() : '';
+  if (!confirmSubdomain) {
+    res.status(400).json({
+      success: false,
+      error: 'Для подтверждения укажите поддомен школы (confirmSubdomain)',
+    });
+    return;
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, name: true, subdomain: true },
+  });
+  if (!tenant) {
+    res.status(404).json({ success: false, error: 'Школа не найдена' });
+    return;
+  }
+  if (confirmSubdomain !== tenant.subdomain) {
+    res.status(400).json({
+      success: false,
+      error: 'Поддомен не совпадает. Удаление отменено.',
+    });
+    return;
+  }
+
+  const { deleteTenantCompletely } = await import('../services/tenantDeletionService');
+  const summary = await deleteTenantCompletely(tenantId);
+
+  const superAdmin = (req as any).superAdmin;
+  await createAuditLog({
+    superAdminId: superAdmin?.id,
+    action: 'delete_tenant',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: `Удалена школа «${summary.name}» (${summary.subdomain})`,
+    oldValue: summary,
+    ipAddress: getIpAddress(req),
+    userAgent: getUserAgent(req),
+  });
+
+  res.json({
+    success: true,
+    data: summary,
+    message: `Школа «${summary.name}» полностью удалена`,
+  });
+});
+
+/**
  * Массовое обновление аккаунтов
  */
 export const bulkUpdateTenants = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {

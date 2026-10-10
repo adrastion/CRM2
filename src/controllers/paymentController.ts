@@ -58,6 +58,8 @@ async function createOneMonthlyPayment(params: {
   candidateDate: Date;
   /** Явный periodKey (например с UI за месяц первого занятия); иначе вычисляется */
   periodKey?: string;
+  /** Доначисление задним числом — без перерасчёта по пропускам прошлого месяца */
+  skipAttendanceRecalc?: boolean;
 }): Promise<{ payment: any; skipped?: string } | { skipped: string }> {
   const { tenantId, group, membership, monthlyAmount, candidateDate } = params;
 
@@ -136,13 +138,14 @@ async function createOneMonthlyPayment(params: {
       plan,
       clientId: membership.clientId,
       billPeriodKey: periodKey,
+      skipAttendanceRecalc: params.skipAttendanceRecalc,
     });
     baseAmount = computed.amount;
     recalcAppliedPercent = computed.recalcAppliedPercent;
     recalcReason = computed.recalcReason;
   }
 
-  const { amount: chargeAmount, originalAmount } = applyPersonalDiscount(
+  const { amount: chargeAmount, originalAmount: preDiscountAmount } = applyPersonalDiscount(
     baseAmount,
     membership.client?.personalDiscountType,
     membership.client?.personalDiscountValue != null
@@ -164,7 +167,8 @@ async function createOneMonthlyPayment(params: {
         groupId: group.id,
         membershipId: catalogMembershipId,
         amount: chargeAmount,
-        originalAmount: listPrice || originalAmount,
+        // Сумма до персональной скидки (не list-price каталога — иначе «Начислено» врёт)
+        originalAmount: preDiscountAmount || listPrice,
         type: 'monthly_payment',
         status: 'pending',
         dueDate,
@@ -234,12 +238,10 @@ export async function backfillGroupMonthlyCharges(params: {
   let created = 0;
 
   for (const membership of group.memberships) {
-    // Если абонемент задним числом — сдвинуть дату оплаты ученика, который уже был в группе
+    // Абонемент «с даты X» — начисляем всем активным с этой даты (не с даты ввода в CRM)
     if (
-      membership.joinedAt &&
-      membership.joinedAt.getTime() <= plan.effectiveFrom.getTime() &&
-      (!membership.billingEffectiveFrom ||
-        membership.billingEffectiveFrom.getTime() > plan.effectiveFrom.getTime())
+      !membership.billingEffectiveFrom ||
+      membership.billingEffectiveFrom.getTime() > plan.effectiveFrom.getTime()
     ) {
       await prisma.groupMembership.update({
         where: {
@@ -250,10 +252,8 @@ export async function backfillGroupMonthlyCharges(params: {
       membership.billingEffectiveFrom = plan.effectiveFrom;
     }
 
-    const memberStartDate = membership.billingEffectiveFrom || membership.joinedAt || plan.effectiveFrom;
-    const memberStart = monthlyPeriodKey(memberStartDate);
-    const planStart = monthlyPeriodKey(plan.effectiveFrom);
-    let fromKey = memberStart > planStart ? memberStart : planStart;
+    const memberStartDate = membership.billingEffectiveFrom || plan.effectiveFrom;
+    let fromKey = monthlyPeriodKey(memberStartDate);
     if (firstTrainingMonth && firstTrainingMonth > fromKey) fromKey = firstTrainingMonth;
     const keys = iteratePeriodKeys(fromKey, nowKey);
     for (const periodKey of keys) {
@@ -265,6 +265,7 @@ export async function backfillGroupMonthlyCharges(params: {
           monthlyAmount: plan.price,
           candidateDate: new Date(),
           periodKey,
+          skipAttendanceRecalc: true,
         });
         if ('payment' in result && result.payment) created += 1;
       } catch (error) {

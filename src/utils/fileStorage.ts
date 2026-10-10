@@ -32,6 +32,32 @@ export function safeUnlink(relativePath: string): void {
   }
 }
 
+/** Рекурсивно удаляет каталог uploads/<segment>/<tenantId> (best-effort). */
+export function safeRmTenantUploadDir(segment: string, tenantId: string): void {
+  try {
+    const abs = absoluteUploadPath(path.join(segment, tenantId).replace(/\\/g, '/'));
+    if (fs.existsSync(abs)) {
+      fs.rmSync(abs, { recursive: true, force: true });
+    }
+  } catch (e) {
+    console.error('rm tenant upload dir failed', segment, tenantId, e);
+  }
+}
+
+const TENANT_UPLOAD_SEGMENTS = [
+  'client-certificates',
+  'client-contracts',
+  'trainer-docs',
+  'exercise-media',
+  'payment-qr',
+] as const;
+
+export function removeTenantUploadFiles(tenantId: string): void {
+  for (const segment of TENANT_UPLOAD_SEGMENTS) {
+    safeRmTenantUploadDir(segment, tenantId);
+  }
+}
+
 export function uniqueUploadFilename(originalName: string): string {
   const ext = path.extname(originalName) || '';
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;

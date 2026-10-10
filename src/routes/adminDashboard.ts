@@ -21,6 +21,7 @@ import {
   getAnalyticsByPeriod,
   getRevenueForecast,
   bulkUpdateTenants,
+  deleteTenant,
   getKPIMetrics,
   getAuditLogs,
   getPlanPrices,
@@ -237,6 +238,7 @@ router.post('/tenants/:tenantId/link-super-admin', linkTenantOwnerAsSuperAdmin);
 router.delete('/tenants/:tenantId/link-super-admin', unlinkTenantOwnerSuperAdmin);
 router.post('/tenants/:tenantId/link-tester', linkTenantOwnerAsTester);
 router.delete('/tenants/:tenantId/link-tester', unlinkTenantOwnerTester);
+router.delete('/tenants/:tenantId', requirePlatformWrite, deleteTenant);
 
 // Массовое обновление аккаунтов
 router.post('/tenants/bulk', bulkUpdateTenants);

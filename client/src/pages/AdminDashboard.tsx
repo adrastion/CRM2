@@ -330,6 +330,9 @@ const AdminDashboard: React.FC = () => {
   const [allTenants, setAllTenants] = useState<any[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
+  const [deleteTenantTarget, setDeleteTenantTarget] = useState<any | null>(null);
+  const [deleteTenantConfirm, setDeleteTenantConfirm] = useState('');
+  const [deletingTenant, setDeletingTenant] = useState(false);
   
   // Диалоги
   const [expenseDialog, setExpenseDialog] = useState(false);
@@ -595,6 +598,34 @@ const AdminDashboard: React.FC = () => {
       setError(err.response?.data?.error || 'Не удалось сделать тестировщиком');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openDeleteTenantDialog = (tenant: any) => {
+    setDeleteTenantTarget(tenant);
+    setDeleteTenantConfirm('');
+  };
+
+  const closeDeleteTenantDialog = () => {
+    if (deletingTenant) return;
+    setDeleteTenantTarget(null);
+    setDeleteTenantConfirm('');
+  };
+
+  const handleConfirmDeleteTenant = async () => {
+    if (!deleteTenantTarget) return;
+    try {
+      setDeletingTenant(true);
+      setError(null);
+      await apiService.deleteTenant(deleteTenantTarget.id, deleteTenantConfirm.trim());
+      setDeleteTenantTarget(null);
+      setDeleteTenantConfirm('');
+      setSelectedTenants((ids) => ids.filter((id) => id !== deleteTenantTarget.id));
+      await loadAllTenants();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Не удалось удалить школу');
+    } finally {
+      setDeletingTenant(false);
     }
   };
 
@@ -2414,6 +2445,17 @@ const AdminDashboard: React.FC = () => {
                                 <LinkOff />
                               </IconButton>
                             )}
+                            {canWrite && (
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={submitting || deletingTenant}
+                                onClick={() => openDeleteTenantDialog(tenant)}
+                                title="Удалить школу навсегда"
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -3773,6 +3815,65 @@ const AdminDashboard: React.FC = () => {
               {submitting ? <CircularProgress size={24} /> : 'Выдать тариф'}
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTenantTarget)}
+        onClose={closeDeleteTenantDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Удалить школу навсегда?</DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Действие необратимо. Будут удалены все данные школы: клиенты, сотрудники, платежи,
+            расписание, файлы и привязки.
+          </Alert>
+          {deleteTenantTarget && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <strong>{deleteTenantTarget.name}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Email: {deleteTenantTarget.email}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Поддомен: {deleteTenantTarget.subdomain}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Клиентов: {deleteTenantTarget.stats?.clients ?? '—'} · Сотрудников (админы):{' '}
+                {deleteTenantTarget.stats?.admins ?? '—'} · Тренеров:{' '}
+                {deleteTenantTarget.stats?.trainers ?? '—'} · Филиалов:{' '}
+                {deleteTenantTarget.stats?.branches ?? '—'}
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            fullWidth
+            label={`Введите поддомен «${deleteTenantTarget?.subdomain || ''}» для подтверждения`}
+            value={deleteTenantConfirm}
+            onChange={(e) => setDeleteTenantConfirm(e.target.value)}
+            disabled={deletingTenant}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteTenantDialog} disabled={deletingTenant}>
+            Отмена
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={
+              deletingTenant ||
+              !deleteTenantTarget ||
+              deleteTenantConfirm.trim() !== deleteTenantTarget.subdomain
+            }
+            onClick={handleConfirmDeleteTenant}
+          >
+            {deletingTenant ? <CircularProgress size={22} color="inherit" /> : 'Удалить навсегда'}
+          </Button>
         </DialogActions>
       </Dialog>
 

@@ -931,6 +931,7 @@ export class FinanceService {
       clientId: params.clientId,
       groupId: params.groupId,
       branchId: params.branchId,
+      paymentId: params.paymentId,
       externalKey,
       notes: `Выставлен счёт / paymentId=${params.paymentId}`,
     });
@@ -1671,30 +1672,19 @@ export class FinanceService {
             .filter((p) => Number(p.amount) > 0 && !isExcessPay(p))
             .reduce((s, p) => s + Number(p.amount), 0);
 
+          // Начислено = фактическая сумма счетов (amount), не list-price из originalAmount
           let membershipPrice = 0;
-          if (pending.length > 0) {
-            const allHaveOriginal = pending.every(
-              (p) => p.originalAmount != null && Number.isFinite(Number(p.originalAmount))
-            );
-            if (allHaveOriginal) {
-              membershipPrice =
-                Math.round(
-                  pending.reduce((s, p) => s + Number(p.originalAmount), 0) * 100
-                ) / 100;
-            } else {
-              membershipPrice = Math.round((dueAmount + paidTowardCharge) * 100) / 100;
-              if (pending.length === 1 && membershipPrice > 0) {
-                const only = pending[0];
-                if (only.originalAmount == null) {
-                  await prisma.payment.update({
-                    where: { id: only.id },
-                    data: { originalAmount: membershipPrice },
-                  });
-                }
+          if (pending.length > 0 || paidTowardCharge > 0) {
+            membershipPrice = Math.round((dueAmount + paidTowardCharge) * 100) / 100;
+            if (pending.length === 1 && membershipPrice > 0) {
+              const only = pending[0];
+              if (only.originalAmount == null) {
+                await prisma.payment.update({
+                  where: { id: only.id },
+                  data: { originalAmount: membershipPrice },
+                });
               }
             }
-          } else if (paidTowardCharge > 0) {
-            membershipPrice = Math.round(paidTowardCharge * 100) / 100;
           }
 
           // Не подставлять месячный тариф, если в периоде только credit или пусто
@@ -1759,16 +1749,12 @@ export class FinanceService {
         }
       }
 
-      // Цепочка для истории; итоговый Баланс = фактический кошелёк (не перезаписываем Client.balance)
+      // Баланс по строкам = накопленное (оплачено − начислено). Совпадает с долгом по счетам.
       clientRows.sort((a, b) => a.sortAt - b.sortAt || a.periodKey.localeCompare(b.periodKey));
       let running = 0;
       for (const row of clientRows) {
         running = running - Number(row.membershipPrice) + Number(row.paidAmount);
         row.remaining = Math.round(running * 100) / 100;
-      }
-      if (clientRows.length > 0) {
-        clientRows[clientRows.length - 1].remaining =
-          Math.round(Number(client.balance) * 100) / 100;
       }
 
       rows.push(...clientRows);

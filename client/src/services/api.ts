@@ -2687,6 +2687,25 @@ class ApiService {
     return response.data;
   }
 
+  /** Полное необратимое удаление школы (подтверждение — поддомен). */
+  async deleteTenant(
+    tenantId: string,
+    confirmSubdomain: string
+  ): Promise<{
+    tenantId: string;
+    name: string;
+    subdomain: string;
+    email: string;
+    clients: number;
+    users: number;
+    payments: number;
+  }> {
+    const response = await this.api.delete<ApiResponse>(`/admin-dashboard/tenants/${tenantId}`, {
+      data: { confirmSubdomain },
+    });
+    return response.data.data;
+  }
+
   /**
    * Выдача тарифа аккаунту. Применяется сразу, независимо от уровня тарифа.
    * `endDate` — необязательный срок действия, `comment` попадает в историю.
