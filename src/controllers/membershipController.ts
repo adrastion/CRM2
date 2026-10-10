@@ -195,6 +195,10 @@ export const createMembership = async (req: AuthenticatedRequest, res: Response)
           },
         });
         await syncGroupLegacyFlags(b.groupId, membership);
+        const { backfillGroupMonthlyCharges } = await import('./paymentController');
+        await backfillGroupMonthlyCharges({ tenantId, groupId: b.groupId }).catch((err) =>
+          console.error('Backfill group monthly charges failed:', err)
+        );
       }
     }
 
@@ -300,6 +304,10 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
           paymentWindowEndDay: updated.paymentWindowEndDay,
           isActive: updated.isActive,
         });
+        const { backfillGroupMonthlyCharges } = await import('./paymentController');
+        await backfillGroupMonthlyCharges({ tenantId: tenantId!, groupId: b.groupId }).catch((err) =>
+          console.error('Backfill group monthly charges failed:', err)
+        );
       }
     } else if (cat === 'GROUP') {
       const links = await prisma.membershipGroup.findMany({ where: { membershipId: id } });

@@ -661,6 +661,12 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
           }
         });
         await applyGroupBillingSideEffects();
+        if (tenantId) {
+          const { backfillGroupMonthlyCharges } = await import('./paymentController');
+          await backfillGroupMonthlyCharges({ tenantId, groupId: id, clientId }).catch((err) =>
+            console.error('Backfill group monthly charges failed:', err)
+          );
+        }
 
         res.json({
           success: true,
@@ -689,6 +695,12 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
           }
         });
         await applyGroupBillingSideEffects();
+        if (tenantId) {
+          const { backfillGroupMonthlyCharges } = await import('./paymentController');
+          await backfillGroupMonthlyCharges({ tenantId, groupId: id, clientId }).catch((err) =>
+            console.error('Backfill group monthly charges failed:', err)
+          );
+        }
 
         res.json({
           success: true,
@@ -737,6 +749,12 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
       }
     });
     await applyGroupBillingSideEffects();
+    if (tenantId) {
+      const { backfillGroupMonthlyCharges } = await import('./paymentController');
+      await backfillGroupMonthlyCharges({ tenantId, groupId: id, clientId }).catch((err) =>
+        console.error('Backfill group monthly charges failed:', err)
+      );
+    }
 
     res.status(201).json({
       success: true,

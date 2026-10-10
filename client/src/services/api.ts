@@ -1713,6 +1713,18 @@ class ApiService {
     apiCache.invalidatePrefix('/clients');
   }
 
+  async purgeUnlinkedFinanceHistory(): Promise<{
+    deletedSalaryLedgers: number;
+    cancelledPayments: number;
+    resetClientBalances: number;
+    trainersReset: number;
+  }> {
+    const response = await this.api.post<ApiResponse>('/finance/purge-unlinked-history');
+    apiCache.invalidatePrefix('/clients');
+    apiCache.invalidatePrefix('/finance');
+    return response.data.data;
+  }
+
   async getFinanceSalarySummary(params?: Record<string, any>): Promise<import('../types').FinanceSalaryRow[]> {
     const response = await this.api.get<ApiResponse>('/finance/salary-summary', { params });
     return response.data.data || [];

@@ -6,6 +6,7 @@ import {
   listFinanceOperations,
   createFinanceOperation,
   deleteFinanceOperation,
+  purgeUnlinkedFinanceHistory,
   payoutTrainerSalary,
   getSalarySummary,
   getMembershipFinanceSummary,
@@ -41,6 +42,7 @@ router.get('/refs', getFinanceRefs);
 router.get('/operations', listFinanceOperations);
 router.post('/operations', createFinanceOperation);
 router.delete('/operations/:id', requireOwner, deleteFinanceOperation);
+router.post('/purge-unlinked-history', requireOwner, purgeUnlinkedFinanceHistory);
 
 router.get('/salary-summary', getSalarySummary);
 router.post('/salary-payout', payoutTrainerSalary);

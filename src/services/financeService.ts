@@ -1248,6 +1248,126 @@ export class FinanceService {
     return { deleted: true, id: operationId };
   }
 
+  /**
+   * Удаляет зарплату и счета клиентов, которых уже нет в журнале «Все операции».
+   * Старые начисления (до единого журнала) остаются в реестре зарплаты и платежах.
+   */
+  static async purgeUnlinkedSalaryAndClientHistory(tenantId: string) {
+    const ops = await prisma.financeOperation.findMany({
+      where: { tenantId },
+      select: { id: true, typeCode: true, trainerId: true, clientId: true, paymentId: true, externalKey: true, notes: true },
+    });
+
+    const linkedPaymentIds = new Set<string>();
+    const linkedLedgerIds = new Set<string>();
+    const linkedAttendanceIds = new Set<string>();
+    const salaryTrainerIds = new Set<string>();
+    const clientOpClientIds = new Set<string>();
+
+    const clientOpTypes = new Set([
+      'membership',
+      'membership_charge',
+      'membership_issue',
+      'client_payment',
+    ]);
+    const salaryOpTypes = new Set(['salary', 'salary_accrual', 'bonus']);
+
+    for (const op of ops) {
+      if (op.paymentId) linkedPaymentIds.add(op.paymentId);
+      const notePay = op.notes?.match(/paymentId=([a-zA-Z0-9_-]+)/)?.[1];
+      if (notePay) linkedPaymentIds.add(notePay);
+      if (op.externalKey?.startsWith('salary_ledger:')) {
+        linkedLedgerIds.add(op.externalKey.slice('salary_ledger:'.length));
+      }
+      if (op.externalKey?.startsWith('salary_accrual:attendance:')) {
+        linkedAttendanceIds.add(op.externalKey.slice('salary_accrual:attendance:'.length));
+      }
+      if (op.externalKey?.startsWith('salary_accrual:payment:')) {
+        const paymentId = op.externalKey.split(':')[2];
+        if (paymentId) linkedPaymentIds.add(paymentId);
+      }
+      if (op.trainerId && salaryOpTypes.has(op.typeCode)) salaryTrainerIds.add(op.trainerId);
+      if (op.clientId && clientOpTypes.has(op.typeCode)) clientOpClientIds.add(op.clientId);
+    }
+
+    const ledgers = await prisma.trainerSalaryLedger.findMany({
+      where: { tenantId },
+      select: { id: true, attendanceId: true, paymentId: true },
+    });
+    const orphanLedgerIds = ledgers
+      .filter((row) => {
+        if (linkedLedgerIds.has(row.id)) return false;
+        if (row.attendanceId && linkedAttendanceIds.has(row.attendanceId)) return false;
+        if (row.paymentId && linkedPaymentIds.has(row.paymentId)) return false;
+        return true;
+      })
+      .map((row) => row.id);
+
+    const deletedLedgers =
+      orphanLedgerIds.length > 0
+        ? await prisma.trainerSalaryLedger.deleteMany({ where: { id: { in: orphanLedgerIds } } })
+        : { count: 0 };
+
+    const trainers = await prisma.trainer.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    let trainersReset = 0;
+    for (const trainer of trainers) {
+      const rows = await prisma.trainerSalaryLedger.findMany({
+        where: { tenantId, trainerId: trainer.id },
+        select: { amount: true },
+      });
+      const balance = rows.reduce((s, r) => s + Number(r.amount), 0);
+      await prisma.trainer.update({
+        where: { id: trainer.id },
+        data: { balance },
+      });
+      if (!salaryTrainerIds.has(trainer.id) && rows.length === 0) trainersReset += 1;
+    }
+
+    const payments = await prisma.payment.findMany({
+      where: {
+        tenantId,
+        OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+        status: { not: 'cancelled' },
+      },
+      select: { id: true },
+    });
+    const orphanPaymentIds = payments.filter((p) => !linkedPaymentIds.has(p.id)).map((p) => p.id);
+
+    const cancelledPayments =
+      orphanPaymentIds.length > 0
+        ? (
+            await prisma.payment.updateMany({
+              where: { id: { in: orphanPaymentIds }, tenantId },
+              data: { status: 'cancelled', paidAt: null },
+            })
+          ).count
+        : 0;
+
+    const clients = await prisma.client.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    let resetClientBalances = 0;
+    for (const client of clients) {
+      if (clientOpClientIds.has(client.id)) continue;
+      await prisma.client.update({
+        where: { id: client.id },
+        data: { balance: 0 },
+      });
+      resetClientBalances += 1;
+    }
+
+    return {
+      deletedSalaryLedgers: deletedLedgers.count,
+      cancelledPayments,
+      resetClientBalances,
+      trainersReset,
+    };
+  }
+
   static async payoutTrainerSalary(
     tenantId: string,
     input: {
@@ -1397,6 +1517,7 @@ export class FinanceService {
       include: {
         payments: {
           where: {
+            status: { not: 'cancelled' },
             OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
           },
           orderBy: { createdAt: 'desc' },

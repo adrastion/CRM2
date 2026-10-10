@@ -14,6 +14,8 @@ import {
   hasOpenMonthlyPayment,
   isMonthlyPaymentPayload,
   isUniqueConstraintError,
+  iteratePeriodKeys,
+  monthlyPeriodKey,
   resolveMonthlyPeriodKey,
 } from '../utils/monthlyPaymentPeriod';
 import {
@@ -33,6 +35,7 @@ type GroupForMonthly = {
     clientId: string;
     isTrial?: boolean;
     billingEffectiveFrom?: Date | null;
+    joinedAt?: Date | null;
     client?: {
       personalDiscountType?: string | null;
       personalDiscountValue?: unknown;
@@ -66,16 +69,6 @@ async function createOneMonthlyPayment(params: {
     return { skipped: 'membership_billing' };
   }
 
-  if (
-    await hasOpenMonthlyPayment({
-      tenantId,
-      clientId: membership.clientId,
-      groupId: group.id,
-    })
-  ) {
-    return { skipped: 'open_pending' };
-  }
-
   const firstTrainingMonth = await getGroupFirstTrainingMonth(group.id);
   if (!firstTrainingMonth) {
     return { skipped: 'no_trainings' };
@@ -96,16 +89,25 @@ async function createOneMonthlyPayment(params: {
   }
 
   const plan = await getGroupBillingPlan(group.id);
-  const earliestKeys = [plan?.effectiveFrom, membership.billingEffectiveFrom]
+  const memberStart = membership.billingEffectiveFrom || membership.joinedAt || null;
+  const earliestKeys = [plan?.effectiveFrom, memberStart]
     .filter(Boolean)
-    .map((d) => {
-      const dt = new Date(d as Date);
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-    })
+    .map((d) => monthlyPeriodKey(new Date(d as Date)))
     .sort();
   const earliest = earliestKeys[earliestKeys.length - 1];
   if (earliest && periodKey < earliest) {
     return { skipped: 'before_effective' };
+  }
+
+  if (
+    await hasOpenMonthlyPayment({
+      tenantId,
+      clientId: membership.clientId,
+      groupId: group.id,
+      periodKey,
+    })
+  ) {
+    return { skipped: 'open_pending' };
   }
 
   const existingByPeriod = await prisma.payment.findFirst({
@@ -115,6 +117,7 @@ async function createOneMonthlyPayment(params: {
       groupId: group.id,
       isMonthlyPayment: true,
       periodKey,
+      status: { not: 'cancelled' },
     },
   });
   if (existingByPeriod) {
@@ -197,6 +200,83 @@ async function createOneMonthlyPayment(params: {
     }
     throw error;
   }
+}
+
+/**
+ * Начислить ежемесячные счета по группе за все месяцы от даты старта абонемента/вступления до текущего.
+ */
+export async function backfillGroupMonthlyCharges(params: {
+  tenantId: string;
+  groupId: string;
+  clientId?: string;
+}): Promise<{ created: number }> {
+  const group = await prisma.group.findFirst({
+    where: { id: params.groupId, tenantId: params.tenantId },
+    include: {
+      memberships: {
+        where: {
+          isActive: true,
+          leftAt: null,
+          isTrial: false,
+          ...(params.clientId ? { clientId: params.clientId } : {}),
+        },
+        include: { client: true },
+      },
+    },
+  });
+  if (!group) return { created: 0 };
+
+  const plan = await getGroupBillingPlan(group.id);
+  if (!plan || plan.price <= 0) return { created: 0 };
+
+  const firstTrainingMonth = await getGroupFirstTrainingMonth(group.id);
+  const nowKey = monthlyPeriodKey(new Date());
+  let created = 0;
+
+  for (const membership of group.memberships) {
+    // Если абонемент задним числом — сдвинуть дату оплаты ученика, который уже был в группе
+    if (
+      membership.joinedAt &&
+      membership.joinedAt.getTime() <= plan.effectiveFrom.getTime() &&
+      (!membership.billingEffectiveFrom ||
+        membership.billingEffectiveFrom.getTime() > plan.effectiveFrom.getTime())
+    ) {
+      await prisma.groupMembership.update({
+        where: {
+          clientId_groupId: { clientId: membership.clientId, groupId: group.id },
+        },
+        data: { billingEffectiveFrom: plan.effectiveFrom },
+      });
+      membership.billingEffectiveFrom = plan.effectiveFrom;
+    }
+
+    const memberStartDate = membership.billingEffectiveFrom || membership.joinedAt || plan.effectiveFrom;
+    const memberStart = monthlyPeriodKey(memberStartDate);
+    const planStart = monthlyPeriodKey(plan.effectiveFrom);
+    let fromKey = memberStart > planStart ? memberStart : planStart;
+    if (firstTrainingMonth && firstTrainingMonth > fromKey) fromKey = firstTrainingMonth;
+    const keys = iteratePeriodKeys(fromKey, nowKey);
+    for (const periodKey of keys) {
+      try {
+        const result = await createOneMonthlyPayment({
+          tenantId: params.tenantId,
+          group,
+          membership,
+          monthlyAmount: plan.price,
+          candidateDate: new Date(),
+          periodKey,
+        });
+        if ('payment' in result && result.payment) created += 1;
+      } catch (error) {
+        console.error(
+          `Backfill monthly charge failed client=${membership.clientId} group=${group.id} ${periodKey}`,
+          error
+        );
+      }
+    }
+  }
+
+  return { created };
 }
 
 /**

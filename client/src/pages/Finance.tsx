@@ -186,6 +186,8 @@ const Finance: React.FC = () => {
   const [deletingOpId, setDeletingOpId] = useState<string | null>(null);
   const [cancelOp, setCancelOp] = useState<FinanceOperation | null>(null);
   const [detailOp, setDetailOp] = useState<FinanceOperation | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const [operations, setOperations] = useState<FinanceOperation[]>([]);
   const [types, setTypes] = useState<FinanceOperationType[]>([]);
@@ -469,6 +471,22 @@ const Finance: React.FC = () => {
       setError(e?.response?.data?.error || 'Не удалось отменить операцию');
     } finally {
       setDeletingOpId(null);
+    }
+  };
+
+  const handlePurgeUnlinked = async () => {
+    setPurging(true);
+    try {
+      const data = await apiService.purgeUnlinkedFinanceHistory();
+      setPurgeOpen(false);
+      setSnackbar(
+        `Очищено: зарплата ${data.deletedSalaryLedgers}, счета клиентов ${data.cancelledPayments}`
+      );
+      await Promise.all([loadOperations(), loadSalary(), loadMemberships()]);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось очистить старые записи');
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -839,6 +857,25 @@ const Finance: React.FC = () => {
       >
         Добавить операцию
       </Button>
+      {canDeleteOperations && (
+        <Button
+          variant="outlined"
+          size="small"
+          color="error"
+          onClick={() => setPurgeOpen(true)}
+          sx={{
+            borderRadius: '12px',
+            px: 2,
+            py: 0.75,
+            textTransform: 'none',
+            fontSize: typography.button,
+            fontWeight: 600,
+            width: { xs: '100%', sm: 'auto' },
+          }}
+        >
+          Очистить старые записи
+        </Button>
+      )}
       <Button
         variant="contained"
         size="small"
@@ -1934,6 +1971,34 @@ const Finance: React.FC = () => {
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setDetailOp(null)} sx={{ textTransform: 'none' }}>
               Закрыть
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={purgeOpen} onClose={() => !purging && setPurgeOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ fontWeight: 600 }}>Очистить зарплату и операции клиентов?</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mb: 1.5 }}>
+              Журнал «Все операции» не трогаем. Удаляются начисления зарплаты и счета абонементов,
+              которых нет в этом журнале (старые записи до единого учёта).
+            </Typography>
+            <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
+              Балансы тренеров пересчитаются по оставшимся строкам. У клиентов без операций в журнале
+              баланс обнулится, незакрытые счета без связи с журналом будут отменены.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setPurgeOpen(false)} disabled={purging} sx={{ textTransform: 'none' }}>
+              Закрыть
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={purging}
+              onClick={handlePurgeUnlinked}
+              sx={{ textTransform: 'none' }}
+            >
+              {purging ? 'Очистка…' : 'Очистить'}
             </Button>
           </DialogActions>
         </Dialog>

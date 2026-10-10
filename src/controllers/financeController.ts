@@ -323,6 +323,21 @@ export const deleteFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
   res.json({ success: true, data: { id }, message: 'Операция отменена' });
 });
 
+export const purgeUnlinkedFinanceHistory = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.tenant?.id) {
+      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      return;
+    }
+    const data = await FinanceService.purgeUnlinkedSalaryAndClientHistory(req.tenant.id);
+    res.json({
+      success: true,
+      data,
+      message: 'Старые записи зарплаты и операций клиентов, которых нет в журнале, удалены',
+    });
+  }
+);
+
 export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
     res.status(400).json({ success: false, error: 'Tenant ID is required' });
