@@ -45,6 +45,8 @@ import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { canCreateAdminUsers, canCreatePromoterUsers, isOwner as roleIsOwner, isOwnerOrAdmin } from '../utils/roles';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import PasswordField from '../components/common/PasswordField';
+import PlanLimitAlert from '../components/common/PlanLimitAlert';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
   normalizeSalaryScheme,
@@ -77,8 +79,21 @@ const emptyFormData = {
   branchId: '',
 };
 
+const emptySelfTrainerForm = {
+  qualification: '',
+  experience: '',
+  specialization: '',
+  coachCategory: '',
+  judgeCategory: '',
+  achievements: '',
+  salaryScheme: '',
+  salaryRate: '',
+  individualTrainingPrice: '',
+  canViewAllGroups: true,
+};
+
 const Trainers: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
@@ -91,6 +106,9 @@ const Trainers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleSelectionDialog, setRoleSelectionDialog] = useState(false); // Диалог выбора роли
+  const [selfTrainerDialog, setSelfTrainerDialog] = useState(false);
+  const [selfTrainerForm, setSelfTrainerForm] = useState({ ...emptySelfTrainerForm });
+  const [selfTrainerSaving, setSelfTrainerSaving] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [cardDialog, setCardDialog] = useState(false);
   const [earningsDialog, setEarningsDialog] = useState(false);
@@ -191,6 +209,64 @@ const Trainers: React.FC = () => {
       setError(err.response?.data?.error || 'Ошибка удаления администратора');
       setSnackbarMessage(err.response?.data?.error || 'Ошибка удаления администратора');
       setSnackbarOpen(true);
+    }
+  };
+
+  const ownerAlreadyTrainer =
+    Boolean(user?.trainerId) ||
+    trainers.some((t: any) => t.userId === user?.id || t.user?.id === user?.id);
+
+  const handleCreateSelfAsTrainer = async (): Promise<boolean> => {
+    try {
+      setSelfTrainerSaving(true);
+      setError('');
+      await apiService.createSelfAsTrainer({
+        ...selfTrainerForm,
+        salaryScheme:
+          selfTrainerForm.salaryScheme === TRAINER_FIXED_MONTHLY
+            ? TRAINER_FIXED_MONTHLY
+            : 'per_training_person',
+        salaryRate:
+          selfTrainerForm.salaryScheme === TRAINER_FIXED_MONTHLY && selfTrainerForm.salaryRate
+            ? parseFloat(selfTrainerForm.salaryRate)
+            : 0,
+        salaryType:
+          selfTrainerForm.salaryScheme === TRAINER_FIXED_MONTHLY
+            ? TRAINER_FIXED_MONTHLY
+            : 'per_training_person',
+        salaryAmount:
+          selfTrainerForm.salaryScheme === TRAINER_FIXED_MONTHLY && selfTrainerForm.salaryRate
+            ? parseFloat(selfTrainerForm.salaryRate)
+            : 0,
+        individualTrainingPrice: selfTrainerForm.individualTrainingPrice
+          ? parseFloat(selfTrainerForm.individualTrainingPrice)
+          : null,
+        experience: selfTrainerForm.experience || undefined,
+      });
+      await fetchTrainers();
+      try {
+        const profile = await apiService.getProfile();
+        if (profile && user) {
+          updateUser({
+            ...user,
+            ...profile,
+            trainerId: profile.trainerId ?? profile.trainer?.id ?? null,
+            isTrainer: Boolean(profile.trainerId ?? profile.trainer?.id),
+          });
+        }
+      } catch {
+        /* профиль обновится при следующем входе */
+      }
+      setSelfTrainerDialog(false);
+      setSelfTrainerForm({ ...emptySelfTrainerForm });
+      setSnackbarMessage('Профиль тренера создан. Доступны «Мой заработок» и «Мой профиль».');
+      setSnackbarOpen(true);
+      return true;
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка создания профиля тренера');
+      return false;
+    } finally {
+      setSelfTrainerSaving(false);
     }
   };
 
@@ -398,9 +474,9 @@ const Trainers: React.FC = () => {
   if (error) {
     return (
       <Box>
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <PlanLimitAlert sx={{ mb: 2 }}>
           {error}
-        </Alert>
+        </PlanLimitAlert>
         <Button onClick={fetchTrainers} variant="outlined">
           Попробовать снова
         </Button>
@@ -706,6 +782,28 @@ const Trainers: React.FC = () => {
           </DialogTitle>
           <DialogContent>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+              {isOwner && !ownerAlreadyTrainer && (
+                <Button
+                  variant="contained"
+                  fullWidth
+                  size="large"
+                  onClick={() => {
+                    setSelfTrainerForm({ ...emptySelfTrainerForm });
+                    setRoleSelectionDialog(false);
+                    setSelfTrainerDialog(true);
+                    setError('');
+                  }}
+                  sx={{ py: 2 }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <Person sx={{ fontSize: 40 }} />
+                    <Typography variant="h6">Создать себя как тренера</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Без отдельного входа — квалификация и схема ЗП на вашем аккаунте
+                    </Typography>
+                  </Box>
+                </Button>
+              )}
               <Button
                 variant="outlined"
                 fullWidth
@@ -794,6 +892,159 @@ const Trainers: React.FC = () => {
         </Dialog>
       )}
 
+      {/* OWNER: создать себя как тренера */}
+      <Dialog
+        open={selfTrainerDialog}
+        onClose={() => {
+          if (!selfTrainerSaving) {
+            setSelfTrainerDialog(false);
+            setError('');
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isNarrow}
+      >
+        <DialogTitle>Создать себя как тренера</DialogTitle>
+        <DialogContent>
+          {error && (
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
+              {error}
+            </PlanLimitAlert>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, mt: 1 }}>
+            Email и пароль не нужны — профиль тренера привяжется к вашему аккаунту владельца.
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Квалификация"
+                value={selfTrainerForm.qualification}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, qualification: e.target.value }))
+                }
+                placeholder="Например: 3-й дан, МС, КМС"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Опыт (лет)"
+                type="number"
+                value={selfTrainerForm.experience}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, experience: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Специализация"
+                value={selfTrainerForm.specialization}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, specialization: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Тренерская категория"
+                value={selfTrainerForm.coachCategory}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, coachCategory: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Судейская категория"
+                value={selfTrainerForm.judgeCategory}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, judgeCategory: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="Достижения"
+                value={selfTrainerForm.achievements}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({ ...prev, achievements: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Зарплата</InputLabel>
+                <Select
+                  value={selfTrainerForm.salaryScheme}
+                  label="Зарплата"
+                  onChange={(e) =>
+                    setSelfTrainerForm((prev) => ({ ...prev, salaryScheme: e.target.value }))
+                  }
+                >
+                  <MenuItem value="">На группах</MenuItem>
+                  <MenuItem value={TRAINER_FIXED_MONTHLY}>Фикс плата в месяц</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            {selfTrainerForm.salaryScheme === TRAINER_FIXED_MONTHLY && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
+                  type="number"
+                  value={selfTrainerForm.salaryRate}
+                  onChange={(e) =>
+                    setSelfTrainerForm((prev) => ({ ...prev, salaryRate: e.target.value }))
+                  }
+                  helperText={salarySchemeHint(TRAINER_FIXED_MONTHLY)}
+                />
+              </Grid>
+            )}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Цена индивидуальной тренировки (₽)"
+                type="number"
+                value={selfTrainerForm.individualTrainingPrice}
+                onChange={(e) =>
+                  setSelfTrainerForm((prev) => ({
+                    ...prev,
+                    individualTrainingPrice: e.target.value,
+                  }))
+                }
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setSelfTrainerDialog(false);
+              setError('');
+            }}
+            disabled={selfTrainerSaving}
+          >
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => handleCreateSelfAsTrainer()}
+            disabled={selfTrainerSaving}
+          >
+            {selfTrainerSaving ? <CircularProgress size={22} /> : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Диалог добавления тренера */}
       <Dialog 
         open={openDialog} 
@@ -810,9 +1061,9 @@ const Trainers: React.FC = () => {
         <DialogTitle>Добавить нового сотрудника</DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
-            </Alert>
+            </PlanLimitAlert>
           )}
           {Object.keys(formErrors).length > 0 && (
             <Alert severity="warning" sx={{ mb: 2 }}>
@@ -882,10 +1133,9 @@ const Trainers: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
+              <PasswordField
                 fullWidth
                 label="Пароль"
-                type="password"
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
                 required

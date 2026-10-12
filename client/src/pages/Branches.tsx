@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { validateBranchForm } from '../utils/validation';
+import { validateBranchForm, validateTrainerForm } from '../utils/validation';
 import {
   Box,
   Typography,
@@ -39,6 +39,11 @@ import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import { useAuth } from '../contexts/AuthContext';
 import { canAssignSeniorTrainer, canCreateBranches, isSeniorTrainerUser } from '../utils/roles';
+import PlanLimitAlert from '../components/common/PlanLimitAlert';
+import InlineNewTrainerFields, {
+  EMPTY_INLINE_TRAINER,
+  type InlineTrainerForm,
+} from '../components/common/InlineNewTrainerFields';
 
 const EMPTY_BRANCH_FORM = {
   name: '',
@@ -89,6 +94,9 @@ const Branches: React.FC = () => {
   const [createFormBaseline, setCreateFormBaseline] = useState({ ...EMPTY_BRANCH_FORM });
   const [editFormBaseline, setEditFormBaseline] = useState({ ...EMPTY_BRANCH_FORM });
   const [hallFormBaseline, setHallFormBaseline] = useState({ ...EMPTY_HALL_FORM });
+  const [createNewSeniorTrainer, setCreateNewSeniorTrainer] = useState(false);
+  const [newTrainerForm, setNewTrainerForm] = useState<InlineTrainerForm>({ ...EMPTY_INLINE_TRAINER });
+  const [newTrainerErrors, setNewTrainerErrors] = useState<Record<string, string>>({});
 
   const fetchBranches = async () => {
     try {
@@ -148,27 +156,85 @@ const Branches: React.FC = () => {
     // Validate form
     const errors = validateBranchForm(formData);
     setFormErrors(errors);
-    
-    if (Object.keys(errors).length > 0) {
+
+    let trainerErrors: Record<string, string> = {};
+    if (canAssignSenior && createNewSeniorTrainer) {
+      trainerErrors = validateTrainerForm(newTrainerForm);
+      if (!newTrainerForm.password || newTrainerForm.password.length < 6) {
+        trainerErrors.password = 'Пароль должен содержать минимум 6 символов';
+      }
+      setNewTrainerErrors(trainerErrors);
+    } else {
+      setNewTrainerErrors({});
+    }
+
+    if (Object.keys(errors).length > 0 || Object.keys(trainerErrors).length > 0) {
       setError('Пожалуйста, исправьте ошибки в форме');
       return false;
     }
 
+    let createdTrainerId: string | null = null;
+    let createdTrainerLabel = '';
+
     try {
+      if (canAssignSenior && createNewSeniorTrainer) {
+        const trainer = await apiService.createTrainer({
+          ...newTrainerForm,
+          salaryScheme: 'per_training_person',
+          salaryRate: 0,
+          salaryType: 'per_training_person',
+          salaryAmount: 0,
+        });
+        createdTrainerId = trainer.id;
+        createdTrainerLabel =
+          [newTrainerForm.lastName, newTrainerForm.firstName].filter(Boolean).join(' ') ||
+          newTrainerForm.email;
+        setTrainers((prev) => [...prev, trainer]);
+      }
+
+      const seniorTrainerId =
+        createdTrainerId || (formData.seniorTrainerId ? formData.seniorTrainerId : null);
+
       const payload = {
         ...formData,
-        seniorTrainerId: formData.seniorTrainerId || null,
+        seniorTrainerId,
       };
-      await apiService.createBranch(payload);
+      const branch = await apiService.createBranch(payload);
+
+      if (seniorTrainerId && branch?.id) {
+        try {
+          await apiService.addBranchToTrainer(seniorTrainerId, branch.id);
+        } catch (linkErr) {
+          console.warn('TrainerBranch link failed:', linkErr);
+        }
+      }
+
       await fetchBranches();
+      if (canAssignSenior) {
+        try {
+          const trainersRes = await apiService.getTrainers({ limit: 1000 });
+          setTrainers(trainersRes.data || []);
+        } catch {
+          /* ignore */
+        }
+      }
       setOpenDialog(false);
       setFormErrors({});
       setError('');
       setFormData({ ...EMPTY_BRANCH_FORM });
       setCreateFormBaseline({ ...EMPTY_BRANCH_FORM });
+      setCreateNewSeniorTrainer(false);
+      setNewTrainerForm({ ...EMPTY_INLINE_TRAINER });
+      setNewTrainerErrors({});
       return true;
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка создания филиала');
+      if (createdTrainerId) {
+        setError(
+          `Филиал не создан, но тренер уже создан (${createdTrainerLabel}). Назначьте его старшим при повторном создании или в карточке филиала.`
+        );
+      } else {
+        setError(err.response?.data?.error || 'Ошибка создания филиала');
+      }
       console.error('Error creating branch:', err);
       return false;
     }
@@ -376,6 +442,9 @@ const Branches: React.FC = () => {
     setError('');
     setFormData({ ...EMPTY_BRANCH_FORM });
     setCreateFormBaseline({ ...EMPTY_BRANCH_FORM });
+    setCreateNewSeniorTrainer(false);
+    setNewTrainerForm({ ...EMPTY_INLINE_TRAINER });
+    setNewTrainerErrors({});
   }, []);
 
   const discardEditForm = React.useCallback(() => {
@@ -453,9 +522,9 @@ const Branches: React.FC = () => {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
-        </Alert>
+        </PlanLimitAlert>
       )}
 
       {isMobile ? (
@@ -636,9 +705,9 @@ const Branches: React.FC = () => {
         <DialogTitle>Добавить новый филиал</DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
-            </Alert>
+            </PlanLimitAlert>
           )}
           {Object.keys(formErrors).length > 0 && (
             <Alert severity="warning" sx={{ mb: 2 }}>
@@ -705,24 +774,60 @@ const Branches: React.FC = () => {
             </Grid>
             {canAssignSenior && (
               <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel id="create-senior-trainer-label">Старший тренер</InputLabel>
-                  <Select
-                    labelId="create-senior-trainer-label"
-                    label="Старший тренер"
-                    value={formData.seniorTrainerId}
-                    onChange={(e) => handleInputChange('seniorTrainerId', String(e.target.value))}
-                  >
-                    <MenuItem value="">
-                      <em>Не назначен</em>
-                    </MenuItem>
-                    {trainers.map((t: Trainer) => (
-                      <MenuItem key={t.id} value={t.id}>
-                        {[t.user?.lastName, t.user?.firstName].filter(Boolean).join(' ') || t.user?.email || t.id}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                {!createNewSeniorTrainer ? (
+                  <>
+                    <FormControl fullWidth>
+                      <InputLabel id="create-senior-trainer-label">Старший тренер</InputLabel>
+                      <Select
+                        labelId="create-senior-trainer-label"
+                        label="Старший тренер"
+                        value={formData.seniorTrainerId}
+                        onChange={(e) => handleInputChange('seniorTrainerId', String(e.target.value))}
+                      >
+                        <MenuItem value="">
+                          <em>Не назначен</em>
+                        </MenuItem>
+                        {trainers.map((t: Trainer) => (
+                          <MenuItem key={t.id} value={t.id}>
+                            {[t.user?.lastName, t.user?.firstName].filter(Boolean).join(' ') || t.user?.email || t.id}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      sx={{ mt: 1 }}
+                      onClick={() => {
+                        setCreateNewSeniorTrainer(true);
+                        setFormData((prev) => ({ ...prev, seniorTrainerId: '' }));
+                        setNewTrainerForm({ ...EMPTY_INLINE_TRAINER });
+                        setNewTrainerErrors({});
+                      }}
+                    >
+                      + Создать тренера
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <InlineNewTrainerFields
+                      value={newTrainerForm}
+                      onChange={setNewTrainerForm}
+                      errors={newTrainerErrors}
+                    />
+                    <Button
+                      size="small"
+                      sx={{ mt: 1 }}
+                      onClick={() => {
+                        setCreateNewSeniorTrainer(false);
+                        setNewTrainerForm({ ...EMPTY_INLINE_TRAINER });
+                        setNewTrainerErrors({});
+                      }}
+                    >
+                      Выбрать существующего тренера
+                    </Button>
+                  </>
+                )}
               </Grid>
             )}
           </Grid>
@@ -754,9 +859,9 @@ const Branches: React.FC = () => {
         <DialogTitle>Редактировать филиал</DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
-            </Alert>
+            </PlanLimitAlert>
           )}
           {Object.keys(formErrors).length > 0 && (
             <Alert severity="warning" sx={{ mb: 2 }}>
@@ -875,9 +980,9 @@ const Branches: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
-            </Alert>
+            </PlanLimitAlert>
           )}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">Список залов</Typography>
@@ -981,9 +1086,9 @@ const Branches: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
-            </Alert>
+            </PlanLimitAlert>
           )}
           {Object.keys(hallFormErrors).length > 0 && (
             <Alert severity="warning" sx={{ mb: 2 }}>

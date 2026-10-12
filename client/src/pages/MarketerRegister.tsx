@@ -17,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { applyUnifiedSession } from '../utils/authSession';
 import PublicSiteNav from '../components/PublicSiteNav';
+import PasswordField from '../components/common/PasswordField';
 
 const MarketerRegister: React.FC = () => {
   const navigate = useNavigate();
@@ -101,9 +102,8 @@ const MarketerRegister: React.FC = () => {
                 <MenuItem value="MEDIA_PARTNER">Медиа-партнёр</MenuItem>
               </Select>
             </FormControl>
-            <TextField
+            <PasswordField
               label="Пароль"
-              type="password"
               required
               helperText="Минимум 6 символов"
               value={form.password}

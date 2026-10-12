@@ -19,6 +19,7 @@ import {
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../services/api';
 import PublicFooter from '../components/PublicFooter';
+import PasswordField from '../components/common/PasswordField';
 
 interface TenantOption {
   tenant: {
@@ -241,20 +242,18 @@ const ParentRegister: React.FC = () => {
                 </Typography>
               )}
               
-              <TextField
+              <PasswordField
                 fullWidth
                 label="Пароль"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 margin="normal"
                 required
               />
               
-              <TextField
+              <PasswordField
                 fullWidth
                 label="Подтвердите пароль"
-                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 margin="normal"

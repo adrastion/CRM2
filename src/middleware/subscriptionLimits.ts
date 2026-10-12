@@ -2,6 +2,8 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { SubscriptionService } from '../services/subscriptionService';
 import { asyncHandler } from './errorHandler';
+import { buildPlanLimitDenial } from '../utils/planLimits';
+import type { LimitKey } from '../services/planCatalogService';
 
 export type ResourceType =
   | 'trainers'
@@ -31,25 +33,11 @@ export const checkSubscriptionLimit = (resource: ResourceType) => {
     const hasAccess = await SubscriptionService.checkLimit(req.tenant.id, resource);
 
     if (!hasAccess) {
-      const subscription = await SubscriptionService.getSubscription(req.tenant.id);
-      const limits = await SubscriptionService.getLimits(req.tenant.id);
-      const limit = limits[resource];
-
-      if (!subscription) {
-        res.status(500).json({
-          success: false,
-          error: 'Subscription not found',
-        });
-        return;
-      }
-
+      const denial = await buildPlanLimitDenial(req.tenant.id, resource as LimitKey);
       res.status(403).json({
         success: false,
-        error: `Лимит ${resource} превышен для тарифа ${subscription.planType}. Текущий лимит: ${limit === 'unlimited' ? 'безлимит' : limit}`,
-        data: {
-          limit,
-          planType: subscription.planType,
-        },
+        error: denial.message,
+        data: denial.data,
       });
       return;
     }
@@ -99,4 +87,3 @@ export const checkSubscriptionActive = asyncHandler(async (
 
   next();
 });
-

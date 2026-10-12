@@ -624,6 +624,12 @@ class ApiService {
     return response.data.data;
   }
 
+  /** OWNER: создать Trainer-профиль на своём User */
+  async createSelfAsTrainer(data: any): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/trainers/me', data);
+    return response.data.data;
+  }
+
   async updateTrainer(id: string, data: any): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/trainers/${id}`, data);
     return response.data.data;

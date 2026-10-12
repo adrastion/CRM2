@@ -12,6 +12,9 @@ export interface User {
   /** TRAINER, назначенный старшим хотя бы одного филиала */
   isSeniorTrainer?: boolean;
   seniorBranchIds?: string[];
+  /** Id записи Trainer, если у пользователя есть тренерский профиль (в т.ч. OWNER) */
+  trainerId?: string | null;
+  isTrainer?: boolean;
 }
 
 export interface Tenant {

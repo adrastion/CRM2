@@ -39,10 +39,17 @@ function normalizeDocKind(raw: unknown): TrainerDocKind {
 /** full = admin/owner/senior; self = own profile whitelist only */
 async function resolveTrainerEditAccess(
   req: AuthenticatedRequest,
-  trainer: { id: string; userId: string; tenantId: string }
+  trainer: { id: string; userId: string; tenantId: string; user?: { role?: string } | null }
 ): Promise<'full' | 'self' | null> {
   const role = req.user?.role;
   if (!role || !req.user?.id) return null;
+
+  // Карточка владельца-тренера: править может только OWNER
+  const targetRole = trainer.user?.role;
+  if (targetRole === 'OWNER') {
+    return role === 'OWNER' ? 'full' : null;
+  }
+
   if (role === 'OWNER' || role === 'ADMIN') return 'full';
   if (role !== 'TRAINER') return null;
   if (trainer.userId === req.user.id) return 'self';
@@ -454,6 +461,93 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       error: 'Failed to create trainer'
     });
     return;
+  }
+};
+
+/**
+ * OWNER создаёт Trainer-профиль на своём User (без нового логина).
+ * POST /trainers/me
+ */
+export const createSelfAsTrainer = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.tenant?.id || !req.user?.id) {
+      res.status(400).json({ success: false, error: 'Требуется авторизация' });
+      return;
+    }
+    if (req.user.role !== 'OWNER') {
+      res.status(403).json({
+        success: false,
+        error: 'Только владелец может создать себя как тренера',
+      });
+      return;
+    }
+
+    const existing = await prisma.trainer.findFirst({
+      where: { userId: req.user.id, tenantId: req.tenant.id },
+    });
+    if (existing) {
+      res.status(400).json({
+        success: false,
+        error: 'У вас уже есть профиль тренера',
+        data: existing,
+      });
+      return;
+    }
+
+    const {
+      qualification,
+      experience,
+      specialization,
+      coachCategory,
+      judgeCategory,
+      achievements,
+      canViewAllGroups,
+    } = req.body;
+    const salary = parseSalaryFields(req.body);
+
+    const trainer = await prisma.trainer.create({
+      data: {
+        userId: req.user.id,
+        qualification,
+        experience: experience ? parseInt(experience, 10) : undefined,
+        specialization,
+        coachCategory: coachCategory != null ? String(coachCategory).trim() || null : null,
+        judgeCategory: judgeCategory != null ? String(judgeCategory).trim() || null : null,
+        achievements: achievements != null ? String(achievements).trim() || null : null,
+        salaryType: salary.salaryType,
+        salaryAmount: salary.salaryAmount,
+        salaryScheme: salary.salaryScheme,
+        salaryRate: salary.salaryRate,
+        individualTrainingPrice:
+          req.body.individualTrainingPrice !== undefined &&
+          req.body.individualTrainingPrice !== null &&
+          req.body.individualTrainingPrice !== ''
+            ? parseFloat(String(req.body.individualTrainingPrice))
+            : null,
+        canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
+        tenantId: req.tenant.id,
+      },
+      include: { user: true },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: trainer,
+      message: 'Профиль тренера создан',
+    });
+  } catch (error: any) {
+    console.error('Create self as trainer error:', error);
+    if (error?.code === 'P2002') {
+      res.status(400).json({
+        success: false,
+        error: 'У вас уже есть профиль тренера',
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: 'Не удалось создать профиль тренера',
+    });
   }
 };
 

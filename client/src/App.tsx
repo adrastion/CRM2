@@ -614,7 +614,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/trainer/profile"
           element={
-            <RoleRoute roles={['TRAINER']}>
+            <RoleRoute roles={['TRAINER', 'OWNER']}>
               <AppLayout>
                 <TrainerProfile />
               </AppLayout>
@@ -624,11 +624,11 @@ const AppContent: React.FC = () => {
         <Route
           path="/trainer/earnings"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['TRAINER', 'OWNER']}>
               <AppLayout>
                 <TrainerEarnings />
               </AppLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route

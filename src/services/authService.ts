@@ -8,6 +8,7 @@ import { PasswordResetService } from './passwordResetService';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 import { SubscriptionService } from './subscriptionService';
 import type { PlanLimits } from './planCatalogService';
+import { planLimitHttpError } from '../utils/planLimits';
 
 const STAFF_LIMIT_BY_ROLE: Partial<Record<string, keyof PlanLimits>> = {
   ADMIN: 'extraStaff',
@@ -15,20 +16,12 @@ const STAFF_LIMIT_BY_ROLE: Partial<Record<string, keyof PlanLimits>> = {
   TRAINER: 'trainers',
 };
 
-const STAFF_LIMIT_LABEL: Record<string, string> = {
-  extraStaff: 'доп. сотрудников',
-  trainers: 'тренеров',
-};
-
 async function assertStaffRoleWithinLimit(tenantId: string, role: string) {
   const resource = STAFF_LIMIT_BY_ROLE[role];
   if (!resource) return;
   const allowed = await SubscriptionService.checkLimit(tenantId, resource);
   if (!allowed) {
-    throw new HttpError(
-      403,
-      `Достигнут лимит ${STAFF_LIMIT_LABEL[resource] || resource} по текущему тарифу`
-    );
+    throw await planLimitHttpError(tenantId, resource);
   }
 }
 
@@ -227,10 +220,11 @@ export class AuthService {
     const token = this.generateToken(user);
 
     const { getSeniorAccessMeta } = await import('../utils/branchAccess');
+    // OWNER с Trainer-профилем тоже получает trainerId / senior-метки
     const seniorMeta =
-      user.role === 'TRAINER'
+      user.role === 'TRAINER' || user.role === 'OWNER'
         ? await getSeniorAccessMeta(user.id, user.tenantId)
-        : { isSeniorTrainer: false, seniorBranchIds: [] as string[] };
+        : { isSeniorTrainer: false, seniorBranchIds: [] as string[], trainerId: null as string | null };
 
     return {
       user: {
@@ -242,6 +236,8 @@ export class AuthService {
         tenantId: user.tenantId,
         isSeniorTrainer: seniorMeta.isSeniorTrainer,
         seniorBranchIds: seniorMeta.seniorBranchIds,
+        trainerId: seniorMeta.trainerId,
+        isTrainer: Boolean(seniorMeta.trainerId),
       },
       tenant: {
         id: user.tenant.id,
@@ -697,9 +693,11 @@ export class AuthService {
 
     const { getSeniorAccessMeta } = await import('../utils/branchAccess');
     const seniorMeta =
-      user.role === 'TRAINER'
+      user.role === 'TRAINER' || user.role === 'OWNER'
         ? await getSeniorAccessMeta(user.id, user.tenantId)
         : { isSeniorTrainer: false, seniorBranchIds: [] as string[], trainerId: null as string | null };
+
+    const trainerId = user.trainer?.id ?? seniorMeta.trainerId ?? null;
 
     return {
       id: user.id,
@@ -713,6 +711,8 @@ export class AuthService {
       tenantId: user.tenantId,
       isSeniorTrainer: seniorMeta.isSeniorTrainer,
       seniorBranchIds: seniorMeta.seniorBranchIds,
+      trainerId,
+      isTrainer: Boolean(trainerId),
       tenant: {
         id: user.tenant.id,
         name: user.tenant.name,

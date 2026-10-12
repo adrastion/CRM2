@@ -18,6 +18,7 @@ import { RegisterForm } from '../types';
 import PublicFooter from '../components/PublicFooter';
 import PublicSiteNav from '../components/PublicSiteNav';
 import { normalizePhone, validatePhone } from '../utils/phone';
+import PasswordField from '../components/common/PasswordField';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState<RegisterForm>({
@@ -275,12 +276,11 @@ const Register: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
+                <PasswordField
                   required
                   fullWidth
                   name="password"
                   label="Пароль"
-                  type="password"
                   id="password"
                   value={formData.password}
                   onChange={handleChange}
@@ -290,12 +290,11 @@ const Register: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
+                <PasswordField
                   required
                   fullWidth
                   name="confirmPassword"
                   label="Подтвердите пароль"
-                  type="password"
                   id="confirmPassword"
                   value={confirmPassword}
                   onChange={(e) => {

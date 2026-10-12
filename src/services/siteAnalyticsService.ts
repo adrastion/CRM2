@@ -40,6 +40,29 @@ function clampDurationSec(startedAt: Date, endedAt: Date): number | null {
   return sec;
 }
 
+type SessionSpan = {
+  visitorId: string;
+  startedAt: Date;
+  lastSeenAt: Date;
+  endedAt: Date | null;
+};
+
+/** Сколько уникальных посетителей пересекали окно [hourStart, hourEnd). */
+function uniqueVisitorsOverlappingHour(
+  sessions: SessionSpan[],
+  hourStart: Date,
+  hourEnd: Date
+): number {
+  const ids = new Set<string>();
+  for (const s of sessions) {
+    const sEnd = s.endedAt || s.lastSeenAt;
+    if (s.startedAt < hourEnd && sEnd >= hourStart) {
+      ids.add(s.visitorId);
+    }
+  }
+  return ids.size;
+}
+
 export async function pingSiteVisit(input: {
   visitorId: string;
   path?: string | null;
@@ -157,18 +180,14 @@ export async function rollupSiteVisitDay(dateStr?: string): Promise<void> {
     }
   }
 
-  // Approximate hourly concurrent: sample each hour midpoint
+  // Hourly online = unique visitors overlapping each hour (not session count)
   const hourlyAvg: number[] = [];
   const hourlyMax: number[] = [];
   let peak = 0;
   for (let h = 0; h < 24; h++) {
     const hourStart = new Date(start.getTime() + h * 3600000);
     const hourEnd = new Date(hourStart.getTime() + 3600000);
-    let concurrent = 0;
-    for (const s of sessions) {
-      const sEnd = s.endedAt || s.lastSeenAt;
-      if (s.startedAt < hourEnd && sEnd >= hourStart) concurrent += 1;
-    }
+    const concurrent = uniqueVisitorsOverlappingHour(sessions, hourStart, hourEnd);
     hourlyAvg.push(concurrent);
     hourlyMax.push(concurrent);
     if (concurrent > peak) peak = concurrent;
@@ -222,32 +241,29 @@ export async function getLiveTraffic() {
     .slice(0, 15)
     .map(([path, count]) => ({ path, count }));
 
-  // Last 24h hourly online peaks from sessions (approx)
+  // Last 24h hourly online: unique visitors overlapping each hour
   const dayAgo = new Date(now.getTime() - 86400000);
   const recent = await prisma.siteVisitSession.findMany({
     where: {
       OR: [{ lastSeenAt: { gte: dayAgo } }, { startedAt: { gte: dayAgo } }],
     },
-    select: { startedAt: true, lastSeenAt: true, endedAt: true },
+    select: { visitorId: true, startedAt: true, lastSeenAt: true, endedAt: true },
   });
 
   const hourly: Array<{ hour: string; online: number }> = [];
   for (let i = 23; i >= 0; i--) {
     const hourEnd = new Date(now.getTime() - i * 3600000);
     const hourStart = new Date(hourEnd.getTime() - 3600000);
-    let c = 0;
-    for (const s of recent) {
-      const sEnd = s.endedAt || s.lastSeenAt;
-      if (s.startedAt < hourEnd && sEnd >= hourStart) c += 1;
-    }
     hourly.push({
       hour: hourStart.toISOString(),
-      online: c,
+      online: uniqueVisitorsOverlappingHour(recent, hourStart, hourEnd),
     });
   }
 
+  const onlineUnique = new Set(online.map((r) => r.visitorId)).size;
+
   return {
-    onlineNow: online.length,
+    onlineNow: onlineUnique,
     byActor,
     topPaths,
     hourly24h: hourly,
@@ -330,11 +346,7 @@ export async function getTrafficSummary(range: SummaryRange) {
       const hourStart = new Date(start.getTime() + i * 3600000);
       if (hourStart >= end) break;
       const hourEnd = new Date(hourStart.getTime() + 3600000);
-      let c = 0;
-      for (const s of sessions) {
-        const sEnd = s.endedAt || s.lastSeenAt;
-        if (s.startedAt < hourEnd && sEnd >= hourStart) c += 1;
-      }
+      const c = uniqueVisitorsOverlappingHour(sessions, hourStart, hourEnd);
       if (c > peak) peak = c;
     }
   }
@@ -355,12 +367,7 @@ export async function getTrafficSummary(range: SummaryRange) {
       for (let h = 0; h < 24; h++) {
         const hourStart = new Date(start.getTime() + h * 3600000);
         const hourEnd = new Date(hourStart.getTime() + 3600000);
-        let c = 0;
-        for (const s of sessions) {
-          const sEnd = s.endedAt || s.lastSeenAt;
-          if (s.startedAt < hourEnd && sEnd >= hourStart) c += 1;
-        }
-        hourlyProfile.push(c);
+        hourlyProfile.push(uniqueVisitorsOverlappingHour(sessions, hourStart, hourEnd));
       }
     }
   }
@@ -416,19 +423,14 @@ export async function getQuietHours(days = 30) {
   if (!dailies.length) {
     const sessions = await prisma.siteVisitSession.findMany({
       where: { lastSeenAt: { gte: start } },
-      select: { startedAt: true, lastSeenAt: true, endedAt: true },
+      select: { visitorId: true, startedAt: true, lastSeenAt: true, endedAt: true },
     });
     for (let dayOffset = 0; dayOffset < n; dayOffset++) {
       const dayStart = new Date(start.getTime() + dayOffset * 86400000);
       for (let h = 0; h < 24; h++) {
         const hourStart = new Date(dayStart.getTime() + h * 3600000);
         const hourEnd = new Date(hourStart.getTime() + 3600000);
-        let c = 0;
-        for (const s of sessions) {
-          const sEnd = s.endedAt || s.lastSeenAt;
-          if (s.startedAt < hourEnd && sEnd >= hourStart) c += 1;
-        }
-        sum[h] += c;
+        sum[h] += uniqueVisitorsOverlappingHour(sessions, hourStart, hourEnd);
         cnt[h] += 1;
       }
     }

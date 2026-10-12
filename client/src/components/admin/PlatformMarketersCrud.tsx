@@ -30,6 +30,7 @@ import {
 } from '@mui/material';
 import { Add, ContentCopy, Delete, Edit } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import PasswordField from '../common/PasswordField';
 
 type Mode = 'sa' | 'pca';
 
@@ -749,9 +750,8 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
+              <PasswordField
                 fullWidth
-                type="password"
                 label={editingMarketer ? 'Новый пароль (необязательно)' : 'Пароль'}
                 value={marketerForm.password}
                 onChange={(e) => setMarketerForm({ ...marketerForm, password: e.target.value })}

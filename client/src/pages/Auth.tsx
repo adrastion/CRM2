@@ -29,12 +29,12 @@ import TermsCheckbox from '../components/auth/TermsCheckbox';
 import LegalConsentCheckboxes from '../components/auth/LegalConsentCheckboxes';
 import AccountSelect from '../components/auth/AccountSelect';
 import { colors, typography } from '../theme/tokens';
+import { formatContactInput, maskPhoneInput } from '../utils/phone';
 
 /** Шаги единой авторизации. */
 type Step =
   | 'identify'
   | 'setup'
-  | 'password'
   | 'select'
   | 'forgot_email'
   | 'forgot_code'
@@ -44,7 +44,6 @@ type Step =
 const STEP_ORDER: Record<Step, number> = {
   identify: 0,
   setup: 1,
-  password: 1,
   select: 2,
   forgot_email: 3,
   forgot_code: 4,
@@ -52,30 +51,15 @@ const STEP_ORDER: Record<Step, number> = {
   forgot_new_password: 6,
 };
 
-/** Маска телефона в формате +7 (999) 999-99-99. */
-function maskPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  const body = digits.startsWith('7') || digits.startsWith('8') ? digits.slice(1) : digits;
-  const d = body.slice(0, 10);
-  if (!d) return '';
-  let out = '+7';
-  if (d.length > 0) out += ` (${d.slice(0, 3)}`;
-  if (d.length >= 3) out += ')';
-  if (d.length > 3) out += ` ${d.slice(3, 6)}`;
-  if (d.length > 6) out += `-${d.slice(6, 8)}`;
-  if (d.length > 8) out += `-${d.slice(8, 10)}`;
-  return out;
-}
-
 const Auth: React.FC = () => {
   const navigate = useNavigate();
 
   const [step, setStep] = React.useState<Step>('identify');
   const [prevStepIndex, setPrevStepIndex] = React.useState(0);
 
-  const [phone, setPhone] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  /** Каким полем пользователь вошёл — это поле остаётся на следующих экранах. */
+  /** Единое поле email или телефон на экране входа. */
+  const [contact, setContact] = React.useState('');
+  /** Каким полем пользователь вошёл — для шага setup. */
   const [identifierType, setIdentifierType] = React.useState<IdentifierType>('phone');
   /** Нормализованное значение, которое отправляем на сервер. */
   const [identifier, setIdentifier] = React.useState('');
@@ -185,7 +169,9 @@ const Auth: React.FC = () => {
     STEP_ORDER[step] >= prevStepIndex ? 'forward' : 'back';
 
   const identifierDisplay =
-    identifierType === 'phone' ? phone || maskPhone(identifier) : email || identifier;
+    identifierType === 'phone'
+      ? maskPhoneInput(identifier) || contact
+      : identifier || contact;
 
   const applySession = (result: UnifiedLoginResponse) => {
     if (result.requiresSelection) {
@@ -206,47 +192,57 @@ const Auth: React.FC = () => {
       setNotice('Пароль ещё не создан. Придумайте пароль для входа.');
       return;
     }
-    setErrors({ [field || defaultField || 'form']: message });
+    const mappedField =
+      field === 'identifier' || field === 'phone' || field === 'email' ? 'contact' : field;
+    setErrors({ [mappedField || defaultField || 'form']: message });
   };
 
-  /* ------------------------- Шаг 1: идентификация ------------------------- */
+  /* -------------- Единый экран: контакт + пароль ------------------------- */
 
-  const submitIdentify = async () => {
+  const submitLoginForm = async () => {
     setErrors({});
     setNotice('');
 
-    const usePhone = phone.trim().length > 0;
-    const useEmail = email.trim().length > 0;
-
-    if (!usePhone && !useEmail) {
-      setErrors({ form: 'Введите номер телефона или email' });
+    const raw = contact.trim();
+    if (!raw) {
+      setErrors({ contact: 'Введите номер телефона или email' });
       return;
     }
-    if (usePhone && useEmail) {
-      setErrors({ form: 'Заполните только одно поле — телефон или email' });
+    if (!password) {
+      setErrors({ password: 'Введите пароль' });
       return;
     }
-
-    const raw = usePhone ? phone : email;
-    const type: IdentifierType = usePhone ? 'phone' : 'email';
 
     setLoading(true);
     try {
       clearAllAuthStorage();
-      const result = await apiService.identify(raw);
-      setIdentifierType(result.identifierType);
-      setIdentifier(result.identifier);
-      setPassword('');
-      setConfirmPassword('');
-      goToStep(result.needsPasswordSetup ? 'setup' : 'password');
+      const identified = await apiService.identify(raw);
+      setIdentifierType(identified.identifierType);
+      setIdentifier(identified.identifier);
+
+      if (identified.needsPasswordSetup) {
+        setConfirmPassword('');
+        setAcceptTerms(false);
+        setAcceptPrivacy(false);
+        goToStep('setup');
+        setNotice('Пароль ещё не создан. Придумайте пароль для входа.');
+        return;
+      }
+
+      const result = await apiService.unifiedLogin({
+        identifier: identified.identifier,
+        password,
+        rememberMe,
+      });
+      applySession(result);
     } catch (err) {
-      handleError(err, type === 'phone' ? 'phone' : 'email');
+      handleError(err, 'contact');
     } finally {
       setLoading(false);
     }
   };
 
-  /* --------------------- Шаг 2а: создание пароля -------------------------- */
+  /* --------------------- Создание пароля (первый вход) -------------------- */
 
   const submitSetupPassword = async () => {
     setErrors({});
@@ -272,26 +268,6 @@ const Auth: React.FC = () => {
         acceptPrivacy,
         rememberMe,
       });
-      applySession(result);
-    } catch (err) {
-      handleError(err, 'password');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ----------------------- Шаг 2б: вход по паролю ------------------------- */
-
-  const submitLogin = async () => {
-    setErrors({});
-    if (!password) {
-      setErrors({ password: 'Введите пароль' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await apiService.unifiedLogin({ identifier, password, rememberMe });
       applySession(result);
     } catch (err) {
       handleError(err, 'password');
@@ -343,7 +319,9 @@ const Auth: React.FC = () => {
     setResetToken('');
     setForgotAccounts([]);
     setForgotAccount(null);
-    const candidate = (email || '').trim() || (identifierType === 'email' ? (identifier || '').trim() : '');
+    const candidate =
+      (contact || '').trim() ||
+      (identifierType === 'email' ? (identifier || '').trim() : '');
     setForgotEmail(candidate.includes('@') ? candidate.toLowerCase() : '');
     goToStep('forgot_email');
   };
@@ -423,11 +401,11 @@ const Auth: React.FC = () => {
       setForgotCode('');
       setResetToken('');
       if (forgotEmail) {
-        setEmail(forgotEmail);
+        setContact(forgotEmail.trim().toLowerCase());
         setIdentifierType('email');
         setIdentifier(forgotEmail.trim().toLowerCase());
       }
-      goToStep('password');
+      goToStep('identify');
     } catch (err) {
       handleError(err, 'password');
     } finally {
@@ -438,6 +416,9 @@ const Auth: React.FC = () => {
   /* ------------------------------ Разметка ------------------------------- */
 
   const formError = errors.form;
+
+  const contactIcon =
+    contact.includes('@') || identifierType === 'email' ? <MailOutline /> : <PhoneIphone />;
 
   const identifierFieldForNextSteps = (
     <PillField
@@ -471,7 +452,7 @@ const Auth: React.FC = () => {
     </Typography>
   ) : null;
 
-  /* ---- Шаг 1 ---- */
+  /* ---- Единый экран входа ---- */
   const identifyStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3.5 } }}>
       {savedAccounts.length > 0 && (
@@ -530,48 +511,40 @@ const Auth: React.FC = () => {
           lineHeight: 1.5,
         }}
       >
-        *Чтоб войти в аккаунт, необходимо чтобы номер был в базе
+        *Чтоб войти в аккаунт, необходимо чтобы номер или email были в базе
         <br />
         спорт школы
       </Typography>
 
       <PillField
-        name="phone"
-        icon={<PhoneIphone />}
-        placeholder="Телефон"
-        type="tel"
-        autoComplete="tel"
-        value={phone}
-        onChange={(v) => setPhone(maskPhone(v))}
-        error={errors.phone}
-        onEnter={submitIdentify}
+        name="contact"
+        icon={contactIcon}
+        placeholder="Email или телефон"
+        type="text"
+        autoComplete="username"
+        value={contact}
+        onChange={(v) => setContact(formatContactInput(v))}
+        error={errors.contact}
+        onEnter={submitLoginForm}
       />
-
-      <Typography
-        sx={{
-          textAlign: 'center',
-          color: colors.primary,
-          fontSize: typography.sectionTitle,
-          fontWeight: 600,
-          lineHeight: 1,
-        }}
-      >
-        или
-      </Typography>
 
       <PillField
-        name="email"
-        icon={<MailOutline />}
-        placeholder="Email"
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(v) => setEmail(v.toLowerCase())}
-        error={errors.email}
-        onEnter={submitIdentify}
+        name="password"
+        icon={<LockOutlined />}
+        placeholder="Пароль"
+        type="password"
+        autoComplete="current-password"
+        revealable
+        value={password}
+        onChange={setPassword}
+        error={errors.password}
+        onEnter={submitLoginForm}
       />
 
+      <TermsCheckbox checked={rememberMe} onChange={setRememberMe} label="Запомнить меня" />
+
       {errorBanner}
+      {noticeBanner}
 
       <Box
         sx={{
@@ -582,7 +555,7 @@ const Auth: React.FC = () => {
           pt: { xs: 1, md: 2 },
         }}
       >
-        <AuthButton onClick={submitIdentify} loading={loading}>
+        <AuthButton onClick={submitLoginForm} loading={loading}>
           Войти
         </AuthButton>
         {!testingMode && (
@@ -690,73 +663,6 @@ const Auth: React.FC = () => {
     </Box>
   );
 
-  /* ---- Шаг 2б ---- */
-  const passwordStep = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
-      {identifierFieldForNextSteps}
-
-      <PillField
-        name="password"
-        icon={<LockOutlined />}
-        placeholder="Введите пароль"
-        type="password"
-        autoComplete="current-password"
-        autoFocus
-        revealable
-        value={password}
-        onChange={setPassword}
-        error={errors.password}
-        onEnter={submitLogin}
-      />
-
-      <TermsCheckbox checked={rememberMe} onChange={setRememberMe} label="Запомнить меня" />
-
-      {errorBanner}
-      {noticeBanner}
-
-      <Box sx={{ display: 'flex', justifyContent: 'center', pt: { xs: 1, md: 2 } }}>
-        <AuthButton onClick={submitLogin} loading={loading}>
-          Войти
-        </AuthButton>
-      </Box>
-
-      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography
-          component="button"
-          type="button"
-          onClick={startForgotPassword}
-          sx={{
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: colors.primary,
-            fontSize: typography.hint,
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          Забыли пароль?
-        </Typography>
-        <Typography
-          component="button"
-          type="button"
-          onClick={restart}
-          sx={{
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: colors.textHint,
-            fontSize: typography.hint,
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          Изменить {identifierType === 'phone' ? 'номер' : 'email'}
-        </Typography>
-      </Box>
-    </Box>
-  );
-
   const forgotEmailStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
       <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
@@ -784,7 +690,7 @@ const Auth: React.FC = () => {
         <Typography
           component="button"
           type="button"
-          onClick={() => goToStep('password')}
+          onClick={() => goToStep('identify')}
           sx={{
             border: 'none',
             background: 'none',
@@ -973,17 +879,15 @@ const Auth: React.FC = () => {
       ? identifyStep
       : step === 'setup'
         ? setupStep
-        : step === 'password'
-          ? passwordStep
-          : step === 'forgot_email'
-            ? forgotEmailStep
-            : step === 'forgot_code'
-              ? forgotCodeStep
-              : step === 'forgot_select'
-                ? forgotSelectStep
-                : step === 'forgot_new_password'
-                  ? forgotNewPasswordStep
-                  : selectStep;
+        : step === 'forgot_email'
+          ? forgotEmailStep
+          : step === 'forgot_code'
+            ? forgotCodeStep
+            : step === 'forgot_select'
+              ? forgotSelectStep
+              : step === 'forgot_new_password'
+                ? forgotNewPasswordStep
+                : selectStep;
 
   return (
     <AuthShell

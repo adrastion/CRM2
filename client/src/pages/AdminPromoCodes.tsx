@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { usePromoCodeAdminAuth } from '../contexts/PromoCodeAdminAuthContext';
 import { PromoCode, ReferralLink, Marketer, MarketerStatsSummary } from '../types';
+import PasswordField from '../components/common/PasswordField';
 
 const AdminPromoCodes: React.FC = () => {
   const { admin, logout } = usePromoCodeAdminAuth();
@@ -950,10 +951,9 @@ const AdminPromoCodes: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
+              <PasswordField
                 fullWidth
                 label="Пароль"
-                type="password"
                 value={marketerFormData.password}
                 onChange={(e) => setMarketerFormData({ ...marketerFormData, password: e.target.value })}
                 required={!editingMarketer}

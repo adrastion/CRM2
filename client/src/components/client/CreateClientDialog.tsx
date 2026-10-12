@@ -37,6 +37,7 @@ import { apiService } from '../../services/api';
 import { Client } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { isPromoter as roleIsPromoter } from '../../utils/roles';
+import PlanLimitAlert from '../common/PlanLimitAlert';
 
 const EMPTY_CLIENT_FORM: ClientFormData = {
   firstName: '',
@@ -379,9 +380,9 @@ const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, 
   <DialogTitle>Добавить нового клиента</DialogTitle>
   <DialogContent>
     {error && (
-      <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+      <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
         {error}
-      </Alert>
+      </PlanLimitAlert>
     )}
     {isPromoter ? (
       <Grid container spacing={2} sx={{ mt: 1 }}>

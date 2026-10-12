@@ -22,15 +22,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  InputAdornment,
-  IconButton,
 } from '@mui/material';
 import {
   Save,
   Email,
   Lock,
-  Visibility,
-  VisibilityOff,
   ViewList,
   School,
   Notifications,
@@ -43,6 +39,7 @@ import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import PasswordField from '../components/common/PasswordField';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 
@@ -94,7 +91,6 @@ const Settings: React.FC = () => {
   // Смена email
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
-  const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailFormBaseline, setEmailFormBaseline] = useState({ newEmail: '', emailPassword: '' });
 
@@ -108,9 +104,6 @@ const Settings: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   // Настройка вкладок
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>({});
@@ -859,65 +852,26 @@ const Settings: React.FC = () => {
                       Смена пароля
                     </Typography>
                   </Box>
-                  <TextField
+                  <PasswordField
                     fullWidth
-                    type={showCurrentPassword ? 'text' : 'password'}
                     label="Текущий пароль"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     sx={{ mb: 2 }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                            edge="end"
-                          >
-                            {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
                   />
-                  <TextField
+                  <PasswordField
                     fullWidth
-                    type={showNewPassword ? 'text' : 'password'}
                     label="Новый пароль"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     sx={{ mb: 2 }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={() => setShowNewPassword(!showNewPassword)}
-                            edge="end"
-                          >
-                            {showNewPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
                   />
-                  <TextField
+                  <PasswordField
                     fullWidth
-                    type={showConfirmPassword ? 'text' : 'password'}
                     label="Подтвердите новый пароль"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     sx={{ mb: 2 }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            edge="end"
-                          >
-                            {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
                   />
                   <Button
                     variant="contained"
@@ -1155,25 +1109,12 @@ const Settings: React.FC = () => {
             sx={{ mb: 2 }}
             margin="normal"
           />
-          <TextField
+          <PasswordField
             fullWidth
             label="Подтвердите паролем"
-            type={showEmailPassword ? 'text' : 'password'}
             value={emailPassword}
             onChange={(e) => setEmailPassword(e.target.value)}
             margin="normal"
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowEmailPassword(!showEmailPassword)}
-                    edge="end"
-                  >
-                    {showEmailPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
           />
         </DialogContent>
         <DialogActions>

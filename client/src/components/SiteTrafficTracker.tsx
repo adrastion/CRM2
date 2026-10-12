@@ -105,19 +105,10 @@ const SiteTrafficTracker: React.FC = () => {
 
     const interval = window.setInterval(tick, HEARTBEAT_MS);
 
+    // Не закрываем сессию на blur вкладки — иначе один посетитель
+    // дробится на десятки сессий за час и раздувает «Онлайн по часам».
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        sendPing(
-          {
-            visitorId: visitorIdRef.current,
-            path: pathRef.current,
-            actorHint: resolveActorHint(),
-            closing: true,
-            visibility: 'hidden',
-          },
-          true
-        );
-      } else {
+      if (document.visibilityState === 'visible') {
         tick();
       }
     };

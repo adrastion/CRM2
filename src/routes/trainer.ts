@@ -7,6 +7,7 @@ import {
   getTrainers,
   getTrainerById,
   createTrainer,
+  createSelfAsTrainer,
   updateTrainer,
   deleteTrainer,
   addBranchToTrainer,
@@ -61,6 +62,7 @@ router.post('/backfill-salary-from-payments', backfillSalaryFromPayments);
 
 // Trainer management routes
 router.get('/', getTrainers);
+router.post('/me', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainers'), createSelfAsTrainer);
 router.get('/:id', getTrainerById);
 router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainers'), createTrainer);
 router.put('/:id', requireOwnerAdminOrTrainer, updateTrainer);

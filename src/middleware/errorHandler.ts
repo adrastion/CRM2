@@ -26,10 +26,16 @@ export const errorHandler = (
 
   // Ошибки с явным статусом (единая авторизация и т.п.)
   if (error instanceof HttpError) {
+    const payload =
+      error.details != null
+        ? { data: error.details }
+        : error.field
+          ? { data: [{ field: error.field, message: error.message }] }
+          : {};
     res.status(error.statusCode).json({
       success: false,
       error: error.message,
-      ...(error.field ? { data: [{ field: error.field, message: error.message }] } : {})
+      ...payload,
     });
     return;
   }

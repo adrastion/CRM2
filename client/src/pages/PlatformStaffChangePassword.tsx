@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Container, Paper, Typography, TextField, Button, Alert, Box, CircularProgress } from '@mui/material';
+import { Container, Paper, Typography, Button, Alert, Box, CircularProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { usePlatformStaffAuth } from '../contexts/PlatformStaffAuthContext';
+import PasswordField from '../components/common/PasswordField';
 
 const PlatformStaffChangePassword: React.FC = () => {
   const { logout } = usePlatformStaffAuth();
@@ -55,27 +56,24 @@ const PlatformStaffChangePassword: React.FC = () => {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {ok && <Alert severity="success" sx={{ mb: 2 }}>{ok}</Alert>}
         <Box component="form" onSubmit={submit}>
-          <TextField
+          <PasswordField
             label="Одноразовый пароль"
-            type="password"
             fullWidth
             margin="normal"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             required
           />
-          <TextField
+          <PasswordField
             label="Новый пароль"
-            type="password"
             fullWidth
             margin="normal"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
           />
-          <TextField
+          <PasswordField
             label="Повторите новый пароль"
-            type="password"
             fullWidth
             margin="normal"
             value={newPassword2}

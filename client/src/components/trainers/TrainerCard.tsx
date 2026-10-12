@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { Branch, Trainer } from '../../types';
+import PasswordField from '../common/PasswordField';
 import { validateTrainerForm } from '../../utils/validation';
 import {
   normalizeSalaryScheme,
@@ -169,7 +170,10 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
   const [branchBusy, setBranchBusy] = useState(false);
 
   const isAdmin = isEmployeeAdmin(employee);
-  const canEdit = isAdmin ? isOwner : true;
+  const isOwnerTrainer =
+    (employee?.user?.role || employee?.role) === 'OWNER';
+  // Карточку владельца-тренера и админа может менять только OWNER
+  const canEdit = isOwnerTrainer || isAdmin ? isOwner : true;
   const empUser = employee?.user || employee;
   const displayName = fullName(empUser);
 
@@ -705,10 +709,9 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
             />
           </Grid>
           <Grid item xs={12} sm={6}>
-            <TextField
+            <PasswordField
               fullWidth
               label="Новый пароль (оставьте пустым, чтобы не менять)"
-              type="password"
               value={formData.password}
               onChange={(e) => handleInputChange('password', e.target.value)}
               placeholder="Введите новый пароль или оставьте пустым"

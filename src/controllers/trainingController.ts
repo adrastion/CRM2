@@ -463,14 +463,14 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
 
     // Проверяем лимит подписки перед созданием
     const { SubscriptionService } = await import('../services/subscriptionService');
+    const { buildPlanLimitDenial } = await import('../utils/planLimits');
     const hasAccess = await SubscriptionService.checkLimit(tenantId, 'trainings');
     if (!hasAccess) {
-      const subscription = await SubscriptionService.getSubscription(tenantId);
-      const limits = await SubscriptionService.getLimits(tenantId);
-      const limit = limits.trainings;
+      const denial = await buildPlanLimitDenial(tenantId, 'trainings');
       res.status(403).json({
         success: false,
-        error: `Лимит тренировок превышен для тарифа ${subscription?.planType || 'unknown'}. Текущий лимит: ${limit === 'unlimited' ? 'безлимит' : limit}`
+        error: denial.message,
+        data: denial.data,
       });
       return;
     }

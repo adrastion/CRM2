@@ -39,8 +39,8 @@ const navigationItems: Array<{
   { label: 'Заметки и задачи', path: '/staff-workspace', iconName: 'knowledge-base', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'staffWorkspace', onboarding: 'staff-workspace-nav' },
   { label: 'Клиенты', path: '/clients', iconName: 'clients', roles: ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'], tabKey: 'clients', onboarding: 'clients-nav' },
   { label: 'Сотрудники', path: '/trainers', iconName: 'staff', roles: ['OWNER', 'ADMIN'], tabKey: 'trainers', onboarding: 'trainers-nav' },
-  { label: 'Мой профиль', path: '/trainer/profile', iconName: 'clients', roles: ['TRAINER'], tabKey: 'trainerProfile', onboarding: 'trainer-profile-nav' },
-  { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER'], tabKey: 'trainerEarnings', onboarding: 'trainer-earnings-nav' },
+  { label: 'Мой профиль', path: '/trainer/profile', iconName: 'clients', roles: ['TRAINER', 'OWNER'], tabKey: 'trainerProfile', onboarding: 'trainer-profile-nav' },
+  { label: 'Мой заработок', path: '/trainer/earnings', iconName: 'earnings', roles: ['TRAINER', 'OWNER'], tabKey: 'trainerEarnings', onboarding: 'trainer-earnings-nav' },
   { label: 'Филиалы и группы', path: '/groups', iconName: 'groups', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'groups', onboarding: 'groups-nav' },
   { label: 'Календарный план', path: '/schedule', iconName: 'schedule', roles: ['OWNER', 'ADMIN', 'TRAINER'], tabKey: 'schedule', onboarding: 'schedule-nav' },
   { label: 'Тренировочный план', path: '/training-plan', iconName: 'schedule', roles: ['OWNER', 'TRAINER'], tabKey: 'trainingPlan', onboarding: 'training-plan-nav' },
@@ -336,12 +336,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
             const roleOk =
               item.roles.includes(role) ||
               (canAccessAdminNav(user) && item.roles.includes('ADMIN') && !item.roles.includes('TRAINER'));
-            // «Мой заработок» и «Мой профиль» остаются и для старшего тренера
-            if (
-              (item.path === '/trainer/earnings' || item.path === '/trainer/profile') &&
-              role === 'TRAINER'
-            ) {
-              return visibleTabs[item.tabKey!] !== false;
+            // «Мой заработок» / «Мой профиль»: TRAINER всегда; OWNER — только с trainerId
+            if (item.path === '/trainer/earnings' || item.path === '/trainer/profile') {
+              if (role === 'TRAINER') {
+                return visibleTabs[item.tabKey!] !== false;
+              }
+              if (role === 'OWNER' && user?.trainerId) {
+                return visibleTabs[item.tabKey!] !== false;
+              }
+              return false;
             }
             if (!roleOk) return false;
             if (item.tabKey && visibleTabs[item.tabKey] === false) return false;
