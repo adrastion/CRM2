@@ -42,11 +42,32 @@ import {
   List,
   ListItem,
 } from '@mui/material';
-import { Add, Edit, Delete, Visibility, FileDownload, FileUpload, LocalOffer, Download, Info, Phone, Check, Close, Assignment, PhotoCamera, CalendarToday, Payment } from '@mui/icons-material';
+import {
+  Add,
+  Edit,
+  Delete,
+  Visibility,
+  FileDownload,
+  FileUpload,
+  LocalOffer,
+  Download,
+  Info,
+  Phone,
+  Check,
+  Close,
+  Assignment,
+  PhotoCamera,
+  CalendarToday,
+  Payment,
+  EmojiEvents,
+} from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client, Membership } from '../types';
 import ClientsList from '../components/dashboard/ClientsList';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
+import DeletionScopeDialog, {
+  PurgeOption,
+} from '../components/common/DeletionScopeDialog';
 import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
 import { isPromoter as roleIsPromoter } from '../utils/roles';
@@ -56,7 +77,11 @@ import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { EmojiEvents } from '@mui/icons-material';
+
+const CLIENT_DELETE_OPTIONS: PurgeOption[] = [
+  { key: 'attendance', label: 'Посещения занятий клиентом', countKeys: ['attendance'] },
+  { key: 'chats', label: 'Переписки', countKeys: ['chats'] },
+];
 
 const EMPTY_CLIENT_FORM: ClientFormData = {
   firstName: '',
@@ -229,6 +254,7 @@ const Clients: React.FC = () => {
   const [selectedMembershipId, setSelectedMembershipId] = useState('');
   const [membershipStartDate, setMembershipStartDate] = useState<Date | null>(new Date());
   const [issuingMembership, setIssuingMembership] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [statsDialog, setStatsDialog] = useState(false);
   const [selectedClientForStats, setSelectedClientForStats] = useState<Client | null>(null);
   const [clientStats, setClientStats] = useState<any>(null);
@@ -1006,27 +1032,30 @@ const Clients: React.FC = () => {
     }
   };
 
-  const handleDeleteClient = async (clientId: string) => {
-    if (!window.confirm('Вы уверены, что хотите удалить этого клиента?')) {
-      return;
+  const handleDeleteClient = (clientId: string) => {
+    const client =
+      clients.find((c) => c.id === clientId) ||
+      (editingClient?.id === clientId ? editingClient : null);
+    if (!client) return;
+    setDeleteTarget(client);
+  };
+
+  const confirmDeleteClient = async (purge: Record<string, boolean>) => {
+    if (!deleteTarget) return;
+    const clientId = deleteTarget.id;
+    await apiService.deleteClient(clientId, purge);
+    await fetchClients();
+    if (editingClient?.id === clientId) {
+      setEditDialogOpen(false);
+      setEditDialog(false);
+      setEditingClient(null);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('clientId');
+        return next;
+      });
     }
-    try {
-      await apiService.deleteClient(clientId);
-      await fetchClients();
-      if (editingClient?.id === clientId) {
-        setEditDialogOpen(false);
-        setEditDialog(false);
-        setEditingClient(null);
-        setSearchParams((prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete('clientId');
-          return next;
-        });
-      }
-    } catch (err: any) {
-      console.error('Error deleting client:', err);
-      setError(err.response?.data?.error || 'Ошибка удаления клиента');
-    }
+    setDeleteTarget(null);
   };
 
   const handleApproveAccount = async (client: Client) => {
@@ -2104,6 +2133,22 @@ open={editDialogOpen}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <DeletionScopeDialog
+        open={Boolean(deleteTarget)}
+        title="Удалить клиента?"
+        entityLabel={
+          deleteTarget
+            ? [deleteTarget.lastName, deleteTarget.firstName, deleteTarget.middleName]
+                .filter(Boolean)
+                .join(' ')
+            : ''
+        }
+        options={CLIENT_DELETE_OPTIONS}
+        loadImpact={() => apiService.getClientDeletionImpact(deleteTarget!.id)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteClient}
+      />
 
       {/* Snackbar для показа сообщений о валидации */}
       <Snackbar

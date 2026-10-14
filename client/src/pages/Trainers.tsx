@@ -45,6 +45,7 @@ import { Trainer, Branch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { canCreateAdminUsers, canCreatePromoterUsers, isOwner as roleIsOwner, isOwnerOrAdmin } from '../utils/roles';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import DeletionScopeDialog, { PurgeOption } from '../components/common/DeletionScopeDialog';
 import PasswordField from '../components/common/PasswordField';
 import PlanLimitAlert from '../components/common/PlanLimitAlert';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
@@ -54,6 +55,13 @@ import {
   salaryRateFieldLabel,
   salarySchemeHint,
 } from '../utils/salarySchemes';
+
+const TRAINER_DELETE_OPTIONS: PurgeOption[] = [
+  { key: 'trainerAssignments', label: 'Назначения тренера (группы)', countKeys: ['trainerAssignments'] },
+  { key: 'salaries', label: 'Зарплаты тренера', countKeys: ['salaries'] },
+  { key: 'groupComposition', label: 'Занятия тренера', countKeys: ['trainings'] },
+  { key: 'chats', label: 'Переписки', countKeys: ['chats'] },
+];
 
 const TRAINER_FIXED_MONTHLY = 'fixed_monthly';
 
@@ -123,6 +131,7 @@ const Trainers: React.FC = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [formData, setFormData] = useState({ ...emptyFormData });
   const [createFormBaseline, setCreateFormBaseline] = useState({ ...emptyFormData });
+  const [deleteTrainerTarget, setDeleteTrainerTarget] = useState<Trainer | any | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -173,22 +182,24 @@ const Trainers: React.FC = () => {
     }
   };
 
-  const handleDeleteTrainer = async (trainerId: string) => {
-    console.log('Attempting to delete trainer:', trainerId);
-    if (window.confirm('Вы уверены, что хотите удалить этого сотрудника?')) {
-      try {
-        console.log('Deleting trainer...');
-        await apiService.deleteTrainer(trainerId);
-        console.log('Trainer deleted successfully, updating list...');
-        setTrainers(trainers.filter(trainer => trainer.id !== trainerId));
-        console.log('Trainer list updated');
-      } catch (err: any) {
-        console.error('Error deleting trainer:', err);
-        setError(err.response?.data?.error || 'Ошибка удаления сотрудника');
-      }
-    } else {
-      console.log('Delete cancelled by user');
+  const handleDeleteTrainer = (trainerId: string) => {
+    const employee =
+      trainers.find((t) => t.id === trainerId) ||
+      (cardEmployee?.id === trainerId ? cardEmployee : null);
+    if (!employee) return;
+    setDeleteTrainerTarget(employee);
+  };
+
+  const confirmDeleteTrainer = async (purge: Record<string, boolean>) => {
+    if (!deleteTrainerTarget) return;
+    const trainerId = deleteTrainerTarget.id;
+    await apiService.deleteTrainer(trainerId, purge);
+    setTrainers((prev) => prev.filter((trainer) => trainer.id !== trainerId));
+    if (cardEmployee?.id === trainerId) {
+      setCardDialog(false);
+      setCardEmployee(null);
     }
+    setDeleteTrainerTarget(null);
   };
 
   const handleDeleteAdmin = async (userId: string) => {
@@ -1524,6 +1535,20 @@ const Trainers: React.FC = () => {
           }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+
+      <DeletionScopeDialog
+        open={Boolean(deleteTrainerTarget)}
+        title="Удалить сотрудника?"
+        entityLabel={
+          deleteTrainerTarget?.user
+            ? `${deleteTrainerTarget.user.lastName || ''} ${deleteTrainerTarget.user.firstName || ''}`.trim()
+            : deleteTrainerTarget?.id || ''
+        }
+        options={TRAINER_DELETE_OPTIONS}
+        loadImpact={() => apiService.getTrainerDeletionImpact(deleteTrainerTarget!.id)}
+        onClose={() => setDeleteTrainerTarget(null)}
+        onConfirm={confirmDeleteTrainer}
+      />
 
       {/* Snackbar для показа сообщений о валидации */}
       <Snackbar

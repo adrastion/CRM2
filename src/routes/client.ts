@@ -5,6 +5,7 @@ import {
   createClient,
   updateClient,
   deleteClient,
+  getClientDeletionImpact,
   addAchievement,
   removeAchievement,
   getClientStats,
@@ -68,6 +69,7 @@ router.get('/', validateClientQuery, getClients);
 router.get('/:id', getClient);
 router.post('/', requireOwnerAdminTrainerOrPromoter, checkSubscriptionLimit('clients'), validateCreateClient, createClient);
 router.put('/:id', requireOwnerAdminOrTrainer, validateUpdateClient, updateClient);
+router.get('/:id/deletion-impact', requireOwnerAdminOrTrainer, getClientDeletionImpact);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteClient);
 
 router.get('/:id/contracts', requireOwnerAdminOrTrainer, staffListContracts);

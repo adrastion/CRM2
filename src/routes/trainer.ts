@@ -10,6 +10,7 @@ import {
   createSelfAsTrainer,
   updateTrainer,
   deleteTrainer,
+  getTrainerDeletionImpact,
   addBranchToTrainer,
   removeBranchFromTrainer,
   getTrainerEarnings,
@@ -66,6 +67,7 @@ router.post('/me', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainers'
 router.get('/:id', getTrainerById);
 router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('trainers'), createTrainer);
 router.put('/:id', requireOwnerAdminOrTrainer, updateTrainer);
+router.get('/:id/deletion-impact', requireOwnerAdminOrTrainer, getTrainerDeletionImpact);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteTrainer);
 
 // Documents

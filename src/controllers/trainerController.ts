@@ -718,24 +718,49 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
   }
 };
 
+export const getTrainerDeletionImpact = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.tenant?.id;
+    const trainer = await prisma.trainer.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!trainer || !tenantId) {
+      res.status(404).json({ success: false, error: 'Trainer not found' });
+      return;
+    }
+    const { getTrainerDeletionImpact: impact } = await import('../services/deletionPurgeService');
+    const data = await impact(tenantId, id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Trainer deletion impact error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+  }
+};
+
 export const deleteTrainer = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const tenantId = req.tenant?.id;
 
     const trainer = await prisma.trainer.findFirst({
       where: {
         id,
-        tenantId: req.tenant?.id
+        tenantId
       }
     });
 
-    if (!trainer) {
+    if (!trainer || !tenantId) {
       res.status(404).json({
         success: false,
         error: 'Trainer not found'
       });
       return;
     }
+
+    const { parseSchoolPurge, purgeOnTrainerDelete } = await import('../services/deletionPurgeService');
+    await purgeOnTrainerDelete(tenantId, id, parseSchoolPurge(req.body));
 
     await prisma.trainer.update({
       where: { id },

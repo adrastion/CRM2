@@ -37,6 +37,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import DeletionScopeDialog, { PurgeOption } from '../components/common/DeletionScopeDialog';
 import SuperAdminMaintenanceTab from './SuperAdminMaintenanceTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 import SuperAdminPlannerTab from './SuperAdminPlannerTab';
@@ -66,6 +67,13 @@ import {
   type SaMonitoringTab as SaMonitoringTabKey,
   type SaLegalTab as SaLegalTabKey,
 } from '../config/saDashboard';
+
+const TENANT_DELETE_OPTIONS: PurgeOption[] = [
+  { key: 'devNotes', label: 'Заметки во вкладке «Разработка»', countKeys: ['devNotes'] },
+  { key: 'chats', label: 'Переписки (школа и платформа)', countKeys: ['chats'] },
+  { key: 'news', label: 'Новости платформы', countKeys: ['news'] },
+  { key: 'planner', label: 'Планировщик', countKeys: ['planner'] },
+];
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
@@ -127,8 +135,6 @@ const AdminDashboard: React.FC = () => {
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
   const [deleteTenantTarget, setDeleteTenantTarget] = useState<any | null>(null);
-  const [deleteTenantConfirm, setDeleteTenantConfirm] = useState('');
-  const [deletingTenant, setDeletingTenant] = useState(false);
   
   // Диалоги
   const [expenseDialog, setExpenseDialog] = useState(false);
@@ -390,30 +396,23 @@ const AdminDashboard: React.FC = () => {
 
   const openDeleteTenantDialog = (tenant: any) => {
     setDeleteTenantTarget(tenant);
-    setDeleteTenantConfirm('');
   };
 
   const closeDeleteTenantDialog = () => {
-    if (deletingTenant) return;
     setDeleteTenantTarget(null);
-    setDeleteTenantConfirm('');
   };
 
-  const handleConfirmDeleteTenant = async () => {
+  const handleConfirmDeleteTenant = async (purge: Record<string, boolean>) => {
     if (!deleteTenantTarget) return;
-    try {
-      setDeletingTenant(true);
-      setError(null);
-      await apiService.deleteTenant(deleteTenantTarget.id, deleteTenantConfirm.trim());
-      setDeleteTenantTarget(null);
-      setDeleteTenantConfirm('');
-      setSelectedTenants((ids) => ids.filter((id) => id !== deleteTenantTarget.id));
-      await loadAllTenants();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Не удалось удалить школу');
-    } finally {
-      setDeletingTenant(false);
-    }
+    setError(null);
+    await apiService.deleteTenant(
+      deleteTenantTarget.id,
+      deleteTenantTarget.subdomain,
+      purge
+    );
+    setDeleteTenantTarget(null);
+    setSelectedTenants((ids) => ids.filter((id) => id !== deleteTenantTarget.id));
+    await loadAllTenants();
   };
 
   const handleUnlinkTenantTester = async (tenantId: string) => {
@@ -1159,16 +1158,16 @@ const AdminDashboard: React.FC = () => {
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
       <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2.5}>
-        <Button
-          variant="outlined"
-          onClick={() => {
-            setOneTimePassword(null);
-            setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
-            setStaffDialog(true);
-          }}
-        >
-          Создать сотрудника платформы
-        </Button>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setOneTimePassword(null);
+              setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
+              setStaffDialog(true);
+            }}
+          >
+            Создать сотрудника платформы
+          </Button>
       </Box>
 
       <Dialog open={staffDialog} onClose={() => setStaffDialog(false)} maxWidth="sm" fullWidth>
@@ -1309,7 +1308,7 @@ const AdminDashboard: React.FC = () => {
           selectedTenants={selectedTenants}
           onSelectedTenantsChange={setSelectedTenants}
           submitting={submitting}
-          deletingTenant={deletingTenant}
+          deletingTenant={Boolean(deleteTenantTarget)}
           canWrite={canWrite}
           onExportTenants={handleExportTenants}
           onBulkAction={handleBulkAction}
@@ -1335,9 +1334,9 @@ const AdminDashboard: React.FC = () => {
           onStartDateChange={setStartDate}
           onEndDateChange={setEndDate}
           onClearDates={() => {
-            setStartDate(null);
-            setEndDate(null);
-          }}
+                    setStartDate(null);
+                    setEndDate(null);
+                  }}
           formatCurrency={formatCurrency}
           kpiData={kpiData}
           kpiLoading={kpiLoading}
@@ -1763,14 +1762,14 @@ const AdminDashboard: React.FC = () => {
                 ] as const
               ).map(([key, label]) => (
                 <Grid item xs={12} sm={6} key={key}>
-                  <TextField
-                    fullWidth
+                <TextField
+                  fullWidth
                     label={label}
-                    type="text"
+                  type="text"
                     value={editingPlanLimits[key]}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'unlimited' || value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
                         setEditingPlanLimits({ ...editingPlanLimits, [key]: value });
                       }
                     }}
@@ -1779,9 +1778,9 @@ const AdminDashboard: React.FC = () => {
                         ? "Админы, промоутеры и аналоги (без владельца и тренеров). Число или 'unlimited'"
                         : "Введите число или 'unlimited'"
                     }
-                    disabled={!canWrite}
-                  />
-                </Grid>
+                  disabled={!canWrite}
+                />
+              </Grid>
               ))}
             </Grid>
           </Box>
@@ -2048,64 +2047,28 @@ const AdminDashboard: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog
+      <DeletionScopeDialog
         open={Boolean(deleteTenantTarget)}
+        title="Удалить школу навсегда?"
+        entityLabel={
+          deleteTenantTarget
+            ? `${deleteTenantTarget.name} (${deleteTenantTarget.subdomain})`
+            : ''
+        }
+        options={TENANT_DELETE_OPTIONS}
+        loadImpact={() => apiService.getTenantDeletionImpact(deleteTenantTarget!.id)}
         onClose={closeDeleteTenantDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Удалить школу навсегда?</DialogTitle>
-        <DialogContent>
-          <Alert severity="error" sx={{ mb: 2 }}>
-            Действие необратимо. Будут удалены все данные школы: клиенты, сотрудники, платежи,
-            расписание, файлы и привязки.
-          </Alert>
-          {deleteTenantTarget && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>
-                <strong>{deleteTenantTarget.name}</strong>
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Email: {deleteTenantTarget.email}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Поддомен: {deleteTenantTarget.subdomain}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Клиентов: {deleteTenantTarget.stats?.clients ?? '—'} · Сотрудников (админы):{' '}
-                {deleteTenantTarget.stats?.admins ?? '—'} · Тренеров:{' '}
-                {deleteTenantTarget.stats?.trainers ?? '—'} · Филиалов:{' '}
-                {deleteTenantTarget.stats?.branches ?? '—'}
-              </Typography>
-            </Box>
-          )}
-          <TextField
-            fullWidth
-            label={`Введите поддомен «${deleteTenantTarget?.subdomain || ''}» для подтверждения`}
-            value={deleteTenantConfirm}
-            onChange={(e) => setDeleteTenantConfirm(e.target.value)}
-            disabled={deletingTenant}
-            autoFocus
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeDeleteTenantDialog} disabled={deletingTenant}>
-            Отмена
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={
-              deletingTenant ||
-              !deleteTenantTarget ||
-              deleteTenantConfirm.trim() !== deleteTenantTarget.subdomain
-            }
-            onClick={handleConfirmDeleteTenant}
-          >
-            {deletingTenant ? <CircularProgress size={22} color="inherit" /> : 'Удалить навсегда'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={handleConfirmDeleteTenant}
+        confirmText={
+          deleteTenantTarget
+            ? {
+                label: `Введите поддомен «${deleteTenantTarget.subdomain}» для подтверждения`,
+                expected: deleteTenantTarget.subdomain,
+              }
+            : undefined
+        }
+        warning="Действие необратимо для данных школы (клиенты, сотрудники, платежи, расписание, файлы). Идеи клиентов сохраняются. Отметьте ниже только платформенную историю, которую тоже нужно стереть."
+      />
 
       <UnsavedChangesDialog
         open={expenseUnsaved.confirmOpen}

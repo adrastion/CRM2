@@ -1575,6 +1575,28 @@ export const getRevenueForecast = asyncHandler(async (req: AuthenticatedRequest,
   });
 });
 
+/** Preview связанных объёмов перед удалением школы (идеи клиентов не удаляются). */
+export const getTenantDeletionImpactHandler = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { tenantId } = req.params;
+    if (!tenantId) {
+      res.status(400).json({ success: false, error: 'Укажите ID школы' });
+      return;
+    }
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    });
+    if (!tenant) {
+      res.status(404).json({ success: false, error: 'Школа не найдена' });
+      return;
+    }
+    const { getTenantDeletionImpact } = await import('../services/deletionPurgeService');
+    const data = await getTenantDeletionImpact(tenantId);
+    res.json({ success: true, data });
+  }
+);
+
 /**
  * Полное необратимое удаление школы и всех её данных.
  */
@@ -1612,7 +1634,8 @@ export const deleteTenant = asyncHandler(async (req: AuthenticatedRequest, res: 
   }
 
   const { deleteTenantCompletely } = await import('../services/tenantDeletionService');
-  const summary = await deleteTenantCompletely(tenantId);
+  const { parseSaTenantPurge } = await import('../services/deletionPurgeService');
+  const summary = await deleteTenantCompletely(tenantId, parseSaTenantPurge(req.body));
 
   const superAdmin = (req as any).superAdmin;
   await createAuditLog({

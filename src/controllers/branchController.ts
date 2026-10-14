@@ -274,6 +274,34 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
   }
 };
 
+export const getBranchDeletionImpact = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.user || !isOwnerOrAdminRole(req.user.role)) {
+      res.status(403).json({
+        success: false,
+        error: 'Только владелец или администратор может удалять филиалы',
+      });
+      return;
+    }
+    const { id } = req.params;
+    const tenantId = req.tenant?.id;
+    const branch = await prisma.branch.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!branch || !tenantId) {
+      res.status(404).json({ success: false, error: 'Branch not found' });
+      return;
+    }
+    const { getBranchDeletionImpact: impact } = await import('../services/deletionPurgeService');
+    const data = await impact(tenantId, id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Branch deletion impact error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+  }
+};
+
 export const deleteBranch = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!req.user || !isOwnerOrAdminRole(req.user.role)) {
@@ -285,21 +313,25 @@ export const deleteBranch = async (req: AuthenticatedRequest, res: Response) => 
     }
 
     const { id } = req.params;
+    const tenantId = req.tenant?.id;
 
     const branch = await prisma.branch.findFirst({
       where: {
         id,
-        tenantId: req.tenant?.id,
+        tenantId,
       },
     });
 
-    if (!branch) {
+    if (!branch || !tenantId) {
       res.status(404).json({
         success: false,
         error: 'Branch not found',
       });
       return;
     }
+
+    const { parseSchoolPurge, purgeOnBranchDelete } = await import('../services/deletionPurgeService');
+    await purgeOnBranchDelete(tenantId, id, parseSchoolPurge(req.body));
 
     await prisma.branch.update({
       where: { id },

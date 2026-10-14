@@ -1,6 +1,11 @@
 import { prisma } from '../lib/prisma';
 import { removeTenantUploadFiles } from '../utils/fileStorage';
 import { notFound } from '../utils/httpError';
+import {
+  parseSaTenantPurge,
+  purgeSaPlatformOnTenantDelete,
+  SaTenantPurgeFlags,
+} from './deletionPurgeService';
 
 export type TenantDeletionSummary = {
   tenantId: string;
@@ -14,8 +19,14 @@ export type TenantDeletionSummary = {
 
 /**
  * Полное необратимое удаление школы (Tenant) и связанных данных.
+ * ClientFeatureIdea никогда не удаляются.
+ * Опционально (purge): заметки разработки, новости, планировщик, переписки.
  */
-export async function deleteTenantCompletely(tenantId: string): Promise<TenantDeletionSummary> {
+export async function deleteTenantCompletely(
+  tenantId: string,
+  purgeFlags?: SaTenantPurgeFlags
+): Promise<TenantDeletionSummary> {
+  const purge = purgeFlags || parseSaTenantPurge({});
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: {
@@ -102,7 +113,7 @@ export async function deleteTenantCompletely(tenantId: string): Promise<TenantDe
     }
 
     await tx.inAppNotification.deleteMany({ where: { tenantId } });
-    await tx.clientFeatureIdea.deleteMany({ where: { tenantId } });
+    // Идеи клиентов сохраняем при любых обстоятельствах (tenantId — строка без FK Cascade)
     await tx.subscriptionGrantLog.deleteMany({ where: { tenantId } });
 
     // Клики/промо без Cascade на Client — иначе tenant.delete упадёт на Restrict
@@ -135,6 +146,9 @@ export async function deleteTenantCompletely(tenantId: string): Promise<TenantDe
 
     await tx.tenant.delete({ where: { id: tenantId } });
   });
+
+  // Платформенные опции SA — после удаления школы (идеи уже защищены выше)
+  await purgeSaPlatformOnTenantDelete(tenantId, purge);
 
   removeTenantUploadFiles(tenantId);
 

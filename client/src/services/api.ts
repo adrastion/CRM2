@@ -547,8 +547,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async deleteClient(id: string): Promise<void> {
-    await this.api.delete(`/clients/${id}`);
+  async getClientDeletionImpact(id: string): Promise<Record<string, number>> {
+    const response = await this.api.get<ApiResponse>(`/clients/${id}/deletion-impact`);
+    return response.data.data || {};
+  }
+
+  async deleteClient(id: string, purge?: Record<string, boolean>): Promise<void> {
+    await this.api.delete(`/clients/${id}`, { data: { purge: purge || {} } });
   }
 
   async exportClients(): Promise<Blob> {
@@ -635,8 +640,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async deleteTrainer(id: string): Promise<void> {
-    await this.api.delete(`/trainers/${id}`);
+  async getTrainerDeletionImpact(id: string): Promise<Record<string, number>> {
+    const response = await this.api.get<ApiResponse>(`/trainers/${id}/deletion-impact`);
+    return response.data.data || {};
+  }
+
+  async deleteTrainer(id: string, purge?: Record<string, boolean>): Promise<void> {
+    await this.api.delete(`/trainers/${id}`, { data: { purge: purge || {} } });
   }
 
   async listTrainerDocuments(trainerId: string): Promise<any[]> {
@@ -1331,8 +1341,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async deleteGroup(id: string): Promise<void> {
-    await this.api.delete(`/groups/${id}`);
+  async getGroupDeletionImpact(id: string): Promise<Record<string, number>> {
+    const response = await this.api.get<ApiResponse>(`/groups/${id}/deletion-impact`);
+    return response.data.data || {};
+  }
+
+  async deleteGroup(id: string, purge?: Record<string, boolean>): Promise<void> {
+    await this.api.delete(`/groups/${id}`, { data: { purge: purge || {} } });
   }
 
   async addClientToGroup(groupId: string, clientId: string, billingEffectiveFrom?: string): Promise<any> {
@@ -1386,8 +1401,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async deleteBranch(id: string): Promise<void> {
-    await this.api.delete(`/branches/${id}`);
+  async getBranchDeletionImpact(id: string): Promise<Record<string, number>> {
+    const response = await this.api.get<ApiResponse>(`/branches/${id}/deletion-impact`);
+    return response.data.data || {};
+  }
+
+  async deleteBranch(id: string, purge?: Record<string, boolean>): Promise<void> {
+    await this.api.delete(`/branches/${id}`, { data: { purge: purge || {} } });
   }
 
   // Hall endpoints
@@ -2693,10 +2713,18 @@ class ApiService {
     return response.data;
   }
 
+  async getTenantDeletionImpact(tenantId: string): Promise<Record<string, number>> {
+    const response = await this.api.get<ApiResponse>(
+      `/admin-dashboard/tenants/${tenantId}/deletion-impact`
+    );
+    return response.data.data || {};
+  }
+
   /** Полное необратимое удаление школы (подтверждение — поддомен). */
   async deleteTenant(
     tenantId: string,
-    confirmSubdomain: string
+    confirmSubdomain: string,
+    purge?: Record<string, boolean>
   ): Promise<{
     tenantId: string;
     name: string;
@@ -2707,7 +2735,7 @@ class ApiService {
     payments: number;
   }> {
     const response = await this.api.delete<ApiResponse>(`/admin-dashboard/tenants/${tenantId}`, {
-      data: { confirmSubdomain },
+      data: { confirmSubdomain, purge: purge || {} },
     });
     return response.data.data;
   }

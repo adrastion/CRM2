@@ -513,18 +513,40 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
   }
 };
 
+export const getGroupDeletionImpact = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.tenant?.id;
+    const group = await prisma.group.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!group || !tenantId) {
+      res.status(404).json({ success: false, error: 'Group not found' });
+      return;
+    }
+    const { getGroupDeletionImpact: impact } = await import('../services/deletionPurgeService');
+    const data = await impact(tenantId, id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Group deletion impact error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+  }
+};
+
 export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const tenantId = req.tenant?.id;
 
     const group = await prisma.group.findFirst({
       where: {
         id,
-        tenantId: req.tenant?.id
+        tenantId
       }
     });
 
-    if (!group) {
+    if (!group || !tenantId) {
       res.status(404).json({
         success: false,
         error: 'Group not found'
@@ -532,17 +554,9 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    // Удаляем все тренировки этой группы (мягкое удаление - помечаем как отмененные)
-    await prisma.training.updateMany({
-      where: {
-        groupId: id,
-        tenantId: req.tenant?.id,
-        isCancelled: false
-      },
-      data: {
-        isCancelled: true
-      }
-    });
+    const { parseSchoolPurge, purgeOnGroupDelete } = await import('../services/deletionPurgeService');
+    // Занятия/состав и чаты — только по явным флагам; по умолчанию история сохраняется
+    await purgeOnGroupDelete(tenantId, id, parseSchoolPurge(req.body));
 
     // Удаляем группу (мягкое удаление)
     await prisma.group.update({
@@ -565,6 +579,7 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
 
 export const addClientToGroup = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    // Join/rejoin only. Historical Attendance and finance rows for past groups are never wiped here.
     const { id } = req.params; // group id
     const { clientId, billingEffectiveFrom } = req.body;
     const tenantId = req.tenant?.id;
@@ -816,7 +831,7 @@ export const removeClientFromGroup = async (req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    // Soft delete - mark as inactive
+    // Soft leave only. Do NOT delete Attendance, Payment, FinanceOperation, ClientMembership history.
     await prisma.groupMembership.update({
       where: {
         clientId_groupId: {

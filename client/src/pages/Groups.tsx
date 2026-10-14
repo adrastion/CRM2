@@ -52,6 +52,7 @@ import InlineNewTrainerFields, {
 } from '../components/common/InlineNewTrainerFields';
 import ClientNameLink from '../components/ClientNameLink';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
+import DeletionScopeDialog, { PurgeOption } from '../components/common/DeletionScopeDialog';
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
 import {
@@ -65,6 +66,26 @@ import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import { useAuth } from '../contexts/AuthContext';
 import { canAssignSeniorTrainer, canCreateBranches } from '../utils/roles';
+
+const GROUP_DELETE_OPTIONS: PurgeOption[] = [
+  {
+    key: 'groupComposition',
+    label: 'Занятия и состав группы',
+    countKeys: ['trainings', 'memberships'],
+  },
+  { key: 'attendance', label: 'Посещения занятий', countKeys: ['attendance'] },
+  { key: 'chats', label: 'Переписки', countKeys: ['chats'] },
+];
+
+const BRANCH_DELETE_OPTIONS: PurgeOption[] = [
+  {
+    key: 'groupComposition',
+    label: 'Занятия и состав групп филиала',
+    countKeys: ['trainings', 'memberships', 'trainerAssignments'],
+  },
+  { key: 'attendance', label: 'Посещения занятий', countKeys: ['attendance'] },
+  { key: 'chats', label: 'Переписки', countKeys: ['chats'] },
+];
 
 function trainerDisplayName(trainer?: Trainer | null): string {
   if (!trainer?.user) return '—';
@@ -187,6 +208,8 @@ const Groups: React.FC = () => {
     ...EMPTY_INLINE_TRAINER,
   });
   const [branchNewTrainerErrors, setBranchNewTrainerErrors] = useState<Record<string, string>>({});
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<Group | null>(null);
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
   const [trainerFormErrors, setTrainerFormErrors] = useState<Record<string, string>>({});
   const [branchFormErrors, setBranchFormErrors] = useState<Record<string, string>>({});
   const [trainingFormData, setTrainingFormData] = useState({
@@ -675,17 +698,19 @@ const Groups: React.FC = () => {
     }
   };
 
-  const handleDeleteBranch = async (branchId: string) => {
-    if (!window.confirm('Вы уверены, что хотите удалить этот филиал?')) return;
-    try {
-      await apiService.deleteBranch(branchId);
-      await fetchData();
-      setSnackbarMessage('Филиал удалён');
-      setSnackbarOpen(true);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка удаления филиала');
-      console.error('Error deleting branch:', err);
-    }
+  const handleDeleteBranch = (branchId: string) => {
+    const branch = branches.find((b) => b.id === branchId) || null;
+    if (!branch) return;
+    setDeleteBranchTarget(branch);
+  };
+
+  const confirmDeleteBranch = async (purge: Record<string, boolean>) => {
+    if (!deleteBranchTarget) return;
+    await apiService.deleteBranch(deleteBranchTarget.id, purge);
+    await fetchData();
+    setSnackbarMessage('Филиал удалён');
+    setSnackbarOpen(true);
+    setDeleteBranchTarget(null);
   };
 
   const openCreateGroupDialog = (branchId?: string) => {
@@ -819,16 +844,19 @@ const Groups: React.FC = () => {
     }
   };
 
-  const handleDeleteGroup = async (groupId: string) => {
-    if (window.confirm('Вы уверены, что хотите удалить эту группу?')) {
-      try {
-        await apiService.deleteGroup(groupId);
-        await fetchData();
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Ошибка удаления группы');
-        console.error('Error deleting group:', err);
-      }
-    }
+  const handleDeleteGroup = (groupId: string) => {
+    const group =
+      groups.find((g) => g.id === groupId) ||
+      (selectedGroup?.id === groupId ? selectedGroup : null);
+    if (!group) return;
+    setDeleteGroupTarget(group);
+  };
+
+  const confirmDeleteGroup = async (purge: Record<string, boolean>) => {
+    if (!deleteGroupTarget) return;
+    await apiService.deleteGroup(deleteGroupTarget.id, purge);
+    await fetchData();
+    setDeleteGroupTarget(null);
   };
 
   const handleOpenMembersDialog = async (group: Group) => {
@@ -3499,6 +3527,26 @@ const Groups: React.FC = () => {
         onSave={editBranchUnsaved.save}
         onDiscard={editBranchUnsaved.discard}
         onStay={editBranchUnsaved.stay}
+      />
+
+      <DeletionScopeDialog
+        open={Boolean(deleteGroupTarget)}
+        title="Удалить группу?"
+        entityLabel={deleteGroupTarget?.name || ''}
+        options={GROUP_DELETE_OPTIONS}
+        loadImpact={() => apiService.getGroupDeletionImpact(deleteGroupTarget!.id)}
+        onClose={() => setDeleteGroupTarget(null)}
+        onConfirm={confirmDeleteGroup}
+      />
+
+      <DeletionScopeDialog
+        open={Boolean(deleteBranchTarget)}
+        title="Удалить филиал?"
+        entityLabel={deleteBranchTarget?.name || ''}
+        options={BRANCH_DELETE_OPTIONS}
+        loadImpact={() => apiService.getBranchDeletionImpact(deleteBranchTarget!.id)}
+        onClose={() => setDeleteBranchTarget(null)}
+        onConfirm={confirmDeleteBranch}
       />
 
       {/* Snackbar для отображения ошибок валидации */}

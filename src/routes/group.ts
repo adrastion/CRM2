@@ -7,6 +7,7 @@ import {
   createGroup,
   updateGroup,
   deleteGroup,
+  getGroupDeletionImpact,
   addClientToGroup,
   removeClientFromGroup
 } from '../controllers/groupController';
@@ -21,6 +22,7 @@ router.get('/', getGroups);
 router.get('/:id', getGroupById);
 router.post('/', requireOwnerAdminOrTrainer, checkSubscriptionLimit('groups'), createGroup);
 router.put('/:id', requireOwnerAdminOrTrainer, updateGroup);
+router.get('/:id/deletion-impact', requireOwnerAdminOrTrainer, getGroupDeletionImpact);
 router.delete('/:id', requireOwnerAdminOrTrainer, deleteGroup);
 
 // Group membership routes

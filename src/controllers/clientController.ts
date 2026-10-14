@@ -846,6 +846,21 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
   });
 });
 
+export const getClientDeletionImpact = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { tenantId } = req;
+    const { id } = req.params;
+    const existing = await prisma.client.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existing) {
+      res.status(404).json({ success: false, error: 'Client not found' });
+      return;
+    }
+    const { getClientDeletionImpact: impact } = await import('../services/deletionPurgeService');
+    const data = await impact(tenantId!, id);
+    res.json({ success: true, data });
+  }
+);
+
 export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const { tenantId } = req;
   const { id } = req.params;
@@ -862,6 +877,11 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     });
     return;
   }
+
+  const { parseSchoolPurge, purgeOnClientDelete } = await import('../services/deletionPurgeService');
+  const purge = parseSchoolPurge(req.body);
+  // Финансы / платежи / абонементы никогда не чистим при удалении клиента
+  await purgeOnClientDelete(tenantId!, id, purge);
 
   await prisma.client.update({
     where: { id },
