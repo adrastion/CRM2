@@ -192,8 +192,10 @@ export async function maintenanceMiddleware(
 
     const closed = await isClosedTestingMode();
 
-    // SA login открыт всегда, кроме закрытого тестирования
-    if (isSuperAdminLoginPath(req)) {
+    // Вход SA: /super-admin/auth/login и единый /auth (identify/unified-login/…).
+    // Раньше при maintenance открыт был только SA endpoint, а UI ходит в unified —
+    // супер-админ не мог войти и выключить техработы.
+    if (isSuperAdminLoginPath(req) || isTestingLoginPath(req)) {
       if (closed) {
         res.status(503).json({
           success: false,
