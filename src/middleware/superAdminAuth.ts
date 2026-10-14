@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
 import { isSessionVersionValid } from '../utils/sessionVersion';
+import { assertAuthSessionActive } from '../services/authSessionService';
 
 /**
  * Доступ к панели платформы: супер-админ или персонал платформы.
@@ -77,6 +78,14 @@ export const authenticateSuperAdmin = asyncHandler(async (
       return;
     }
 
+    if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
+      res.status(401).json({
+        success: false,
+        error: 'Session revoked or expired'
+      });
+      return;
+    }
+
     // Attach super admin to request
     (req as any).superAdmin = superAdmin;
     (req as any).platformActor = {
@@ -85,6 +94,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
       email: superAdmin.email,
       canWrite: true,
     } satisfies PlatformActor;
+    req.authSessionId = decoded.jti;
 
     next();
   } catch (error) {
@@ -143,6 +153,10 @@ export const authenticatePlatformViewer = asyncHandler(async (
       res.status(401).json({ success: false, error: 'Invalid or inactive super admin' });
       return;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
+      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      return;
+    }
 
     (req as any).superAdmin = superAdmin;
     (req as any).platformActor = {
@@ -151,6 +165,7 @@ export const authenticatePlatformViewer = asyncHandler(async (
       email: superAdmin.email,
       canWrite: true,
     } satisfies PlatformActor;
+    req.authSessionId = decoded.jti;
     next();
     return;
   }

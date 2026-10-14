@@ -5,6 +5,14 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validate, validateQuery, phoneSchema } from '../middleware/validation';
 import Joi from 'joi';
 import { clearSessionCookies, maybeSetAuthCookies } from '../middleware/authCookies';
+import {
+  extractSessionMeta,
+  revokeAuthSessionById,
+  revokeAllAuthSessions,
+  revokeOtherAuthSessions,
+  listActiveAuthSessions,
+} from '../services/authSessionService';
+import { prisma } from '../lib/prisma';
 
 /** Без проверки списка TLD — иначе Joi отклоняет служебные адреса (*.local и т.п.). */
 const loginEmail = Joi.string().email({ tlds: { allow: false } }).required();
@@ -103,7 +111,7 @@ export const register = asyncHandler(async (req: Request, res: Response<ApiRespo
  */
 export const login = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
-  const result = await AuthService.login(email, password);
+  const result = await AuthService.login(email, password, extractSessionMeta(req));
   maybeSetAuthCookies(res, result);
   res.json({
     success: true,
@@ -118,7 +126,7 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
  */
 export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
-  const result = await AuthService.unifiedStaffLogin(email, password);
+  const result = await AuthService.unifiedStaffLogin(email, password, extractSessionMeta(req));
   maybeSetAuthCookies(res, result);
   res.json({
     success: true,
@@ -373,9 +381,12 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response<Api
 });
 
 /**
- * Logout user (client-side token removal)
+ * Logout user — отзыв текущей AuthSession + clear cookies
  */
 export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  if (req.user?.id && req.authSessionId) {
+    await revokeAuthSessionById('USER', req.user.id, req.authSessionId);
+  }
   clearSessionCookies(res);
   res.json({
     success: true,
@@ -383,6 +394,85 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
   return;
 });
+
+/**
+ * Список активных сессий текущего сотрудника школы.
+ */
+export const getAuthSessions = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.user?.id) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const sessions = await listActiveAuthSessions('USER', req.user.id);
+    res.json({
+      success: true,
+      data: {
+        sessions: sessions.map((s) => ({
+          ...s,
+          current: s.id === req.authSessionId,
+        })),
+      },
+    });
+  }
+);
+
+/** Отзыв одной сессии. */
+export const revokeAuthSession = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.user?.id) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const { id } = req.params;
+    const ok = await revokeAuthSessionById('USER', req.user.id, id);
+    if (!ok) {
+      res.status(404).json({ success: false, error: 'Сессия не найдена' });
+      return;
+    }
+    res.json({ success: true, message: 'Сессия завершена' });
+  }
+);
+
+/** Завершить все другие сессии (текущую оставить). */
+export const revokeOtherAuthSessionsHandler = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.user?.id || !req.authSessionId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const count = await revokeOtherAuthSessions('USER', req.user.id, req.authSessionId);
+    res.json({
+      success: true,
+      data: { revoked: count },
+      message: 'Другие сессии завершены',
+    });
+  }
+);
+
+/**
+ * Выйти везде: bump sessionVersion + revoke all (включая текущую).
+ * Клиент должен очистить токен и уйти на login.
+ */
+export const revokeAllAuthSessionsHandler = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    if (!req.user?.id) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { sessionVersion: { increment: 1 } },
+    });
+    const count = await revokeAllAuthSessions('USER', req.user.id);
+    clearSessionCookies(res);
+    res.json({
+      success: true,
+      data: { revoked: count },
+      message: 'Все сессии завершены',
+    });
+  }
+);
 
 /**
  * Delete user by ID (owner only)

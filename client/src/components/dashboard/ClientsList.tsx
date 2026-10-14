@@ -27,10 +27,12 @@ export interface ClientsListProps {
   toolbarActions?: React.ReactNode;
 }
 
+/** Как formatMoney на вкладке Финансы — без принудительного округления до целых. */
 const formatBalance = (value?: number) => {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return '0 ₽';
-  return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`;
+  const abs = Math.abs(n).toLocaleString('ru-RU');
+  return n < 0 ? `−${abs} ₽` : `${abs} ₽`;
 };
 
 const primaryGroupName = (client: Client): string => {

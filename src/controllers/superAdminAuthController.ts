@@ -6,6 +6,11 @@ import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 import { maybeSetAuthCookies } from '../middleware/authCookies';
+import {
+  createAuthSession,
+  extractSessionMeta,
+  expiresAtFromTtl,
+} from '../services/authSessionService';
 
 /**
  * Login super admin
@@ -64,10 +69,26 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   }
 
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  const sign = (payload: object) =>
-    jwt.sign(payload, jwtSecret, { expiresIn } as jwt.SignOptions);
+  const meta = extractSessionMeta(req);
+  const signTracked = async (
+    actorType: 'SUPER_ADMIN' | 'USER',
+    actorId: string,
+    payload: object
+  ) => {
+    const authSession = await createAuthSession({
+      actorType,
+      actorId,
+      expiresAt: expiresAtFromTtl(expiresIn),
+      meta,
+    });
+    return jwt.sign(
+      { ...payload, jti: authSession.id },
+      jwtSecret,
+      { expiresIn } as jwt.SignOptions
+    );
+  };
 
-  const token = sign({
+  const token = await signTracked('SUPER_ADMIN', superAdmin.id, {
     userId: superAdmin.id,
     email: superAdmin.email,
     type: 'SUPER_ADMIN',
@@ -85,11 +106,12 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (user && user.isActive) {
     linkedSession = {
       accountType: 'TENANT_USER',
-      token: sign({
+      token: await signTracked('USER', user.id, {
         userId: user.id,
         email: user.email,
         role: user.role,
         tenantId: user.tenantId,
+        sv: user.sessionVersion,
       }),
       tenant: {
         id: user.tenant.id,

@@ -16,6 +16,7 @@ import {
 } from './chatService';
 import { markPresenceOffline, markPresenceOnline, isPresenceOnline } from './chatPresence';
 import { isSessionVersionValid } from '../utils/sessionVersion';
+import { assertAuthSessionActive } from './authSessionService';
 import { prisma } from '../lib/prisma';
 import jwt from 'jsonwebtoken';
 
@@ -32,6 +33,7 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
   if (decoded.type === 'SUPER_ADMIN' && decoded.userId) {
     const sa = await prisma.superAdmin.findUnique({ where: { id: decoded.userId } });
     if (!sa || !sa.isActive || !isSessionVersionValid(decoded, sa.sessionVersion)) return null;
+    if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', sa.id))) return null;
     return resolveSuperAdminActor(sa.id);
   }
 
@@ -40,6 +42,7 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
     if (!tester || !tester.isActive || !isSessionVersionValid(decoded, tester.sessionVersion)) {
       return null;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'TESTER', tester.id))) return null;
     return resolveTesterActor(tester.id);
   }
 
@@ -56,6 +59,7 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
     ) {
       return null;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'CLIENT', client.id))) return null;
     return resolveClientActor({ clientId: client.id, tenantId: client.tenantId });
   }
   if (decoded.type === 'parent' && decoded.parentId && decoded.tenantId) {
@@ -70,6 +74,7 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
     ) {
       return null;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'PARENT', parent.id))) return null;
     return resolveClientActor({ parentId: parent.id, tenantId: parent.tenantId });
   }
 
@@ -86,6 +91,7 @@ async function resolveChatIdentity(decoded: any): Promise<ChatActor | null> {
     ) {
       return null;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'USER', user.id))) return null;
     return resolveStaffActor(user.id, user.tenantId);
   }
 

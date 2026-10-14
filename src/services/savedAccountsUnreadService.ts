@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { isSessionVersionValid } from '../utils/sessionVersion';
+import { assertAuthSessionActive } from './authSessionService';
 import { getActorUnreadTotal } from './notificationFanout';
 import {
   getUnreadTotalForActor,
@@ -84,6 +85,9 @@ export async function unreadForSavedAccountToken(
       ) {
         return 0;
       }
+      if (!(await assertAuthSessionActive(decoded.jti as string | undefined, 'USER', user.id))) {
+        return 0;
+      }
       return getSchoolUserUnreadTotal(user.id, user.tenantId);
     }
 
@@ -104,6 +108,9 @@ export async function unreadForSavedAccountToken(
       ) {
         return 0;
       }
+      if (!(await assertAuthSessionActive(decoded.jti as string | undefined, 'CLIENT', client.id))) {
+        return 0;
+      }
       return getPortalActorUnreadTotal('CLIENT', client.id, client.tenantId);
     }
 
@@ -121,6 +128,9 @@ export async function unreadForSavedAccountToken(
         parent.tenantId !== tenantId ||
         !isSessionVersionValid(decoded as { sv?: number }, parent.sessionVersion)
       ) {
+        return 0;
+      }
+      if (!(await assertAuthSessionActive(decoded.jti as string | undefined, 'PARENT', parent.id))) {
         return 0;
       }
       return getPortalActorUnreadTotal('PARENT', parent.id, parent.tenantId);

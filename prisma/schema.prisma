@@ -2368,3 +2368,22 @@ model PaymentReceipt {
   @@index([submittedAt])
   @@map("payment_receipts")
 }
+
+/// Авторизованная сессия устройства (jti JWT = id).
+model AuthSession {
+  id          String    @id @default(cuid())
+  /// USER | CLIENT | PARENT | SUPER_ADMIN | TESTER
+  actorType   String
+  actorId     String
+  deviceLabel String?
+  userAgent   String?   @db.Text
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  @@index([actorType, actorId])
+  @@index([actorType, actorId, revokedAt])
+  @@map("auth_sessions")
+}

@@ -7,6 +7,7 @@ import { EmailOtpService, OtpAccountType } from './emailOtpService';
 import { emailService } from './emailService';
 import { PublicAccount } from './unifiedAuthService';
 import { BCRYPT_ROUNDS } from '../constants/security';
+import { revokeSessionsOnVersionBump, AuthActorType } from './authSessionService';
 
 const RESET_TOKEN_TTL = '15m';
 const NEUTRAL_MSG =
@@ -227,22 +228,27 @@ export class PasswordResetService {
 
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
+    let actorType: AuthActorType = 'USER';
     if (otpType === 'user') {
       await prisma.user.update({
         where: { id: params.accountId },
         data: { password: hash, sessionVersion: { increment: 1 } },
       });
+      actorType = 'USER';
     } else if (otpType === 'client') {
       await prisma.client.update({
         where: { id: params.accountId },
         data: { password: hash, sessionVersion: { increment: 1 } },
       });
+      actorType = 'CLIENT';
     } else {
       await prisma.parent.update({
         where: { id: params.accountId },
         data: { password: hash, sessionVersion: { increment: 1 } },
       });
+      actorType = 'PARENT';
     }
+    await revokeSessionsOnVersionBump(actorType, params.accountId);
 
     return { message: 'Пароль успешно изменён' };
   }

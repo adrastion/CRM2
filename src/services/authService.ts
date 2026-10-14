@@ -9,6 +9,12 @@ import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 import { SubscriptionService } from './subscriptionService';
 import type { PlanLimits } from './planCatalogService';
 import { planLimitHttpError } from '../utils/planLimits';
+import {
+  SessionRequestMeta,
+  createAuthSession,
+  expiresAtFromTtl,
+  revokeSessionsOnVersionBump,
+} from './authSessionService';
 
 const STAFF_LIMIT_BY_ROLE: Partial<Record<string, keyof PlanLimits>> = {
   ADMIN: 'extraStaff',
@@ -150,7 +156,7 @@ export class AuthService {
     });
 
     // Generate JWT token
-    const token = this.generateToken(result.user);
+    const token = await this.generateToken(result.user);
 
     return {
       user: {
@@ -173,7 +179,7 @@ export class AuthService {
   /**
    * Login user
    */
-  static async login(email: string, password: string) {
+  static async login(email: string, password: string, meta?: SessionRequestMeta | null) {
     // Приводим email к нижнему регистру для поиска
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -217,7 +223,7 @@ export class AuthService {
     });
 
     // Generate JWT token
-    const token = this.generateToken(user);
+    const token = await this.generateToken(user, meta);
 
     const { getSeniorAccessMeta } = await import('../utils/branchAccess');
     // OWNER с Trainer-профилем тоже получает trainerId / senior-метки
@@ -384,9 +390,13 @@ export class AuthService {
   /**
    * Единый вход для всех ролей кроме клиентов (владелец/админ/тренер, маркетолог, админ промокодов, супер-админ, персонал платформы).
    */
-  static async unifiedStaffLogin(email: string, password: string) {
+  static async unifiedStaffLogin(
+    email: string,
+    password: string,
+    meta?: SessionRequestMeta | null
+  ) {
     try {
-      const result = await this.login(email, password);
+      const result = await this.login(email, password, meta);
       return { accountType: 'TENANT_USER' as const, ...result };
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : '';
@@ -426,14 +436,23 @@ export class AuthService {
       if (!jwtSecret) {
         throw new Error('JWT_SECRET is not configured');
       }
+      const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+      const authSession = await createAuthSession({
+        actorType: 'SUPER_ADMIN',
+        actorId: superAdmin.id,
+        expiresAt: expiresAtFromTtl(expiresIn),
+        meta,
+      });
       const token = jwt.sign(
         {
           userId: superAdmin.id,
           email: superAdmin.email,
           type: 'SUPER_ADMIN',
+          sv: superAdmin.sessionVersion,
+          jti: authSession.id,
         },
         jwtSecret,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as SignOptions
+        { expiresIn } as SignOptions
       );
       await prisma.superAdmin.update({
         where: { id: superAdmin.id },
@@ -593,6 +612,7 @@ export class AuthService {
       where: { id: userId },
       data: { password: hashedNewPassword, sessionVersion: { increment: 1 } }
     });
+    await revokeSessionsOnVersionBump('USER', userId);
 
     return { message: 'Password changed successfully' };
   }
@@ -654,17 +674,28 @@ export class AuthService {
   /**
    * Generate JWT token
    */
-  private static generateToken(user: User): string {
+  private static async generateToken(
+    user: User,
+    meta?: SessionRequestMeta | null
+  ): Promise<string> {
+    const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+    const authSession = await createAuthSession({
+      actorType: 'USER',
+      actorId: user.id,
+      expiresAt: expiresAtFromTtl(expiresIn),
+      meta,
+    });
     const payload: JWTPayload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       tenantId: user.tenantId,
       sv: user.sessionVersion,
+      jti: authSession.id,
     };
 
     return jwt.sign(payload, process.env.JWT_SECRET!, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+      expiresIn,
     } as jwt.SignOptions);
   }
 
@@ -900,6 +931,10 @@ export class AuthService {
       data: updateData,
       include: { trainer: true }
     });
+
+    if (data.password) {
+      await revokeSessionsOnVersionBump('USER', userId);
+    }
 
     return {
       id: user.id,

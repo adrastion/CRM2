@@ -14,6 +14,10 @@ import {
   changeEmail,
   requestPasswordReset,
   logout,
+  getAuthSessions,
+  revokeAuthSession,
+  revokeOtherAuthSessionsHandler,
+  revokeAllAuthSessionsHandler,
   verifyToken,
   validateRegister,
   validateLogin,
@@ -101,6 +105,10 @@ router.put('/profile', validateUpdateProfile, updateProfile);
 router.post('/change-password', validateChangePassword, changePassword);
 router.post('/change-email', validateChangeEmail, changeEmail);
 router.post('/logout', logout);
+router.get('/sessions', getAuthSessions);
+router.delete('/sessions/others', revokeOtherAuthSessionsHandler);
+router.delete('/sessions', revokeAllAuthSessionsHandler);
+router.delete('/sessions/:id', revokeAuthSession);
 router.get('/verify', verifyToken);
 
 router.post('/users', requireOwnerOrAdmin, validateCreateUser, createUser);

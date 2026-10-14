@@ -10,6 +10,12 @@ import {
 } from '../utils/identifier';
 import { HttpError, badRequest, unauthorized } from '../utils/httpError';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
+import {
+  AuthActorType,
+  SessionRequestMeta,
+  createAuthSession,
+  expiresAtFromTtl,
+} from './authSessionService';
 
 /** Время жизни токена выбора аккаунта между шагами «пароль» → «выбор организации». */
 const SELECTION_TOKEN_TTL = '10m';
@@ -411,7 +417,8 @@ export class UnifiedAuthService {
   static async setupPassword(
     rawIdentifier: string,
     password: string,
-    rememberMe = false
+    rememberMe = false,
+    meta?: SessionRequestMeta | null
   ): Promise<LoginResult> {
     if (!password || password.length < 6) {
       throw badRequest('Пароль должен содержать минимум 6 символов', 'password');
@@ -458,7 +465,7 @@ export class UnifiedAuthService {
 
     // Сразу впускаем пользователя: подтверждение школы проверяется уже внутри кабинета.
     const authenticated = target.map((a) => ({ ...a, hasPassword: true, passwordHash: hash }));
-    return this.completeLogin(rawIdentifier, authenticated, rememberMe);
+    return this.completeLogin(rawIdentifier, authenticated, rememberMe, meta);
   }
 
   /**
@@ -468,7 +475,8 @@ export class UnifiedAuthService {
   static async login(
     rawIdentifier: string,
     password: string,
-    rememberMe = false
+    rememberMe = false,
+    meta?: SessionRequestMeta | null
   ): Promise<LoginResult> {
     if (!password) {
       throw badRequest('Введите пароль', 'password');
@@ -496,7 +504,7 @@ export class UnifiedAuthService {
       throw unauthorized(LOGIN_FAILED_MESSAGE, 'password');
     }
 
-    return this.completeLogin(rawIdentifier, matched, rememberMe);
+    return this.completeLogin(rawIdentifier, matched, rememberMe, meta);
   }
 
   /**
@@ -505,10 +513,11 @@ export class UnifiedAuthService {
   private static async completeLogin(
     rawIdentifier: string,
     matched: AccountCandidate[],
-    rememberMe: boolean
+    rememberMe: boolean,
+    meta?: SessionRequestMeta | null
   ): Promise<LoginResult> {
     if (matched.length === 1) {
-      const session = await this.issueSession(matched[0], rememberMe);
+      const session = await this.issueSession(matched[0], rememberMe, meta);
       return { requiresSelection: false, ...session };
     }
 
@@ -540,7 +549,8 @@ export class UnifiedAuthService {
   static async selectAccount(
     selectionToken: string,
     accountType: AccountType,
-    accountId: string
+    accountId: string,
+    meta?: SessionRequestMeta | null
   ): Promise<{ requiresSelection: false } & SessionPayload> {
     let decoded: {
       type?: string;
@@ -571,14 +581,14 @@ export class UnifiedAuthService {
       throw unauthorized('Аккаунт больше не доступен');
     }
 
-    const session = await this.issueSession(account, Boolean(decoded.rememberMe));
+    const session = await this.issueSession(account, Boolean(decoded.rememberMe), meta);
     return { requiresSelection: false, ...session };
   }
 
   /** Если OWNER ↔ SuperAdmin / Tester связаны — добавить связанные сессии в ответ. */
   private static async withLinkedSession(
     session: SessionPayload,
-    sign: (payload: object) => string
+    signTracked: (actorType: AuthActorType, actorId: string, payload: object) => Promise<string>
   ): Promise<SessionPayload> {
     const links: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>> = [];
 
@@ -595,7 +605,7 @@ export class UnifiedAuthService {
       if (linkedSa) {
         links.push({
           accountType: 'SUPER_ADMIN',
-          token: sign({
+          token: await signTracked('SUPER_ADMIN', linkedSa.id, {
             userId: linkedSa.id,
             email: linkedSa.email,
             type: 'SUPER_ADMIN',
@@ -612,7 +622,7 @@ export class UnifiedAuthService {
       if (linkedTester) {
         links.push({
           accountType: 'TESTER',
-          token: sign({
+          token: await signTracked('TESTER', linkedTester.id, {
             userId: linkedTester.id,
             email: linkedTester.email,
             type: 'TESTER',
@@ -637,11 +647,12 @@ export class UnifiedAuthService {
       if (user && user.isActive) {
         links.push({
           accountType: 'TENANT_USER',
-          token: sign({
+          token: await signTracked('USER', user.id, {
             userId: user.id,
             email: user.email,
             role: user.role,
             tenantId: user.tenantId,
+            sv: user.sessionVersion,
           }),
           tenant: toTenantBrief(user.tenant),
           user: {
@@ -668,11 +679,12 @@ export class UnifiedAuthService {
       if (user && user.isActive) {
         links.push({
           accountType: 'TENANT_USER',
-          token: sign({
+          token: await signTracked('USER', user.id, {
             userId: user.id,
             email: user.email,
             role: user.role,
             tenantId: user.tenantId,
+            sv: user.sessionVersion,
           }),
           tenant: toTenantBrief(user.tenant),
           user: {
@@ -704,11 +716,30 @@ export class UnifiedAuthService {
    */
   private static async issueSession(
     account: AccountCandidate,
-    rememberMe: boolean
+    rememberMe: boolean,
+    meta?: SessionRequestMeta | null
   ): Promise<SessionPayload> {
     const secret = jwtSecret();
     const expiresIn = rememberMe ? SESSION_TTL_REMEMBER : SESSION_TTL;
-    const sign = (payload: object) => jwt.sign(payload, secret, { expiresIn } as SignOptions);
+    const signPlain = (payload: object) =>
+      jwt.sign(payload, secret, { expiresIn } as SignOptions);
+    const signTracked = async (
+      actorType: AuthActorType,
+      actorId: string,
+      payload: object
+    ): Promise<string> => {
+      const authSession = await createAuthSession({
+        actorType,
+        actorId,
+        expiresAt: expiresAtFromTtl(expiresIn),
+        meta,
+      });
+      return jwt.sign(
+        { ...payload, jti: authSession.id },
+        secret,
+        { expiresIn } as SignOptions
+      );
+    };
 
     let session: SessionPayload;
 
@@ -724,7 +755,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'TENANT_USER',
-          token: sign({
+          token: await signTracked('USER', user.id, {
             userId: user.id,
             email: user.email,
             role: user.role,
@@ -758,7 +789,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'CLIENT',
-          token: sign({
+          token: await signTracked('CLIENT', client.id, {
             clientId: client.id,
             tenantId: client.tenantId,
             type: 'client',
@@ -795,7 +826,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'PARENT',
-          token: sign({
+          token: await signTracked('PARENT', parent.id, {
             parentId: parent.id,
             tenantId: parent.tenantId,
             type: 'parent',
@@ -827,7 +858,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'MARKETER',
-          token: sign({
+          token: signPlain({
             userId: marketer.id,
             email: marketer.email,
             type: 'MARKETER',
@@ -854,7 +885,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'PROMO_CODE_ADMIN',
-          token: sign({
+          token: signPlain({
             userId: admin.id,
             email: admin.email,
             type: 'PROMO_CODE_ADMIN',
@@ -882,7 +913,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'SUPER_ADMIN',
-          token: sign({
+          token: await signTracked('SUPER_ADMIN', superAdmin.id, {
             userId: superAdmin.id,
             email: superAdmin.email,
             type: 'SUPER_ADMIN',
@@ -909,7 +940,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'TESTER',
-          token: sign({
+          token: await signTracked('TESTER', tester.id, {
             userId: tester.id,
             email: tester.email,
             type: 'TESTER',
@@ -936,7 +967,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'PLATFORM_STAFF',
-          token: sign({
+          token: signPlain({
             userId: staff.id,
             email: staff.email,
             type: 'PLATFORM_STAFF',
@@ -958,19 +989,38 @@ export class UnifiedAuthService {
         throw new HttpError(500, 'Неизвестный тип аккаунта');
     }
 
-    return this.withLinkedSession(session, sign);
+    return this.withLinkedSession(session, signTracked);
   }
 
   /**
    * Актуальные связанные сессии SA/Tester для школьного пользователя (OWNER),
    * чтобы свитчер обновлялся без повторного входа.
    */
-  static async getLinkedSessionsForUser(userId: string): Promise<{
+  static async getLinkedSessionsForUser(
+    userId: string,
+    meta?: SessionRequestMeta | null
+  ): Promise<{
     linkedSessions: Array<Omit<SessionPayload, 'linkedSession' | 'linkedSessions'>>;
   }> {
     const secret = jwtSecret();
     const expiresIn = SESSION_TTL;
-    const sign = (payload: object) => jwt.sign(payload, secret, { expiresIn } as SignOptions);
+    const signTracked = async (
+      actorType: AuthActorType,
+      actorId: string,
+      payload: object
+    ): Promise<string> => {
+      const authSession = await createAuthSession({
+        actorType,
+        actorId,
+        expiresAt: expiresAtFromTtl(expiresIn),
+        meta,
+      });
+      return jwt.sign(
+        { ...payload, jti: authSession.id },
+        secret,
+        { expiresIn } as SignOptions
+      );
+    };
 
     const [linkedSa, linkedTester] = await Promise.all([
       prisma.superAdmin.findFirst({
@@ -986,7 +1036,7 @@ export class UnifiedAuthService {
     if (linkedSa) {
       linkedSessions.push({
         accountType: 'SUPER_ADMIN',
-        token: sign({
+        token: await signTracked('SUPER_ADMIN', linkedSa.id, {
           userId: linkedSa.id,
           email: linkedSa.email,
           type: 'SUPER_ADMIN',
@@ -1004,7 +1054,7 @@ export class UnifiedAuthService {
     if (linkedTester) {
       linkedSessions.push({
         accountType: 'TESTER',
-        token: sign({
+        token: await signTracked('TESTER', linkedTester.id, {
           userId: linkedTester.id,
           email: linkedTester.email,
           type: 'TESTER',

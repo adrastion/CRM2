@@ -1784,6 +1784,28 @@ export class FinanceService {
   }
 
   /**
+   * Текущий баланс клиента как в «Финансы → Операции клиентов» (колонка Баланс):
+   * накопленное оплачено − начислено по последнему периоду.
+   * Без membership-операций = Client.balance (та же семантика, что в membershipSummary).
+   */
+  static async clientMembershipBalances(
+    tenantId: string,
+    clientIds: string[]
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (!clientIds.length) return result;
+
+    const rows = await this.membershipSummary(tenantId, { clientIds });
+    // membershipSummary отдаёт периоды от новых к старым — первая строка клиента = актуальный remaining
+    for (const row of rows) {
+      if (!result.has(row.clientId)) {
+        result.set(row.clientId, Number(row.remaining) || 0);
+      }
+    }
+    return result;
+  }
+
+  /**
    * Append-only корректировка начисления абонемента.
    * Исходный Payment не меняется; создаётся signed adjustment + finance op.
    */

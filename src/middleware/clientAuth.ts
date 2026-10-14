@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { isSessionVersionValid } from '../utils/sessionVersion';
 import { readAccessTokenFromCookie } from './authCookies';
+import { assertAuthSessionActive } from '../services/authSessionService';
 
 export interface ClientRequest extends Request {
   client?: {
@@ -14,6 +15,7 @@ export interface ClientRequest extends Request {
     tenantId: string;
   };
   userType?: 'client' | 'parent';
+  authSessionId?: string;
 }
 
 /**
@@ -53,6 +55,7 @@ export const authenticateClient = async (
       parentId?: string;
       tenantId?: string;
       sv?: number;
+      jti?: string;
     };
 
     if (decoded.type === 'client' && decoded.clientId && decoded.tenantId) {
@@ -71,11 +74,18 @@ export const authenticateClient = async (
           error: 'Invalid or inactive client'
         });
       }
+      if (!(await assertAuthSessionActive(decoded.jti, 'CLIENT', client.id))) {
+        return res.status(401).json({
+          success: false,
+          error: 'Session revoked or expired'
+        });
+      }
       req.client = {
         id: client.id,
         tenantId: client.tenantId
       };
       req.userType = 'client';
+      req.authSessionId = decoded.jti;
       return next();
     }
 
@@ -94,11 +104,18 @@ export const authenticateClient = async (
           error: 'Invalid or inactive parent'
         });
       }
+      if (!(await assertAuthSessionActive(decoded.jti, 'PARENT', parent.id))) {
+        return res.status(401).json({
+          success: false,
+          error: 'Session revoked or expired'
+        });
+      }
       req.parent = {
         id: parent.id,
         tenantId: parent.tenantId
       };
       req.userType = 'parent';
+      req.authSessionId = decoded.jti;
       return next();
     }
 

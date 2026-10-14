@@ -454,6 +454,36 @@ class ApiService {
     await this.api.post('/auth/change-password', data);
   }
 
+  async getAuthSessions(): Promise<{
+    sessions: Array<{
+      id: string;
+      deviceLabel: string | null;
+      userAgent: string | null;
+      ipAddress: string | null;
+      createdAt: string;
+      lastSeenAt: string;
+      expiresAt: string;
+      current: boolean;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/auth/sessions');
+    return response.data.data || { sessions: [] };
+  }
+
+  async revokeAuthSession(sessionId: string): Promise<void> {
+    await this.api.delete(`/auth/sessions/${sessionId}`);
+  }
+
+  async revokeOtherAuthSessions(): Promise<{ revoked: number }> {
+    const response = await this.api.delete<ApiResponse>('/auth/sessions/others');
+    return response.data.data || { revoked: 0 };
+  }
+
+  async revokeAllAuthSessions(): Promise<{ revoked: number }> {
+    const response = await this.api.delete<ApiResponse>('/auth/sessions');
+    return response.data.data || { revoked: 0 };
+  }
+
   async changeEmail(data: { newEmail: string; password: string }): Promise<void> {
     await this.api.post('/auth/change-email', data);
   }

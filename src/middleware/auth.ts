@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, JWTPayload, ApiResponse } from '../types';
 import { isSessionVersionValid } from '../utils/sessionVersion';
 import { readAccessTokenFromCookie } from './authCookies';
+import { assertAuthSessionActive } from '../services/authSessionService';
 
 /**
  * Middleware to verify JWT token and authenticate user
@@ -60,6 +61,15 @@ export const authenticate = async (
       return;
     }
 
+    const sessionOk = await assertAuthSessionActive(decoded.jti, 'USER', user.id);
+    if (!sessionOk) {
+      res.status(401).json({
+        success: false,
+        error: 'Session revoked or expired'
+      });
+      return;
+    }
+
     // Check if tenant is active
     if (!user.tenant.isActive) {
       res.status(401).json({
@@ -73,6 +83,7 @@ export const authenticate = async (
     req.user = user;
     req.tenant = user.tenant;
     req.tenantId = user.tenantId;
+    req.authSessionId = decoded.jti;
 
     next();
   } catch (error) {

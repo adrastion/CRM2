@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
 import { isSessionVersionValid } from '../utils/sessionVersion';
+import { assertAuthSessionActive } from '../services/authSessionService';
 
 /**
  * Middleware: JWT type TESTER.
@@ -37,8 +38,13 @@ export const authenticateTester = asyncHandler(async (
       res.status(401).json({ success: false, error: 'Invalid or inactive tester' });
       return;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'TESTER', tester.id))) {
+      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      return;
+    }
 
     (req as any).tester = tester;
+    req.authSessionId = decoded.jti;
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -87,8 +93,13 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
       res.status(401).json({ success: false, error: 'Invalid or inactive super admin' });
       return;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
+      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      return;
+    }
     (req as any).superAdmin = superAdmin;
     (req as any).platformChatActor = { kind: 'SUPER_ADMIN', id: superAdmin.id };
+    req.authSessionId = decoded.jti;
     next();
     return;
   }
@@ -99,8 +110,13 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
       res.status(401).json({ success: false, error: 'Invalid or inactive tester' });
       return;
     }
+    if (!(await assertAuthSessionActive(decoded.jti, 'TESTER', tester.id))) {
+      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      return;
+    }
     (req as any).tester = tester;
     (req as any).platformChatActor = { kind: 'TESTER', id: tester.id };
+    req.authSessionId = decoded.jti;
     next();
     return;
   }

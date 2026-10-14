@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validate } from '../middleware/validation';
 import { UnifiedAuthService, AccountType } from '../services/unifiedAuthService';
 import { maybeSetAuthCookies } from '../middleware/authCookies';
+import { extractSessionMeta } from '../services/authSessionService';
 
 const ACCOUNT_TYPES: AccountType[] = [
   'TENANT_USER',
@@ -79,7 +80,12 @@ export const identify = asyncHandler(async (req: Request, res: Response<ApiRespo
  */
 export const setupPassword = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { identifier, password, rememberMe } = req.body;
-  const result = await UnifiedAuthService.setupPassword(identifier, password, rememberMe);
+  const result = await UnifiedAuthService.setupPassword(
+    identifier,
+    password,
+    rememberMe,
+    extractSessionMeta(req)
+  );
   maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result, message: 'Пароль создан' });
 });
@@ -89,7 +95,12 @@ export const setupPassword = asyncHandler(async (req: Request, res: Response<Api
  */
 export const login = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { identifier, password, rememberMe } = req.body;
-  const result = await UnifiedAuthService.login(identifier, password, rememberMe);
+  const result = await UnifiedAuthService.login(
+    identifier,
+    password,
+    rememberMe,
+    extractSessionMeta(req)
+  );
   maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result });
 });
@@ -99,7 +110,12 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
  */
 export const selectAccount = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { selectionToken, accountType, accountId } = req.body;
-  const result = await UnifiedAuthService.selectAccount(selectionToken, accountType, accountId);
+  const result = await UnifiedAuthService.selectAccount(
+    selectionToken,
+    accountType,
+    accountId,
+    extractSessionMeta(req)
+  );
   maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result });
 });
@@ -113,7 +129,10 @@ export const getLinkedSessions = asyncHandler(async (req: Request, res: Response
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return;
   }
-  const result = await UnifiedAuthService.getLinkedSessionsForUser(userId);
+  const result = await UnifiedAuthService.getLinkedSessionsForUser(
+    userId,
+    extractSessionMeta(req)
+  );
   res.json({ success: true, data: result });
 });
 

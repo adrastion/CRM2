@@ -7,6 +7,11 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
 import { sanitizeClientCertificateFields } from '../utils/clientCertificates';
 import { maybeSetAuthCookies } from '../middleware/authCookies';
+import {
+  createAuthSession,
+  extractSessionMeta,
+  expiresAtFromTtl,
+} from '../services/authSessionService';
 
 function normalizePhone(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -416,15 +421,23 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       }
 
       // Генерируем JWT токен
+      const expiresIn = '30d';
+      const authSession = await createAuthSession({
+        actorType: 'CLIENT',
+        actorId: client.id,
+        expiresAt: expiresAtFromTtl(expiresIn),
+        meta: extractSessionMeta(req),
+      });
       const token = jwt.sign(
         {
           clientId: client.id,
           tenantId: client.tenantId,
           type: 'client',
           sv: client.sessionVersion,
+          jti: authSession.id,
         },
         process.env.JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn }
       );
 
       if (!client.tenant) {
@@ -496,15 +509,23 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       }
 
       // Генерируем JWT токен для родителя
+      const expiresIn = '30d';
+      const authSession = await createAuthSession({
+        actorType: 'PARENT',
+        actorId: parent.id,
+        expiresAt: expiresAtFromTtl(expiresIn),
+        meta: extractSessionMeta(req),
+      });
       const token = jwt.sign(
         {
           parentId: parent.id,
           tenantId: parent.tenantId,
           type: 'parent',
           sv: parent.sessionVersion,
+          jti: authSession.id,
         },
         process.env.JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn }
       );
 
       if (!parent.tenant) {

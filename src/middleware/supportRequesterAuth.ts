@@ -4,6 +4,7 @@ import { ApiResponse } from '../types';
 import { asyncHandler } from './errorHandler';
 import { prisma } from '../lib/prisma';
 import { isSessionVersionValid } from '../utils/sessionVersion';
+import { assertAuthSessionActive } from '../services/authSessionService';
 
 export type SupportRequester =
   | { kind: 'TENANT_USER'; id: string; email?: string; tenantId: string }
@@ -20,6 +21,7 @@ type AnyJwt = Record<string, unknown> & {
   tenantId?: string;
   type?: string;
   sv?: number;
+  jti?: string;
 };
 
 /**
@@ -77,6 +79,10 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
       !isSessionVersionValid(decoded, user.sessionVersion)
     ) {
       res.status(401).json({ success: false, error: 'Invalid or inactive user' });
+      return;
+    }
+    if (!(await assertAuthSessionActive(decoded.jti, 'USER', user.id))) {
+      res.status(401).json({ success: false, error: 'Session revoked or expired' });
       return;
     }
     (req as SupportRequesterRequest).supportRequester = {

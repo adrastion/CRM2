@@ -18,6 +18,8 @@ import {
 } from '../utils/clientCertificates';
 import { notifyAthleteCreated } from '../services/notificationDomainHooks';
 import { normalizeEmail } from '../utils/identifier';
+import { revokeSessionsOnVersionBump } from '../services/authSessionService';
+import { FinanceService } from '../services/financeService';
 
 /** Контактные поля родителя без ЛК (пароль, sessionVersion и т.п.). */
 function mapParentContactFields(parent: any, tenantId: string, opts?: { forCreate?: boolean }) {
@@ -306,6 +308,12 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     return acc;
   }, {} as Record<string, typeof allOverduePayments>);
 
+  // Баланс как в «Финансы → Операции клиентов» (не сырой Client.balance)
+  const financeBalances = await FinanceService.clientMembershipBalances(
+    tenantId!,
+    clientIds
+  );
+
   const clientsWithDebt = clients.map((client) => {
     // Find overdue payments for this client
     const overduePayments = paymentsByClient[client.id] || [];
@@ -323,10 +331,15 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       };
     });
 
+    const walletBalance = Number((clientSafe as any).balance ?? 0);
+    const balance = financeBalances.has(client.id)
+      ? financeBalances.get(client.id)!
+      : walletBalance;
+
     return {
       ...sanitizeClientCertificateFields(clientSafe as any),
-      // Decimal → number, иначе на клиенте баланс может отображаться как 0 / NaN
-      balance: Number((clientSafe as any).balance ?? 0),
+      // Decimal → number; значение = remaining из membershipSummary
+      balance,
       parents: parentsSafe,
       hasPassword: Boolean(password),
       password: undefined,
@@ -836,6 +849,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
       sessionVersion: { increment: 1 },
     }
   });
+  await revokeSessionsOnVersionBump('CLIENT', id);
 
   const { password: _pw, ...safe } = updatedClient as typeof updatedClient & { password?: string | null };
 
@@ -887,6 +901,7 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     where: { id },
     data: { isActive: false, sessionVersion: { increment: 1 } }
   });
+  await revokeSessionsOnVersionBump('CLIENT', id);
 
   res.json({
     success: true,

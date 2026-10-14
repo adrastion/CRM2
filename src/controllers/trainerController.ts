@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { AuthService } from '../services/authService';
 import bcrypt from 'bcrypt';
 import { BCRYPT_ROUNDS } from '../constants/security';
+import { revokeSessionsOnVersionBump } from '../services/authSessionService';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -645,6 +646,9 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
         where: { id: trainer.userId },
         data: userUpdateData
       });
+      if (userUpdateData.sessionVersion) {
+        await revokeSessionsOnVersionBump('USER', trainer.userId);
+      }
     }
 
     const trainerUpdateData: any = {};

@@ -6,6 +6,8 @@ export interface AuthenticatedRequest extends Request {
   user?: User;
   tenant?: Tenant;
   tenantId?: string;
+  /** jti текущей AuthSession (id строки) */
+  authSessionId?: string;
 }
 
 // JWT Payload interface
@@ -16,6 +18,8 @@ export interface JWTPayload {
   tenantId: string;
   /** Версия сессии; при несовпадении с User.sessionVersion токен отклоняется */
   sv?: number;
+  /** id AuthSession */
+  jti?: string;
   iat?: number;
   exp?: number;
 }

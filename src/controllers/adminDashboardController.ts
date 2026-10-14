@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { PlanCatalogService } from '../services/planCatalogService';
 import { breakdownPayment, sumPayments, calculateMrr } from '../utils/revenue';
 import { createAuditLog, getIpAddress, getUserAgent } from '../utils/auditLogger';
+import { revokeSessionsOnVersionBump } from '../services/authSessionService';
 import * as XLSX from 'xlsx';
 
 type GrantLogWithAdmin = Prisma.SubscriptionGrantLogGetPayload<{
@@ -2934,6 +2935,7 @@ export const unlinkTenantOwnerSuperAdmin = asyncHandler(async (
       sessionVersion: { increment: 1 },
     },
   });
+  await revokeSessionsOnVersionBump('SUPER_ADMIN', linked.id);
 
   await createAuditLog({
     superAdminId: superAdmin?.id,
@@ -3085,6 +3087,7 @@ export const unlinkTenantOwnerTester = asyncHandler(async (
       sessionVersion: { increment: 1 },
     },
   });
+  await revokeSessionsOnVersionBump('TESTER', linked.id);
 
   await createAuditLog({
     superAdminId: superAdmin?.id,
