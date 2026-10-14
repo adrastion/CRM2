@@ -13,11 +13,13 @@ export interface ClientNameLinkProps {
   variant?: 'link' | 'inherit' | 'body1' | 'body2';
   sx?: LinkProps['sx'];
   stopPropagation?: boolean;
+  /** Открыть карточку на месте (без перехода на /clients). */
+  onOpen?: (clientId: string) => void;
 }
 
 /**
- * Кликабельное имя клиента школы — открывает карточку спортсмена
- * через deep link `/clients?clientId=…`.
+ * Кликабельное имя клиента школы — по умолчанию deep link `/clients?clientId=…`,
+ * либо `onOpen` для карточки на текущей странице.
  */
 const ClientNameLink: React.FC<ClientNameLinkProps> = ({
   clientId,
@@ -26,6 +28,7 @@ const ClientNameLink: React.FC<ClientNameLinkProps> = ({
   variant = 'link',
   sx,
   stopPropagation = true,
+  onOpen,
 }) => {
   const navigate = useNavigate();
   const displayName = name || (client ? formatClientFullName(client) : '—');
@@ -34,6 +37,10 @@ const ClientNameLink: React.FC<ClientNameLinkProps> = ({
     if (stopPropagation) {
       e.stopPropagation();
       e.preventDefault();
+    }
+    if (onOpen) {
+      onOpen(clientId);
+      return;
     }
     navigate(`/clients?clientId=${encodeURIComponent(clientId)}`);
   };

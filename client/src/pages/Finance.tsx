@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -40,6 +41,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { canCancelFinanceOperations } from '../utils/roles';
 import { useSearchParams } from 'react-router-dom';
 import ClientNameLink from '../components/ClientNameLink';
+import TrainerNameLink from '../components/TrainerNameLink';
+import { useStaffEntityCards } from '../components/StaffEntityCardHost';
 import FinanceOperationsTable from '../components/finance/FinanceOperationsTable';
 import FinanceSummaryTable, {
   FinanceSummaryRow,
@@ -72,24 +75,35 @@ const DATE_PRESETS = [
   { key: 'last_month', label: 'Прошлый месяц' },
 ];
 
-const formatClientOptionLabel = (c: {
-  lastName?: string | null;
-  firstName?: string | null;
-  middleName?: string | null;
-  balance?: number | null;
-  groupName?: string | null;
-  phone?: string | null;
-  groupMemberships?: Array<{ group?: { name?: string | null } | null }>;
-}) => {
+const formatClientOptionLabel = (
+  c: {
+    lastName?: string | null;
+    firstName?: string | null;
+    middleName?: string | null;
+    balance?: number | null;
+    groupName?: string | null;
+    phone?: string | null;
+    groupMemberships?: Array<{ group?: { name?: string | null } | null }>;
+  },
+  options?: { includeBalance?: boolean }
+) => {
   const name = [c.lastName, c.firstName, c.middleName].filter(Boolean).join(' ');
   const group =
     c.groupName ||
     c.groupMemberships?.find((gm) => gm.group?.name)?.group?.name ||
     'без группы';
+  if (options?.includeBalance === false) {
+    return `${name} — ${group}`;
+  }
   const bal = Number(c.balance ?? 0);
   const balStr = `${bal.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`;
   return `${name} — ${group} — ${balStr}`;
 };
+
+const formatTrainerOptionLabel = (t: {
+  id: string;
+  user?: { lastName?: string | null; firstName?: string | null } | null;
+}) => (t.user ? `${t.user.lastName || ''} ${t.user.firstName || ''}`.trim() : t.id);
 const formatMoney = (value: number, withSign = false, direction?: string) => {
   const abs = Math.abs(value).toLocaleString('ru-RU');
   if (!withSign) {
@@ -198,6 +212,10 @@ const Finance: React.FC = () => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const { openClient, openTrainer, dialogs: entityCardDialogs } = useStaffEntityCards({
+    branches,
+    trainers,
+  });
 
   const [opFilters, setOpFilters] = useState<OpFilters>(emptyOpFilters());
   const [appliedOpFilters, setAppliedOpFilters] = useState<OpFilters>(emptyOpFilters());
@@ -223,14 +241,12 @@ const Finance: React.FC = () => {
   const [draftSalaryTrainingsMode, setDraftSalaryTrainingsMode] = useState<'all' | 'conducted'>('all');
 
   const [memClientId, setMemClientId] = useState('');
-  const [memTrainerId, setMemTrainerId] = useState('');
   const [memBranchId, setMemBranchId] = useState('');
   const [memGroupIds, setMemGroupIds] = useState<string[]>([]);
   const [memDate, setMemDate] = useState<Date | null>(new Date());
   const [memAmountFrom, setMemAmountFrom] = useState('');
   const [memAmountTo, setMemAmountTo] = useState('');
   const [draftMemClientId, setDraftMemClientId] = useState('');
-  const [draftMemTrainerId, setDraftMemTrainerId] = useState('');
   const [draftMemBranchId, setDraftMemBranchId] = useState('');
   const [draftMemGroupIds, setDraftMemGroupIds] = useState<string[]>([]);
   const [draftMemDate, setDraftMemDate] = useState<Date | null>(new Date());
@@ -309,10 +325,6 @@ const Finance: React.FC = () => {
       const c = clients.find((cl) => cl.id === memClientId);
       chips.push(c ? `${c.lastName} ${c.firstName}` : memClientId);
     }
-    if (memTrainerId) {
-      const t = trainers.find((tr) => tr.id === memTrainerId);
-      chips.push(t?.user ? `${t.user.lastName} ${t.user.firstName}` : memTrainerId);
-    }
     if (memDate) chips.push(format(memDate, 'dd.MM.yyyy', { locale: ru }));
     if (memBranchId) chips.push(branches.find((b) => b.id === memBranchId)?.name || memBranchId);
     memGroupIds.forEach((gid) => chips.push(groups.find((g) => g.id === gid)?.name || gid));
@@ -320,7 +332,7 @@ const Finance: React.FC = () => {
       chips.push(`${memAmountFrom || '0'} ₽ - ${memAmountTo || '∞'} ₽`);
     }
     return chips;
-  }, [memClientId, memTrainerId, memDate, memBranchId, memGroupIds, memAmountFrom, memAmountTo, clients, trainers, branches, groups]);
+  }, [memClientId, memDate, memBranchId, memGroupIds, memAmountFrom, memAmountTo, clients, branches, groups]);
 
   const loadRefs = useCallback(async () => {
     if (refsLoadedRef.current) return;
@@ -381,14 +393,14 @@ const Finance: React.FC = () => {
   const loadMemberships = useCallback(async () => {
     const params: Record<string, any> = {};
     if (memClientId) params.clientIds = memClientId;
-    if (memTrainerId) params.trainerIds = memTrainerId;
     if (memBranchId) params.branchIds = memBranchId;
     if (memGroupIds.length) params.groupIds = memGroupIds.join(',');
     if (memAmountFrom) params.amountFrom = memAmountFrom;
     if (memAmountTo) params.amountTo = memAmountTo;
+    if (memDate) params.periodKey = format(memDate, 'yyyy-MM');
     const rows = await withRetry(() => apiService.getFinanceMembershipSummary(params));
     setMembershipRows(rows);
-  }, [memClientId, memTrainerId, memBranchId, memGroupIds, memAmountFrom, memAmountTo]);
+  }, [memClientId, memBranchId, memGroupIds, memAmountFrom, memAmountTo, memDate]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -691,7 +703,13 @@ const Finance: React.FC = () => {
     () =>
       salaryRows.map((row) => ({
         id: row.trainerId,
-        name: row.trainerName,
+        name: (
+          <TrainerNameLink
+            trainerId={row.trainerId}
+            name={row.trainerName}
+            onOpen={openTrainer}
+          />
+        ),
         period:
           salaryDateFrom && salaryDateTo
             ? `${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })} — ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
@@ -711,14 +729,20 @@ const Finance: React.FC = () => {
           setPayoutOpen(true);
         },
       })),
-    [salaryRows, salaryDateFrom, salaryDateTo]
+    [salaryRows, salaryDateFrom, salaryDateTo, openTrainer]
   );
 
   const membershipTableRows: FinanceSummaryRow[] = useMemo(
     () =>
       membershipRows.map((row) => ({
         id: `${row.clientId}:${row.periodKey}`,
-        name: <ClientNameLink clientId={row.clientId} name={row.clientName} />,
+        name: (
+          <ClientNameLink
+            clientId={row.clientId}
+            name={row.clientName}
+            onOpen={openClient}
+          />
+        ),
         period: row.periodLabel || row.periodKey || '—',
         count: '—',
         accrued: row.membershipPrice,
@@ -747,7 +771,7 @@ const Finance: React.FC = () => {
             }
           : undefined,
       })),
-    [membershipRows]
+    [membershipRows, openClient]
   );
 
   const sortedSalaryRows = useMemo(
@@ -999,6 +1023,7 @@ const Finance: React.FC = () => {
                 deletingId={deletingOpId}
                 onRowClick={(op) => setDetailOp(op)}
                 onDelete={canDeleteOperations ? (op) => setCancelOp(op) : undefined}
+                onOpenClient={openClient}
               />
             )}
           </>
@@ -1055,7 +1080,6 @@ const Finance: React.FC = () => {
             {renderFinanceToolbar(
               () => {
                 setDraftMemClientId(memClientId);
-                setDraftMemTrainerId(memTrainerId);
                 setDraftMemBranchId(memBranchId);
                 setDraftMemGroupIds(memGroupIds);
                 setDraftMemDate(memDate);
@@ -1066,7 +1090,6 @@ const Finance: React.FC = () => {
               membershipFilterChips,
               () => {
                 setMemClientId('');
-                setMemTrainerId('');
                 setMemBranchId('');
                 setMemGroupIds([]);
                 setMemDate(new Date());
@@ -1280,21 +1303,25 @@ const Finance: React.FC = () => {
           </Stack>
 
           <Typography sx={filterSectionTitleSx}>Выбрать тренера</Typography>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <Select
-              displayEmpty
-              value={draftSalaryTrainerId}
-              onChange={(e) => setDraftSalaryTrainerId(e.target.value)}
-              sx={filterSelectSx}
-            >
-              <MenuItem value="">Выбрать тренера</MenuItem>
-              {trainers.map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.user ? `${t.user.lastName} ${t.user.firstName}` : t.id}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={trainers}
+            value={trainers.find((t) => t.id === draftSalaryTrainerId) || null}
+            onChange={(_, value) => setDraftSalaryTrainerId(value?.id || '')}
+            getOptionLabel={(t) => formatTrainerOptionLabel(t)}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            filterOptions={(options, { inputValue }) => {
+              const q = inputValue.trim().toLowerCase();
+              if (!q) return options;
+              return options.filter((t) => formatTrainerOptionLabel(t).toLowerCase().includes(q));
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder="Начните вводить ФИО"
+                sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+              />
+            )}
+          />
 
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
@@ -1424,21 +1451,27 @@ const Finance: React.FC = () => {
           </Stack>
 
           <Typography sx={filterSectionTitleSx}>Выбрать клиента</Typography>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <Select
-              displayEmpty
-              value={draftMemClientId}
-              onChange={(e) => setDraftMemClientId(e.target.value)}
-              sx={filterSelectSx}
-            >
-              <MenuItem value="">Выбрать клиента</MenuItem>
-              {clients.map((c) => (
-                <MenuItem key={c.id} value={c.id}>
-                  {formatClientOptionLabel(c)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={clients}
+            value={clients.find((c) => c.id === draftMemClientId) || null}
+            onChange={(_, value) => setDraftMemClientId(value?.id || '')}
+            getOptionLabel={(c) => formatClientOptionLabel(c, { includeBalance: false })}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            filterOptions={(options, { inputValue }) => {
+              const q = inputValue.trim().toLowerCase();
+              if (!q) return options;
+              return options.filter((c) =>
+                formatClientOptionLabel(c, { includeBalance: false }).toLowerCase().includes(q)
+              );
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder="Начните вводить ФИО"
+                sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+              />
+            )}
+          />
 
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
           <DatePicker
@@ -1451,23 +1484,6 @@ const Finance: React.FC = () => {
               },
             }}
           />
-
-          <Typography sx={filterSectionTitleSx}>Выбрать тренера</Typography>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <Select
-              displayEmpty
-              value={draftMemTrainerId}
-              onChange={(e) => setDraftMemTrainerId(e.target.value)}
-              sx={filterSelectSx}
-            >
-              <MenuItem value="">Выбрать тренера</MenuItem>
-              {trainers.map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.user ? `${t.user.lastName} ${t.user.firstName}` : t.id}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
 
           <Typography sx={filterSectionTitleSx}>По филиалу</Typography>
           <Chip
@@ -1570,14 +1586,12 @@ const Finance: React.FC = () => {
             }}
             onClick={() => {
               setDraftMemClientId('');
-              setDraftMemTrainerId('');
               setDraftMemBranchId('');
               setDraftMemGroupIds([]);
               setDraftMemDate(new Date());
               setDraftMemAmountFrom('');
               setDraftMemAmountTo('');
               setMemClientId('');
-              setMemTrainerId('');
               setMemBranchId('');
               setMemGroupIds([]);
               setMemDate(new Date());
@@ -1594,7 +1608,6 @@ const Finance: React.FC = () => {
             sx={{ textTransform: 'none', borderRadius: '12px', py: 1, mt: 2, bgcolor: colors.primary }}
             onClick={() => {
               setMemClientId(draftMemClientId);
-              setMemTrainerId(draftMemTrainerId);
               setMemBranchId(draftMemBranchId);
               setMemGroupIds(draftMemGroupIds);
               setMemDate(draftMemDate);
@@ -1625,7 +1638,17 @@ const Finance: React.FC = () => {
         >
           <DialogTitle sx={{ fontWeight: 600 }}>Введите сумму выплаты</DialogTitle>
           <DialogContent>
-            <Typography sx={{ mb: 1, color: colors.textMuted }}>{selectedSalary?.trainerName}</Typography>
+            <Typography sx={{ mb: 1, color: colors.textMuted }}>
+              {selectedSalary ? (
+                <TrainerNameLink
+                  trainerId={selectedSalary.trainerId}
+                  name={selectedSalary.trainerName}
+                  variant="inherit"
+                  sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                  onOpen={openTrainer}
+                />
+              ) : null}
+            </Typography>
             <Typography sx={{ mb: 2, fontSize: typography.label }}>
               Уже выплачено: {formatMoney(selectedSalary?.paid ?? 0)}
             </Typography>
@@ -1672,6 +1695,7 @@ const Finance: React.FC = () => {
                   name={selectedMembership.clientName}
                   variant="inherit"
                   sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                  onOpen={openClient}
                 />
               ) : null}
             </Typography>
@@ -1783,6 +1807,7 @@ const Finance: React.FC = () => {
                   name={accrualCorrectRow.clientName}
                   variant="inherit"
                   sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                  onOpen={openClient}
                 />
               ) : null}
             </Typography>
@@ -1933,20 +1958,32 @@ const Finance: React.FC = () => {
                   </Box>
                   {formatOperationCreator(detailOp)}
                 </Typography>
-                {detailOp.client && (
+                {detailOp.client && detailOp.clientId && (
                   <Typography sx={{ fontSize: typography.label }}>
                     <Box component="span" sx={{ color: colors.textMuted }}>
                       Клиент:{' '}
                     </Box>
-                    {detailOp.client.lastName} {detailOp.client.firstName}
+                    <ClientNameLink
+                      clientId={detailOp.clientId}
+                      client={detailOp.client}
+                      variant="inherit"
+                      sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                      onOpen={openClient}
+                    />
                   </Typography>
                 )}
-                {detailOp.trainer && (
+                {detailOp.trainer && detailOp.trainerId && (
                   <Typography sx={{ fontSize: typography.label }}>
                     <Box component="span" sx={{ color: colors.textMuted }}>
                       Тренер:{' '}
                     </Box>
-                    {detailOp.trainer.lastName} {detailOp.trainer.firstName}
+                    <TrainerNameLink
+                      trainerId={detailOp.trainerId}
+                      name={`${detailOp.trainer.lastName} ${detailOp.trainer.firstName}`.trim()}
+                      variant="inherit"
+                      sx={{ color: 'inherit', fontWeight: 400, display: 'inline' }}
+                      onOpen={openTrainer}
+                    />
                   </Typography>
                 )}
                 {detailOp.group && (
@@ -2036,6 +2073,7 @@ const Finance: React.FC = () => {
           onClose={() => setSnackbar('')}
           message={snackbar}
         />
+        {entityCardDialogs}
       </Box>
     </LocalizationProvider>
   );

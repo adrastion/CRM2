@@ -6,15 +6,12 @@ import {
   Typography,
   Grid,
   Paper,
-  Card,
-  CardContent,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
   Alert,
   Button,
   Dialog,
@@ -23,8 +20,6 @@ import {
   DialogActions,
   TextField,
   CircularProgress,
-  IconButton,
-  Tooltip,
   MenuItem,
   Select,
   FormControl,
@@ -33,69 +28,16 @@ import {
   FormControlLabel,
   Switch,
 } from '@mui/material';
-import {
-  TrendingUp,
-  AccountBalance,
-  Warning,
-  Settings,
-  Add,
-  Payment,
-  Edit,
-  Delete,
-  GetApp,
-  DragIndicator,
-  Visibility,
-  VisibilityOff,
-  AdminPanelSettings,
-  LinkOff,
-  BugReport,
-} from '@mui/icons-material';
 import type {
   SubscriptionPlanItem,
   SubscriptionGrantLogItem,
 } from '../types';
-import {
-  LineChart,
-  Line,
-  BarChart as RechartsBarChart,
-  Bar,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { apiService } from '../services/api';
-import ServerLoadMonitoringTab from './ServerLoadMonitoringTab';
-import SiteTrafficMonitoringTab from './SiteTrafficMonitoringTab';
 import SuperAdminMaintenanceTab from './SuperAdminMaintenanceTab';
-import SuperAdminTermsTab from './SuperAdminTermsTab';
-import SuperAdminPrivacyTab from './SuperAdminPrivacyTab';
 import SuperAdminDevNotesTab from './SuperAdminDevNotesTab';
 import SuperAdminPlannerTab from './SuperAdminPlannerTab';
 import SuperAdminClientIdeasTab from '../components/SuperAdminClientIdeasTab';
@@ -103,174 +45,54 @@ import {
   SuperAdminPlatformChatsTab,
   SuperAdminPlatformChangelogTab,
 } from '../components/SuperAdminPlatformTabs';
-import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
-import SchoolOffersPanel from '../components/notifications/SchoolOffersPanel';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
-import PlatformMarketersCrud from '../components/admin/PlatformMarketersCrud';
+import SaMonitoringTab from './admin/SaMonitoringTab';
+import SaLegalTab from './admin/SaLegalTab';
+import SaNotificationsTab from './admin/SaNotificationsTab';
+import SaOverviewTab, { type SaOverviewDashboardData } from './admin/SaOverviewTab';
+import SaTransactionsTab from './admin/SaTransactionsTab';
+import SaAccountsTab from './admin/SaAccountsTab';
+import SaMetricsSectionTab from './admin/SaMetricsTab';
+import SaAuditTab from './admin/SaAuditTab';
+import SaTariffsTab from './admin/SaTariffsTab';
+import SaMarketersTab from './admin/SaMarketersTab';
+import {
+  resolveSaLocation,
+  resolveSaTab,
+  type SaSection,
+  type SaTab,
+  type SaMetricsTab,
+  type SaMonitoringTab as SaMonitoringTabKey,
+  type SaLegalTab as SaLegalTabKey,
+} from '../config/saDashboard';
 
 type PlatformStaffRole = 'SUPPORT' | 'DESIGNER' | 'SECURITY';
 
-const SA_SECTIONS = [
-  'overview',
-  'transactions',
-  'accounts',
-  'analytics',
-  'kpi',
-  'audit',
-  'tariffs',
-  'marketers',
-  'server-load',
-  'site-traffic',
-  'maintenance',
-  'terms',
-  'privacy',
-  'notifications',
-  'planner',
-  'development',
-  'client-ideas',
-  'chats',
-  'changelog',
-] as const;
-
-type SaSection = (typeof SA_SECTIONS)[number];
-
-function resolveSection(raw: string | null): SaSection {
-  if (raw && (SA_SECTIONS as readonly string[]).includes(raw)) {
-    return raw as SaSection;
-  }
-  return 'overview';
-}
-
-interface DashboardData {
-  tenants: {
-    total: number;
-    active: number;
-    expired: number;
-    soonExpiring: number;
-  };
-  subscriptions: {
-    byPlan: Record<string, number>;
-    soonExpiring: Array<{
-      id: string;
-      name: string;
-      email: string;
-      planType: string;
-      endDate: string;
-      daysUntilExpiry: number;
-    }>;
-    expired: Array<{
-      id: string;
-      name: string;
-      email: string;
-      planType: string;
-      endDate: string;
-    }>;
-  };
-  revenue: {
-    total: number;
-    currency: string;
-  };
-  marketers: {
-    total: number;
-    totalUnpaid: number;
-    list: Array<{
-      id: string;
-      name: string;
-      email: string;
-      balance: number;
-      commissionPercentage: number;
-      referredClientsCount: number;
-    }>;
-  };
-  budget: {
-    totalRevenue: number;
-    reserveAmount: number;
-    totalUnpaidMarketers: number;
-    totalExpenses: number;
-    totalMarketerPayments: number;
-    availableBudget: number;
-    hasInsufficientFunds: boolean;
-    settings: {
-      reservePercentage: number | null;
-      reserveAmount: number | null;
-      errorLogPath?: string | null;
-    };
-  };
-  recentPayments: Array<{
-    id: string;
-    tenantName: string;
-    amount: number;
-    planType: string;
-    paidAt: string;
-  }>;
-}
-
-// Компонент для перетаскиваемого виджета
-interface SortableWidgetProps {
-  id: string;
-  children: React.ReactNode;
-  title: string;
-  visible: boolean;
-  onToggleVisibility: () => void;
-}
-
-const SortableWidget: React.FC<SortableWidgetProps> = ({ id, children, title, visible, onToggleVisibility }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  if (!visible) return null;
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <IconButton
-                {...attributes}
-                {...listeners}
-                size="small"
-                sx={{ cursor: 'grab' }}
-              >
-                <DragIndicator />
-              </IconButton>
-              <Typography variant="h6" fontWeight="bold">
-                {title}
-              </Typography>
-            </Box>
-            <IconButton
-              size="small"
-              onClick={onToggleVisibility}
-              title="Скрыть виджет"
-            >
-              <Visibility />
-            </IconButton>
-          </Box>
-          {children}
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
+type DashboardData = SaOverviewDashboardData;
 
 const AdminDashboard: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const section = useMemo(
-    () => resolveSection(searchParams.get('section')),
-    [searchParams]
+  const [searchParams, setSearchParams] = useSearchParams();
+  const saLoc = useMemo(() => resolveSaLocation(searchParams.toString()), [searchParams]);
+  const section: SaSection = saLoc.section;
+  const activeTab = useMemo(
+    () => resolveSaTab(section, saLoc.tab),
+    [section, saLoc.tab]
+  );
+
+  const setSectionTab = useCallback(
+    (tab: SaTab) => {
+      setSearchParams(
+        (() => {
+          const p = new URLSearchParams(searchParams);
+          p.set('section', section);
+          p.set('tab', tab);
+          return p;
+        })(),
+        { replace: true }
+      );
+    },
+    [searchParams, section, setSearchParams]
   );
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -299,32 +121,6 @@ const AdminDashboard: React.FC = () => {
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [forecastData, setForecastData] = useState<any>(null);
-  
-  // Виджеты дашборда
-  const [widgetOrder, setWidgetOrder] = useState<string[]>([
-    'revenue',
-    'expenses',
-    'profit',
-    'forecast',
-    'categories',
-    'plans',
-  ]);
-  const [widgetVisibility, setWidgetVisibility] = useState<Record<string, boolean>>({
-    revenue: true,
-    expenses: true,
-    profit: true,
-    forecast: true,
-    categories: true,
-    plans: true,
-  });
-  
-  // Датчики для drag & drop
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
   
   // Все аккаунты
   const [allTenants, setAllTenants] = useState<any[]>([]);
@@ -460,22 +256,13 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Загружаем аналитику для overview, если даты установлены
-    if (startDate && endDate && section === 'overview') {
-      loadAnalytics();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, section]);
-
-  useEffect(() => {
     if (section === 'transactions') {
       loadTransactions();
     } else if (section === 'accounts') {
       loadAllTenants();
-    } else if (section === 'analytics') {
-      loadAnalytics();
-    } else if (section === 'kpi') {
-      loadKPIMetrics();
+    } else if (section === 'metrics') {
+      if (activeTab === 'kpi') loadKPIMetrics();
+      else loadAnalytics();
     } else if (section === 'audit') {
       loadAuditLogs();
     } else if (section === 'tariffs') {
@@ -484,7 +271,7 @@ const AdminDashboard: React.FC = () => {
       loadMarketerStats();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
+  }, [section, activeTab]);
 
   useEffect(() => {
     if (section === 'transactions') {
@@ -494,11 +281,11 @@ const AdminDashboard: React.FC = () => {
   }, [transactionTypeFilter, startDate, endDate, selectedCategoryId]);
 
   useEffect(() => {
-    if (section === 'analytics') {
+    if (section === 'metrics' && activeTab === 'analytics') {
       loadAnalytics();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate]);
+  }, [startDate, endDate, section, activeTab]);
 
   const loadTransactions = async () => {
     try {
@@ -1289,25 +1076,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setWidgetOrder((items) => {
-        const oldIndex = items.indexOf(active.id as string);
-        const newIndex = items.indexOf(over.id as string);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
-  const handleToggleWidgetVisibility = (widgetId: string) => {
-    setWidgetVisibility((prev) => ({
-      ...prev,
-      [widgetId]: !prev[widgetId],
-    }));
-  };
-
   const expenseDirty =
     expenseDialog && isDirtyValue(expenseFormSnapshot(), expenseFormBaseline);
   const expenseUnsaved = useUnsavedClose({
@@ -1484,1698 +1252,160 @@ const AdminDashboard: React.FC = () => {
 
       {/* Контент секций */}
       {section === 'overview' && data && (
-        <>
-      {/* Бюджет и финансы */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" gutterBottom>
-                    Общая выручка
-                  </Typography>
-                  <Typography variant="h5" fontWeight="bold" color="primary">
-                    {formatCurrency(data.revenue.total)}
-                  </Typography>
-                </Box>
-                <TrendingUp sx={{ fontSize: 32, color: 'primary.main', opacity: 0.3 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" gutterBottom>
-                    Резерв
-                  </Typography>
-                  <Typography variant="h5" fontWeight="bold" color="info.main">
-                    {formatCurrency(data.budget.reserveAmount)}
-                  </Typography>
-                </Box>
-                <AccountBalance sx={{ fontSize: 32, color: 'info.main', opacity: 0.3 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              border: data.budget.hasInsufficientFunds ? 2 : 0,
-              borderColor: data.budget.hasInsufficientFunds ? 'error.main' : 'transparent',
-            }}
-          >
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" gutterBottom>
-                    Доступный бюджет
-                  </Typography>
-                  <Typography
-                    variant="h5"
-                    fontWeight="bold"
-                    color={data.budget.hasInsufficientFunds ? 'error.main' : 'success.main'}
-                  >
-                    {formatCurrency(data.budget.availableBudget)}
-                  </Typography>
-                  {data.budget.hasInsufficientFunds && (
-                    <Chip
-                      label="Недостаточно средств"
-                      color="error"
-                      size="small"
-                      sx={{ mt: 1 }}
-                      icon={<Warning />}
-                    />
-                  )}
-                </Box>
-                <AccountBalance
-                  sx={{
-                    fontSize: 32,
-                    color: data.budget.hasInsufficientFunds ? 'error.main' : 'success.main',
-                    opacity: 0.3,
-                  }}
-                />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Виджеты с возможностью перетаскивания */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={widgetOrder} strategy={verticalListSortingStrategy}>
-          {widgetOrder.map((widgetId) => {
-            if (!widgetVisibility[widgetId]) return null;
-
-            switch (widgetId) {
-              case 'revenue':
-                if (!analyticsData || !analyticsData.chartData || analyticsData.chartData.length === 0) return null;
-                return (
-                  <SortableWidget
-                    key={widgetId}
-                    id={widgetId}
-                    title="Динамика доходов и расходов"
-                    visible={widgetVisibility[widgetId]}
-                    onToggleVisibility={() => handleToggleWidgetVisibility(widgetId)}
-                  >
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={analyticsData.chartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <RechartsTooltip 
-                          formatter={(value: any) => formatCurrency(Number(value))}
-                          contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                        />
-                        <Legend />
-                        <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
-                        <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
-                        <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </SortableWidget>
-                );
-              case 'forecast':
-                if (!forecastData) return null;
-                return (
-                  <SortableWidget
-                    key={widgetId}
-                    id={widgetId}
-                    title="Прогноз доходов на 6 месяцев"
-                    visible={widgetVisibility[widgetId]}
-                    onToggleVisibility={() => handleToggleWidgetVisibility(widgetId)}
-                  >
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsBarChart data={forecastData.forecast}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <RechartsTooltip 
-                          formatter={(value: any) => formatCurrency(Number(value))}
-                          contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                        />
-                        <Bar dataKey="amount" fill="#2196F3" />
-                      </RechartsBarChart>
-                    </ResponsiveContainer>
-                  </SortableWidget>
-                );
-              case 'categories':
-                if (!analyticsData || Object.keys(analyticsData.expensesByCategory).length === 0) return null;
-                return (
-                  <SortableWidget
-                    key={widgetId}
-                    id={widgetId}
-                    title="Расходы по категориям"
-                    visible={widgetVisibility[widgetId]}
-                    onToggleVisibility={() => handleToggleWidgetVisibility(widgetId)}
-                  >
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <RechartsPieChart>
-                            <Pie
-                              data={Object.entries(analyticsData.expensesByCategory).map(([name, value]) => ({
-                                name,
-                                value: Number(value),
-                              }))}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={(entry: any) => {
-                                const name = entry.name || '';
-                                const percent = entry.percent || 0;
-                                return `${name} ${(percent * 100).toFixed(0)}%`;
-                              }}
-                              outerRadius={80}
-                              fill="#8884d8"
-                              dataKey="value"
-                            >
-                              {Object.entries(analyticsData.expensesByCategory).map(([name], index) => {
-                                const category = expenseCategories.find(c => c.name === name);
-                                return (
-                                  <Cell key={`cell-${index}`} fill={category?.color || `#${Math.floor(Math.random() * 16777215).toString(16)}`} />
-                                );
-                              })}
-                            </Pie>
-                            <RechartsTooltip 
-                              formatter={(value: any) => formatCurrency(Number(value))}
-                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                            />
-                          </RechartsPieChart>
-                        </ResponsiveContainer>
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <RechartsBarChart data={Object.entries(analyticsData.incomeByPlan).map(([plan, amount]) => ({
-                            plan,
-                            amount: Number(amount),
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="plan" />
-                            <YAxis />
-                            <RechartsTooltip 
-                              formatter={(value: any) => formatCurrency(Number(value))}
-                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                            />
-                            <Bar dataKey="amount" fill="#4CAF50" />
-                          </RechartsBarChart>
-                        </ResponsiveContainer>
-                      </Grid>
-                    </Grid>
-                  </SortableWidget>
-                );
-              default:
-                return null;
-            }
-          })}
-        </SortableContext>
-      </DndContext>
-
-      {/* Список скрытых виджетов */}
-      {Object.entries(widgetVisibility).some(([_, visible]) => !visible) && (
-        <Card sx={{ mb: 3, bgcolor: 'grey.100' }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Скрытые виджеты
-            </Typography>
-            <Box display="flex" flexWrap="wrap" gap={1}>
-              {Object.entries(widgetVisibility)
-                .filter(([_, visible]) => !visible)
-                .map(([widgetId]) => (
-                  <Chip
-                    key={widgetId}
-                    label={
-                      widgetId === 'revenue' ? 'Динамика доходов' :
-                      widgetId === 'forecast' ? 'Прогноз доходов' :
-                      widgetId === 'categories' ? 'Расходы по категориям' :
-                      widgetId
-                    }
-                    onClick={() => handleToggleWidgetVisibility(widgetId)}
-                    icon={<VisibilityOff />}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
-            </Box>
-          </CardContent>
-        </Card>
+        <SaOverviewTab
+          data={data}
+          formatCurrency={formatCurrency}
+          formatDate={formatDate}
+          onNavigateSection={(s) => setSearchParams({ section: s })}
+        />
       )}
 
-      {/* Статистика по аккаунтам */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Всего аккаунтов
-              </Typography>
-              <Typography variant="h5" fontWeight="bold">
-                {data.tenants.total}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Активных
-              </Typography>
-              <Typography variant="h5" fontWeight="bold" color="success.main">
-                {data.tenants.active}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Истекают в течение 7 дней
-              </Typography>
-              <Typography variant="h5" fontWeight="bold" color="warning.main">
-                {data.tenants.soonExpiring}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="text.secondary" gutterBottom>
-                Истекших
-              </Typography>
-              <Typography variant="h5" fontWeight="bold" color="error.main">
-                {data.tenants.expired}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Распределение по тарифам */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom fontWeight="bold">
-              Распределение по тарифам
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Тариф</TableCell>
-                    <TableCell align="right">Количество</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.entries(data.subscriptions.byPlan).map(([plan, count]) => (
-                    <TableRow key={plan}>
-                      <TableCell>
-                        <Chip label={plan} size="small" />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="h6">{count}</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom fontWeight="bold">
-              Маркетологи
-            </Typography>
-            <Box mb={2}>
-              <Typography variant="body2" color="text.secondary">
-                Всего маркетологов: {data.marketers.total}
-              </Typography>
-              <Typography variant="h6" color="warning.main" fontWeight="bold">
-                Невыплачено: {formatCurrency(data.marketers.totalUnpaid)}
-              </Typography>
-            </Box>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Имя</TableCell>
-                    <TableCell align="right">Баланс</TableCell>
-                    <TableCell align="right">%</TableCell>
-                    <TableCell align="right">Клиентов</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.marketers.list.map((marketer) => (
-                    <TableRow key={marketer.id}>
-                      <TableCell>{marketer.name}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                        {formatCurrency(marketer.balance)}
-                      </TableCell>
-                      <TableCell align="right">{marketer.commissionPercentage}%</TableCell>
-                      <TableCell align="right">{marketer.referredClientsCount}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Подписки, которые скоро истекают */}
-      {data.subscriptions.soonExpiring.length > 0 && (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom fontWeight="bold" color="warning.main">
-            Подписки, истекающие в течение 7 дней
-          </Typography>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Аккаунт</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Тариф</TableCell>
-                  <TableCell>Дата окончания</TableCell>
-                  <TableCell>Осталось дней</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.subscriptions.soonExpiring.map((sub) => (
-                  <TableRow key={sub.id}>
-                    <TableCell>{sub.name}</TableCell>
-                    <TableCell>{sub.email}</TableCell>
-                    <TableCell>
-                      <Chip label={sub.planType} size="small" />
-                    </TableCell>
-                    <TableCell>{formatDate(sub.endDate)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={`${sub.daysUntilExpiry} дн.`}
-                        color="warning"
-                        size="small"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
-
-      {/* Истекшие подписки */}
-      {data.subscriptions.expired.length > 0 && (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom fontWeight="bold" color="error.main">
-            Истекшие подписки
-          </Typography>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Аккаунт</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Тариф</TableCell>
-                  <TableCell>Дата окончания</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.subscriptions.expired.map((sub) => (
-                  <TableRow key={sub.id}>
-                    <TableCell>{sub.name}</TableCell>
-                    <TableCell>{sub.email}</TableCell>
-                    <TableCell>
-                      <Chip label={sub.planType} size="small" />
-                    </TableCell>
-                    <TableCell>{formatDate(sub.endDate)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
-
-      {/* Последние платежи */}
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom fontWeight="bold">
-          Последние платежи
-        </Typography>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Аккаунт</TableCell>
-                <TableCell>Тариф</TableCell>
-                <TableCell align="right">Сумма</TableCell>
-                <TableCell>Дата оплаты</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.recentPayments.map((payment: any) => (
-                <TableRow key={payment.id}>
-                  <TableCell>{payment.tenantName}</TableCell>
-                  <TableCell>
-                    <Chip label={payment.planType} size="small" />
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    {payment.hasDiscount ? (
-                      <Box>
-                        <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary' }}>
-                          {formatCurrency(payment.originalAmount)}
-                        </Typography>
-                        <Typography variant="body1" color="success.main">
-                          {formatCurrency(payment.amount)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Скидка: {formatCurrency(payment.discountAmount)}
-                        </Typography>
-                      </Box>
-                    ) : (
-                      formatCurrency(payment.amount)
-                    )}
-                  </TableCell>
-                  <TableCell>{formatDate(payment.paidAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-        </>
-      )}
-
-      {/* Вкладка: История транзакций */}
       {section === 'transactions' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              История транзакций
-            </Typography>
-            <Box display="flex" gap={2}>
-              <Button
-                variant="outlined"
-                startIcon={<Add />}
-                onClick={() => {
-                  const initial = emptyExpenseForm();
-                  setExpenseAmount(initial.expenseAmount);
-                  setExpenseDescription(initial.expenseDescription);
-                  setExpenseCategoryId(initial.expenseCategoryId);
-                  setExpenseFormBaseline(initial);
-                  setExpenseDialog(true);
-                }}
-              >
-                Создать расход
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<Payment />}
-                onClick={() => {
-                  const initial = emptyPaymentForm();
-                  setPaymentMarketerId(initial.paymentMarketerId);
-                  setPaymentAmount(initial.paymentAmount);
-                  setPaymentDescription(initial.paymentDescription);
-                  setPaymentFormBaseline(initial);
-                  setPaymentDialog(true);
-                }}
-                disabled={!data?.marketers.list.length}
-              >
-                Выплатить маркетологу
-              </Button>
-            </Box>
-          </Box>
-
-          {/* Фильтры */}
-          <Paper sx={{ p: 2, mb: 3 }}>
-            <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Тип транзакции</InputLabel>
-                <Select
-                  value={transactionTypeFilter}
-                  label="Тип транзакции"
-                  onChange={(e) => {
-                    setTransactionTypeFilter(e.target.value);
-                  }}
-                >
-                  <MenuItem value="all">Все</MenuItem>
-                  <MenuItem value="income">Поступления</MenuItem>
-                  <MenuItem value="expense">Расходы</MenuItem>
-                  <MenuItem value="marketer_payment">Выплаты маркетологам</MenuItem>
-                </Select>
-              </FormControl>
-              
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Категория</InputLabel>
-                <Select
-                  value={selectedCategoryId}
-                  label="Категория"
-                  onChange={(e) => {
-                    setSelectedCategoryId(e.target.value);
-                  }}
-                >
-                  <MenuItem value="all">Все категории</MenuItem>
-                  {expenseCategories.map((cat) => (
-                    <MenuItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
-                <DatePicker
-                  label="С"
-                  value={startDate}
-                  onChange={(newValue) => setStartDate(newValue)}
-                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
-                />
-                <DatePicker
-                  label="По"
-                  value={endDate}
-                  onChange={(newValue) => setEndDate(newValue)}
-                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
-                />
-              </LocalizationProvider>
-
-              {(startDate || endDate) && (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setStartDate(null);
-                    setEndDate(null);
-                  }}
-                >
-                  Сбросить даты
-                </Button>
-              )}
-            </Box>
-          </Paper>
-
-          {transactionsLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Paper>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Дата</TableCell>
-                      <TableCell>Тип</TableCell>
-                      <TableCell>Описание</TableCell>
-                      <TableCell>Категория</TableCell>
-                      <TableCell>Маркетолог</TableCell>
-                      <TableCell align="right">Сумма</TableCell>
-                      <TableCell align="right">Действия</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {transactions.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center">
-                          <Typography color="text.secondary" sx={{ py: 2.5 }}>
-                            Нет транзакций
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      transactions.map((transaction: any) => (
-                        <TableRow key={transaction.id}>
-                          <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={
-                                transaction.type === 'income'
-                                  ? transaction.source === 'subscription' ? 'Платеж за подписку' : 'Поступление'
-                                  : transaction.type === 'expense'
-                                  ? 'Расход'
-                                  : 'Выплата маркетологу'
-                              }
-                              color={
-                                transaction.type === 'income'
-                                  ? 'success'
-                                  : transaction.type === 'expense'
-                                  ? 'error'
-                                  : 'warning'
-                              }
-                              size="small"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {transaction.description}
-                            {transaction.promoCode && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                Промокод: {transaction.promoCode}
-                              </Typography>
-                            )}
-                            {transaction.tenant && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                Аккаунт: {transaction.tenant.name}
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {transaction.category ? (
-                              <Chip
-                                label={transaction.category.name}
-                                size="small"
-                                sx={{
-                                  backgroundColor: transaction.category.color || '#2196F3',
-                                  color: 'white',
-                                }}
-                              />
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {transaction.marketer ? (
-                              `${transaction.marketer.name} (${transaction.marketer.email})`
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                            {transaction.type === 'income' ? (
-                              transaction.hasDiscount || transaction.discountAmount > 0 ? (
-                                <Box>
-                                  <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary' }}>
-                                    {formatCurrency(transaction.originalAmount || transaction.amount)}
-                                  </Typography>
-                                  <Typography variant="body1" color="success.main">
-                                    +{formatCurrency(transaction.amount)}
-                                  </Typography>
-                                  {transaction.discountAmount > 0 && (
-                                    <Typography variant="caption" color="text.secondary">
-                                      Скидка: {formatCurrency(transaction.discountAmount)}
-                                    </Typography>
-                                  )}
-                                </Box>
-                              ) : (
-                                `+${formatCurrency(transaction.amount)}`
-                              )
-                            ) : (
-                              `-${formatCurrency(transaction.amount)}`
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            {transaction.type === 'expense' && (
-                              <Box display="flex" gap={1} justifyContent="flex-end">
-                                <Tooltip title="Редактировать">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleEditExpense(transaction)}
-                                  >
-                                    <Edit fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Удалить">
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => handleDeleteExpense(transaction.id)}
-                                  >
-                                    <Delete fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              </Box>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <Box display="flex" justifyContent="flex-end" p={2}>
-                <Button
-                  variant="outlined"
-                  startIcon={<GetApp />}
-                  onClick={handleExportTransactions}
-                >
-                  Экспорт в Excel
-                </Button>
-              </Box>
-            </Paper>
-          )}
-        </Box>
+        <SaTransactionsTab
+          transactions={transactions}
+          transactionsLoading={transactionsLoading}
+          transactionTypeFilter={transactionTypeFilter}
+          onTransactionTypeFilterChange={setTransactionTypeFilter}
+          selectedCategoryId={selectedCategoryId}
+          onSelectedCategoryIdChange={setSelectedCategoryId}
+          expenseCategories={expenseCategories}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onClearDates={() => {
+            setStartDate(null);
+            setEndDate(null);
+          }}
+          marketersCount={data.marketers.list.length}
+          formatCurrency={formatCurrency}
+          formatDateTime={formatDateTime}
+          onOpenExpenseDialog={() => {
+            const initial = emptyExpenseForm();
+            setExpenseAmount(initial.expenseAmount);
+            setExpenseDescription(initial.expenseDescription);
+            setExpenseCategoryId(initial.expenseCategoryId);
+            setExpenseFormBaseline(initial);
+            setExpenseDialog(true);
+          }}
+          onOpenPaymentDialog={() => {
+            const initial = emptyPaymentForm();
+            setPaymentMarketerId(initial.paymentMarketerId);
+            setPaymentAmount(initial.paymentAmount);
+            setPaymentDescription(initial.paymentDescription);
+            setPaymentFormBaseline(initial);
+            setPaymentDialog(true);
+          }}
+          onEditExpense={handleEditExpense}
+          onDeleteExpense={handleDeleteExpense}
+          onExportTransactions={handleExportTransactions}
+        />
       )}
 
-      {/* Вкладка: Все аккаунты */}
       {section === 'accounts' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Все аккаунты
-            </Typography>
-            <Box display="flex" gap={2}>
-              <Button
-                variant="outlined"
-                startIcon={<GetApp />}
-                onClick={handleExportTenants}
-              >
-                Экспорт в Excel
-              </Button>
-              {selectedTenants.length > 0 && (
-                <Box display="flex" gap={1}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => handleBulkAction('activate')}
-                    disabled={submitting}
-                  >
-                    Активировать ({selectedTenants.length})
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    color="error"
-                    onClick={() => handleBulkAction('deactivate')}
-                    disabled={submitting}
-                  >
-                    Деактивировать ({selectedTenants.length})
-                  </Button>
-                </Box>
-              )}
-            </Box>
-          </Box>
-
-          {tenantsLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Paper>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell padding="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={selectedTenants.length === allTenants.length && allTenants.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedTenants(allTenants.map(t => t.id));
-                            } else {
-                              setSelectedTenants([]);
-                            }
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>Название</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Поддомен</TableCell>
-                      <TableCell>Тариф</TableCell>
-                      <TableCell align="right">Админов</TableCell>
-                      <TableCell align="right">Клиентов</TableCell>
-                      <TableCell align="right">Тренеров</TableCell>
-                      <TableCell align="right">Филиалов</TableCell>
-                      <TableCell>Статус</TableCell>
-                      <TableCell>Действия</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {allTenants.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={11} align="center">
-                          <Typography color="text.secondary" sx={{ py: 2.5 }}>
-                            Нет аккаунтов
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      allTenants.map((tenant) => (
-                        <TableRow key={tenant.id}>
-                          <TableCell padding="checkbox">
-                            <input
-                              type="checkbox"
-                              checked={selectedTenants.includes(tenant.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedTenants([...selectedTenants, tenant.id]);
-                                } else {
-                                  setSelectedTenants(selectedTenants.filter(id => id !== tenant.id));
-                                }
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>{tenant.name}</TableCell>
-                          <TableCell>{tenant.email}</TableCell>
-                          <TableCell>{tenant.subdomain}</TableCell>
-                          <TableCell>
-                            {tenant.subscription ? (
-                              <Box display="flex" flexWrap="wrap" gap={0.5} alignItems="center">
-                                <Chip label={tenant.subscription.planType} size="small" />
-                                {tenant.subscription.isGranted && (
-                                  <Chip label="Выдан" color="info" size="small" variant="outlined" />
-                                )}
-                                {tenant.subscription.nextPlanType && (
-                                  <Chip
-                                    label={`Далее: ${tenant.subscription.nextPlanType}`}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                )}
-                                {tenant.subscription.endDate && (
-                                  <Chip
-                                    label={`до ${new Date(tenant.subscription.endDate).toLocaleDateString('ru-RU')}`}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </Box>
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
-                          <TableCell align="right">{tenant.stats.admins}</TableCell>
-                          <TableCell align="right">{tenant.stats.clients}</TableCell>
-                          <TableCell align="right">{tenant.stats.trainers}</TableCell>
-                          <TableCell align="right">{tenant.stats.branches}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={tenant.isActive ? 'Активен' : 'Неактивен'}
-                              color={tenant.isActive ? 'success' : 'default'}
-                              size="small"
-                            />
-                            {tenant.isSuperAdminLinked && (
-                              <Chip
-                                label="Супер-админ"
-                                color="secondary"
-                                size="small"
-                                sx={{ ml: 0.5 }}
-                              />
-                            )}
-                            {tenant.isTesterLinked && (
-                              <Chip
-                                label="Тестировщик"
-                                color="info"
-                                size="small"
-                                sx={{ ml: 0.5 }}
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => openGrantDialog(tenant)}
-                              title="Изменить тариф"
-                            >
-                              <Settings />
-                            </IconButton>
-                            {tenant.ownerId && !tenant.isSuperAdminLinked && (
-                              <IconButton
-                                size="small"
-                                color="secondary"
-                                disabled={submitting}
-                                onClick={() => handleLinkTenantSuperAdmin(tenant.id)}
-                                title="Сделать супер-админом (OWNER)"
-                              >
-                                <AdminPanelSettings />
-                              </IconButton>
-                            )}
-                            {tenant.isSuperAdminLinked && (
-                              <IconButton
-                                size="small"
-                                color="warning"
-                                disabled={submitting}
-                                onClick={() => handleUnlinkTenantSuperAdmin(tenant.id)}
-                                title="Отвязать супер-админа"
-                              >
-                                <LinkOff />
-                              </IconButton>
-                            )}
-                            {tenant.ownerId && !tenant.isTesterLinked && (
-                              <IconButton
-                                size="small"
-                                color="info"
-                                disabled={submitting}
-                                onClick={() => handleLinkTenantTester(tenant.id)}
-                                title="Сделать тестировщиком (OWNER)"
-                              >
-                                <BugReport />
-                              </IconButton>
-                            )}
-                            {tenant.isTesterLinked && (
-                              <IconButton
-                                size="small"
-                                color="warning"
-                                disabled={submitting}
-                                onClick={() => handleUnlinkTenantTester(tenant.id)}
-                                title="Отвязать тестировщика"
-                              >
-                                <LinkOff />
-                              </IconButton>
-                            )}
-                            {canWrite && (
-                              <IconButton
-                                size="small"
-                                color="error"
-                                disabled={submitting || deletingTenant}
-                                onClick={() => openDeleteTenantDialog(tenant)}
-                                title="Удалить школу навсегда"
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          )}
-        </Box>
+        <SaAccountsTab
+          allTenants={allTenants}
+          tenantsLoading={tenantsLoading}
+          selectedTenants={selectedTenants}
+          onSelectedTenantsChange={setSelectedTenants}
+          submitting={submitting}
+          deletingTenant={deletingTenant}
+          canWrite={canWrite}
+          onExportTenants={handleExportTenants}
+          onBulkAction={handleBulkAction}
+          onOpenGrantDialog={openGrantDialog}
+          onLinkTenantSuperAdmin={handleLinkTenantSuperAdmin}
+          onUnlinkTenantSuperAdmin={handleUnlinkTenantSuperAdmin}
+          onLinkTenantTester={handleLinkTenantTester}
+          onUnlinkTenantTester={handleUnlinkTenantTester}
+          onOpenDeleteTenantDialog={openDeleteTenantDialog}
+        />
       )}
 
-      {/* Вкладка: Аналитика */}
-      {section === 'analytics' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Расширенная аналитика
-            </Typography>
-            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
-              <Box display="flex" gap={2}>
-                <DatePicker
-                  label="С"
-                  value={startDate}
-                  onChange={(newValue) => setStartDate(newValue)}
-                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
-                />
-                <DatePicker
-                  label="По"
-                  value={endDate}
-                  onChange={(newValue) => setEndDate(newValue)}
-                  slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
-                />
-                {(startDate || endDate) && (
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setStartDate(null);
-                      setEndDate(null);
-                    }}
-                  >
-                    Сбросить
-                  </Button>
-                )}
-              </Box>
-            </LocalizationProvider>
-          </Box>
-
-          {analyticsLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : analyticsData ? (
-            <>
-              {/* Сводка */}
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Общий доход
-                      </Typography>
-                      <Typography variant="h5" fontWeight="bold" color="success.main">
-                        {formatCurrency(analyticsData.summary.totalIncome)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Общие расходы
-                      </Typography>
-                      <Typography variant="h5" fontWeight="bold" color="error.main">
-                        {formatCurrency(analyticsData.summary.totalExpenses)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Выплаты маркетологам
-                      </Typography>
-                      <Typography variant="h5" fontWeight="bold" color="warning.main">
-                        {formatCurrency(analyticsData.summary.totalMarketerPayments)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Прибыль
-                      </Typography>
-                      <Typography
-                        variant="h5"
-                        fontWeight="bold"
-                        color={analyticsData.summary.totalProfit >= 0 ? 'success.main' : 'error.main'}
-                      >
-                        {formatCurrency(analyticsData.summary.totalProfit)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* График динамики */}
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        Динамика доходов и расходов
-                      </Typography>
-                      <ResponsiveContainer width="100%" height={400}>
-                        <LineChart data={analyticsData.chartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <RechartsTooltip 
-                            formatter={(value: any) => formatCurrency(Number(value))}
-                            contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                          />
-                          <Legend />
-                          <Line type="monotone" dataKey="income" stroke="#4CAF50" name="Доходы" strokeWidth={2} />
-                          <Line type="monotone" dataKey="expenses" stroke="#F44336" name="Расходы" strokeWidth={2} />
-                          <Line type="monotone" dataKey="marketerPayments" stroke="#FF9800" name="Выплаты маркетологам" strokeWidth={2} />
-                          <Line type="monotone" dataKey="profit" stroke="#2196F3" name="Прибыль" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* Расходы по категориям */}
-              {widgetVisibility.categories && Object.keys(analyticsData.expensesByCategory).length > 0 && (
-                <Grid container spacing={3} sx={{ mb: 3 }}>
-                  <Grid item xs={12} md={6}>
-                    <Card>
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          Расходы по категориям
-                        </Typography>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <RechartsPieChart>
-                            <Pie
-                              data={Object.entries(analyticsData.expensesByCategory).map(([name, value]) => ({
-                                name,
-                                value: Number(value),
-                              }))}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={(entry: any) => {
-                                const name = entry.name || '';
-                                const percent = entry.percent || 0;
-                                return `${name} ${(percent * 100).toFixed(0)}%`;
-                              }}
-                              outerRadius={80}
-                              fill="#8884d8"
-                              dataKey="value"
-                            >
-                              {Object.entries(analyticsData.expensesByCategory).map(([name], index) => {
-                                const category = expenseCategories.find(c => c.name === name);
-                                return (
-                                  <Cell key={`cell-${index}`} fill={category?.color || `#${Math.floor(Math.random() * 16777215).toString(16)}`} />
-                                );
-                              })}
-                            </Pie>
-                            <RechartsTooltip 
-                              formatter={(value: any) => formatCurrency(Number(value))}
-                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                            />
-                          </RechartsPieChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Card>
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          Доходы по тарифам
-                        </Typography>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <RechartsBarChart data={Object.entries(analyticsData.incomeByPlan).map(([plan, amount]) => ({
-                            plan,
-                            amount: Number(amount),
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="plan" />
-                            <YAxis />
-                            <RechartsTooltip 
-                              formatter={(value: any) => formatCurrency(Number(value))}
-                              contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                            />
-                            <Bar dataKey="amount" fill="#4CAF50" />
-                          </RechartsBarChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              )}
-
-              {/* Прогноз доходов */}
-              {widgetVisibility.forecast && forecastData && (
-                <Card sx={{ mb: 3 }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Прогноз доходов на 6 месяцев
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsBarChart data={forecastData.forecast}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <RechartsTooltip 
-                          formatter={(value: any) => formatCurrency(Number(value))}
-                          contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                        />
-                        <Bar dataKey="amount" fill="#2196F3" />
-                      </RechartsBarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              )}
-            </>
-          ) : (
-            <Alert severity="info">Выберите период для отображения аналитики</Alert>
-          )}
-        </Box>
+      {section === 'metrics' && (
+        <SaMetricsSectionTab
+          tab={(activeTab as SaMetricsTab) || 'analytics'}
+          onTabChange={(t) => setSectionTab(t)}
+          analyticsData={analyticsData}
+          analyticsLoading={analyticsLoading}
+          forecastData={forecastData}
+          expenseCategories={expenseCategories}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onClearDates={() => {
+            setStartDate(null);
+            setEndDate(null);
+          }}
+          formatCurrency={formatCurrency}
+          kpiData={kpiData}
+          kpiLoading={kpiLoading}
+          kpiPeriod={kpiPeriod}
+          onKpiPeriodChange={setKpiPeriod}
+          onReloadKpi={loadKPIMetrics}
+        />
       )}
 
-      {/* Вкладка: KPI метрики */}
-      {section === 'kpi' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              KPI метрики
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Период</InputLabel>
-              <Select
-                value={kpiPeriod}
-                label="Период"
-                onChange={(e) => {
-                  setKpiPeriod(e.target.value);
-                  loadKPIMetrics();
-                }}
-              >
-                <MenuItem value="week">Неделя</MenuItem>
-                <MenuItem value="month">Месяц</MenuItem>
-                <MenuItem value="quarter">Квартал</MenuItem>
-                <MenuItem value="year">Год</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-
-          {kpiLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : kpiData ? (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>MRR</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="primary">
-                      {formatCurrency(kpiData.mrr)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Monthly Recurring Revenue
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>ARR</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="primary">
-                      {formatCurrency(kpiData.arr)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Annual Recurring Revenue
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>Churn Rate</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="error.main">
-                      {kpiData.churnRate}%
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Отток клиентов
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>LTV</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="success.main">
-                      {formatCurrency(kpiData.avgLTV)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Lifetime Value
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>CAC</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="warning.main">
-                      {formatCurrency(kpiData.cac)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Customer Acquisition Cost
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>Conversion Rate</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="info.main">
-                      {kpiData.conversionRate}%
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                      Конверсия в платные тарифы
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>Доход за период</Typography>
-                    <Typography variant="h5" fontWeight="bold" color="success.main">
-                      {formatCurrency(kpiData.revenueInPeriod)}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Card>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom>Новых аккаунтов</Typography>
-                    <Typography variant="h5" fontWeight="bold">
-                      {kpiData.newTenants}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          ) : (
-            <Alert severity="info">Загрузка метрик...</Alert>
-          )}
-        </Box>
-      )}
-
-      {/* Вкладка: Логи аудита */}
       {section === 'audit' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Логи аудита
-            </Typography>
-            <Box display="flex" gap={2}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Действие</InputLabel>
-                <Select
-                  value={auditLogsActionFilter}
-                  label="Действие"
-                  onChange={(e) => {
-                    setAuditLogsActionFilter(e.target.value);
-                    loadAuditLogs();
-                  }}
-                >
-                  <MenuItem value="all">Все</MenuItem>
-                  <MenuItem value="create_expense">Создание расхода</MenuItem>
-                  <MenuItem value="update_expense">Обновление расхода</MenuItem>
-                  <MenuItem value="delete_expense">Удаление расхода</MenuItem>
-                  <MenuItem value="pay_marketer">Выплата маркетологу</MenuItem>
-                  <MenuItem value="update_tenant_plan">Изменение тарифа</MenuItem>
-                  <MenuItem value="update_plan_price">Изменение цены тарифа</MenuItem>
-                  <MenuItem value="update_settings">Обновление настроек</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Тип сущности</InputLabel>
-                <Select
-                  value={auditLogsEntityTypeFilter}
-                  label="Тип сущности"
-                  onChange={(e) => {
-                    setAuditLogsEntityTypeFilter(e.target.value);
-                    loadAuditLogs();
-                  }}
-                >
-                  <MenuItem value="all">Все</MenuItem>
-                  <MenuItem value="expense">Расход</MenuItem>
-                  <MenuItem value="marketer">Маркетолог</MenuItem>
-                  <MenuItem value="tenant">Аккаунт</MenuItem>
-                  <MenuItem value="plan">Тариф</MenuItem>
-                  <MenuItem value="settings">Настройки</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-          </Box>
-
-          {auditLogsLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Дата</TableCell>
-                    <TableCell>Действие</TableCell>
-                    <TableCell>Описание</TableCell>
-                    <TableCell>Супер-админ</TableCell>
-                    <TableCell>IP адрес</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {auditLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>{new Date(log.createdAt).toLocaleString('ru-RU')}</TableCell>
-                      <TableCell>
-                        <Chip label={log.action} size="small" color="primary" />
-                      </TableCell>
-                      <TableCell>{log.description}</TableCell>
-                      <TableCell>
-                        {log.superAdmin
-                          ? `${log.superAdmin.firstName} ${log.superAdmin.lastName}`
-                          : 'Система'}
-                      </TableCell>
-                      <TableCell>{log.ipAddress || '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Box>
+        <SaAuditTab
+          auditLogs={auditLogs}
+          auditLogsLoading={auditLogsLoading}
+          auditLogsActionFilter={auditLogsActionFilter}
+          auditLogsEntityTypeFilter={auditLogsEntityTypeFilter}
+          onActionFilterChange={(value) => {
+            setAuditLogsActionFilter(value);
+            loadAuditLogs();
+          }}
+          onEntityTypeFilterChange={(value) => {
+            setAuditLogsEntityTypeFilter(value);
+            loadAuditLogs();
+          }}
+        />
       )}
 
-      {/* Вкладка: Управление тарифами */}
       {section === 'tariffs' && (
-        <Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Управление тарифами
-            </Typography>
-            {canWrite && (
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => {
-                  const initial = emptyPlanForm();
-                  setPlanForm(initial);
-                  setCreatePlanBaseline(initial);
-                  setCreatePlanDialog(true);
-                }}
-              >
-                Создать тариф
-              </Button>
-            )}
-          </Box>
-
-          {planPricesLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : planPrices && planPrices.length > 0 ? (
-            <Grid container spacing={3}>
-              {planPrices.map((plan) => (
-                <Grid item xs={12} md={6} lg={4} key={plan.code || plan.planType}>
-                  <Card
-                    sx={{
-                      cursor: canWrite ? 'pointer' : 'default',
-                      opacity: plan.isActive ? 1 : 0.7,
-                      '&:hover': canWrite ? { boxShadow: 6 } : undefined,
-                      transition: 'box-shadow 0.3s',
-                    }}
-                    onClick={() => canWrite && handleEditPlan(plan)}
-                  >
-                    <CardContent>
-                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
-                        <Box>
-                          <Typography variant="h6" fontWeight="bold">
-                            {plan.name || plan.planType}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {plan.code || plan.planType}
-                          </Typography>
-                        </Box>
-                        {canWrite && <Edit fontSize="small" color="action" />}
-                      </Box>
-                      <Box display="flex" flexWrap="wrap" gap={0.5} mb={1}>
-                        <Chip
-                          label={plan.isPublic ? 'Публичный' : 'Индивидуальный'}
-                          size="small"
-                          color={plan.isPublic ? 'primary' : 'default'}
-                          variant="outlined"
-                        />
-                        <Chip
-                          label={plan.isActive ? 'Активен' : 'Архив'}
-                          size="small"
-                          color={plan.isActive ? 'success' : 'warning'}
-                        />
-                        <Chip
-                          label={`Подписок: ${plan.subscriptionsCount ?? 0}`}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </Box>
-                      <Typography variant="h5" fontWeight="bold" color="primary" gutterBottom>
-                        {formatPlanPrice(plan)}
-                      </Typography>
-                      {plan.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          {plan.description}
-                        </Typography>
-                      )}
-                      <Divider sx={{ my: 2 }} />
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Лимиты:
-                      </Typography>
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                          Порядок отображения: {plan.sortOrder ?? 0}
-                        </Typography>
-                        <Typography variant="body2">
-                          Тренеры: {plan.limits.trainers === 'unlimited' ? 'Безлимит' : plan.limits.trainers}
-                        </Typography>
-                        <Typography variant="body2">
-                          Доп. сотрудники: {plan.limits.extraStaff === 'unlimited' ? 'Безлимит' : plan.limits.extraStaff ?? 'Безлимит'}
-                        </Typography>
-                        <Typography variant="body2">
-                          Клиенты: {plan.limits.clients === 'unlimited' ? 'Безлимит' : plan.limits.clients}
-                        </Typography>
-                        <Typography variant="body2">
-                          Группы: {plan.limits.groups === 'unlimited' ? 'Безлимит' : plan.limits.groups}
-                        </Typography>
-                        <Typography variant="body2">
-                          Филиалы: {plan.limits.branches === 'unlimited' ? 'Безлимит' : plan.limits.branches}
-                        </Typography>
-                        <Typography variant="body2">
-                          Тренировки: {plan.limits.trainings === 'unlimited' ? 'Безлимит' : `${plan.limits.trainings}/мес`}
-                        </Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Alert severity="info">Тарифы не найдены</Alert>
-          )}
-        </Box>
+        <SaTariffsTab
+          canWrite={canWrite}
+          planPrices={planPrices}
+          planPricesLoading={planPricesLoading}
+          formatPlanPrice={formatPlanPrice}
+          onCreatePlan={() => {
+            const initial = emptyPlanForm();
+            setPlanForm(initial);
+            setCreatePlanBaseline(initial);
+            setCreatePlanDialog(true);
+          }}
+          onEditPlan={handleEditPlan}
+        />
       )}
 
-      {/* Вкладка: Маркетологи */}
       {section === 'marketers' && (
-        <Box>
-          <Typography variant="h5" fontWeight="bold" mb={2}>
-            Платформенное управление
-          </Typography>
-          <Paper sx={{ p: 2, mb: 4 }}>
-            <PlatformMarketersCrud mode="sa" />
-          </Paper>
-
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Статистика маркетологов
-            </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<GetApp />}
-              onClick={handleExportMarketers}
-            >
-              Экспорт в Excel
-            </Button>
-          </Box>
-
-          {marketerStatsLoading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : marketerStats ? (
-            <>
-              {marketerStats.summary && (
-                <Grid container spacing={3} sx={{ mb: 3 }}>
-                  <Grid item xs={12} md={3}>
-                    <Card>
-                      <CardContent>
-                        <Typography color="text.secondary" gutterBottom>
-                          Всего маркетологов
-                        </Typography>
-                        <Typography variant="h5" fontWeight="bold">
-                          {marketerStats.summary.totalMarketers}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card>
-                      <CardContent>
-                        <Typography color="text.secondary" gutterBottom>
-                          Привлечено аккаунтов
-                        </Typography>
-                        <Typography variant="h5" fontWeight="bold" color="success.main">
-                          {marketerStats.summary.totalReferredTenants}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card>
-                      <CardContent>
-                        <Typography color="text.secondary" gutterBottom>
-                          Общий доход
-                        </Typography>
-                        <Typography variant="h5" fontWeight="bold" color="primary">
-                          {formatCurrency(marketerStats.summary.totalRevenue)}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card>
-                      <CardContent>
-                        <Typography color="text.secondary" gutterBottom>
-                          Невыплачено
-                        </Typography>
-                        <Typography variant="h5" fontWeight="bold" color="warning.main">
-                          {formatCurrency(marketerStats.summary.totalUnpaid)}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              )}
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Имя</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Процент</TableCell>
-                      <TableCell>Баланс</TableCell>
-                      <TableCell>Привлечено</TableCell>
-                      <TableCell>Общий доход</TableCell>
-                      <TableCell>Комиссия</TableCell>
-                      <TableCell>Средний доход/аккаунт</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {marketerStats.marketers?.map((m: any) => (
-                      <TableRow key={m.id}>
-                        <TableCell>{m.name}</TableCell>
-                        <TableCell>{m.email}</TableCell>
-                        <TableCell>{m.commissionPercentage}%</TableCell>
-                        <TableCell>{formatCurrency(m.balance)}</TableCell>
-                        <TableCell>{m.stats.referredTenantsCount}</TableCell>
-                        <TableCell>{formatCurrency(m.stats.totalRevenue)}</TableCell>
-                        <TableCell>{formatCurrency(m.stats.totalCommission)}</TableCell>
-                        <TableCell>{formatCurrency(m.stats.avgRevenuePerTenant)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </>
-          ) : (
-            <Alert severity="info">Загрузка статистики маркетологов...</Alert>
-          )}
-        </Box>
+        <SaMarketersTab
+          marketerStats={marketerStats}
+          marketerStatsLoading={marketerStatsLoading}
+          formatCurrency={formatCurrency}
+          onExportMarketers={handleExportMarketers}
+        />
       )}
 
-      {/* Вкладка: Нагрузка сервера */}
-      {section === 'server-load' && <ServerLoadMonitoringTab />}
-
-      {section === 'site-traffic' && <SiteTrafficMonitoringTab />}
+      {section === 'monitoring' && (
+        <SaMonitoringTab
+          tab={(activeTab as SaMonitoringTabKey) || 'server'}
+          onTabChange={(t) => setSectionTab(t)}
+        />
+      )}
 
       {section === 'maintenance' && <SuperAdminMaintenanceTab />}
 
-      {section === 'terms' && <SuperAdminTermsTab />}
-
-      {section === 'privacy' && <SuperAdminPrivacyTab />}
-
-      {section === 'notifications' && (
-        <Box sx={{ maxWidth: 720 }}>
-          <Typography variant="h5" gutterBottom>
-            Уведомления
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Чаты и публикации в «Новости». Алерты нагрузки сервера настраиваются во вкладке «Нагрузка сервера».
-          </Typography>
-          <NotificationSettingsPanel actor="superAdmin" showChangelog />
-          <SchoolOffersPanel />
-        </Box>
+      {section === 'legal' && (
+        <SaLegalTab
+          tab={(activeTab as SaLegalTabKey) || 'terms'}
+          onTabChange={(t) => setSectionTab(t)}
+        />
       )}
+
+      {section === 'notifications' && <SaNotificationsTab />}
 
       {section === 'planner' && <SuperAdminPlannerTab />}
 

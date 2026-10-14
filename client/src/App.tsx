@@ -17,6 +17,7 @@ import SiteTrafficTracker from './components/SiteTrafficTracker';
 import CookieConsentBanner from './components/CookieConsentBanner';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
 import SwitchAccountFromPush from './components/SwitchAccountFromPush';
+import SpellcheckProvider from './spellcheck/SpellcheckProvider';
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import('./pages/Landing'));
@@ -520,6 +521,7 @@ const AppContent: React.FC = () => {
   return (
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
+    <SpellcheckProvider>
     <Router>
       <SwitchAccountFromPush />
       <MaintenanceGate>
@@ -945,6 +947,7 @@ const AppContent: React.FC = () => {
         />
       )}
     </Router>
+    </SpellcheckProvider>
     </ThemeProvider>
   );
 };

@@ -313,9 +313,8 @@ export async function notifyChangelogPush(args: {
   audienceRoles?: string[];
 }): Promise<void> {
   try {
-    const roles = new Set(
-      (args.audienceRoles?.length ? args.audienceRoles : ['TESTER']).map((r) => r.toUpperCase())
-    );
+    // Пустой audience = только SA (пуш SA уже ниже); не подставляем TESTER.
+    const roles = new Set((args.audienceRoles || []).map((r) => r.toUpperCase()));
     const title = 'Новости платформы';
     const body = args.title;
     const tasks: Promise<unknown>[] = [];

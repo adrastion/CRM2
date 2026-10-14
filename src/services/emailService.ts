@@ -97,7 +97,7 @@ class EmailService {
 
     await this.sendEmail({
       to: email,
-      subject: 'Сброс пароля — Martial Arts CRM',
+      subject: 'Сброс пароля — ПрофСпортСРМ',
       html,
       text
     });
@@ -127,7 +127,7 @@ class EmailService {
     const text = `Здравствуйте${name}!\n\nКод для сброса пароля: ${data.code}\nДействует 10 минут.`;
     await this.sendEmail({
       to: email,
-      subject: 'Код сброса пароля — Martial Arts CRM',
+      subject: 'Код сброс пароля — ПрофСпортСРМ',
       html,
       text,
     });
@@ -157,7 +157,7 @@ class EmailService {
     const text = `Здравствуйте${name}!\n\nКод подтверждения email: ${data.code}\nДействует 10 минут.`;
     await this.sendEmail({
       to: email,
-      subject: 'Подтверждение email — Martial Arts CRM',
+      subject: 'Подтверждение email — ПрофСпортСРМ',
       html,
       text,
     });

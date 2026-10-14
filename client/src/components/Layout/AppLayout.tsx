@@ -16,6 +16,12 @@ import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
 import { useChatUnreadBadge } from '../../hooks/useChatUnreadBadge';
 import { canAccessAdminNav } from '../../utils/roles';
+import {
+  SA_NAV_GROUPS,
+  SA_SECTION_TITLES,
+  resolveSaLocation,
+  saDashboardPath,
+} from '../../config/saDashboard';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -58,42 +64,6 @@ const ROLE_LABELS: Record<string, string> = {
   TRAINER: 'Тренер',
   PROMOTER: 'Промоутер',
 };
-
-/** Секции панели супер-админа (`/admin/dashboard?section=`). */
-const SA_DASHBOARD_SECTIONS: Array<{
-  section: string;
-  label: string;
-  iconName: NavIconName;
-}> = [
-  { section: 'overview', label: 'Общая статистика', iconName: 'dashboard' },
-  { section: 'transactions', label: 'История транзакций', iconName: 'finance' },
-  { section: 'accounts', label: 'Все аккаунты', iconName: 'staff' },
-  { section: 'analytics', label: 'Аналитика', iconName: 'schedule' },
-  { section: 'kpi', label: 'KPI метрики', iconName: 'standards' },
-  { section: 'audit', label: 'Логи аудита', iconName: 'faq' },
-  { section: 'tariffs', label: 'Управление тарифами', iconName: 'tariffs' },
-  { section: 'marketers', label: 'Маркетологи', iconName: 'clients' },
-  { section: 'server-load', label: 'Нагрузка сервера', iconName: 'settings' },
-  { section: 'site-traffic', label: 'Посещаемость сайта', iconName: 'dashboard' },
-  { section: 'maintenance', label: 'Техобслуживание', iconName: 'faq' },
-  { section: 'terms', label: 'Соглашение', iconName: 'knowledge-base' },
-  { section: 'privacy', label: 'Политика ПДн', iconName: 'faq' },
-  { section: 'notifications', label: 'Уведомления', iconName: 'faq' },
-  { section: 'planner', label: 'Планировщик', iconName: 'schedule' },
-  { section: 'development', label: 'Разработка', iconName: 'knowledge-base' },
-  { section: 'client-ideas', label: 'Идеи клиентов', iconName: 'faq' },
-  { section: 'chats', label: 'Чаты', iconName: 'chats' },
-  { section: 'changelog', label: 'Новости', iconName: 'issued-tariffs' },
-];
-
-const SA_SECTION_TITLES: Record<string, string> = Object.fromEntries(
-  SA_DASHBOARD_SECTIONS.map((item) => [item.section, item.label])
-);
-
-function resolveSaDashboardSection(search: string): string {
-  const raw = new URLSearchParams(search).get('section') || 'overview';
-  return SA_DASHBOARD_SECTIONS.some((item) => item.section === raw) ? raw : 'overview';
-}
 
 /**
  * Оболочка защищённых страниц: тот же каркас, что и в макете панели управления
@@ -238,20 +208,42 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     }
   };
 
-  const saSection = resolveSaDashboardSection(location.search);
+  const saResolved = resolveSaLocation(location.search);
+  const saSection = saResolved.section;
+
+  // Алиасы старых ?section= → канонический URL
+  React.useEffect(() => {
+    if (!isSuperAdminRoute || !location.pathname.startsWith('/admin/dashboard')) return;
+    if (!saResolved.wasAlias) return;
+    navigate(saDashboardPath(saResolved.section, saResolved.tab), { replace: true });
+  }, [
+    isSuperAdminRoute,
+    location.pathname,
+    saResolved.wasAlias,
+    saResolved.section,
+    saResolved.tab,
+    navigate,
+  ]);
 
   const navItems: ShellNavItem[] = isSuperAdminRoute
     ? [
-        ...SA_DASHBOARD_SECTIONS.map((item) => ({
-          key: `/admin/dashboard?section=${item.section}`,
-          label: item.label,
-          iconName: item.iconName,
-          onClick: () => navigate(`/admin/dashboard?section=${item.section}`),
-        })),
+        ...SA_NAV_GROUPS.flatMap((group) => [
+          {
+            key: `group:${group.id}`,
+            label: group.label,
+            variant: 'header' as const,
+          },
+          ...group.items.map((item) => ({
+            key: `/admin/dashboard?section=${item.section}`,
+            label: item.label,
+            iconName: item.iconName,
+            onClick: () => navigate(saDashboardPath(item.section)),
+          })),
+        ]),
         {
           key: '/admin/support-hub',
           label: 'Support Hub',
-          iconName: 'knowledge-base',
+          iconName: 'knowledge-base' as NavIconName,
           onClick: () => navigate('/admin/support-hub'),
         },
       ]

@@ -20,6 +20,7 @@ interface FinanceOperationsTableProps {
   formatDateTime: (iso: string) => string;
   onDelete?: (op: FinanceOperation) => void;
   onRowClick?: (op: FinanceOperation) => void;
+  onOpenClient?: (clientId: string) => void;
   deletingId?: string | null;
 }
 
@@ -67,6 +68,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
   formatDateTime,
   onDelete,
   onRowClick,
+  onOpenClient,
   deletingId,
 }) => {
   if (operations.length === 0) {
@@ -89,6 +91,7 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
         clientId={op.clientId}
         client={op.client}
         name={op.title}
+        onOpen={onOpenClient}
         sx={{
           fontSize: typography.label,
           fontWeight: 500,

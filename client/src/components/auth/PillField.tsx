@@ -56,6 +56,7 @@ const PillField: React.FC<PillFieldProps> = ({
 }) => {
   const [revealed, setRevealed] = React.useState(false);
   const effectiveType = revealable && revealed ? 'text' : type;
+  const isPasswordField = type === 'password' || Boolean(revealable);
   const height = dense ? sizes.fieldHeightSm : sizes.fieldHeight;
 
   return (
@@ -119,7 +120,16 @@ const PillField: React.FC<PillFieldProps> = ({
           autoFocus={autoFocus}
           disabled={disabled}
           readOnly={readOnly}
-          inputProps={{ 'aria-label': label || placeholder, 'aria-invalid': Boolean(error) }}
+          inputProps={{
+            'aria-label': label || placeholder,
+            'aria-invalid': Boolean(error),
+            lang: 'ru',
+            spellCheck: !isPasswordField,
+            ...(isPasswordField
+              ? { autoCorrect: 'off', autoCapitalize: 'off', 'data-nospellcheck': 'true' }
+              : null),
+          }}
+          spellCheck={!isPasswordField}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && onEnter) {
               e.preventDefault();

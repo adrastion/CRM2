@@ -95,10 +95,8 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
     return;
   }
 
-  let audienceRoles = parseAudienceRoles(req.body?.audienceRoles);
-  if (audienceRoles.length === 0) {
-    audienceRoles = ['TESTER'];
-  }
+  // Пустой список = только супер-админы (они видят все новости без записи в audience)
+  const audienceRoles = parseAudienceRoles(req.body?.audienceRoles);
 
   const files = req.files as
     | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
@@ -161,9 +159,8 @@ export const updatePlatformChangelog = asyncHandler(async (req: Request, res: Re
   if (title !== undefined) data.title = title;
   if (body !== undefined) data.body = body;
   if (req.body?.audienceRoles !== undefined) {
-    let roles = parseAudienceRoles(req.body.audienceRoles);
-    if (roles.length === 0) roles = ['TESTER'];
-    data.audienceRoles = roles;
+    // Пустой список = только супер-админы
+    data.audienceRoles = parseAudienceRoles(req.body.audienceRoles);
   }
 
   const files = req.files as

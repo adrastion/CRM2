@@ -52,6 +52,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../../services/api';
 import ClientNameLink from '../ClientNameLink';
+import { useStaffEntityCards } from '../StaffEntityCardHost';
 import { Competition, Client, Trainer, CompetitionResult } from '../../types';
 
 interface CompetitionFormData {
@@ -98,6 +99,7 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const { openClient, dialogs: entityCardDialogs } = useStaffEntityCards({ trainers });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [openDialog, setOpenDialog] = useState(false);
@@ -1377,7 +1379,11 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                             <TableRow key={participant.id}>
                               <TableCell>
                                 {client ? (
-                                  <ClientNameLink clientId={participant.clientId} client={client} />
+                                  <ClientNameLink
+                                    clientId={participant.clientId}
+                                    client={client}
+                                    onOpen={openClient}
+                                  />
                                 ) : (
                                   `Участник #${participant.id}`
                                 )}
@@ -1570,6 +1576,7 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
           onClose={() => setSnackbarOpen(false)}
           message={snackbarMessage}
         />
+        {entityCardDialogs}
       </Box>
     </LocalizationProvider>
   );

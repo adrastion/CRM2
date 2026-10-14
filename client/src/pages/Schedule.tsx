@@ -71,6 +71,8 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addDays, 
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
+import TrainerNameLink from '../components/TrainerNameLink';
+import { useStaffEntityCards } from '../components/StaffEntityCardHost';
 import CompetitionsPanel from '../components/competitions/CompetitionsPanel';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall, Parent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -175,6 +177,10 @@ const Schedule: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]); // Все клиенты для выбора в индивидуальной тренировке
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter reserved for client search UI
   const [, setClientSearchQuery] = useState<string>(''); // Поиск клиентов
+  const { openClient, openTrainer, dialogs: entityCardDialogs } = useStaffEntityCards({
+    branches,
+    trainers,
+  });
   const [loading, setLoading] = useState(true);
   const [trainingTypeDialog, setTrainingTypeDialog] = useState(false); // Диалог выбора типа тренировки
   const [openDialog, setOpenDialog] = useState(false);
@@ -2431,8 +2437,14 @@ const Schedule: React.FC = () => {
                           </Typography>
                         </Box>
                         {trainer?.user && (
-                          <Typography variant="body2" sx={{ mt: 0.25, opacity: 0.9 }}>
-                            {trainer.user.lastName} {trainer.user.firstName}
+                          <Typography variant="body2" sx={{ mt: 0.25, opacity: 0.9 }} component="div">
+                            <TrainerNameLink
+                              trainerId={trainer.id}
+                              name={`${trainer.user.lastName} ${trainer.user.firstName}`.trim()}
+                              variant="inherit"
+                              sx={{ color: 'inherit', fontWeight: 400, opacity: 0.95 }}
+                              onOpen={openTrainer}
+                            />
                           </Typography>
                         )}
                         {hall && (
@@ -2730,10 +2742,29 @@ const Schedule: React.FC = () => {
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.25 }}>
                                 <People sx={{ fontSize: 10 }} />
-                                <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                                  {isSubstitute && substituteTrainer?.user 
-                                    ? `Замена: ${substituteTrainer.user.lastName} ${substituteTrainer.user.firstName.charAt(0)}.`
-                                    : trainerName}
+                                <Typography variant="caption" sx={{ fontSize: '0.65rem' }} component="div">
+                                  {isSubstitute && substituteTrainer?.user ? (
+                                    <>
+                                      Замена:{' '}
+                                      <TrainerNameLink
+                                        trainerId={substituteTrainer.id}
+                                        name={`${substituteTrainer.user.lastName} ${substituteTrainer.user.firstName.charAt(0)}.`}
+                                        variant="inherit"
+                                        sx={{ color: 'inherit', fontWeight: 400, fontSize: 'inherit' }}
+                                        onOpen={openTrainer}
+                                      />
+                                    </>
+                                  ) : trainer ? (
+                                    <TrainerNameLink
+                                      trainerId={trainer.id}
+                                      name={trainerName}
+                                      variant="inherit"
+                                      sx={{ color: 'inherit', fontWeight: 400, fontSize: 'inherit' }}
+                                      onOpen={openTrainer}
+                                    />
+                                  ) : (
+                                    trainerName
+                                  )}
                                 </Typography>
                                 {isSubstitute && (
                                   <Chip 
@@ -4346,7 +4377,11 @@ const Schedule: React.FC = () => {
                         <TableRow key={item.client.id}>
                           <TableCell>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <ClientNameLink clientId={item.client.id} client={item.client} />
+                              <ClientNameLink
+                                clientId={item.client.id}
+                                client={item.client}
+                                onOpen={openClient}
+                              />
                               {item.client.activeMembership?.remaining != null &&
                                 item.client.activeMembership.remaining < 0 && (
                                   <Chip
@@ -5242,6 +5277,7 @@ const Schedule: React.FC = () => {
           onDiscard={editUnsaved.discard}
           onStay={editUnsaved.stay}
         />
+        {entityCardDialogs}
       </Box>
     </LocalizationProvider>
   );

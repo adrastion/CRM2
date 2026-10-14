@@ -143,6 +143,9 @@ export function createAppTheme(): Theme {
         },
       },
       MuiInputBase: {
+        defaultProps: {
+          spellCheck: true,
+        },
         styleOverrides: {
           root: {
             fontFamily,
@@ -155,6 +158,9 @@ export function createAppTheme(): Theme {
         },
       },
       MuiOutlinedInput: {
+        defaultProps: {
+          spellCheck: true,
+        },
         styleOverrides: {
           root: {
             borderRadius: `${radii.button}px`,
@@ -196,6 +202,10 @@ export function createAppTheme(): Theme {
         defaultProps: {
           size: 'small',
           variant: 'outlined',
+          inputProps: {
+            lang: 'ru',
+            spellCheck: true,
+          },
         },
       },
       MuiFormControl: {

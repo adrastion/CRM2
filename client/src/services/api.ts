@@ -3675,9 +3675,8 @@ class ApiService {
     const form = new FormData();
     form.append('title', data.title);
     form.append('body', data.body);
-    if (data.audienceRoles?.length) {
-      form.append('audienceRoles', JSON.stringify(data.audienceRoles));
-    }
+    // Всегда передаём массив, в т.ч. [] — «только супер-админы»
+    form.append('audienceRoles', JSON.stringify(data.audienceRoles || []));
     if (data.image) form.append('image', data.image);
     if (data.file) form.append('file', data.file);
     const response = await this.api.post<ApiResponse>('/platform/changelog', form, {
@@ -3712,7 +3711,7 @@ class ApiService {
     const form = new FormData();
     if (data.title !== undefined) form.append('title', data.title);
     if (data.body !== undefined) form.append('body', data.body);
-    if (data.audienceRoles) {
+    if (data.audienceRoles !== undefined) {
       form.append('audienceRoles', JSON.stringify(data.audienceRoles));
     }
     if (data.clearImage) form.append('clearImage', 'true');

@@ -46,6 +46,8 @@ export interface ShellNavItem {
   dataOnboarding?: string;
   /** Счётчик непрочитанных (например, чаты). 0 / undefined — скрыть. */
   badge?: number;
+  /** Заголовок группы в сайдбаре (не кликабелен). */
+  variant?: 'item' | 'header';
 }
 
 export interface GlobalSearchResultItem {
@@ -283,6 +285,27 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
       sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, py: 2 }}
     >
       {navItems.map((item) => {
+        if (item.variant === 'header') {
+          return (
+            <Typography
+              key={item.key}
+              component="div"
+              sx={{
+                px: 2,
+                pt: 1.75,
+                pb: 0.5,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                color: colors.textHint,
+                userSelect: 'none',
+              }}
+            >
+              {item.label}
+            </Typography>
+          );
+        }
         const active = item.key === activeKey;
         const interactive = !item.disabled && Boolean(item.onClick);
         return (

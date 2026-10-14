@@ -285,6 +285,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                   <ClientNameLink
                     clientId={client.id}
                     client={client}
+                    onOpen={() => onEdit(client)}
                     sx={{
                       fontWeight: 600,
                       fontSize: typography.label,

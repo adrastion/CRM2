@@ -13,6 +13,7 @@ export type PasswordFieldProps = Omit<TextFieldProps, 'type'> & {
 const PasswordField: React.FC<PasswordFieldProps> = ({
   defaultHidden = true,
   InputProps,
+  inputProps,
   ...rest
 }) => {
   const [hidden, setHidden] = useState(defaultHidden);
@@ -21,6 +22,14 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
     <TextField
       {...rest}
       type={hidden ? 'password' : 'text'}
+      spellCheck={false}
+      inputProps={{
+        ...inputProps,
+        spellCheck: false,
+        autoCorrect: 'off',
+        autoCapitalize: 'off',
+        'data-nospellcheck': 'true',
+      }}
       InputProps={{
         ...InputProps,
         endAdornment: (

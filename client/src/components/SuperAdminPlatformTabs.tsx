@@ -28,11 +28,9 @@ import { useSuperAdminAuth } from '../contexts/SuperAdminAuthContext';
 /** Роли аудитории новости (SUPER_ADMIN всегда видит всё — в выбор не входит). */
 const AUDIENCE_OPTIONS = Object.keys(ROLE_LABELS_NEWS).filter((r) => r !== 'SUPER_ADMIN');
 
-const DEFAULT_AUDIENCE = ['TESTER'];
-
+/** Пустой список = новость только для супер-админов (они видят всё без записи в audience). */
 function normalizeAudience(roles?: string[] | null): string[] {
-  const filtered = (roles || []).filter((r) => r !== 'SUPER_ADMIN' && AUDIENCE_OPTIONS.includes(r));
-  return filtered.length > 0 ? filtered : [...DEFAULT_AUDIENCE];
+  return (roles || []).filter((r) => r !== 'SUPER_ADMIN' && AUDIENCE_OPTIONS.includes(r));
 }
 
 interface ChangelogEntry {
@@ -121,7 +119,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
   const [editing, setEditing] = useState<ChangelogEntry | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [audienceRoles, setAudienceRoles] = useState<string[]>([...DEFAULT_AUDIENCE]);
+  const [audienceRoles, setAudienceRoles] = useState<string[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [clearImage, setClearImage] = useState(false);
@@ -160,7 +158,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setEditing(null);
     setTitle('');
     setBody('');
-    setAudienceRoles([...DEFAULT_AUDIENCE]);
+    setAudienceRoles([]);
     setImageFile(null);
     setDocFile(null);
     setClearImage(false);
@@ -190,7 +188,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
   const clearAllRoles = () => setAudienceRoles([]);
 
   const handleSave = async () => {
-    if (!title.trim() || !body.trim() || audienceRoles.length === 0) return;
+    if (!title.trim() || !body.trim()) return;
     setSaving(true);
     try {
       if (editing) {
@@ -272,11 +270,15 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
                     : ''}
                 </Typography>
                 <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {(e.audienceRoles || [])
-                    .filter((r) => r !== 'SUPER_ADMIN')
-                    .map((r) => (
-                      <Chip key={r} size="small" label={ROLE_LABELS_NEWS[r] || r} />
-                    ))}
+                  {(e.audienceRoles || []).filter((r) => r !== 'SUPER_ADMIN').length === 0 ? (
+                    <Chip size="small" label="Только супер-админы" color="primary" variant="outlined" />
+                  ) : (
+                    (e.audienceRoles || [])
+                      .filter((r) => r !== 'SUPER_ADMIN')
+                      .map((r) => (
+                        <Chip key={r} size="small" label={ROLE_LABELS_NEWS[r] || r} />
+                      ))
+                  )}
                 </Box>
               </Box>
               <Box>
@@ -332,7 +334,8 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
             Аудитория
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-            Супер-админ всегда видит все новости и в выбор не входит.
+            Супер-админ всегда видит все новости. Если снять все галочки — новость будет только для
+            супер-админов.
           </Typography>
           <Box display="flex" gap={1} flexWrap="wrap" sx={{ mb: 1 }}>
             <Button size="small" variant="outlined" onClick={selectAllRoles} sx={{ textTransform: 'none' }}>
@@ -412,7 +415,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={saving || !title.trim() || !body.trim() || audienceRoles.length === 0}
+            disabled={saving || !title.trim() || !body.trim()}
           >
             {saving ? <CircularProgress size={20} /> : 'Сохранить'}
           </Button>
