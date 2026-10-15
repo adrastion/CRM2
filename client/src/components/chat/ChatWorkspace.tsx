@@ -4,21 +4,49 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   List,
   ListItemButton,
   ListItemText,
+  Menu,
+  MenuItem,
   Popover,
   TextField,
   Typography,
   Badge,
 } from '@mui/material';
-import { Close, Edit, EmojiEmotions, Send } from '@mui/icons-material';
+import {
+  AttachFile,
+  Close,
+  Edit,
+  EmojiEmotions,
+  Mic,
+  MoreVert,
+  People,
+  PushPin,
+  Reply,
+  Send,
+  Stop,
+  Videocam,
+} from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
 import { colors, radii, typography } from '../../theme/tokens';
+import ChatMediaBubble from './ChatMediaBubble';
+import {
+  encodeMentionsForSend,
+  extractMentionsFromText,
+  formatMentionsForDisplay,
+  MentionRef,
+  pruneMentionsToDisplay,
+  renderMentionNodes,
+  renderMentionPlain,
+} from './chatMentionUtils';
 
 export type PresenceStatus = 'unregistered' | 'offline' | 'online';
 
@@ -48,6 +76,7 @@ export interface ChatThreadItem {
 export interface ChatMessageItem {
   id: string;
   threadId: string;
+  kind?: string;
   body: string;
   authorType: string;
   authorClientId?: string | null;
@@ -58,7 +87,40 @@ export interface ChatMessageItem {
   authorName: string;
   createdAt: string;
   editedAt?: string | null;
+  replyToMessageId?: string | null;
+  replyTo?: {
+    id: string;
+    body: string;
+    kind: string;
+    authorName: string;
+  } | null;
+  attachments?: Array<{
+    id: string;
+    kind: string;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+    durationMs: number | null;
+    width: number | null;
+    height: number | null;
+  }>;
+  mentions?: Array<{ type: string; id: string; name?: string }>;
+  pinned?: boolean;
 }
+
+type ChatParticipant = {
+  type: string;
+  id: string;
+  name: string;
+  roleLabel: string;
+};
+
+type ChatPinItem = {
+  messageId: string;
+  pinnedAt: string;
+  body: string;
+  kind: string;
+};
 
 type ChatCategory = 'all' | 'personal' | 'groups' | 'tasks';
 
@@ -137,10 +199,19 @@ function PresenceDot({ status }: { status: PresenceStatus }) {
   );
 }
 
+function previewLabel(kind: string | undefined, body: string): string {
+  const caption = formatMentionsForDisplay(String(body || '').trim());
+  if (kind === 'IMAGE') return caption ? `Фото: ${caption}` : 'Фото';
+  if (kind === 'VIDEO') return caption ? `Видео: ${caption}` : 'Видео';
+  if (kind === 'VOICE') return caption ? `Голосовое: ${caption}` : 'Голосовое сообщение';
+  return caption || '';
+}
+
 function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
   return {
     id: msg.id,
     threadId: msg.threadId,
+    kind: msg.kind || 'TEXT',
     body: msg.body,
     authorType: msg.authorType,
     authorClientId: msg.authorClientId,
@@ -151,6 +222,11 @@ function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
     authorName: msg.authorName,
     createdAt: msg.createdAt,
     editedAt: msg.editedAt ?? null,
+    replyToMessageId: msg.replyToMessageId ?? null,
+    replyTo: msg.replyTo ?? null,
+    attachments: msg.attachments || [],
+    mentions: msg.mentions || [],
+    pinned: Boolean(msg.pinned),
   };
 }
 
@@ -173,8 +249,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ChatCategory>('all');
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
+  const [replyTo, setReplyTo] = useState<ChatMessageItem | null>(null);
+  const [pins, setPins] = useState<ChatPinItem[]>([]);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [activeMentions, setActiveMentions] = useState<MentionRef[]>([]);
+  const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; msg: ChatMessageItem } | null>(
+    null
+  );
+  const [recording, setRecording] = useState<'voice' | 'video' | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordStartedAtRef = useRef(0);
   const selectedRef = useRef<ChatThreadItem | null>(null);
 
   const loadThreads = useCallback(async () => {
@@ -254,13 +345,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const cancelEdit = () => {
     setEditingId(null);
     setDraft('');
+    setActiveMentions([]);
+  };
+
+  const stopMediaTracks = () => {
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
   };
 
   const openThread = async (item: ChatThreadItem) => {
     cancelEdit();
+    setReplyTo(null);
+    setActiveMentions([]);
     setSelectedKey(item.threadKey);
     setLoadingMessages(true);
     setMessages([]);
+    setPins([]);
     try {
       let threadId = item.id;
       if (!threadId) {
@@ -283,6 +383,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             ? await apiService.clientGetChatMessages(threadId!)
             : await apiService.getPlatformChatMessages(threadId!);
       setMessages(data.messages || []);
+      setPins(data.pins || []);
       if (typeof data.chatMessageEditLimitMinutes === 'number') {
         setEditLimitMinutes(data.chatMessageEditLimitMinutes);
       } else if (mode === 'platform') {
@@ -314,6 +415,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
 
   const onSocketMessage = useCallback(
     (msg: ChatSocketMessage) => {
+      const preview = previewLabel(msg.kind, msg.body);
       if (msg.threadId !== activeThreadId) {
         setThreads((prev) =>
           prev.map((t) =>
@@ -321,7 +423,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               ? {
                   ...t,
                   lastMessageAt: msg.createdAt,
-                  lastMessagePreview: msg.body,
+                  lastMessagePreview: preview,
                   unreadCount: t.unreadCount + 1,
                 }
               : t
@@ -336,7 +438,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       setThreads((prev) =>
         prev.map((t) =>
           t.id === msg.threadId
-            ? { ...t, lastMessageAt: msg.createdAt, lastMessagePreview: msg.body }
+            ? { ...t, lastMessageAt: msg.createdAt, lastMessagePreview: preview }
             : t
         )
       );
@@ -346,6 +448,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
 
   const onSocketMessageUpdated = useCallback(
     (msg: ChatSocketMessage) => {
+      const preview = previewLabel(msg.kind, msg.body);
       setMessages((prev) => {
         if (msg.threadId !== activeThreadId) return prev;
         return prev.map((m) => (m.id === msg.id ? { ...m, ...socketToItem(msg) } : m));
@@ -356,7 +459,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           const isLatestPreview =
             !t.lastMessageAt ||
             new Date(msg.createdAt).getTime() >= new Date(t.lastMessageAt).getTime();
-          return isLatestPreview ? { ...t, lastMessagePreview: msg.body } : t;
+          return isLatestPreview ? { ...t, lastMessagePreview: preview } : t;
         })
       );
     },
@@ -369,6 +472,28 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     enabled: Boolean(socketToken),
     onMessage: onSocketMessage,
     onMessageUpdated: onSocketMessageUpdated,
+    onPin: (payload) => {
+      if (payload.threadId !== activeThreadId) return;
+      setMessages((prev) => {
+        const target = prev.find((m) => m.id === payload.messageId);
+        if (payload.pinned && target) {
+          setPins((pinsPrev) => [
+            {
+              messageId: target.id,
+              pinnedAt: new Date().toISOString(),
+              body: previewLabel(target.kind, target.body),
+              kind: target.kind || 'TEXT',
+            },
+            ...pinsPrev.filter((p) => p.messageId !== target.id),
+          ]);
+        } else if (!payload.pinned) {
+          setPins((pinsPrev) => pinsPrev.filter((p) => p.messageId !== payload.messageId));
+        }
+        return prev.map((m) =>
+          m.id === payload.messageId ? { ...m, pinned: payload.pinned } : m
+        );
+      });
+    },
     onPresence: () => {
       (async () => {
         try {
@@ -431,7 +556,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       return;
     }
     setEditingId(m.id);
-    setDraft(m.body);
+    setDraft(renderMentionPlain(m.body));
+    setActiveMentions(extractMentionsFromText(m.body));
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -453,9 +579,28 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     setEmojiAnchor(null);
   };
 
+  const appendOutgoing = (msg: ChatMessageItem) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === activeThreadId
+          ? {
+              ...t,
+              lastMessageAt: msg.createdAt,
+              lastMessagePreview: previewLabel(msg.kind, msg.body),
+            }
+          : t
+      )
+    );
+  };
+
   const handleSend = async () => {
-    const text = draft.trim();
-    if (!text || !activeThreadId || sending) return;
+    const display = draft.trim();
+    if (!display || !activeThreadId || sending) return;
+    const { body: text, mentions } = encodeMentionsForSend(display, activeMentions);
     setSending(true);
     try {
       if (editingId) {
@@ -479,7 +624,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           if (last?.id === msg.id) {
             setThreads((threadsPrev) =>
               threadsPrev.map((t) =>
-                t.id === activeThreadId ? { ...t, lastMessagePreview: msg.body } : t
+                t.id === activeThreadId
+                  ? { ...t, lastMessagePreview: previewLabel(msg.kind, msg.body) }
+                  : t
               )
             );
           }
@@ -487,24 +634,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
         });
         cancelEdit();
       } else {
+        const payload = {
+          body: text,
+          replyToMessageId: replyTo?.id || null,
+          mentions: mentions.map((m) => ({ type: m.type, id: m.id })),
+        };
         const msg =
           mode === 'staff'
-            ? await apiService.sendChatMessage(activeThreadId, text)
+            ? await apiService.sendChatMessage(activeThreadId, payload)
             : mode === 'client'
-              ? await apiService.clientSendChatMessage(activeThreadId, text)
-              : await apiService.sendPlatformChatMessage(activeThreadId, text);
+              ? await apiService.clientSendChatMessage(activeThreadId, payload)
+              : await apiService.sendPlatformChatMessage(activeThreadId, payload);
         setDraft('');
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === activeThreadId
-              ? { ...t, lastMessageAt: msg.createdAt, lastMessagePreview: msg.body }
-              : t
-          )
-        );
+        setActiveMentions([]);
+        setReplyTo(null);
+        setMentionQuery(null);
+        appendOutgoing(msg);
         if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
       }
     } catch (e: any) {
@@ -513,6 +658,218 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       setSending(false);
     }
   };
+
+  const uploadMediaFile = async (
+    file: File,
+    kind?: 'image' | 'video' | 'voice',
+    durationMs?: number | null
+  ) => {
+    if (!activeThreadId || sending) return;
+    setSending(true);
+    try {
+      const display = draft.trim();
+      const encoded = display
+        ? encodeMentionsForSend(display, activeMentions)
+        : { body: '', mentions: [] as MentionRef[] };
+      const data = {
+        file,
+        kind,
+        caption: encoded.body || undefined,
+        replyToMessageId: replyTo?.id || null,
+        mentions: encoded.mentions.map((m) => ({ type: m.type, id: m.id })),
+        durationMs,
+      };
+      const msg =
+        mode === 'staff'
+          ? await apiService.sendChatMedia(activeThreadId, data)
+          : mode === 'client'
+            ? await apiService.clientSendChatMedia(activeThreadId, data)
+            : await apiService.sendPlatformChatMedia(activeThreadId, data);
+      setDraft('');
+      setActiveMentions([]);
+      setReplyTo(null);
+      appendOutgoing(msg);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось отправить медиа');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const mime = file.type || '';
+    const kind = mime.startsWith('image/')
+      ? 'image'
+      : mime.startsWith('video/')
+        ? 'video'
+        : undefined;
+    await uploadMediaFile(file, kind);
+  };
+
+  const startRecording = async (kind: 'voice' | 'video') => {
+    if (recording || !activeThreadId) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: kind === 'video',
+      });
+      mediaStreamRef.current = stream;
+      mediaChunksRef.current = [];
+      const mime =
+        kind === 'video'
+          ? MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+            ? 'video/webm;codecs=vp9,opus'
+            : 'video/webm'
+          : MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : 'audio/ogg';
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(mediaChunksRef.current, { type: mime.split(';')[0] });
+        const ext = kind === 'video' ? 'webm' : 'webm';
+        const file = new File([blob], `chat-${kind}.${ext}`, { type: blob.type });
+        const durationMs = Date.now() - recordStartedAtRef.current;
+        stopMediaTracks();
+        setRecording(null);
+        void uploadMediaFile(file, kind, durationMs);
+      };
+      recordStartedAtRef.current = Date.now();
+      recorder.start();
+      setRecording(kind);
+    } catch {
+      setError('Нет доступа к микрофону/камере');
+      stopMediaTracks();
+      setRecording(null);
+    }
+  };
+
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') rec.stop();
+    else {
+      stopMediaTracks();
+      setRecording(null);
+    }
+  };
+
+  const openParticipants = async () => {
+    if (!activeThreadId) return;
+    setParticipantsOpen(true);
+    try {
+      const list =
+        mode === 'staff'
+          ? await apiService.getChatParticipants(activeThreadId)
+          : mode === 'client'
+            ? await apiService.clientGetChatParticipants(activeThreadId)
+            : await apiService.getPlatformChatParticipants(activeThreadId);
+      setParticipants(list || []);
+    } catch {
+      setParticipants([]);
+    }
+  };
+
+  const togglePin = async (msg: ChatMessageItem) => {
+    if (!activeThreadId) return;
+    setMenuAnchor(null);
+    try {
+      if (msg.pinned) {
+        if (mode === 'staff') await apiService.unpinChatMessage(activeThreadId, msg.id);
+        else if (mode === 'client') await apiService.clientUnpinChatMessage(activeThreadId, msg.id);
+        else await apiService.unpinPlatformChatMessage(activeThreadId, msg.id);
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, pinned: false } : m)));
+        setPins((prev) => prev.filter((p) => p.messageId !== msg.id));
+      } else {
+        if (mode === 'staff') await apiService.pinChatMessage(activeThreadId, msg.id);
+        else if (mode === 'client') await apiService.clientPinChatMessage(activeThreadId, msg.id);
+        else await apiService.pinPlatformChatMessage(activeThreadId, msg.id);
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, pinned: true } : m)));
+        setPins((prev) => [
+          {
+            messageId: msg.id,
+            pinnedAt: new Date().toISOString(),
+            body: previewLabel(msg.kind, msg.body),
+            kind: msg.kind || 'TEXT',
+          },
+          ...prev.filter((p) => p.messageId !== msg.id),
+        ]);
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось изменить закрепление');
+    }
+  };
+
+  const insertMention = (p: ChatParticipant) => {
+    const displayName = String(p.name || 'Участник').replace(/[\[\]]/g, '');
+    const el = inputRef.current;
+    let nextDraft = draft;
+    let caretPos = draft.length;
+    if (el && typeof el.selectionStart === 'number') {
+      const start = el.selectionStart;
+      const before = draft.slice(0, start);
+      const at = before.lastIndexOf('@');
+      const prefix = at >= 0 ? before.slice(0, at) : before;
+      nextDraft = `${prefix}${displayName} ${draft.slice(start)}`;
+      caretPos = prefix.length + displayName.length + 1;
+    } else {
+      nextDraft = `${draft}${displayName} `;
+      caretPos = nextDraft.length;
+    }
+    setDraft(nextDraft);
+    setActiveMentions((prev) =>
+      pruneMentionsToDisplay(nextDraft, [
+        ...prev,
+        { type: p.type, id: p.id, name: displayName },
+      ])
+    );
+    setMentionQuery(null);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(caretPos, caretPos);
+    }, 0);
+  };
+
+  const onDraftChange = (value: string) => {
+    setDraft(value);
+    setActiveMentions((prev) => pruneMentionsToDisplay(value, prev));
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const before = value.slice(0, caret);
+    const match = before.match(/@([^\s@[\]]*)$/);
+    if (match) {
+      setMentionQuery(match[1].toLowerCase());
+      if (!participants.length && activeThreadId) {
+        void (async () => {
+          try {
+            const list =
+              mode === 'staff'
+                ? await apiService.getChatParticipants(activeThreadId)
+                : mode === 'client'
+                  ? await apiService.clientGetChatParticipants(activeThreadId)
+                  : await apiService.getPlatformChatParticipants(activeThreadId);
+            setParticipants(list || []);
+          } catch {
+            /* ignore */
+          }
+        })();
+      }
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const mentionSuggestions =
+    mentionQuery == null
+      ? []
+      : participants
+          .filter((p) => p.name.toLowerCase().includes(mentionQuery))
+          .slice(0, 8);
 
   const selected = threads.find((t) => t.threadKey === selectedKey);
 
@@ -624,7 +981,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                         </Typography>
                         {t.lastMessagePreview && (
                           <Typography variant="body2" noWrap color="text.secondary">
-                            {t.lastMessagePreview}
+                            {formatMentionsForDisplay(t.lastMessagePreview)}
                           </Typography>
                         )}
                       </>
@@ -664,9 +1021,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               >
                 ← К списку
               </Button>
-              <Box display="flex" alignItems="center" gap={1}>
-                {selected.presenceStatus ? <PresenceDot status={selected.presenceStatus} /> : null}
-                <Typography fontWeight={700}>{selected.title}</Typography>
+              <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+                <Box display="flex" alignItems="center" gap={1} minWidth={0}>
+                  {selected.presenceStatus ? <PresenceDot status={selected.presenceStatus} /> : null}
+                  <Typography fontWeight={700} noWrap>
+                    {selected.title}
+                  </Typography>
+                </Box>
+                <IconButton size="small" onClick={() => void openParticipants()} title="Участники">
+                  <People fontSize="small" />
+                </IconButton>
               </Box>
               <Typography variant="caption" color="text.secondary">
                 {selected.presenceStatus
@@ -674,6 +1038,31 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                   : selected.subtitle}
               </Typography>
             </Box>
+
+            {pins.length > 0 && (
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 1,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
+              >
+                <PushPin fontSize="small" color="primary" />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Закреплено
+                  </Typography>
+                  <Typography variant="body2" noWrap>
+                    {pins[0].body}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
 
             <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'grey.50' }}>
               {loadingMessages ? (
@@ -684,7 +1073,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 messages.map((m) => {
                   const own = isOwn(m);
                   const canEdit =
-                    own && isWithinEditWindow(m.createdAt, editLimitMinutes, nowTick);
+                    own &&
+                    (m.kind || 'TEXT') === 'TEXT' &&
+                    isWithinEditWindow(m.createdAt, editLimitMinutes, nowTick);
                   return (
                     <Box
                       key={m.id}
@@ -714,9 +1105,41 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                             {m.authorType === 'PARENT' ? ' (родитель)' : ''}
                           </Typography>
                         )}
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                          {m.body}
-                        </Typography>
+                        {m.replyTo && (
+                          <Box
+                            sx={{
+                              mb: 0.75,
+                              pl: 1,
+                              borderLeft: '3px solid',
+                              borderColor: own ? 'rgba(255,255,255,0.5)' : 'primary.main',
+                              opacity: 0.9,
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                              {m.replyTo.authorName}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }} noWrap>
+                              {formatMentionsForDisplay(m.replyTo.body)}
+                            </Typography>
+                          </Box>
+                        )}
+                        {(m.attachments || []).map((att) =>
+                          activeThreadId ? (
+                            <Box key={att.id} sx={{ mb: m.body ? 1 : 0 }}>
+                              <ChatMediaBubble
+                                mode={mode}
+                                threadId={activeThreadId}
+                                messageId={m.id}
+                                attachment={att}
+                              />
+                            </Box>
+                          ) : null
+                        )}
+                        {m.body ? (
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {renderMentionNodes(m.body, m.id)}
+                          </Typography>
+                        ) : null}
                         <Box
                           display="flex"
                           alignItems="center"
@@ -724,6 +1147,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                           gap={0.5}
                           mt={0.5}
                         >
+                          {m.pinned && <PushPin sx={{ fontSize: 12, opacity: 0.8 }} />}
+                          <IconButton
+                            size="small"
+                            onClick={(e) => setMenuAnchor({ el: e.currentTarget, msg: m })}
+                            title="Действия"
+                            sx={{
+                              p: 0.25,
+                              color: 'inherit',
+                              opacity: 0.75,
+                              '&:hover': { opacity: 1 },
+                            }}
+                          >
+                            <MoreVert sx={{ fontSize: 14 }} />
+                          </IconButton>
                           {canEdit && (
                             <IconButton
                               size="small"
@@ -757,7 +1194,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               <div ref={bottomRef} />
             </Box>
 
-            {editingId && (
+            {(editingId || replyTo) && (
               <Box
                 sx={{
                   px: 1.5,
@@ -768,17 +1205,51 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                   bgcolor: 'action.hover',
                 }}
               >
-                <Edit fontSize="small" color="action" />
-                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-                  Редактирование сообщения
+                {editingId ? <Edit fontSize="small" color="action" /> : <Reply fontSize="small" color="action" />}
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }} noWrap>
+                  {editingId
+                    ? 'Редактирование сообщения'
+                    : `Ответ: ${replyTo?.authorName} — ${previewLabel(replyTo?.kind, replyTo?.body || '')}`}
                 </Typography>
-                <IconButton size="small" onClick={cancelEdit} title="Отмена">
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    if (editingId) cancelEdit();
+                    else setReplyTo(null);
+                  }}
+                  title="Отмена"
+                >
                   <Close fontSize="small" />
                 </IconButton>
               </Box>
             )}
 
-            <Box sx={{ p: 1.5, display: 'flex', gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+            {mentionSuggestions.length > 0 && (
+              <Box
+                sx={{
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  maxHeight: 160,
+                  overflow: 'auto',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                {mentionSuggestions.map((p) => (
+                  <ListItemButton key={`${p.type}:${p.id}`} dense onClick={() => insertMention(p)}>
+                    <ListItemText primary={p.name} secondary={p.roleLabel} />
+                  </ListItemButton>
+                ))}
+              </Box>
+            )}
+
+            <Box sx={{ p: 1.5, display: 'flex', gap: 0.5, borderTop: '1px solid', borderColor: 'divider', alignItems: 'flex-end' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                hidden
+                onChange={(e) => void onPickFile(e)}
+              />
               <IconButton
                 onClick={(e) => setEmojiAnchor(e.currentTarget)}
                 disabled={sending || !activeThreadId}
@@ -786,12 +1257,35 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               >
                 <EmojiEmotions />
               </IconButton>
+              <IconButton
+                disabled={sending || !activeThreadId || Boolean(editingId)}
+                title="Прикрепить фото/видео"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <AttachFile />
+              </IconButton>
+              <IconButton
+                disabled={sending || !activeThreadId || Boolean(editingId)}
+                color={recording === 'voice' ? 'error' : 'default'}
+                title={recording === 'voice' ? 'Остановить запись' : 'Голосовое'}
+                onClick={() => (recording === 'voice' ? stopRecording() : void startRecording('voice'))}
+              >
+                {recording === 'voice' ? <Stop /> : <Mic />}
+              </IconButton>
+              <IconButton
+                disabled={sending || !activeThreadId || Boolean(editingId)}
+                color={recording === 'video' ? 'error' : 'default'}
+                title={recording === 'video' ? 'Остановить запись' : 'Видеосообщение'}
+                onClick={() => (recording === 'video' ? stopRecording() : void startRecording('video'))}
+              >
+                {recording === 'video' ? <Stop /> : <Videocam />}
+              </IconButton>
               <TextField
                 fullWidth
                 size="small"
-                placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение…'}
+                placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение… (@ — упомянуть)'}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => onDraftChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape' && editingId) {
                     e.preventDefault();
@@ -849,6 +1343,54 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           ))}
         </Box>
       </Popover>
+
+      <Menu
+        anchorEl={menuAnchor?.el || null}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+      >
+        <MenuItem
+          onClick={() => {
+            if (!menuAnchor) return;
+            setReplyTo(menuAnchor.msg);
+            setMenuAnchor(null);
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }}
+        >
+          Ответить
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menuAnchor) void togglePin(menuAnchor.msg);
+          }}
+        >
+          {menuAnchor?.msg.pinned ? 'Открепить' : 'Закрепить'}
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={participantsOpen} onClose={() => setParticipantsOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Участники</DialogTitle>
+        <DialogContent dividers>
+          <List dense>
+            {participants.map((p) => (
+              <ListItemButton
+                key={`${p.type}:${p.id}`}
+                onClick={() => {
+                  insertMention(p);
+                  setParticipantsOpen(false);
+                }}
+              >
+                <ListItemText primary={p.name} secondary={p.roleLabel} />
+              </ListItemButton>
+            ))}
+            {participants.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                Нет участников
+              </Typography>
+            )}
+          </List>
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <Chip

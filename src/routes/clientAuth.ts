@@ -24,12 +24,19 @@ import {
   clientPostSupportMessage,
 } from '../controllers/supportTicketController';
 import {
+  chatMediaUpload,
   clientEnsureThread,
+  clientGetMedia,
   clientGetMessages,
+  clientGetParticipants,
+  clientGetPins,
   clientListThreads,
   clientMarkRead,
   clientPatchMessage,
+  clientPinMessage,
+  clientPostMediaMessage,
   clientPostMessage,
+  clientUnpinMessage,
   clientUnreadTotal,
 } from '../controllers/chatController';
 import {
@@ -149,8 +156,23 @@ router.get('/chats/unread-total', authenticateClient, clientUnreadTotal);
 router.post('/chats/threads/ensure', authenticateClient, clientEnsureThread);
 router.get('/chats/threads/:id/messages', authenticateClient, clientGetMessages);
 router.post('/chats/threads/:id/messages', authenticateClient, clientPostMessage);
+router.post(
+  '/chats/threads/:id/messages/media',
+  authenticateClient,
+  chatMediaUpload.single('file'),
+  clientPostMediaMessage
+);
+router.get(
+  '/chats/threads/:id/messages/:messageId/media/:attachmentId',
+  authenticateClient,
+  clientGetMedia
+);
 router.patch('/chats/threads/:id/messages/:messageId', authenticateClient, clientPatchMessage);
 router.post('/chats/threads/:id/read', authenticateClient, clientMarkRead);
+router.get('/chats/threads/:id/participants', authenticateClient, clientGetParticipants);
+router.get('/chats/threads/:id/pins', authenticateClient, clientGetPins);
+router.post('/chats/threads/:id/pins', authenticateClient, clientPinMessage);
+router.delete('/chats/threads/:id/pins/:messageId', authenticateClient, clientUnpinMessage);
 
 export default router;
 

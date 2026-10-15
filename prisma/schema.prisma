@@ -2134,6 +2134,7 @@ model ChatThread {
   staffTask     StaffTask?     @relation(fields: [staffTaskId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
   reads         ChatThreadRead[]
+  pins          ChatThreadPin[]
 
   @@index([tenantId, type])
   @@index([tenantId, lastMessageAt])
@@ -2142,24 +2143,80 @@ model ChatThread {
 }
 
 model ChatMessage {
-  id               String     @id @default(cuid())
-  threadId         String
-  tenantId         String?
-  body             String     @db.Text
+  id                 String           @id @default(cuid())
+  threadId           String
+  tenantId           String?
+  /// TEXT | IMAGE | VIDEO | VOICE
+  kind               String           @default("TEXT")
+  body               String           @db.Text
   /// CLIENT | PARENT | USER | SUPER_ADMIN | TESTER
-  authorType       String
-  authorClientId   String?
-  authorParentId   String?
-  authorUserId     String?
+  authorType         String
+  authorClientId     String?
+  authorParentId     String?
+  authorUserId       String?
   authorSuperAdminId String?
-  authorTesterId   String?
-  createdAt        DateTime   @default(now())
-  editedAt         DateTime?
-  thread           ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorTesterId     String?
+  replyToMessageId   String?
+  createdAt          DateTime         @default(now())
+  editedAt           DateTime?
+  thread             ChatThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  replyTo            ChatMessage?     @relation("ChatMessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies            ChatMessage[]    @relation("ChatMessageReplies")
+  attachments        ChatAttachment[]
+  mentions           ChatMention[]
+  pins               ChatThreadPin[]
 
   @@index([threadId, createdAt])
   @@index([tenantId, createdAt])
+  @@index([replyToMessageId])
   @@map("chat_messages")
+}
+
+model ChatAttachment {
+  id           String      @id @default(cuid())
+  messageId    String
+  /// image | video | voice
+  kind         String
+  storagePath  String
+  mimeType     String
+  originalName String
+  sizeBytes    Int
+  durationMs   Int?
+  width        Int?
+  height       Int?
+  createdAt    DateTime    @default(now())
+  message      ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("chat_attachments")
+}
+
+model ChatMention {
+  id            String      @id @default(cuid())
+  messageId     String
+  /// USER | CLIENT | PARENT | SUPER_ADMIN | TESTER
+  mentionedType String
+  mentionedId   String
+  message       ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, mentionedType, mentionedId])
+  @@index([mentionedType, mentionedId])
+  @@map("chat_mentions")
+}
+
+model ChatThreadPin {
+  id           String      @id @default(cuid())
+  threadId     String
+  messageId    String
+  pinnedByType String
+  pinnedById   String
+  pinnedAt     DateTime    @default(now())
+  thread       ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message      ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, messageId])
+  @@index([threadId, pinnedAt])
+  @@map("chat_thread_pins")
 }
 
 model ChatThreadRead {

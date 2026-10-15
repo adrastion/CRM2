@@ -3,11 +3,13 @@ import { format, startOfDay, endOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
   fanoutNotification,
+  NotifyRecipient,
   resolveClientAndParents,
   resolveGroupMembers,
   resolveSchoolAdmins,
   resolveSchoolManagers,
 } from './notificationFanout';
+import { NotificationActorType } from './notificationPrefsService';
 
 function personName(parts: Array<string | null | undefined>): string {
   return parts.filter(Boolean).join(' ').trim();
@@ -303,5 +305,75 @@ export async function sendClientTrainingReminders(minutesBefore = 60): Promise<v
     } catch (e) {
       console.error(`[Notifications] Client reminder failed for ${training.id}:`, e);
     }
+  }
+}
+
+const MENTION_ACTOR_TYPES = new Set<string>([
+  'USER',
+  'CLIENT',
+  'PARENT',
+  'SUPER_ADMIN',
+  'TESTER',
+]);
+
+function mentionInboxUrl(actorType: NotificationActorType, threadId: string): string {
+  if (actorType === 'CLIENT' || actorType === 'PARENT') return '/client/dashboard';
+  if (actorType === 'SUPER_ADMIN' || actorType === 'TESTER') {
+    return '/admin/dashboard?section=chats';
+  }
+  return `/chats?threadId=${encodeURIComponent(threadId)}`;
+}
+
+/** Упоминание в чате → inbox «колокольчик» (+ push по prefs chat_message). */
+export async function notifyChatMentions(params: {
+  tenantId: string | null;
+  threadId: string;
+  messageId: string;
+  authorName: string;
+  preview: string;
+  mentions: Array<{ type: string; id: string }>;
+  excludeAuthor?: { actorType: string; actorId: string } | null;
+}): Promise<void> {
+  if (!params.mentions.length) return;
+
+  const byType = new Map<NotificationActorType, Set<string>>();
+  for (const m of params.mentions) {
+    const actorType = String(m.type || '').toUpperCase();
+    const actorId = String(m.id || '');
+    if (!MENTION_ACTOR_TYPES.has(actorType) || !actorId) continue;
+    if (
+      params.excludeAuthor &&
+      params.excludeAuthor.actorType === actorType &&
+      params.excludeAuthor.actorId === actorId
+    ) {
+      continue;
+    }
+    const key = actorType as NotificationActorType;
+    if (!byType.has(key)) byType.set(key, new Set());
+    byType.get(key)!.add(actorId);
+  }
+
+  const preview =
+    params.preview.length > 120 ? `${params.preview.slice(0, 117)}…` : params.preview;
+
+  for (const [actorType, ids] of byType) {
+    const recipients: NotifyRecipient[] = [...ids].map((actorId) => ({
+      actorType,
+      actorId,
+    }));
+    await fanoutNotification({
+      tenantId: params.tenantId,
+      category: 'chat',
+      type: 'chat_mention',
+      title: 'Вас упомянули в чате',
+      body: `${params.authorName}: ${preview}`,
+      data: {
+        url: mentionInboxUrl(actorType, params.threadId),
+        threadId: params.threadId,
+        messageId: params.messageId,
+      },
+      eventType: 'chat_message',
+      recipients,
+    });
   }
 }

@@ -3603,8 +3603,82 @@ class ApiService {
     return response.data.data;
   }
 
-  async sendChatMessage(threadId: string, body: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/messages`, { body });
+  async sendChatMessage(
+    threadId: string,
+    bodyOrOpts:
+      | string
+      | {
+          body: string;
+          replyToMessageId?: string | null;
+          mentions?: Array<{ type: string; id: string }>;
+        }
+  ): Promise<any> {
+    const payload =
+      typeof bodyOrOpts === 'string'
+        ? { body: bodyOrOpts }
+        : {
+            body: bodyOrOpts.body,
+            replyToMessageId: bodyOrOpts.replyToMessageId || undefined,
+            mentions: bodyOrOpts.mentions,
+          };
+    const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/messages`, payload);
+    return response.data.data;
+  }
+
+  async sendChatMedia(
+    threadId: string,
+    data: {
+      file: File;
+      kind?: 'image' | 'video' | 'voice';
+      caption?: string;
+      replyToMessageId?: string | null;
+      mentions?: Array<{ type: string; id: string }>;
+      durationMs?: number | null;
+    }
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', data.file);
+    if (data.kind) form.append('kind', data.kind);
+    if (data.caption) form.append('caption', data.caption);
+    if (data.replyToMessageId) form.append('replyToMessageId', data.replyToMessageId);
+    if (data.mentions?.length) form.append('mentions', JSON.stringify(data.mentions));
+    if (data.durationMs != null) form.append('durationMs', String(data.durationMs));
+    const response = await this.api.post<ApiResponse>(
+      `/chats/threads/${threadId}/messages/media`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async getChatMediaBlob(
+    threadId: string,
+    messageId: string,
+    attachmentId: string
+  ): Promise<Blob> {
+    const response = await this.api.get(
+      `/chats/threads/${threadId}/messages/${messageId}/media/${attachmentId}`,
+      { responseType: 'blob' }
+    );
+    return response.data;
+  }
+
+  async getChatParticipants(threadId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(`/chats/threads/${threadId}/participants`);
+    return response.data.data || [];
+  }
+
+  async pinChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/pins`, {
+      messageId,
+    });
+    return response.data.data;
+  }
+
+  async unpinChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/chats/threads/${threadId}/pins/${messageId}`
+    );
     return response.data.data;
   }
 
@@ -3648,10 +3722,88 @@ class ApiService {
     return response.data.data;
   }
 
-  async clientSendChatMessage(threadId: string, body: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/client-auth/chats/threads/${threadId}/messages`, {
-      body,
-    });
+  async clientSendChatMessage(
+    threadId: string,
+    bodyOrOpts:
+      | string
+      | {
+          body: string;
+          replyToMessageId?: string | null;
+          mentions?: Array<{ type: string; id: string }>;
+        }
+  ): Promise<any> {
+    const payload =
+      typeof bodyOrOpts === 'string'
+        ? { body: bodyOrOpts }
+        : {
+            body: bodyOrOpts.body,
+            replyToMessageId: bodyOrOpts.replyToMessageId || undefined,
+            mentions: bodyOrOpts.mentions,
+          };
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/messages`,
+      payload
+    );
+    return response.data.data;
+  }
+
+  async clientSendChatMedia(
+    threadId: string,
+    data: {
+      file: File;
+      kind?: 'image' | 'video' | 'voice';
+      caption?: string;
+      replyToMessageId?: string | null;
+      mentions?: Array<{ type: string; id: string }>;
+      durationMs?: number | null;
+    }
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', data.file);
+    if (data.kind) form.append('kind', data.kind);
+    if (data.caption) form.append('caption', data.caption);
+    if (data.replyToMessageId) form.append('replyToMessageId', data.replyToMessageId);
+    if (data.mentions?.length) form.append('mentions', JSON.stringify(data.mentions));
+    if (data.durationMs != null) form.append('durationMs', String(data.durationMs));
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/messages/media`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async clientGetChatMediaBlob(
+    threadId: string,
+    messageId: string,
+    attachmentId: string
+  ): Promise<Blob> {
+    const response = await this.api.get(
+      `/client-auth/chats/threads/${threadId}/messages/${messageId}/media/${attachmentId}`,
+      { responseType: 'blob' }
+    );
+    return response.data;
+  }
+
+  async clientGetChatParticipants(threadId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/participants`
+    );
+    return response.data.data || [];
+  }
+
+  async clientPinChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/pins`,
+      { messageId }
+    );
+    return response.data.data;
+  }
+
+  async clientUnpinChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/pins/${messageId}`
+    );
     return response.data.data;
   }
 
@@ -3689,10 +3841,87 @@ class ApiService {
     return response.data.data;
   }
 
-  async sendPlatformChatMessage(threadId: string, body: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/platform/chats/threads/${threadId}/messages`, {
-      body,
+  async sendPlatformChatMessage(
+    threadId: string,
+    bodyOrOpts:
+      | string
+      | {
+          body: string;
+          replyToMessageId?: string | null;
+          mentions?: Array<{ type: string; id: string }>;
+        }
+  ): Promise<any> {
+    const payload =
+      typeof bodyOrOpts === 'string'
+        ? { body: bodyOrOpts }
+        : {
+            body: bodyOrOpts.body,
+            replyToMessageId: bodyOrOpts.replyToMessageId || undefined,
+            mentions: bodyOrOpts.mentions,
+          };
+    const response = await this.api.post<ApiResponse>(
+      `/platform/chats/threads/${threadId}/messages`,
+      payload
+    );
+    return response.data.data;
+  }
+
+  async sendPlatformChatMedia(
+    threadId: string,
+    data: {
+      file: File;
+      kind?: 'image' | 'video' | 'voice';
+      caption?: string;
+      replyToMessageId?: string | null;
+      mentions?: Array<{ type: string; id: string }>;
+      durationMs?: number | null;
+    }
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', data.file);
+    if (data.kind) form.append('kind', data.kind);
+    if (data.caption) form.append('caption', data.caption);
+    if (data.replyToMessageId) form.append('replyToMessageId', data.replyToMessageId);
+    if (data.mentions?.length) form.append('mentions', JSON.stringify(data.mentions));
+    if (data.durationMs != null) form.append('durationMs', String(data.durationMs));
+    const response = await this.api.post<ApiResponse>(
+      `/platform/chats/threads/${threadId}/messages/media`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async getPlatformChatMediaBlob(
+    threadId: string,
+    messageId: string,
+    attachmentId: string
+  ): Promise<Blob> {
+    const response = await this.api.get(
+      `/platform/chats/threads/${threadId}/messages/${messageId}/media/${attachmentId}`,
+      { responseType: 'blob' }
+    );
+    return response.data;
+  }
+
+  async getPlatformChatParticipants(threadId: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>(
+      `/platform/chats/threads/${threadId}/participants`
+    );
+    return response.data.data || [];
+  }
+
+  async pinPlatformChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/platform/chats/threads/${threadId}/pins`, {
+      messageId,
     });
+    return response.data.data;
+  }
+
+  async unpinPlatformChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/platform/chats/threads/${threadId}/pins/${messageId}`
+    );
     return response.data.data;
   }
 

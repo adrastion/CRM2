@@ -9,6 +9,7 @@ import {
   setChatMessageEmitter,
   setChatMessageUpdatedEmitter,
   setChatUnreadEmitter,
+  setChatPinEmitter,
   ChatActor,
   presenceKeyForActor,
   resolvePeerPresenceKeys,
@@ -207,5 +208,9 @@ export function attachChatNamespace(io: Server): void {
         console.error('chat unread notify error', e);
       }
     })();
+  });
+
+  setChatPinEmitter((payload) => {
+    nsp.to(roomName(payload.threadId)).emit('chat:pin', payload);
   });
 }

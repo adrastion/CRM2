@@ -6,6 +6,7 @@ export interface ChatSocketMessage {
   id: string;
   threadId: string;
   tenantId: string | null;
+  kind?: string;
   body: string;
   authorType: string;
   authorClientId: string | null;
@@ -16,6 +17,25 @@ export interface ChatSocketMessage {
   authorName: string;
   createdAt: string;
   editedAt?: string | null;
+  replyToMessageId?: string | null;
+  replyTo?: {
+    id: string;
+    body: string;
+    kind: string;
+    authorName: string;
+  } | null;
+  attachments?: Array<{
+    id: string;
+    kind: string;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+    durationMs: number | null;
+    width: number | null;
+    height: number | null;
+  }>;
+  mentions?: Array<{ type: string; id: string; name?: string }>;
+  pinned?: boolean;
 }
 
 /**
@@ -28,15 +48,26 @@ export function useChatSocket(opts: {
   onMessage: (msg: ChatSocketMessage) => void;
   onMessageUpdated?: (msg: ChatSocketMessage) => void;
   onPresence?: (payload: { key: string; online: boolean }) => void;
+  onPin?: (payload: { threadId: string; messageId: string; pinned: boolean }) => void;
 }): void {
-  const { token, threadId, enabled = true, onMessage, onMessageUpdated, onPresence } = opts;
+  const {
+    token,
+    threadId,
+    enabled = true,
+    onMessage,
+    onMessageUpdated,
+    onPresence,
+    onPin,
+  } = opts;
   const socketRef = useRef<Socket | null>(null);
   const onMessageRef = useRef(onMessage);
   const onMessageUpdatedRef = useRef(onMessageUpdated);
   const onPresenceRef = useRef(onPresence);
+  const onPinRef = useRef(onPin);
   onMessageRef.current = onMessage;
   onMessageUpdatedRef.current = onMessageUpdated;
   onPresenceRef.current = onPresence;
+  onPinRef.current = onPin;
   const joinedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -59,6 +90,10 @@ export function useChatSocket(opts: {
 
     socket.on('chat:presence', (payload: { key: string; online: boolean }) => {
       onPresenceRef.current?.(payload);
+    });
+
+    socket.on('chat:pin', (payload: { threadId: string; messageId: string; pinned: boolean }) => {
+      onPinRef.current?.(payload);
     });
 
     return () => {

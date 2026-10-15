@@ -50,6 +50,7 @@ const TENANT_UPLOAD_SEGMENTS = [
   'trainer-docs',
   'exercise-media',
   'payment-qr',
+  'chat-media',
 ] as const;
 
 export function removeTenantUploadFiles(tenantId: string): void {

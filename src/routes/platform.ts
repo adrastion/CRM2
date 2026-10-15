@@ -4,12 +4,19 @@ import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
 import { authenticate } from '../middleware/auth';
 import {
   ensurePlatformChatThread,
+  getPlatformChatMedia,
   getPlatformChatMessages,
+  getPlatformChatParticipants,
+  getPlatformChatPins,
   listPlatformChatThreads,
   markPlatformChatRead,
+  pinPlatformChatMessage,
+  sendPlatformChatMedia,
   sendPlatformChatMessage,
+  unpinPlatformChatMessage,
   updatePlatformChatMessage,
 } from '../controllers/platformChatController';
+import { chatMediaUpload } from '../controllers/chatController';
 import {
   attachSchoolNewsRole,
   createPlatformChangelog,
@@ -37,12 +44,35 @@ router.get('/chats/threads', authenticateSuperAdminOrTester, listPlatformChatThr
 router.post('/chats/threads/ensure', authenticateSuperAdminOrTester, ensurePlatformChatThread);
 router.get('/chats/threads/:threadId/messages', authenticateSuperAdminOrTester, getPlatformChatMessages);
 router.post('/chats/threads/:threadId/messages', authenticateSuperAdminOrTester, sendPlatformChatMessage);
+router.post(
+  '/chats/threads/:threadId/messages/media',
+  authenticateSuperAdminOrTester,
+  chatMediaUpload.single('file'),
+  sendPlatformChatMedia
+);
+router.get(
+  '/chats/threads/:threadId/messages/:messageId/media/:attachmentId',
+  authenticateSuperAdminOrTester,
+  getPlatformChatMedia
+);
 router.patch(
   '/chats/threads/:threadId/messages/:messageId',
   authenticateSuperAdminOrTester,
   updatePlatformChatMessage
 );
 router.post('/chats/threads/:threadId/read', authenticateSuperAdminOrTester, markPlatformChatRead);
+router.get(
+  '/chats/threads/:threadId/participants',
+  authenticateSuperAdminOrTester,
+  getPlatformChatParticipants
+);
+router.get('/chats/threads/:threadId/pins', authenticateSuperAdminOrTester, getPlatformChatPins);
+router.post('/chats/threads/:threadId/pins', authenticateSuperAdminOrTester, pinPlatformChatMessage);
+router.delete(
+  '/chats/threads/:threadId/pins/:messageId',
+  authenticateSuperAdminOrTester,
+  unpinPlatformChatMessage
+);
 
 router.get('/changelog', authenticateSuperAdminOrTester, listPlatformChangelog);
 router.post(

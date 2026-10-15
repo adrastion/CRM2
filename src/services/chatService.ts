@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../lib/prisma';
 import { ChatThreadType, Prisma } from '@prisma/client';
 import { HttpError, badRequest, forbidden, notFound } from '../utils/httpError';
@@ -11,6 +13,22 @@ import {
   PresenceStatus,
   statusFromOnline,
 } from './chatPresence';
+import {
+  ChatMediaKind,
+  chatMediaRelativeDir,
+  maxBytesForMediaKind,
+  mediaKindFromMime,
+  messageKindFromMedia,
+  previewForMessage,
+  safeChatStorageName,
+  sniffMimeFromFile,
+} from '../utils/chatMedia';
+import {
+  absoluteUploadPath,
+  decodeUploadOriginalName,
+  ensureUploadDir,
+  safeUnlink,
+} from '../utils/fileStorage';
 
 export type ChatAuthorType = 'CLIENT' | 'PARENT' | 'USER' | 'SUPER_ADMIN' | 'TESTER';
 
@@ -475,10 +493,12 @@ async function lastPreview(threadId: string): Promise<string | null> {
   const msg = await prisma.chatMessage.findFirst({
     where: { threadId },
     orderBy: { createdAt: 'desc' },
-    select: { body: true },
+    select: { body: true, kind: true },
   });
   if (!msg) return null;
-  return msg.body.length > 120 ? `${msg.body.slice(0, 117)}…` : msg.body;
+  const preview = previewForMessage(msg.kind || 'TEXT', msg.body);
+  if (!preview) return null;
+  return preview.length > 120 ? `${preview.slice(0, 117)}…` : preview;
 }
 
 /** Список платформенных бесед для SA / Tester. */
@@ -896,6 +916,12 @@ export async function getMessages(
     where,
     orderBy: { createdAt: 'desc' },
     take: limit,
+    include: {
+      attachments: true,
+      mentions: true,
+      replyTo: true,
+      pins: { where: { threadId }, select: { id: true } },
+    },
   });
 
   const userIds = [...new Set(messages.filter((m) => m.authorUserId).map((m) => m.authorUserId!))];
@@ -911,38 +937,73 @@ export async function getMessages(
   const testerIds = [
     ...new Set(messages.filter((m) => m.authorTesterId).map((m) => m.authorTesterId!)),
   ];
+  for (const m of messages) {
+    if (m.replyTo?.authorUserId) userIds.push(m.replyTo.authorUserId);
+    if (m.replyTo?.authorClientId) clientIds.push(m.replyTo.authorClientId);
+    if (m.replyTo?.authorParentId) parentIds.push(m.replyTo.authorParentId);
+    if (m.replyTo?.authorSuperAdminId) saIds.push(m.replyTo.authorSuperAdminId);
+    if (m.replyTo?.authorTesterId) testerIds.push(m.replyTo.authorTesterId);
+    for (const mention of m.mentions) {
+      if (mention.mentionedType === 'USER') userIds.push(mention.mentionedId);
+      if (mention.mentionedType === 'CLIENT') clientIds.push(mention.mentionedId);
+      if (mention.mentionedType === 'PARENT') parentIds.push(mention.mentionedId);
+      if (mention.mentionedType === 'SUPER_ADMIN') saIds.push(mention.mentionedId);
+      if (mention.mentionedType === 'TESTER') testerIds.push(mention.mentionedId);
+    }
+  }
 
-  const [users, clients, parents, superAdmins, testers] = await Promise.all([
-    userIds.length
+  const uniq = (arr: string[]) => [...new Set(arr)];
+
+  const [users, clients, parents, superAdmins, testers, pins] = await Promise.all([
+    uniq(userIds).length
       ? prisma.user.findMany({
-          where: { id: { in: userIds } },
+          where: { id: { in: uniq(userIds) } },
           select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
         })
       : [],
-    clientIds.length
+    uniq(clientIds).length
       ? prisma.client.findMany({
-          where: { id: { in: clientIds } },
+          where: { id: { in: uniq(clientIds) } },
           select: { id: true, firstName: true, lastName: true, middleName: true },
         })
       : [],
-    parentIds.length
+    uniq(parentIds).length
       ? prisma.parent.findMany({
-          where: { id: { in: parentIds } },
+          where: { id: { in: uniq(parentIds) } },
           select: { id: true, fullName: true },
         })
       : [],
-    saIds.length
+    uniq(saIds).length
       ? prisma.superAdmin.findMany({
-          where: { id: { in: saIds } },
+          where: { id: { in: uniq(saIds) } },
           select: { id: true, firstName: true, lastName: true },
         })
       : [],
-    testerIds.length
+    uniq(testerIds).length
       ? prisma.tester.findMany({
-          where: { id: { in: testerIds } },
+          where: { id: { in: uniq(testerIds) } },
           select: { id: true, firstName: true, lastName: true },
         })
       : [],
+    prisma.chatThreadPin.findMany({
+      where: { threadId },
+      orderBy: { pinnedAt: 'desc' },
+      include: {
+        message: {
+          select: {
+            id: true,
+            body: true,
+            kind: true,
+            authorType: true,
+            authorUserId: true,
+            authorClientId: true,
+            authorParentId: true,
+            authorSuperAdminId: true,
+            authorTesterId: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const userMap = new Map(users.map((u) => [u.id, u]));
@@ -951,26 +1012,63 @@ export async function getMessages(
   const saMap = new Map(superAdmins.map((s) => [s.id, s]));
   const testerMap = new Map(testers.map((t) => [t.id, t]));
 
-  const enriched = messages.map((m) => {
-    let authorName = 'Участник';
+  const nameFor = (m: {
+    authorType: string;
+    authorUserId?: string | null;
+    authorClientId?: string | null;
+    authorParentId?: string | null;
+    authorSuperAdminId?: string | null;
+    authorTesterId?: string | null;
+  }) => {
     if (m.authorType === 'USER' && m.authorUserId) {
       const u = userMap.get(m.authorUserId);
-      authorName = personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
-    } else if (m.authorType === 'CLIENT' && m.authorClientId) {
-      const c = clientMap.get(m.authorClientId);
-      authorName = personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
-    } else if (m.authorType === 'PARENT' && m.authorParentId) {
-      authorName = parentMap.get(m.authorParentId)?.fullName || 'Родитель';
-    } else if (m.authorType === 'SUPER_ADMIN' && m.authorSuperAdminId) {
-      const s = saMap.get(m.authorSuperAdminId);
-      authorName = personName([s?.lastName, s?.firstName]) || 'Супер-админ';
-    } else if (m.authorType === 'TESTER' && m.authorTesterId) {
-      const t = testerMap.get(m.authorTesterId);
-      authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+      return personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
     }
+    if (m.authorType === 'CLIENT' && m.authorClientId) {
+      const c = clientMap.get(m.authorClientId);
+      return personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+    }
+    if (m.authorType === 'PARENT' && m.authorParentId) {
+      return parentMap.get(m.authorParentId)?.fullName || 'Родитель';
+    }
+    if (m.authorType === 'SUPER_ADMIN' && m.authorSuperAdminId) {
+      const s = saMap.get(m.authorSuperAdminId);
+      return personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+    }
+    if (m.authorType === 'TESTER' && m.authorTesterId) {
+      const t = testerMap.get(m.authorTesterId);
+      return personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+    }
+    return 'Участник';
+  };
+
+  const mentionName = (type: string, id: string) => {
+    if (type === 'USER') {
+      const u = userMap.get(id);
+      return personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
+    }
+    if (type === 'CLIENT') {
+      const c = clientMap.get(id);
+      return personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+    }
+    if (type === 'PARENT') return parentMap.get(id)?.fullName || 'Родитель';
+    if (type === 'SUPER_ADMIN') {
+      const s = saMap.get(id);
+      return personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+    }
+    if (type === 'TESTER') {
+      const t = testerMap.get(id);
+      return personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+    }
+    return 'Участник';
+  };
+
+  const enriched = messages.map((m) => {
+    const authorName = nameFor(m);
     return {
       id: m.id,
       threadId: m.threadId,
+      kind: m.kind || 'TEXT',
       body: m.body,
       authorType: m.authorType,
       authorClientId: m.authorClientId,
@@ -981,6 +1079,22 @@ export async function getMessages(
       authorName,
       createdAt: m.createdAt.toISOString(),
       editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+      replyToMessageId: m.replyToMessageId,
+      replyTo: m.replyTo
+        ? {
+            id: m.replyTo.id,
+            body: previewForMessage(m.replyTo.kind || 'TEXT', m.replyTo.body).slice(0, 200),
+            kind: m.replyTo.kind || 'TEXT',
+            authorName: nameFor(m.replyTo),
+          }
+        : null,
+      attachments: m.attachments.map(mapAttachmentDto),
+      mentions: m.mentions.map((x) => ({
+        type: x.mentionedType,
+        id: x.mentionedId,
+        name: mentionName(x.mentionedType, x.mentionedId),
+      })),
+      pinned: m.pins.length > 0,
     };
   });
 
@@ -989,6 +1103,13 @@ export async function getMessages(
     messages: enriched.reverse(),
     hasMore: messages.length === limit,
     chatMessageEditLimitMinutes: await resolveChatEditLimitMinutes(thread.tenantId),
+    pins: pins.map((p) => ({
+      messageId: p.messageId,
+      pinnedAt: p.pinnedAt.toISOString(),
+      body: previewForMessage(p.message.kind || 'TEXT', p.message.body).slice(0, 200),
+      kind: p.message.kind || 'TEXT',
+      authorName: nameFor(p.message),
+    })),
   };
 }
 
@@ -1014,10 +1135,23 @@ function assertMessageEditable(createdAt: Date, limitMinutes: number): void {
   }
 }
 
+export type ChatMentionDto = { type: string; id: string; name?: string };
+export type ChatAttachmentDto = {
+  id: string;
+  kind: string;
+  mimeType: string;
+  originalName: string;
+  sizeBytes: number;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+};
+
 export type CreatedMessagePayload = {
   id: string;
   threadId: string;
   tenantId: string | null;
+  kind: string;
   body: string;
   authorType: string;
   authorClientId: string | null;
@@ -1028,10 +1162,37 @@ export type CreatedMessagePayload = {
   authorName: string;
   createdAt: string;
   editedAt: string | null;
+  replyToMessageId: string | null;
+  replyTo: {
+    id: string;
+    body: string;
+    kind: string;
+    authorName: string;
+  } | null;
+  attachments: ChatAttachmentDto[];
+  mentions: ChatMentionDto[];
+  pinned?: boolean;
+};
+
+export type ChatParticipantDto = {
+  type: string;
+  id: string;
+  name: string;
+  roleLabel: string;
+  presenceStatus?: PresenceStatus | null;
+};
+
+export type CreateMessageOptions = {
+  body: string;
+  replyToMessageId?: string | null;
+  mentions?: ChatMentionDto[];
 };
 
 let emitChatMessage: ((payload: CreatedMessagePayload) => void) | null = null;
 let emitChatMessageUpdated: ((payload: CreatedMessagePayload) => void) | null = null;
+let emitChatPin:
+  | ((payload: { threadId: string; messageId: string; pinned: boolean }) => void)
+  | null = null;
 let emitChatUnread:
   | ((opts: {
       thread: {
@@ -1070,92 +1231,206 @@ export function setChatUnreadEmitter(
   emitChatUnread = fn;
 }
 
-export async function createMessage(actor: ChatActor, threadId: string, bodyRaw: string) {
-  const body = String(bodyRaw || '').trim();
-  if (!body) throw badRequest('Пустое сообщение');
-  if (body.length > 5000) throw badRequest('Слишком длинное сообщение');
+export function setChatPinEmitter(
+  fn: (payload: { threadId: string; messageId: string; pinned: boolean }) => void
+): void {
+  emitChatPin = fn;
+}
 
-  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
-  if (!thread || !(await canAccessThread(actor, thread))) {
-    throw notFound('Чат не найден');
+function authorTypeOf(actor: ChatActor): string {
+  return actor.kind === 'USER'
+    ? 'USER'
+    : actor.kind === 'CLIENT'
+      ? 'CLIENT'
+      : actor.kind === 'PARENT'
+        ? 'PARENT'
+        : actor.kind === 'SUPER_ADMIN'
+          ? 'SUPER_ADMIN'
+          : 'TESTER';
+}
+
+async function resolveAuthorName(actor: ChatActor): Promise<string> {
+  if (actor.kind === 'USER') {
+    const u = await prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    return personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
   }
-
-  const authorType =
-    actor.kind === 'USER'
-      ? 'USER'
-      : actor.kind === 'CLIENT'
-        ? 'CLIENT'
-        : actor.kind === 'PARENT'
-          ? 'PARENT'
-          : actor.kind === 'SUPER_ADMIN'
-            ? 'SUPER_ADMIN'
-            : 'TESTER';
-
-  const message = await prisma.chatMessage.create({
-    data: {
-      threadId,
-      tenantId: thread.tenantId,
-      body,
-      authorType,
-      authorUserId: actor.kind === 'USER' ? actor.userId : null,
-      authorClientId: actor.kind === 'CLIENT' ? actor.clientId : null,
-      authorParentId: actor.kind === 'PARENT' ? actor.parentId : null,
-      authorSuperAdminId: actor.kind === 'SUPER_ADMIN' ? actor.superAdminId : null,
-      authorTesterId: actor.kind === 'TESTER' ? actor.testerId : null,
-    },
+  if (actor.kind === 'CLIENT') {
+    const c = await prisma.client.findUnique({
+      where: { id: actor.clientId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    return personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+  }
+  if (actor.kind === 'PARENT') {
+    const p = await prisma.parent.findUnique({
+      where: { id: actor.parentId },
+      select: { fullName: true },
+    });
+    return p?.fullName || 'Родитель';
+  }
+  if (actor.kind === 'SUPER_ADMIN') {
+    const s = await prisma.superAdmin.findUnique({
+      where: { id: actor.superAdminId },
+      select: { firstName: true, lastName: true },
+    });
+    return personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+  }
+  const t = await prisma.tester.findUnique({
+    where: { id: actor.testerId },
+    select: { firstName: true, lastName: true },
   });
+  return personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+}
+
+function mapAttachmentDto(a: {
+  id: string;
+  kind: string;
+  mimeType: string;
+  originalName: string;
+  sizeBytes: number;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+}): ChatAttachmentDto {
+  return {
+    id: a.id,
+    kind: a.kind,
+    mimeType: a.mimeType,
+    originalName: a.originalName,
+    sizeBytes: a.sizeBytes,
+    durationMs: a.durationMs,
+    width: a.width,
+    height: a.height,
+  };
+}
+
+async function loadReplySnippet(
+  replyToMessageId: string | null | undefined,
+  threadId: string
+): Promise<CreatedMessagePayload['replyTo']> {
+  if (!replyToMessageId) return null;
+  const reply = await prisma.chatMessage.findFirst({
+    where: { id: replyToMessageId, threadId },
+  });
+  if (!reply) return null;
+  let authorName = 'Участник';
+  if (reply.authorType === 'USER' && reply.authorUserId) {
+    const u = await prisma.user.findUnique({
+      where: { id: reply.authorUserId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
+  } else if (reply.authorType === 'CLIENT' && reply.authorClientId) {
+    const c = await prisma.client.findUnique({
+      where: { id: reply.authorClientId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+  } else if (reply.authorType === 'PARENT' && reply.authorParentId) {
+    const p = await prisma.parent.findUnique({
+      where: { id: reply.authorParentId },
+      select: { fullName: true },
+    });
+    authorName = p?.fullName || 'Родитель';
+  } else if (reply.authorType === 'SUPER_ADMIN' && reply.authorSuperAdminId) {
+    const s = await prisma.superAdmin.findUnique({
+      where: { id: reply.authorSuperAdminId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+  } else if (reply.authorType === 'TESTER' && reply.authorTesterId) {
+    const t = await prisma.tester.findUnique({
+      where: { id: reply.authorTesterId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+  }
+  return {
+    id: reply.id,
+    body: previewForMessage(reply.kind || 'TEXT', reply.body).slice(0, 200),
+    kind: reply.kind || 'TEXT',
+    authorName,
+  };
+}
+
+async function validateAndNormalizeMentions(
+  threadId: string,
+  actor: ChatActor,
+  mentions: ChatMentionDto[] | undefined
+): Promise<ChatMentionDto[]> {
+  if (!mentions?.length) return [];
+  const participants = await listThreadParticipants(actor, threadId);
+  const allowed = new Set(participants.map((p) => `${p.type}:${p.id}`));
+  const out: ChatMentionDto[] = [];
+  const seen = new Set<string>();
+  for (const m of mentions) {
+    const type = String(m.type || '').toUpperCase();
+    const id = String(m.id || '');
+    if (!type || !id) continue;
+    const key = `${type}:${id}`;
+    if (!allowed.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    const name = participants.find((p) => p.type === type && p.id === id)?.name;
+    out.push({ type, id, name });
+  }
+  return out.slice(0, 20);
+}
+
+async function finalizeCreatedMessage(opts: {
+  actor: ChatActor;
+  thread: {
+    id: string;
+    tenantId: string | null;
+    type: ChatThreadType;
+    clientId: string | null;
+    trainerId: string | null;
+    groupId: string | null;
+  };
+  message: {
+    id: string;
+    threadId: string;
+    tenantId: string | null;
+    kind: string;
+    body: string;
+    authorType: string;
+    authorClientId: string | null;
+    authorParentId: string | null;
+    authorUserId: string | null;
+    authorSuperAdminId: string | null;
+    authorTesterId: string | null;
+    replyToMessageId: string | null;
+    createdAt: Date;
+    editedAt: Date | null;
+  };
+  attachments: ChatAttachmentDto[];
+  mentions: ChatMentionDto[];
+  authorName: string;
+}): Promise<CreatedMessagePayload> {
+  const { actor, thread, message, attachments, mentions, authorName } = opts;
+  const replyTo = await loadReplySnippet(message.replyToMessageId, message.threadId);
 
   await prisma.chatThread.update({
-    where: { id: threadId },
+    where: { id: thread.id },
     data: { lastMessageAt: message.createdAt },
   });
 
   const { readerType, readerId } = readerOf(actor);
   await prisma.chatThreadRead.upsert({
     where: {
-      threadId_readerType_readerId: { threadId, readerType, readerId },
+      threadId_readerType_readerId: { threadId: thread.id, readerType, readerId },
     },
-    create: { threadId, readerType, readerId, lastReadAt: message.createdAt },
+    create: { threadId: thread.id, readerType, readerId, lastReadAt: message.createdAt },
     update: { lastReadAt: message.createdAt },
   });
-
-  let authorName = 'Участник';
-  if (actor.kind === 'USER') {
-    const u = await prisma.user.findUnique({
-      where: { id: actor.userId },
-      select: { firstName: true, lastName: true, middleName: true },
-    });
-    authorName = personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
-  } else if (actor.kind === 'CLIENT') {
-    const c = await prisma.client.findUnique({
-      where: { id: actor.clientId },
-      select: { firstName: true, lastName: true, middleName: true },
-    });
-    authorName = personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
-  } else if (actor.kind === 'PARENT') {
-    const p = await prisma.parent.findUnique({
-      where: { id: actor.parentId },
-      select: { fullName: true },
-    });
-    authorName = p?.fullName || 'Родитель';
-  } else if (actor.kind === 'SUPER_ADMIN') {
-    const s = await prisma.superAdmin.findUnique({
-      where: { id: actor.superAdminId },
-      select: { firstName: true, lastName: true },
-    });
-    authorName = personName([s?.lastName, s?.firstName]) || 'Супер-админ';
-  } else {
-    const t = await prisma.tester.findUnique({
-      where: { id: actor.testerId },
-      select: { firstName: true, lastName: true },
-    });
-    authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
-  }
 
   const payload: CreatedMessagePayload = {
     id: message.id,
     threadId: message.threadId,
     tenantId: message.tenantId,
+    kind: message.kind || 'TEXT',
     body: message.body,
     authorType: message.authorType,
     authorClientId: message.authorClientId,
@@ -1165,7 +1440,12 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
     authorTesterId: message.authorTesterId,
     authorName,
     createdAt: message.createdAt.toISOString(),
-    editedAt: null,
+    editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+    replyToMessageId: message.replyToMessageId,
+    replyTo,
+    attachments,
+    mentions,
+    pinned: false,
   };
 
   if (emitChatMessage) {
@@ -1175,7 +1455,6 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
       console.error('chat emit error', e);
     }
   }
-
   if (emitChatUnread) {
     try {
       emitChatUnread({ thread, author: actor });
@@ -1184,9 +1463,9 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
     }
   }
 
-  // Browser push fan-out (async; do not block the response)
   void (async () => {
     try {
+      const preview = previewForMessage(message.kind || 'TEXT', message.body);
       const { notifyChatMessagePush } = await import('./actorPushService');
       const peerKeys = await resolvePeerPresenceKeys(thread, actor);
       await notifyChatMessagePush({
@@ -1194,14 +1473,87 @@ export async function createMessage(actor: ChatActor, threadId: string, bodyRaw:
         threadId: thread.id,
         tenantId: thread.tenantId,
         authorName,
-        preview: body,
+        preview,
       });
+      if (mentions.length) {
+        const { notifyChatMentions } = await import('./notificationDomainHooks');
+        const { readerType, readerId } = readerOf(actor);
+        await notifyChatMentions({
+          tenantId: thread.tenantId,
+          threadId: thread.id,
+          messageId: message.id,
+          authorName,
+          preview,
+          mentions,
+          excludeAuthor: { actorType: readerType, actorId: readerId },
+        });
+      }
     } catch (e) {
       console.error('chat push notify error', e);
     }
   })();
 
   return payload;
+}
+
+export async function createMessage(
+  actor: ChatActor,
+  threadId: string,
+  bodyRaw: string | CreateMessageOptions
+) {
+  const opts: CreateMessageOptions =
+    typeof bodyRaw === 'string' ? { body: bodyRaw } : bodyRaw || { body: '' };
+  const body = String(opts.body || '').trim();
+  if (!body) throw badRequest('Пустое сообщение');
+  if (body.length > 5000) throw badRequest('Слишком длинное сообщение');
+
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+
+  if (opts.replyToMessageId) {
+    const reply = await prisma.chatMessage.findFirst({
+      where: { id: opts.replyToMessageId, threadId },
+      select: { id: true },
+    });
+    if (!reply) throw badRequest('Сообщение для ответа не найдено', 'replyToMessageId');
+  }
+
+  const mentions = await validateAndNormalizeMentions(threadId, actor, opts.mentions);
+  const authorType = authorTypeOf(actor);
+  const authorName = await resolveAuthorName(actor);
+
+  const message = await prisma.chatMessage.create({
+    data: {
+      threadId,
+      tenantId: thread.tenantId,
+      kind: 'TEXT',
+      body,
+      authorType,
+      authorUserId: actor.kind === 'USER' ? actor.userId : null,
+      authorClientId: actor.kind === 'CLIENT' ? actor.clientId : null,
+      authorParentId: actor.kind === 'PARENT' ? actor.parentId : null,
+      authorSuperAdminId: actor.kind === 'SUPER_ADMIN' ? actor.superAdminId : null,
+      authorTesterId: actor.kind === 'TESTER' ? actor.testerId : null,
+      replyToMessageId: opts.replyToMessageId || null,
+      mentions: {
+        create: mentions.map((m) => ({
+          mentionedType: m.type,
+          mentionedId: m.id,
+        })),
+      },
+    },
+  });
+
+  return finalizeCreatedMessage({
+    actor,
+    thread,
+    message,
+    attachments: [],
+    mentions,
+    authorName,
+  });
 }
 
 function isMessageAuthor(actor: ChatActor, message: {
@@ -1307,10 +1659,16 @@ export async function updateMessage(
     authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
   }
 
+  const withRels = await prisma.chatMessage.findFirst({
+    where: { id: message.id },
+    include: { attachments: true, mentions: true },
+  });
+
   const payload: CreatedMessagePayload = {
     id: message.id,
     threadId: message.threadId,
     tenantId: message.tenantId,
+    kind: message.kind || 'TEXT',
     body: message.body,
     authorType: message.authorType,
     authorClientId: message.authorClientId,
@@ -1321,6 +1679,13 @@ export async function updateMessage(
     authorName,
     createdAt: message.createdAt.toISOString(),
     editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+    replyToMessageId: message.replyToMessageId,
+    replyTo: await loadReplySnippet(message.replyToMessageId, message.threadId),
+    attachments: (withRels?.attachments || []).map(mapAttachmentDto),
+    mentions: (withRels?.mentions || []).map((x) => ({
+      type: x.mentionedType,
+      id: x.mentionedId,
+    })),
   };
 
   if (emitChatMessageUpdated) {
@@ -1543,3 +1908,600 @@ export async function resolvePeerPresenceKeys(
 export function actorPersonalRoom(presenceKey: string): string {
   return `chat:actor:${presenceKey}`;
 }
+
+export async function listThreadParticipants(
+  actor: ChatActor,
+  threadId: string
+): Promise<ChatParticipantDto[]> {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+
+  const out: ChatParticipantDto[] = [];
+  const push = (p: ChatParticipantDto) => {
+    if (out.some((x) => x.type === p.type && x.id === p.id)) return;
+    out.push(p);
+  };
+
+  if (thread.type === 'PLATFORM_TESTERS') {
+    const [sas, testers] = await Promise.all([
+      prisma.superAdmin.findMany({
+        where: { isActive: true },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      prisma.tester.findMany({
+        where: { isActive: true },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+    ]);
+    for (const s of sas) {
+      push({
+        type: 'SUPER_ADMIN',
+        id: s.id,
+        name: personName([s.lastName, s.firstName]) || 'Супер-админ',
+        roleLabel: 'Супер-админ',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeySuperAdmin(s.id))),
+      });
+    }
+    for (const t of testers) {
+      push({
+        type: 'TESTER',
+        id: t.id,
+        name: personName([t.lastName, t.firstName]) || 'Тестировщик',
+        roleLabel: 'Тестировщик',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyTester(t.id))),
+      });
+    }
+    return out;
+  }
+
+  if (thread.type === 'SUPER_ADMINS') {
+    const sas = await prisma.superAdmin.findMany({
+      where: { isActive: true },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    for (const s of sas) {
+      push({
+        type: 'SUPER_ADMIN',
+        id: s.id,
+        name: personName([s.lastName, s.firstName]) || 'Супер-админ',
+        roleLabel: 'Супер-админ',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeySuperAdmin(s.id))),
+      });
+    }
+    return out;
+  }
+
+  const tenantId = thread.tenantId;
+  if (!tenantId) return out;
+
+  const roleLabel = (role: string) =>
+    role === 'OWNER'
+      ? 'Владелец'
+      : role === 'ADMIN'
+        ? 'Админ'
+        : role === 'TRAINER'
+          ? 'Тренер'
+          : role;
+
+  if (thread.type === 'CLIENT_ADMIN' && thread.clientId) {
+    const [client, admins, parents] = await Promise.all([
+      prisma.client.findFirst({
+        where: { id: thread.clientId },
+        select: { id: true, firstName: true, lastName: true, middleName: true },
+      }),
+      prisma.user.findMany({
+        where: { tenantId, isActive: true, role: { in: ['OWNER', 'ADMIN'] } },
+        select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+      }),
+      prisma.parent.findMany({
+        where: { clientId: thread.clientId, tenantId },
+        select: { id: true, fullName: true },
+      }),
+    ]);
+    if (client) {
+      push({
+        type: 'CLIENT',
+        id: client.id,
+        name: personName([client.lastName, client.firstName, client.middleName]) || 'Клиент',
+        roleLabel: 'Клиент',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyClient(client.id))),
+      });
+    }
+    for (const p of parents) {
+      push({
+        type: 'PARENT',
+        id: p.id,
+        name: p.fullName || 'Родитель',
+        roleLabel: 'Родитель',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyParent(p.id))),
+      });
+    }
+    for (const u of admins) {
+      push({
+        type: 'USER',
+        id: u.id,
+        name: personName([u.lastName, u.firstName, u.middleName]) || 'Сотрудник',
+        roleLabel: roleLabel(u.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(u.id))),
+      });
+    }
+    return out;
+  }
+
+  if (thread.type === 'CLIENT_TRAINER' && thread.clientId && thread.trainerId) {
+    const [client, trainer, parents] = await Promise.all([
+      prisma.client.findFirst({
+        where: { id: thread.clientId },
+        select: { id: true, firstName: true, lastName: true, middleName: true },
+      }),
+      prisma.trainer.findFirst({
+        where: { id: thread.trainerId },
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+          },
+        },
+      }),
+      prisma.parent.findMany({
+        where: { clientId: thread.clientId, tenantId },
+        select: { id: true, fullName: true },
+      }),
+    ]);
+    if (client) {
+      push({
+        type: 'CLIENT',
+        id: client.id,
+        name: personName([client.lastName, client.firstName, client.middleName]) || 'Клиент',
+        roleLabel: 'Клиент',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyClient(client.id))),
+      });
+    }
+    for (const p of parents) {
+      push({
+        type: 'PARENT',
+        id: p.id,
+        name: p.fullName || 'Родитель',
+        roleLabel: 'Родитель',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyParent(p.id))),
+      });
+    }
+    if (trainer?.user) {
+      push({
+        type: 'USER',
+        id: trainer.user.id,
+        name:
+          personName([trainer.user.lastName, trainer.user.firstName, trainer.user.middleName]) ||
+          'Тренер',
+        roleLabel: 'Тренер',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(trainer.user.id))),
+      });
+    }
+    return out;
+  }
+
+  if (thread.type === 'GROUP' && thread.groupId) {
+    const group = await prisma.group.findFirst({
+      where: { id: thread.groupId, tenantId },
+      include: {
+        trainer: {
+          include: {
+            user: {
+              select: { id: true, firstName: true, lastName: true, middleName: true },
+            },
+          },
+        },
+        memberships: {
+          where: { isActive: true },
+          include: {
+            client: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+                parents: { select: { id: true, fullName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const admins = await prisma.user.findMany({
+      where: { tenantId, isActive: true, role: { in: ['OWNER', 'ADMIN'] } },
+      select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+    });
+    if (group?.trainer?.user) {
+      push({
+        type: 'USER',
+        id: group.trainer.user.id,
+        name:
+          personName([
+            group.trainer.user.lastName,
+            group.trainer.user.firstName,
+            group.trainer.user.middleName,
+          ]) || 'Тренер',
+        roleLabel: 'Тренер группы',
+        presenceStatus: statusFromOnline(
+          isPresenceOnline(presenceKeyUser(group.trainer.user.id))
+        ),
+      });
+    }
+    for (const u of admins) {
+      push({
+        type: 'USER',
+        id: u.id,
+        name: personName([u.lastName, u.firstName, u.middleName]) || 'Сотрудник',
+        roleLabel: roleLabel(u.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(u.id))),
+      });
+    }
+    for (const m of group?.memberships || []) {
+      push({
+        type: 'CLIENT',
+        id: m.client.id,
+        name:
+          personName([m.client.lastName, m.client.firstName, m.client.middleName]) || 'Клиент',
+        roleLabel: 'Ученик',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyClient(m.client.id))),
+      });
+      for (const p of m.client.parents || []) {
+        push({
+          type: 'PARENT',
+          id: p.id,
+          name: p.fullName || 'Родитель',
+          roleLabel: 'Родитель',
+          presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyParent(p.id))),
+        });
+      }
+    }
+    return out;
+  }
+
+  if (thread.type === 'TRAINER_ADMIN' && thread.trainerId) {
+    const [trainer, admins] = await Promise.all([
+      prisma.trainer.findFirst({
+        where: { id: thread.trainerId },
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true, middleName: true },
+          },
+        },
+      }),
+      prisma.user.findMany({
+        where: { tenantId, isActive: true, role: { in: ['OWNER', 'ADMIN'] } },
+        select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+      }),
+    ]);
+    if (trainer?.user) {
+      push({
+        type: 'USER',
+        id: trainer.user.id,
+        name:
+          personName([trainer.user.lastName, trainer.user.firstName, trainer.user.middleName]) ||
+          'Тренер',
+        roleLabel: 'Тренер',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(trainer.user.id))),
+      });
+    }
+    for (const u of admins) {
+      push({
+        type: 'USER',
+        id: u.id,
+        name: personName([u.lastName, u.firstName, u.middleName]) || 'Сотрудник',
+        roleLabel: roleLabel(u.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(u.id))),
+      });
+    }
+    return out;
+  }
+
+  if (thread.type === 'TRAINERS') {
+    const trainers = await prisma.trainer.findMany({
+      where: { tenantId, isActive: true },
+      include: {
+        user: {
+          select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+        },
+      },
+    });
+    const admins = await prisma.user.findMany({
+      where: { tenantId, isActive: true, role: { in: ['OWNER', 'ADMIN'] } },
+      select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+    });
+    for (const t of trainers) {
+      if (!t.user) continue;
+      push({
+        type: 'USER',
+        id: t.user.id,
+        name: personName([t.user.lastName, t.user.firstName, t.user.middleName]) || 'Тренер',
+        roleLabel: 'Тренер',
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(t.user.id))),
+      });
+    }
+    for (const u of admins) {
+      push({
+        type: 'USER',
+        id: u.id,
+        name: personName([u.lastName, u.firstName, u.middleName]) || 'Сотрудник',
+        roleLabel: roleLabel(u.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(u.id))),
+      });
+    }
+    return out;
+  }
+
+  if (thread.type === 'STAFF_TASK' && thread.staffTaskId) {
+    const task = await prisma.staffTask.findFirst({
+      where: { id: thread.staffTaskId, tenantId },
+      include: {
+        assignees: {
+          include: {
+            user: {
+              select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+            },
+          },
+        },
+        createdBy: {
+          select: { id: true, firstName: true, lastName: true, middleName: true, role: true },
+        },
+      },
+    });
+    if (task?.createdBy) {
+      push({
+        type: 'USER',
+        id: task.createdBy.id,
+        name:
+          personName([
+            task.createdBy.lastName,
+            task.createdBy.firstName,
+            task.createdBy.middleName,
+          ]) || 'Сотрудник',
+        roleLabel: roleLabel(task.createdBy.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(task.createdBy.id))),
+      });
+    }
+    for (const a of task?.assignees || []) {
+      push({
+        type: 'USER',
+        id: a.user.id,
+        name: personName([a.user.lastName, a.user.firstName, a.user.middleName]) || 'Сотрудник',
+        roleLabel: roleLabel(a.user.role),
+        presenceStatus: statusFromOnline(isPresenceOnline(presenceKeyUser(a.user.id))),
+      });
+    }
+  }
+
+  return out;
+}
+
+export async function listThreadPins(actor: ChatActor, threadId: string) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+  const pins = await prisma.chatThreadPin.findMany({
+    where: { threadId },
+    orderBy: { pinnedAt: 'desc' },
+    include: {
+      message: {
+        select: {
+          id: true,
+          body: true,
+          kind: true,
+          authorType: true,
+          authorUserId: true,
+          authorClientId: true,
+          authorParentId: true,
+          authorSuperAdminId: true,
+          authorTesterId: true,
+        },
+      },
+    },
+  });
+  return {
+    pins: pins.map((p) => ({
+      messageId: p.messageId,
+      pinnedAt: p.pinnedAt.toISOString(),
+      body: previewForMessage(p.message.kind || 'TEXT', p.message.body).slice(0, 200),
+      kind: p.message.kind || 'TEXT',
+    })),
+  };
+}
+
+export async function pinThreadMessage(actor: ChatActor, threadId: string, messageId: string) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+  const message = await prisma.chatMessage.findFirst({ where: { id: messageId, threadId } });
+  if (!message) throw notFound('Сообщение не найдено');
+
+  const { readerType, readerId } = readerOf(actor);
+  await prisma.chatThreadPin.upsert({
+    where: { threadId_messageId: { threadId, messageId } },
+    create: {
+      threadId,
+      messageId,
+      pinnedByType: readerType,
+      pinnedById: readerId,
+    },
+    update: {
+      pinnedByType: readerType,
+      pinnedById: readerId,
+      pinnedAt: new Date(),
+    },
+  });
+
+  if (emitChatPin) {
+    try {
+      emitChatPin({ threadId, messageId, pinned: true });
+    } catch (e) {
+      console.error('chat pin emit error', e);
+    }
+  }
+  return { ok: true, messageId, pinned: true };
+}
+
+export async function unpinThreadMessage(actor: ChatActor, threadId: string, messageId: string) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+  await prisma.chatThreadPin.deleteMany({ where: { threadId, messageId } });
+  if (emitChatPin) {
+    try {
+      emitChatPin({ threadId, messageId, pinned: false });
+    } catch (e) {
+      console.error('chat unpin emit error', e);
+    }
+  }
+  return { ok: true, messageId, pinned: false };
+}
+
+export async function createMediaMessage(
+  actor: ChatActor,
+  threadId: string,
+  opts: {
+    file: Express.Multer.File;
+    kindHint?: ChatMediaKind | null;
+    caption?: string;
+    replyToMessageId?: string | null;
+    mentions?: ChatMentionDto[];
+    durationMs?: number | null;
+  }
+) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+
+  const absPath = opts.file.path;
+  const sniffed = sniffMimeFromFile(absPath);
+  const declared = String(opts.file.mimetype || '').toLowerCase();
+  let mime = sniffed || declared;
+  // MediaRecorder voice often as video/webm — honor hint
+  if (opts.kindHint === 'voice' && (mime === 'video/webm' || mime === 'audio/webm')) {
+    mime = mime.startsWith('audio/') ? mime : 'audio/webm';
+  }
+
+  let mediaKind = opts.kindHint || mediaKindFromMime(mime);
+  if (!mediaKind && opts.kindHint === 'voice' && /webm/i.test(mime)) {
+    mediaKind = 'voice';
+    mime = 'audio/webm';
+  }
+  if (!mediaKind) {
+    try {
+      fs.unlinkSync(absPath);
+    } catch {
+      /* ignore */
+    }
+    throw badRequest('Недопустимый тип файла');
+  }
+  if (opts.kindHint === 'voice') mediaKind = 'voice';
+  if (opts.kindHint === 'video') mediaKind = 'video';
+  if (opts.kindHint === 'image') mediaKind = 'image';
+
+  // Re-validate mime against kind whitelist via mediaKindFromMime after normalize
+  const maxBytes = maxBytesForMediaKind(mediaKind);
+  if (opts.file.size > maxBytes) {
+    try {
+      fs.unlinkSync(absPath);
+    } catch {
+      /* ignore */
+    }
+    throw badRequest(`Файл слишком большой (макс. ${Math.round(maxBytes / (1024 * 1024))} МБ)`);
+  }
+
+  if (opts.replyToMessageId) {
+    const reply = await prisma.chatMessage.findFirst({
+      where: { id: opts.replyToMessageId, threadId },
+      select: { id: true },
+    });
+    if (!reply) throw badRequest('Сообщение для ответа не найдено', 'replyToMessageId');
+  }
+
+  const mentions = await validateAndNormalizeMentions(threadId, actor, opts.mentions);
+  const caption = String(opts.caption || '').trim().slice(0, 2000);
+  const authorType = authorTypeOf(actor);
+  const authorName = await resolveAuthorName(actor);
+  const messageKind = messageKindFromMedia(mediaKind);
+
+  const relDir = chatMediaRelativeDir(thread.tenantId, threadId);
+  ensureUploadDir(...relDir.split('/'));
+  const storedName = safeChatStorageName(mime);
+  const relPath = `${relDir}/${storedName}`;
+  const destAbs = absoluteUploadPath(relPath);
+  fs.renameSync(absPath, destAbs);
+
+  const message = await prisma.chatMessage.create({
+    data: {
+      threadId,
+      tenantId: thread.tenantId,
+      kind: messageKind,
+      body: caption,
+      authorType,
+      authorUserId: actor.kind === 'USER' ? actor.userId : null,
+      authorClientId: actor.kind === 'CLIENT' ? actor.clientId : null,
+      authorParentId: actor.kind === 'PARENT' ? actor.parentId : null,
+      authorSuperAdminId: actor.kind === 'SUPER_ADMIN' ? actor.superAdminId : null,
+      authorTesterId: actor.kind === 'TESTER' ? actor.testerId : null,
+      replyToMessageId: opts.replyToMessageId || null,
+      mentions: {
+        create: mentions.map((m) => ({
+          mentionedType: m.type,
+          mentionedId: m.id,
+        })),
+      },
+      attachments: {
+        create: {
+          kind: mediaKind,
+          storagePath: relPath,
+          mimeType: mime,
+          originalName: decodeUploadOriginalName(opts.file.originalname),
+          sizeBytes: opts.file.size,
+          durationMs: opts.durationMs != null ? Number(opts.durationMs) : null,
+        },
+      },
+    },
+    include: { attachments: true },
+  });
+
+  return finalizeCreatedMessage({
+    actor,
+    thread,
+    message,
+    attachments: message.attachments.map(mapAttachmentDto),
+    mentions,
+    authorName,
+  });
+}
+
+export async function getChatAttachmentFile(
+  actor: ChatActor,
+  threadId: string,
+  messageId: string,
+  attachmentId: string
+) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+  const attachment = await prisma.chatAttachment.findFirst({
+    where: {
+      id: attachmentId,
+      messageId,
+      message: { threadId },
+    },
+  });
+  if (!attachment) throw notFound('Файл не найден');
+  const abs = absoluteUploadPath(attachment.storagePath);
+  if (!fs.existsSync(abs)) throw notFound('Файл отсутствует');
+  return {
+    absPath: abs,
+    mimeType: attachment.mimeType,
+    originalName: attachment.originalName,
+  };
+}
+

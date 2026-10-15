@@ -229,11 +229,22 @@ export async function listInbox(
     _max: { createdAt: true },
   });
 
+  const mentionUnread = await prisma.inAppNotification.count({
+    where: {
+      actorType,
+      actorId,
+      readAt: null,
+      category: 'chat',
+      type: 'chat_mention',
+    },
+  });
+
   const inboxChatUnread = unreadByCategory.find((c) => c.category === 'chat')?._count._all || 0;
-  const chatUnread =
+  // Агрегат «новое сообщение» = непрочитанные треды (+ прочий chat inbox без mention).
+  const chatAggregateCount =
     opts?.chatUnreadOverride != null
-      ? Math.max(opts.chatUnreadOverride, inboxChatUnread)
-      : inboxChatUnread;
+      ? Math.max(opts.chatUnreadOverride, Math.max(0, inboxChatUnread - mentionUnread))
+      : Math.max(0, inboxChatUnread - mentionUnread);
   const financeUnread = unreadByCategory.find((c) => c.category === 'finance')?._count._all || 0;
 
   const aggregates: Array<{
@@ -244,11 +255,11 @@ export async function listInbox(
     url?: string;
   }> = [];
 
-  if (chatUnread > 0) {
+  if (chatAggregateCount > 0) {
     aggregates.push({
       category: 'chat',
-      title: `У вас новое сообщение (${chatUnread})`,
-      count: chatUnread,
+      title: `У вас новое сообщение (${chatAggregateCount})`,
+      count: chatAggregateCount,
       latestAt:
         unreadByCategory.find((c) => c.category === 'chat')?._max.createdAt?.toISOString() ||
         new Date().toISOString(),
@@ -269,9 +280,10 @@ export async function listInbox(
     });
   }
 
+  // Обычные chat-записи скрываем (агрегат), chat_mention — отдельными пунктами.
   const items = rows
     .filter((r) => {
-      if (r.category === 'chat') return false;
+      if (r.category === 'chat' && r.type !== 'chat_mention') return false;
       if (aggregateFinance && r.category === 'finance') return false;
       return true;
     })
@@ -295,7 +307,10 @@ export async function listInbox(
     .reduce((s, c) => s + c._count._all, 0);
 
   const unreadTotal =
-    chatUnread + (aggregateFinance ? financeUnread : 0) + otherUnread;
+    chatAggregateCount +
+    mentionUnread +
+    (aggregateFinance ? financeUnread : 0) +
+    otherUnread;
 
   return { items, aggregates, unreadTotal };
 }
