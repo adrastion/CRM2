@@ -902,7 +902,12 @@ export async function getMessages(
   }
 
   const limit = Math.min(Math.max(opts.limit || 50, 1), 100);
+  const viewDeletedEarly = canViewDeletedContent(actor);
   const where: Prisma.ChatMessageWhereInput = { threadId };
+  // Обычным участникам удалённые сообщения не отдаём вообще (как будто их не было).
+  if (!viewDeletedEarly) {
+    where.deletedAt = null;
+  }
   if (opts.before) {
     const beforeMsg = await prisma.chatMessage.findFirst({
       where: { id: opts.before, threadId },
@@ -924,18 +929,55 @@ export async function getMessages(
     },
   });
 
-  const userIds = [...new Set(messages.filter((m) => m.authorUserId).map((m) => m.authorUserId!))];
+  const threadReadsEarly = await prisma.chatThreadRead.findMany({
+    where: { threadId },
+    select: { readerType: true, readerId: true, lastReadAt: true },
+  });
+
+  const userIds = [
+    ...new Set([
+      ...messages.filter((m) => m.authorUserId).map((m) => m.authorUserId!),
+      ...messages
+        .filter((m) => m.replyTo?.authorUserId)
+        .map((m) => m.replyTo!.authorUserId!),
+      ...threadReadsEarly.filter((r) => r.readerType === 'USER').map((r) => r.readerId),
+    ]),
+  ];
   const clientIds = [
-    ...new Set(messages.filter((m) => m.authorClientId).map((m) => m.authorClientId!)),
+    ...new Set([
+      ...messages.filter((m) => m.authorClientId).map((m) => m.authorClientId!),
+      ...messages
+        .filter((m) => m.replyTo?.authorClientId)
+        .map((m) => m.replyTo!.authorClientId!),
+      ...threadReadsEarly.filter((r) => r.readerType === 'CLIENT').map((r) => r.readerId),
+    ]),
   ];
   const parentIds = [
-    ...new Set(messages.filter((m) => m.authorParentId).map((m) => m.authorParentId!)),
+    ...new Set([
+      ...messages.filter((m) => m.authorParentId).map((m) => m.authorParentId!),
+      ...messages
+        .filter((m) => m.replyTo?.authorParentId)
+        .map((m) => m.replyTo!.authorParentId!),
+      ...threadReadsEarly.filter((r) => r.readerType === 'PARENT').map((r) => r.readerId),
+    ]),
   ];
   const saIds = [
-    ...new Set(messages.filter((m) => m.authorSuperAdminId).map((m) => m.authorSuperAdminId!)),
+    ...new Set([
+      ...messages.filter((m) => m.authorSuperAdminId).map((m) => m.authorSuperAdminId!),
+      ...messages
+        .filter((m) => m.replyTo?.authorSuperAdminId)
+        .map((m) => m.replyTo!.authorSuperAdminId!),
+      ...threadReadsEarly.filter((r) => r.readerType === 'SUPER_ADMIN').map((r) => r.readerId),
+    ]),
   ];
   const testerIds = [
-    ...new Set(messages.filter((m) => m.authorTesterId).map((m) => m.authorTesterId!)),
+    ...new Set([
+      ...messages.filter((m) => m.authorTesterId).map((m) => m.authorTesterId!),
+      ...messages
+        .filter((m) => m.replyTo?.authorTesterId)
+        .map((m) => m.replyTo!.authorTesterId!),
+      ...threadReadsEarly.filter((r) => r.readerType === 'TESTER').map((r) => r.readerId),
+    ]),
   ];
   for (const m of messages) {
     if (m.replyTo?.authorUserId) userIds.push(m.replyTo.authorUserId);
@@ -986,7 +1028,10 @@ export async function getMessages(
         })
       : [],
     prisma.chatThreadPin.findMany({
-      where: { threadId },
+      where: {
+        threadId,
+        ...(viewDeletedEarly ? {} : { message: { deletedAt: null } }),
+      },
       orderBy: { pinnedAt: 'desc' },
       include: {
         message: {
@@ -994,6 +1039,7 @@ export async function getMessages(
             id: true,
             body: true,
             kind: true,
+            deletedAt: true,
             authorType: true,
             authorUserId: true,
             authorClientId: true,
@@ -1063,13 +1109,68 @@ export async function getMessages(
     return 'Участник';
   };
 
+  const threadReads = threadReadsEarly;
+
+  const viewDeleted = viewDeletedEarly;
+  const { readerType: selfType, readerId: selfId } = readerOf(actor);
+
+  const authorKey = (m: {
+    authorType: string;
+    authorUserId: string | null;
+    authorClientId: string | null;
+    authorParentId: string | null;
+    authorSuperAdminId: string | null;
+    authorTesterId: string | null;
+  }) => {
+    if (m.authorType === 'USER' && m.authorUserId) return `USER:${m.authorUserId}`;
+    if (m.authorType === 'CLIENT' && m.authorClientId) return `CLIENT:${m.authorClientId}`;
+    if (m.authorType === 'PARENT' && m.authorParentId) return `PARENT:${m.authorParentId}`;
+    if (m.authorType === 'SUPER_ADMIN' && m.authorSuperAdminId) {
+      return `SUPER_ADMIN:${m.authorSuperAdminId}`;
+    }
+    if (m.authorType === 'TESTER' && m.authorTesterId) return `TESTER:${m.authorTesterId}`;
+    return '';
+  };
+
   const enriched = messages.map((m) => {
     const authorName = nameFor(m);
+    const deleted = Boolean((m as any).deletedAt);
+    const showFull = !deleted || viewDeleted;
+    const aKey = authorKey(m);
+    const isOwn =
+      (m.authorType === selfType &&
+        ((m.authorType === 'USER' && m.authorUserId === selfId) ||
+          (m.authorType === 'CLIENT' && m.authorClientId === selfId) ||
+          (m.authorType === 'PARENT' && m.authorParentId === selfId) ||
+          (m.authorType === 'SUPER_ADMIN' && m.authorSuperAdminId === selfId) ||
+          (m.authorType === 'TESTER' && m.authorTesterId === selfId))) ||
+      false;
+
+    const readBy: ChatReadByDto[] = isOwn
+      ? threadReads
+          .filter((r) => `${r.readerType}:${r.readerId}` !== aKey)
+          .filter((r) => r.lastReadAt.getTime() >= m.createdAt.getTime())
+          .map((r) => ({
+            type: r.readerType,
+            id: r.readerId,
+            name: mentionName(r.readerType, r.readerId),
+            readAt: r.lastReadAt.toISOString(),
+          }))
+      : [];
+
+    const replyDeleted = Boolean((m.replyTo as any)?.deletedAt);
+    const replyBody =
+      m.replyTo && (!replyDeleted || viewDeleted)
+        ? previewForMessage(m.replyTo.kind || 'TEXT', m.replyTo.body).slice(0, 200)
+        : m.replyTo
+          ? 'Сообщение удалено'
+          : '';
+
     return {
       id: m.id,
       threadId: m.threadId,
-      kind: m.kind || 'TEXT',
-      body: m.body,
+      kind: showFull ? m.kind || 'TEXT' : 'TEXT',
+      body: showFull ? m.body : '',
       authorType: m.authorType,
       authorClientId: m.authorClientId,
       authorParentId: m.authorParentId,
@@ -1079,22 +1180,31 @@ export async function getMessages(
       authorName,
       createdAt: m.createdAt.toISOString(),
       editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+      deleted,
+      deletedAt: (m as any).deletedAt ? (m as any).deletedAt.toISOString() : null,
+      deletedByType: (m as any).deletedByType || null,
+      deletedById: (m as any).deletedById || null,
       replyToMessageId: m.replyToMessageId,
       replyTo: m.replyTo
         ? {
             id: m.replyTo.id,
-            body: previewForMessage(m.replyTo.kind || 'TEXT', m.replyTo.body).slice(0, 200),
+            body: replyBody,
             kind: m.replyTo.kind || 'TEXT',
             authorName: nameFor(m.replyTo),
+            deleted: replyDeleted,
           }
         : null,
-      attachments: m.attachments.map(mapAttachmentDto),
-      mentions: m.mentions.map((x) => ({
-        type: x.mentionedType,
-        id: x.mentionedId,
-        name: mentionName(x.mentionedType, x.mentionedId),
-      })),
+      attachments: showFull ? m.attachments.map(mapAttachmentDto) : [],
+      mentions: showFull
+        ? m.mentions.map((x) => ({
+            type: x.mentionedType,
+            id: x.mentionedId,
+            name: mentionName(x.mentionedType, x.mentionedId),
+          }))
+        : [],
       pinned: m.pins.length > 0,
+      readBy,
+      readByPeer: readBy.length > 0,
     };
   });
 
@@ -1103,13 +1213,21 @@ export async function getMessages(
     messages: enriched.reverse(),
     hasMore: messages.length === limit,
     chatMessageEditLimitMinutes: await resolveChatEditLimitMinutes(thread.tenantId),
-    pins: pins.map((p) => ({
-      messageId: p.messageId,
-      pinnedAt: p.pinnedAt.toISOString(),
-      body: previewForMessage(p.message.kind || 'TEXT', p.message.body).slice(0, 200),
-      kind: p.message.kind || 'TEXT',
-      authorName: nameFor(p.message),
-    })),
+    chatMessageDeleteLimitMinutes: await resolveChatDeleteLimitMinutes(thread.tenantId),
+    canViewDeleted: viewDeleted,
+    pins: pins
+      .filter((p) => viewDeleted || !p.message.deletedAt)
+      .map((p) => ({
+        messageId: p.messageId,
+        pinnedAt: p.pinnedAt.toISOString(),
+        body:
+          p.message.deletedAt && !viewDeleted
+            ? 'Сообщение удалено'
+            : previewForMessage(p.message.kind || 'TEXT', p.message.body).slice(0, 200),
+        kind: p.message.kind || 'TEXT',
+        authorName: nameFor(p.message),
+        deleted: Boolean(p.message.deletedAt),
+      })),
   };
 }
 
@@ -1125,12 +1243,41 @@ async function resolveChatEditLimitMinutes(tenantId: string | null): Promise<num
   return minutes;
 }
 
+/** 0 = без ограничения. Для platform (tenantId null) — из SuperAdminSettings. */
+async function resolveChatDeleteLimitMinutes(tenantId: string | null): Promise<number> {
+  if (!tenantId) {
+    const sa = await prisma.superAdminSettings.findFirst({
+      select: { platformChatMessageDeleteLimitMinutes: true },
+    });
+    const minutes = sa?.platformChatMessageDeleteLimitMinutes;
+    if (minutes == null || minutes < 0) return 15;
+    return minutes;
+  }
+  const settings = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: { chatMessageDeleteLimitMinutes: true },
+  });
+  const minutes = settings?.chatMessageDeleteLimitMinutes;
+  if (minutes == null || minutes < 0) return 15;
+  return minutes;
+}
+
 function assertMessageEditable(createdAt: Date, limitMinutes: number): void {
   if (!limitMinutes || limitMinutes <= 0) return;
   const deadline = createdAt.getTime() + limitMinutes * 60_000;
   if (Date.now() > deadline) {
     throw forbidden(
       `Время редактирования истекло (доступно ${limitMinutes} мин. после отправки)`
+    );
+  }
+}
+
+function assertMessageDeletable(createdAt: Date, limitMinutes: number): void {
+  if (!limitMinutes || limitMinutes <= 0) return;
+  const deadline = createdAt.getTime() + limitMinutes * 60_000;
+  if (Date.now() > deadline) {
+    throw forbidden(
+      `Время удаления истекло (доступно ${limitMinutes} мин. после отправки)`
     );
   }
 }
@@ -1147,6 +1294,8 @@ export type ChatAttachmentDto = {
   height: number | null;
 };
 
+export type ChatReadByDto = { type: string; id: string; name?: string; readAt: string };
+
 export type CreatedMessagePayload = {
   id: string;
   threadId: string;
@@ -1162,16 +1311,23 @@ export type CreatedMessagePayload = {
   authorName: string;
   createdAt: string;
   editedAt: string | null;
+  deleted?: boolean;
+  deletedAt?: string | null;
+  deletedByType?: string | null;
+  deletedById?: string | null;
   replyToMessageId: string | null;
   replyTo: {
     id: string;
     body: string;
     kind: string;
     authorName: string;
+    deleted?: boolean;
   } | null;
   attachments: ChatAttachmentDto[];
   mentions: ChatMentionDto[];
   pinned?: boolean;
+  readBy?: ChatReadByDto[];
+  readByPeer?: boolean;
 };
 
 export type ChatParticipantDto = {
@@ -1206,6 +1362,14 @@ let emitChatUnread:
       author: ChatActor;
     }) => void)
   | null = null;
+let emitChatRead:
+  | ((payload: {
+      threadId: string;
+      readerType: string;
+      readerId: string;
+      lastReadAt: string;
+    }) => void)
+  | null = null;
 
 export function setChatMessageEmitter(fn: (payload: CreatedMessagePayload) => void): void {
   emitChatMessage = fn;
@@ -1235,6 +1399,27 @@ export function setChatPinEmitter(
   fn: (payload: { threadId: string; messageId: string; pinned: boolean }) => void
 ): void {
   emitChatPin = fn;
+}
+
+export function setChatReadEmitter(
+  fn: (payload: {
+    threadId: string;
+    readerType: string;
+    readerId: string;
+    lastReadAt: string;
+  }) => void
+): void {
+  emitChatRead = fn;
+}
+
+function canViewDeletedContent(actor: ChatActor): boolean {
+  if (actor.kind === 'SUPER_ADMIN') return true;
+  if (actor.kind === 'USER' && actor.role === 'OWNER') return true;
+  return false;
+}
+
+function canModerateDelete(actor: ChatActor): boolean {
+  return canViewDeletedContent(actor);
 }
 
 function authorTypeOf(actor: ChatActor): string {
@@ -1441,11 +1626,15 @@ async function finalizeCreatedMessage(opts: {
     authorName,
     createdAt: message.createdAt.toISOString(),
     editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+    deleted: false,
+    deletedAt: null,
     replyToMessageId: message.replyToMessageId,
     replyTo,
     attachments,
     mentions,
     pinned: false,
+    readBy: [],
+    readByPeer: false,
   };
 
   if (emitChatMessage) {
@@ -1601,6 +1790,9 @@ export async function updateMessage(
     where: { id: messageId, threadId },
   });
   if (!existing) throw notFound('Сообщение не найдено');
+  if ((existing as any).deletedAt) {
+    throw forbidden('Удалённое сообщение нельзя редактировать');
+  }
   if (!isMessageAuthor(actor, existing)) {
     throw forbidden('Можно редактировать только свои сообщения');
   }
@@ -1713,7 +1905,151 @@ export async function markThreadRead(actor: ChatActor, threadId: string) {
     create: { threadId, readerType, readerId, lastReadAt: now },
     update: { lastReadAt: now },
   });
-  return { ok: true, lastReadAt: now.toISOString() };
+  const lastReadAt = now.toISOString();
+  if (emitChatRead) {
+    try {
+      emitChatRead({ threadId, readerType, readerId, lastReadAt });
+    } catch (e) {
+      console.error('chat read emit error', e);
+    }
+  }
+  return { ok: true, lastReadAt };
+}
+
+/**
+ * Soft-delete сообщения. Автор — в пределах лимита; OWNER / SUPER_ADMIN — всегда.
+ */
+export async function deleteMessage(actor: ChatActor, threadId: string, messageId: string) {
+  const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
+  if (!thread || !(await canAccessThread(actor, thread))) {
+    throw notFound('Чат не найден');
+  }
+
+  const existing = await prisma.chatMessage.findFirst({
+    where: { id: messageId, threadId },
+    include: { attachments: true, mentions: true, pins: { where: { threadId } } },
+  });
+  if (!existing) throw notFound('Сообщение не найдено');
+  if ((existing as any).deletedAt) {
+    return buildDeletedPayload(actor, existing, true);
+  }
+
+  const isAuthor = isMessageAuthor(actor, existing);
+  const moderate = canModerateDelete(actor);
+  if (!isAuthor && !moderate) {
+    throw forbidden('Можно удалять только свои сообщения');
+  }
+  if (isAuthor && !moderate) {
+    const deleteLimit = await resolveChatDeleteLimitMinutes(thread.tenantId);
+    assertMessageDeletable(existing.createdAt, deleteLimit);
+  }
+
+  const { readerType, readerId } = readerOf(actor);
+  const deletedAt = new Date();
+  const message = await prisma.chatMessage.update({
+    where: { id: messageId },
+    data: {
+      deletedAt,
+      deletedByType: readerType,
+      deletedById: readerId,
+    } as any,
+    include: { attachments: true, mentions: true },
+  });
+
+  await prisma.chatThreadPin.deleteMany({
+    where: { threadId, messageId },
+  });
+
+  const payload = await buildDeletedPayload(actor, message, true);
+  if (emitChatMessageUpdated) {
+    try {
+      // В комнату шлём masked версию для обычных — но socket не знает зрителя.
+      // Отдаём публичный masked payload (без контента).
+      emitChatMessageUpdated({
+        ...payload,
+        body: '',
+        attachments: [],
+        mentions: [],
+        kind: 'TEXT',
+      });
+    } catch (e) {
+      console.error('chat delete emit error', e);
+    }
+  }
+  return payload;
+}
+
+async function buildDeletedPayload(
+  actor: ChatActor,
+  message: any,
+  forModeratorView: boolean
+): Promise<CreatedMessagePayload> {
+  const viewDeleted = canViewDeletedContent(actor) && forModeratorView;
+  let authorName = 'Участник';
+  if (message.authorType === 'USER' && message.authorUserId) {
+    const u = await prisma.user.findUnique({
+      where: { id: message.authorUserId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([u?.lastName, u?.firstName, u?.middleName]) || 'Сотрудник';
+  } else if (message.authorType === 'CLIENT' && message.authorClientId) {
+    const c = await prisma.client.findUnique({
+      where: { id: message.authorClientId },
+      select: { firstName: true, lastName: true, middleName: true },
+    });
+    authorName = personName([c?.lastName, c?.firstName, c?.middleName]) || 'Клиент';
+  } else if (message.authorType === 'PARENT' && message.authorParentId) {
+    const p = await prisma.parent.findUnique({
+      where: { id: message.authorParentId },
+      select: { fullName: true },
+    });
+    authorName = p?.fullName || 'Родитель';
+  } else if (message.authorType === 'SUPER_ADMIN' && message.authorSuperAdminId) {
+    const s = await prisma.superAdmin.findUnique({
+      where: { id: message.authorSuperAdminId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([s?.lastName, s?.firstName]) || 'Супер-админ';
+  } else if (message.authorType === 'TESTER' && message.authorTesterId) {
+    const t = await prisma.tester.findUnique({
+      where: { id: message.authorTesterId },
+      select: { firstName: true, lastName: true },
+    });
+    authorName = personName([t?.lastName, t?.firstName]) || 'Тестировщик';
+  }
+
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    tenantId: message.tenantId,
+    kind: viewDeleted ? message.kind || 'TEXT' : 'TEXT',
+    body: viewDeleted ? message.body : '',
+    authorType: message.authorType,
+    authorClientId: message.authorClientId,
+    authorParentId: message.authorParentId,
+    authorUserId: message.authorUserId,
+    authorSuperAdminId: message.authorSuperAdminId,
+    authorTesterId: message.authorTesterId,
+    authorName,
+    createdAt: message.createdAt.toISOString(),
+    editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+    deleted: true,
+    deletedAt: message.deletedAt ? message.deletedAt.toISOString() : new Date().toISOString(),
+    deletedByType: message.deletedByType || null,
+    deletedById: message.deletedById || null,
+    replyToMessageId: message.replyToMessageId,
+    replyTo: await loadReplySnippet(message.replyToMessageId, message.threadId),
+    attachments: viewDeleted
+      ? (message.attachments || []).map(mapAttachmentDto)
+      : [],
+    mentions: viewDeleted
+      ? (message.mentions || []).map((x: any) => ({
+          type: x.mentionedType,
+          id: x.mentionedId,
+        }))
+      : [],
+    pinned: false,
+  };
 }
 
 export async function resolveStaffActor(userId: string, tenantId: string): Promise<ChatActor> {
@@ -2494,8 +2830,12 @@ export async function getChatAttachmentFile(
       messageId,
       message: { threadId },
     },
+    include: { message: { select: { deletedAt: true } } },
   });
   if (!attachment) throw notFound('Файл не найден');
+  if ((attachment.message as any)?.deletedAt && !canViewDeletedContent(actor)) {
+    throw notFound('Файл не найден');
+  }
   const abs = absoluteUploadPath(attachment.storagePath);
   if (!fs.existsSync(abs)) throw notFound('Файл отсутствует');
   return {

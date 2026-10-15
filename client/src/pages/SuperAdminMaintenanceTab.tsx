@@ -6,8 +6,12 @@ import {
   Button,
   Checkbox,
   CircularProgress,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Switch,
   TextField,
   Typography,
@@ -38,6 +42,8 @@ const SuperAdminMaintenanceTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingMaintenance, setSavingMaintenance] = useState(false);
   const [savingTesting, setSavingTesting] = useState(false);
+  const [savingChat, setSavingChat] = useState(false);
+  const [platformDeleteLimit, setPlatformDeleteLimit] = useState(15);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -45,11 +51,12 @@ const SuperAdminMaintenanceTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [m, t, accounts, publicStatus] = await Promise.all([
+      const [m, t, accounts, publicStatus, chatSettings] = await Promise.all([
         apiService.getAdminMaintenance(),
         apiService.getAdminTestingMode(),
         apiService.getTestingAccountCandidates(),
         apiService.getMaintenanceStatus(),
+        apiService.getAdminPlatformChatSettings(),
       ]);
       setMaintenanceEnabled(Boolean(m?.enabled));
       setTestingEnabled(Boolean(t?.enabled));
@@ -58,6 +65,11 @@ const SuperAdminMaintenanceTab: React.FC = () => {
       );
       setSelectedEmails(t?.allowlist || []);
       setCandidates(accounts || []);
+      setPlatformDeleteLimit(
+        typeof chatSettings?.platformChatMessageDeleteLimitMinutes === 'number'
+          ? chatSettings.platformChatMessageDeleteLimitMinutes
+          : 15
+      );
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить статус');
     } finally {
@@ -284,6 +296,60 @@ const SuperAdminMaintenanceTab: React.FC = () => {
             sx={{ textTransform: 'none' }}
           >
             Сохранить список
+          </Button>
+        </Box>
+      </Paper>
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+          Платформенные чаты
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Сколько минут автор может удалить своё сообщение. Супер-админ всегда видит удалённые
+          сообщения и может удалять любые без лимита.
+        </Typography>
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel id="sa-chat-delete-limit">Лимит удаления</InputLabel>
+          <Select
+            labelId="sa-chat-delete-limit"
+            label="Лимит удаления"
+            value={platformDeleteLimit}
+            onChange={(e) => setPlatformDeleteLimit(Number(e.target.value))}
+          >
+            <MenuItem value={5}>5 минут</MenuItem>
+            <MenuItem value={15}>15 минут</MenuItem>
+            <MenuItem value={30}>30 минут</MenuItem>
+            <MenuItem value={60}>1 час</MenuItem>
+            <MenuItem value={180}>3 часа</MenuItem>
+            <MenuItem value={1440}>24 часа</MenuItem>
+            <MenuItem value={0}>Без ограничения</MenuItem>
+          </Select>
+        </FormControl>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            disabled={savingChat}
+            sx={{ textTransform: 'none' }}
+            onClick={() => {
+              void (async () => {
+                setSavingChat(true);
+                setError(null);
+                setSuccess(null);
+                try {
+                  const data = await apiService.updateAdminPlatformChatSettings({
+                    platformChatMessageDeleteLimitMinutes: platformDeleteLimit,
+                  });
+                  setPlatformDeleteLimit(data.platformChatMessageDeleteLimitMinutes);
+                  setSuccess('Лимит удаления в платформенных чатах сохранён');
+                } catch (e: any) {
+                  setError(e?.response?.data?.error || 'Не удалось сохранить');
+                } finally {
+                  setSavingChat(false);
+                }
+              })();
+            }}
+          >
+            {savingChat ? 'Сохранение…' : 'Сохранить'}
           </Button>
         </Box>
       </Paper>

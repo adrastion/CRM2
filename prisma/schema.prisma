@@ -81,6 +81,8 @@ model TenantSettings {
   salaryPayoutDay          Int      @default(25)
   /// Сколько минут после отправки можно редактировать сообщение в чатах школы (0 = без ограничения)
   chatMessageEditLimitMinutes Int    @default(15)
+  /// Сколько минут после отправки автор может удалить своё сообщение (0 = без ограничения)
+  chatMessageDeleteLimitMinutes Int  @default(15)
   // Настройки личного кабинета клиента
   clientCanViewAllTrainers Boolean  @default(false) // Может ли клиент видеть всех тренеров или только своего
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
@@ -1423,6 +1425,8 @@ model SuperAdminSettings {
   /// Политика конфиденциальности / обработки ПДн
   privacyPolicyText   String?
   privacyUpdatedAt    DateTime?
+  /// Лимит удаления сообщений в платформенных чатах (минуты; 0 = без ограничения)
+  platformChatMessageDeleteLimitMinutes Int @default(15)
   budgetLimits        BudgetLimit[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -2159,6 +2163,9 @@ model ChatMessage {
   replyToMessageId   String?
   createdAt          DateTime         @default(now())
   editedAt           DateTime?
+  deletedAt          DateTime?
+  deletedByType      String?
+  deletedById        String?
   thread             ChatThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
   replyTo            ChatMessage?     @relation("ChatMessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
   replies            ChatMessage[]    @relation("ChatMessageReplies")
@@ -2169,6 +2176,7 @@ model ChatMessage {
   @@index([threadId, createdAt])
   @@index([tenantId, createdAt])
   @@index([replyToMessageId])
+  @@index([threadId, deletedAt])
   @@map("chat_messages")
 }
 

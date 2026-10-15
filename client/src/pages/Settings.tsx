@@ -115,6 +115,7 @@ const Settings: React.FC = () => {
   const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
   const [clientCanViewAllBranches, setClientCanViewAllBranches] = useState<boolean>(false);
   const [chatMessageEditLimitMinutes, setChatMessageEditLimitMinutes] = useState<number>(15);
+  const [chatMessageDeleteLimitMinutes, setChatMessageDeleteLimitMinutes] = useState<number>(15);
   const [staffTaskColor, setStaffTaskColor] = useState<string>('#6A1B9A');
   
   // Смена email
@@ -256,6 +257,11 @@ const Settings: React.FC = () => {
           setChatMessageEditLimitMinutes(
             typeof response.data.chatMessageEditLimitMinutes === 'number'
               ? response.data.chatMessageEditLimitMinutes
+              : 15
+          );
+          setChatMessageDeleteLimitMinutes(
+            typeof response.data.chatMessageDeleteLimitMinutes === 'number'
+              ? response.data.chatMessageDeleteLimitMinutes
               : 15
           );
           setStaffTaskColor(
@@ -402,6 +408,7 @@ const Settings: React.FC = () => {
               membershipFeeResetDate: membershipFeeResetDate || '12-01',
               salaryPayoutDay,
               chatMessageEditLimitMinutes,
+              chatMessageDeleteLimitMinutes,
               staffTaskColor,
             }
           : {}),
@@ -761,12 +768,36 @@ const Settings: React.FC = () => {
                       Платформенные чаты супер-админов этим лимитом не ограничиваются.
                     </Typography>
                     <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel id="chat-edit-limit-label">Лимит времени</InputLabel>
+                      <InputLabel id="chat-edit-limit-label">Лимит редактирования</InputLabel>
                       <Select
                         labelId="chat-edit-limit-label"
-                        label="Лимит времени"
+                        label="Лимит редактирования"
                         value={chatMessageEditLimitMinutes}
                         onChange={(e) => setChatMessageEditLimitMinutes(Number(e.target.value))}
+                      >
+                        <MenuItem value={5}>5 минут</MenuItem>
+                        <MenuItem value={15}>15 минут</MenuItem>
+                        <MenuItem value={30}>30 минут</MenuItem>
+                        <MenuItem value={60}>1 час</MenuItem>
+                        <MenuItem value={180}>3 часа</MenuItem>
+                        <MenuItem value={1440}>24 часа</MenuItem>
+                        <MenuItem value={0}>Без ограничения</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="medium" sx={{ mt: 2 }}>
+                      Удаление сообщений в чатах
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Сколько времени после отправки автор может удалить своё сообщение. Владелец
+                      школы всегда видит удалённые сообщения и может удалять любые без лимита.
+                    </Typography>
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel id="chat-delete-limit-label">Лимит удаления</InputLabel>
+                      <Select
+                        labelId="chat-delete-limit-label"
+                        label="Лимит удаления"
+                        value={chatMessageDeleteLimitMinutes}
+                        onChange={(e) => setChatMessageDeleteLimitMinutes(Number(e.target.value))}
                       >
                         <MenuItem value={5}>5 минут</MenuItem>
                         <MenuItem value={15}>15 минут</MenuItem>

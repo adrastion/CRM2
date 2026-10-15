@@ -9,6 +9,7 @@ import {
   staffGetPins,
   staffListThreads,
   staffMarkRead,
+  staffDeleteMessage,
   staffPatchMessage,
   staffPinMessage,
   staffPostMediaMessage,
@@ -36,6 +37,7 @@ router.get(
   staffGetMedia
 );
 router.patch('/threads/:id/messages/:messageId', staffPatchMessage);
+router.delete('/threads/:id/messages/:messageId', staffDeleteMessage);
 router.post('/threads/:id/read', staffMarkRead);
 router.get('/threads/:id/participants', staffGetParticipants);
 router.get('/threads/:id/pins', staffGetPins);

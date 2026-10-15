@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import {
   createMessage,
   createMediaMessage,
+  deleteMessage,
   ensureThread,
   getChatAttachmentFile,
   getMessages,
@@ -166,6 +167,12 @@ export const updatePlatformChatMessage = asyncHandler(async (req: Request, res: 
     req.params.messageId,
     String(req.body?.body || '')
   );
+  res.json({ success: true, data });
+});
+
+export const deletePlatformChatMessage = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const actor = actorFromReq(req);
+  const data = await deleteMessage(actor, req.params.threadId, req.params.messageId);
   res.json({ success: true, data });
 });
 

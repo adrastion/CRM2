@@ -80,8 +80,12 @@ export function encodeMentionsForSend(
   };
 }
 
-/** Разбивает текст на фрагменты с подсветкой @[TYPE:id|Имя] → @Имя */
-export function renderMentionNodes(text: string, keyPrefix = 'm'): React.ReactNode[] {
+/** Разбивает текст на фрагменты с подсветкой @[TYPE:id|Имя] → @Имя (цвет primary). */
+export function renderMentionNodes(
+  text: string,
+  keyPrefix = 'm',
+  mentionColor = '#4880FF'
+): React.ReactNode[] {
   const src = String(text || '');
   const re = new RegExp(MENTION_TOKEN_RE.source, 'g');
   const nodes: React.ReactNode[] = [];
@@ -93,7 +97,10 @@ export function renderMentionNodes(text: string, keyPrefix = 'm'): React.ReactNo
     nodes.push(
       React.createElement(
         'strong',
-        { key: `${keyPrefix}-${i++}`, style: { fontWeight: 700 } },
+        {
+          key: `${keyPrefix}-${i++}`,
+          style: { fontWeight: 700, color: mentionColor },
+        },
         `@${m[3]}`
       )
     );

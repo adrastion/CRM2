@@ -432,3 +432,34 @@ export async function setPrivacyPolicy(content: string): Promise<{
     isDefault: false,
   };
 }
+
+export async function getPlatformChatDeleteLimit(): Promise<{
+  platformChatMessageDeleteLimitMinutes: number;
+}> {
+  const s = await ensureSettings();
+  const minutes = s.platformChatMessageDeleteLimitMinutes;
+  return {
+    platformChatMessageDeleteLimitMinutes:
+      typeof minutes === 'number' && minutes >= 0 ? minutes : 15,
+  };
+}
+
+export async function setPlatformChatDeleteLimit(minutesRaw: number): Promise<{
+  platformChatMessageDeleteLimitMinutes: number;
+}> {
+  const minutes = Number(minutesRaw);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 10080) {
+    throw new Error(
+      'Лимит удаления: целое число от 0 (без ограничения) до 10080 минут (7 суток)'
+    );
+  }
+  const s = await ensureSettings();
+  const updated = await prisma.superAdminSettings.update({
+    where: { id: s.id },
+    data: { platformChatMessageDeleteLimitMinutes: minutes },
+  });
+  return {
+    platformChatMessageDeleteLimitMinutes:
+      updated.platformChatMessageDeleteLimitMinutes ?? minutes,
+  };
+}

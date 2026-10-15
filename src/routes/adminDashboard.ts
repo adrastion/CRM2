@@ -102,6 +102,8 @@ import {
   updateAdminTerms,
   getAdminPrivacy,
   updateAdminPrivacy,
+  getAdminPlatformChatSettings,
+  updateAdminPlatformChatSettings,
 } from '../controllers/maintenanceController';
 import {
   getSiteTrafficLive,
@@ -337,6 +339,8 @@ router.put('/maintenance', updateAdminMaintenance);
 router.get('/testing-mode', getAdminTestingMode);
 router.put('/testing-mode', updateAdminTestingMode);
 router.get('/testing-mode/accounts', getTestingAccountCandidates);
+router.get('/platform-chat-settings', getAdminPlatformChatSettings);
+router.put('/platform-chat-settings', updateAdminPlatformChatSettings);
 router.get('/terms', getAdminTerms);
 router.put('/terms', updateAdminTerms);
 router.get('/privacy', getAdminPrivacy);

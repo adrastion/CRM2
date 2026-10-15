@@ -12,6 +12,8 @@ import {
   getPrivacyPolicy,
   setPrivacyPolicy,
   listTestingAccountCandidates,
+  getPlatformChatDeleteLimit,
+  setPlatformChatDeleteLimit,
 } from '../services/maintenanceService';
 import { tokenHasAccess } from '../middleware/maintenance';
 import { readAccessTokenFromCookie } from '../middleware/authCookies';
@@ -160,3 +162,23 @@ export const getAccessCheck = asyncHandler(async (req: Request, res: Response<Ap
     },
   });
 });
+
+export const getAdminPlatformChatSettings = asyncHandler(
+  async (_req: Request, res: Response<ApiResponse>) => {
+    const data = await getPlatformChatDeleteLimit();
+    res.json({ success: true, data });
+  }
+);
+
+export const updateAdminPlatformChatSettings = asyncHandler(
+  async (req: Request, res: Response<ApiResponse>) => {
+    try {
+      const data = await setPlatformChatDeleteLimit(
+        Number(req.body?.platformChatMessageDeleteLimitMinutes)
+      );
+      res.json({ success: true, data });
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e?.message || 'Некорректные данные' });
+    }
+  }
+);

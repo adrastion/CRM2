@@ -1208,6 +1208,23 @@ class ApiService {
     return response.data.data;
   }
 
+  async getAdminPlatformChatSettings(): Promise<{
+    platformChatMessageDeleteLimitMinutes: number;
+  }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/platform-chat-settings');
+    return response.data.data;
+  }
+
+  async updateAdminPlatformChatSettings(data: {
+    platformChatMessageDeleteLimitMinutes: number;
+  }): Promise<{ platformChatMessageDeleteLimitMinutes: number }> {
+    const response = await this.api.put<ApiResponse>(
+      '/admin-dashboard/platform-chat-settings',
+      data
+    );
+    return response.data.data;
+  }
+
   async getAdminTestingMode(): Promise<{
     enabled: boolean;
     message: string;
@@ -3690,6 +3707,13 @@ class ApiService {
     return response.data.data;
   }
 
+  async deleteChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/chats/threads/${threadId}/messages/${messageId}`
+    );
+    return response.data.data;
+  }
+
   async markChatRead(threadId: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/chats/threads/${threadId}/read`, {});
     return response.data.data;
@@ -3815,6 +3839,13 @@ class ApiService {
     return response.data.data;
   }
 
+  async clientDeleteChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/client-auth/chats/threads/${threadId}/messages/${messageId}`
+    );
+    return response.data.data;
+  }
+
   async clientMarkChatRead(threadId: string): Promise<any> {
     const response = await this.api.post<ApiResponse>(`/client-auth/chats/threads/${threadId}/read`, {});
     return response.data.data;
@@ -3929,6 +3960,13 @@ class ApiService {
     const response = await this.api.patch<ApiResponse>(
       `/platform/chats/threads/${threadId}/messages/${messageId}`,
       { body }
+    );
+    return response.data.data;
+  }
+
+  async deletePlatformChatMessage(threadId: string, messageId: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/platform/chats/threads/${threadId}/messages/${messageId}`
     );
     return response.data.data;
   }

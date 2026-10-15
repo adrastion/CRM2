@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  Avatar,
   Box,
-  Button,
   Chip,
   CircularProgress,
   Dialog,
@@ -17,27 +17,37 @@ import {
   Popover,
   TextField,
   Typography,
-  Badge,
 } from '@mui/material';
 import {
+  ArrowBack,
   AttachFile,
   Close,
+  Done,
+  DoneAll,
   Edit,
   EmojiEmotions,
-  Mic,
   MoreVert,
   People,
   PushPin,
   Reply,
   Send,
-  Stop,
-  Videocam,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
 import { colors, radii, typography } from '../../theme/tokens';
 import ChatMediaBubble from './ChatMediaBubble';
+import ChatVoiceRecorder from './ChatVoiceRecorder';
+import {
+  chatInitials,
+  chatTheme,
+  dayKey,
+  formatChatListTime,
+  formatChatTime,
+  formatDaySeparator,
+} from './chatTheme';
 import {
   encodeMentionsForSend,
   extractMentionsFromText,
@@ -93,6 +103,7 @@ export interface ChatMessageItem {
     body: string;
     kind: string;
     authorName: string;
+    deleted?: boolean;
   } | null;
   attachments?: Array<{
     id: string;
@@ -106,6 +117,10 @@ export interface ChatMessageItem {
   }>;
   mentions?: Array<{ type: string; id: string; name?: string }>;
   pinned?: boolean;
+  deleted?: boolean;
+  deletedAt?: string | null;
+  readBy?: Array<{ type: string; id: string; name?: string; readAt: string }>;
+  readByPeer?: boolean;
 }
 
 type ChatParticipant = {
@@ -182,20 +197,39 @@ function isWithinEditWindow(createdAt: string, limitMinutes: number, nowMs: numb
   return nowMs <= new Date(createdAt).getTime() + limitMinutes * 60_000;
 }
 
-function PresenceDot({ status }: { status: PresenceStatus }) {
+function PresenceDot({ status, size = 8 }: { status: PresenceStatus; size?: number }) {
   return (
     <Box
       component="span"
       title={PRESENCE_LABEL[status]}
       sx={{
-        width: 8,
-        height: 8,
+        width: size,
+        height: size,
         borderRadius: '50%',
         bgcolor: PRESENCE_COLOR[status],
         display: 'inline-block',
         flexShrink: 0,
+        boxShadow: '0 0 0 2px #fff',
       }}
     />
+  );
+}
+
+function ChatAvatar({ title, size = 44 }: { title: string; size?: number }) {
+  return (
+    <Avatar
+      sx={{
+        width: size,
+        height: size,
+        bgcolor: chatTheme.avatarBg,
+        color: chatTheme.avatarText,
+        fontSize: size > 40 ? 15 : 13,
+        fontWeight: 700,
+        flexShrink: 0,
+      }}
+    >
+      {chatInitials(title)}
+    </Avatar>
   );
 }
 
@@ -227,6 +261,10 @@ function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
     attachments: msg.attachments || [],
     mentions: msg.mentions || [],
     pinned: Boolean(msg.pinned),
+    deleted: Boolean(msg.deleted),
+    deletedAt: msg.deletedAt ?? null,
+    readBy: msg.readBy || [],
+    readByPeer: Boolean(msg.readByPeer),
   };
 }
 
@@ -245,6 +283,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLimitMinutes, setEditLimitMinutes] = useState(0);
+  const [deleteLimitMinutes, setDeleteLimitMinutes] = useState(0);
+  const [canViewDeleted, setCanViewDeleted] = useState(false);
+  const [showDeletedContent, setShowDeletedContent] = useState(false);
+  const [readByDialog, setReadByDialog] = useState<ChatMessageItem | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ChatCategory>('all');
@@ -258,15 +300,40 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; msg: ChatMessageItem } | null>(
     null
   );
-  const [recording, setRecording] = useState<'voice' | 'video' | null>(null);
+  const [recorderBusy, setRecorderBusy] = useState(false);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const recordOverlayRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaChunksRef = useRef<Blob[]>([]);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const recordStartedAtRef = useRef(0);
   const selectedRef = useRef<ChatThreadItem | null>(null);
+  const nearBottomRef = useRef(true);
+  const pendingOpenScrollRef = useRef(false);
+  const prevMessagesLenRef = useRef(0);
+  const canViewDeletedRef = useRef(false);
+  const activeThreadIdRef = useRef<string | null>(null);
+
+  const scrollStorageKey = (threadId: string) => `crm-chat-scroll:${threadId}`;
+
+  const persistFeedScroll = useCallback((threadId: string | null) => {
+    const el = feedRef.current;
+    if (!threadId || !el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = gap < 120;
+    nearBottomRef.current = nearBottom;
+    try {
+      sessionStorage.setItem(
+        scrollStorageKey(threadId),
+        JSON.stringify({
+          scrollTop: el.scrollTop,
+          nearBottom,
+          at: Date.now(),
+        })
+      );
+    } catch {
+      /* ignore quota */
+    }
+  }, []);
 
   const loadThreads = useCallback(async () => {
     setLoadingList(true);
@@ -348,12 +415,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     setActiveMentions([]);
   };
 
-  const stopMediaTracks = () => {
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
-  };
-
   const openThread = async (item: ChatThreadItem) => {
+    persistFeedScroll(activeThreadIdRef.current);
     cancelEdit();
     setReplyTo(null);
     setActiveMentions([]);
@@ -361,6 +424,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     setLoadingMessages(true);
     setMessages([]);
     setPins([]);
+    pendingOpenScrollRef.current = true;
+    prevMessagesLenRef.current = 0;
+    nearBottomRef.current = true;
     try {
       let threadId = item.id;
       if (!threadId) {
@@ -376,18 +442,30 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
         );
       }
       setActiveThreadId(threadId);
+      activeThreadIdRef.current = threadId;
       const data =
         mode === 'staff'
           ? await apiService.getChatMessages(threadId!)
           : mode === 'client'
             ? await apiService.clientGetChatMessages(threadId!)
             : await apiService.getPlatformChatMessages(threadId!);
-      setMessages(data.messages || []);
-      setPins(data.pins || []);
+      const viewDeleted = Boolean(data.canViewDeleted);
+      setCanViewDeleted(viewDeleted);
+      canViewDeletedRef.current = viewDeleted;
+      const incoming = (data.messages || []) as ChatMessageItem[];
+      setMessages(viewDeleted ? incoming : incoming.filter((m) => !m.deleted));
+      setPins(
+        viewDeleted
+          ? data.pins || []
+          : (data.pins || []).filter((p: { deleted?: boolean }) => !p.deleted)
+      );
       if (typeof data.chatMessageEditLimitMinutes === 'number') {
         setEditLimitMinutes(data.chatMessageEditLimitMinutes);
       } else if (mode === 'platform') {
         setEditLimitMinutes(0);
+      }
+      if (typeof data.chatMessageDeleteLimitMinutes === 'number') {
+        setDeleteLimitMinutes(data.chatMessageDeleteLimitMinutes);
       }
       if (mode === 'staff') await apiService.markChatRead(threadId!);
       else if (mode === 'client') await apiService.clientMarkChatRead(threadId!);
@@ -398,6 +476,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось открыть чат');
+      pendingOpenScrollRef.current = false;
     } finally {
       setLoadingMessages(false);
     }
@@ -448,11 +527,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
 
   const onSocketMessageUpdated = useCallback(
     (msg: ChatSocketMessage) => {
-      const preview = previewLabel(msg.kind, msg.body);
+      const preview = msg.deleted
+        ? 'Сообщение удалено'
+        : previewLabel(msg.kind, msg.body);
       setMessages((prev) => {
         if (msg.threadId !== activeThreadId) return prev;
+        if (msg.deleted && !canViewDeletedRef.current) {
+          return prev.filter((m) => m.id !== msg.id);
+        }
         return prev.map((m) => (m.id === msg.id ? { ...m, ...socketToItem(msg) } : m));
       });
+      if (msg.deleted && !canViewDeletedRef.current) {
+        setPins((prev) => prev.filter((p) => p.messageId !== msg.id));
+      }
       setThreads((prev) =>
         prev.map((t) => {
           if (t.id !== msg.threadId) return t;
@@ -494,6 +581,28 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
         );
       });
     },
+    onRead: (payload) => {
+      if (payload.threadId !== activeThreadId) return;
+      const readAtMs = new Date(payload.lastReadAt).getTime();
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!isOwn(m) || m.deleted) return m;
+          if (new Date(m.createdAt).getTime() > readAtMs) return m;
+          const key = `${payload.readerType}:${payload.readerId}`;
+          const already = (m.readBy || []).some((r) => `${r.type}:${r.id}` === key);
+          if (already) return m;
+          const readBy = [
+            ...(m.readBy || []),
+            {
+              type: payload.readerType,
+              id: payload.readerId,
+              readAt: payload.lastReadAt,
+            },
+          ];
+          return { ...m, readBy, readByPeer: true };
+        })
+      );
+    },
     onPresence: () => {
       (async () => {
         try {
@@ -519,9 +628,54 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     },
   });
 
+  useLayoutEffect(() => {
+    if (loadingMessages) return;
+    const el = feedRef.current;
+    if (!el) return;
+
+    if (pendingOpenScrollRef.current) {
+      pendingOpenScrollRef.current = false;
+      prevMessagesLenRef.current = messages.length;
+      let restored = false;
+      if (activeThreadId) {
+        try {
+          const raw = sessionStorage.getItem(scrollStorageKey(activeThreadId));
+          if (raw) {
+            const saved = JSON.parse(raw) as { scrollTop?: number; nearBottom?: boolean };
+            if (saved.nearBottom !== false) {
+              el.scrollTop = el.scrollHeight;
+              nearBottomRef.current = true;
+            } else if (typeof saved.scrollTop === 'number') {
+              el.scrollTop = saved.scrollTop;
+              nearBottomRef.current = false;
+              restored = true;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!restored) {
+        el.scrollTop = el.scrollHeight;
+        nearBottomRef.current = true;
+      }
+      return;
+    }
+
+    const grew = messages.length > prevMessagesLenRef.current;
+    prevMessagesLenRef.current = messages.length;
+    if (grew && nearBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages, loadingMessages, activeThreadId]);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    canViewDeletedRef.current = canViewDeleted;
+  }, [canViewDeleted]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -709,56 +863,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     await uploadMediaFile(file, kind);
   };
 
-  const startRecording = async (kind: 'voice' | 'video') => {
-    if (recording || !activeThreadId) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: kind === 'video',
-      });
-      mediaStreamRef.current = stream;
-      mediaChunksRef.current = [];
-      const mime =
-        kind === 'video'
-          ? MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-            ? 'video/webm;codecs=vp9,opus'
-            : 'video/webm'
-          : MediaRecorder.isTypeSupported('audio/webm')
-            ? 'audio/webm'
-            : 'audio/ogg';
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = (ev) => {
-        if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(mediaChunksRef.current, { type: mime.split(';')[0] });
-        const ext = kind === 'video' ? 'webm' : 'webm';
-        const file = new File([blob], `chat-${kind}.${ext}`, { type: blob.type });
-        const durationMs = Date.now() - recordStartedAtRef.current;
-        stopMediaTracks();
-        setRecording(null);
-        void uploadMediaFile(file, kind, durationMs);
-      };
-      recordStartedAtRef.current = Date.now();
-      recorder.start();
-      setRecording(kind);
-    } catch {
-      setError('Нет доступа к микрофону/камере');
-      stopMediaTracks();
-      setRecording(null);
-    }
-  };
-
-  const stopRecording = () => {
-    const rec = mediaRecorderRef.current;
-    if (rec && rec.state !== 'inactive') rec.stop();
-    else {
-      stopMediaTracks();
-      setRecording(null);
-    }
-  };
-
   const openParticipants = async () => {
     if (!activeThreadId) return;
     setParticipantsOpen(true);
@@ -772,6 +876,49 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       setParticipants(list || []);
     } catch {
       setParticipants([]);
+    }
+  };
+
+  const canDeleteMessage = (m: ChatMessageItem) => {
+    if (m.deleted) return false;
+    if (canViewDeleted) return true; // OWNER / SA
+    if (!isOwn(m)) return false;
+    return isWithinEditWindow(m.createdAt, deleteLimitMinutes, nowTick);
+  };
+
+  const handleDeleteMessage = async (msg: ChatMessageItem) => {
+    if (!activeThreadId) return;
+    setMenuAnchor(null);
+    try {
+      const data =
+        mode === 'staff'
+          ? await apiService.deleteChatMessage(activeThreadId, msg.id)
+          : mode === 'client'
+            ? await apiService.clientDeleteChatMessage(activeThreadId, msg.id)
+            : await apiService.deletePlatformChatMessage(activeThreadId, msg.id);
+      if (!canViewDeleted) {
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  ...data,
+                  deleted: true,
+                  body: showDeletedContent ? data.body || m.body : '',
+                  attachments: showDeletedContent
+                    ? data.attachments || m.attachments
+                    : [],
+                }
+              : m
+          )
+        );
+      }
+      setPins((prev) => prev.filter((p) => p.messageId !== msg.id));
+      if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось удалить');
     }
   };
 
@@ -879,25 +1026,25 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
         display: 'flex',
         height: { xs: 'calc(100vh - 160px)', md: 'calc(100vh - 140px)' },
         minHeight: 420,
-        border: `1px solid ${colors.border}`,
+        border: `1px solid ${colors.divider}`,
         borderRadius: `${radii.panel}px`,
         overflow: 'hidden',
-        bgcolor: 'background.paper',
+        bgcolor: colors.card,
         position: 'relative',
       }}
     >
       <Box
         sx={{
-          width: { xs: selected ? 0 : '100%', sm: 320 },
+          width: { xs: selected ? 0 : '100%', sm: 340 },
           display: { xs: selected ? 'none' : 'flex', sm: 'flex' },
           flexDirection: 'column',
-          borderRight: '1px solid',
-          borderColor: 'divider',
-          minWidth: { sm: 280 },
+          borderRight: `1px solid ${colors.divider}`,
+          minWidth: { sm: 300 },
+          bgcolor: colors.card,
         }}
       >
-        <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+        <Box sx={{ px: 1.5, pt: 1.25, pb: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
             {categoryTabs.map((tab) => {
               const active = category === tab.id;
               return (
@@ -907,12 +1054,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                   size="small"
                   onClick={() => setCategory(tab.id)}
                   sx={{
+                    height: 26,
                     fontSize: typography.hint,
                     fontWeight: active ? 700 : 500,
                     bgcolor: active ? colors.primary : colors.surface,
                     color: active ? '#fff' : colors.text,
                     '&:hover': {
-                      bgcolor: active ? colors.primary : colors.rowAlt,
+                      bgcolor: active ? colors.primaryDark : colors.rowAlt,
                     },
                   }}
                 />
@@ -929,6 +1077,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 999,
+                bgcolor: colors.surface,
+                fontSize: 14,
+              },
+            }}
           />
         </Box>
         <Divider />
@@ -937,58 +1092,108 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             <CircularProgress size={28} />
           </Box>
         ) : (
-          <List dense sx={{ overflow: 'auto', flex: 1 }}>
+          <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
             {filteredThreads.length === 0 ? (
               <Typography color="text.secondary" sx={{ p: 2 }}>
                 Нет доступных бесед
               </Typography>
             ) : (
-              filteredThreads.map((t) => (
-                <ListItemButton
-                  key={t.threadKey}
-                  selected={t.threadKey === selectedKey}
-                  onClick={() => openThread(t)}
-                  sx={
-                    t.type === 'STAFF_TASK'
-                      ? {
-                          borderLeft: `3px solid ${colors.primary}`,
-                          bgcolor: selectedKey === t.threadKey ? undefined : 'rgba(25, 118, 210, 0.06)',
-                        }
-                      : undefined
-                  }
-                >
-                  <ListItemText
-                    primary={
-                      <Box display="flex" alignItems="center" gap={1}>
-                        {t.presenceStatus ? <PresenceDot status={t.presenceStatus} /> : null}
-                        <Typography fontWeight={t.unreadCount ? 700 : 500} noWrap>
+              filteredThreads.map((t) => {
+                const active = t.threadKey === selectedKey;
+                return (
+                  <ListItemButton
+                    key={t.threadKey}
+                    selected={active}
+                    onClick={() => openThread(t)}
+                    sx={{
+                      alignItems: 'flex-start',
+                      gap: 1.25,
+                      py: 1.1,
+                      px: 1.5,
+                      borderLeft:
+                        t.type === 'STAFF_TASK' ? `3px solid ${colors.primary}` : '3px solid transparent',
+                      bgcolor: active ? chatTheme.listSelected : 'transparent',
+                      '&.Mui-selected': { bgcolor: chatTheme.listSelected },
+                      '&.Mui-selected:hover': { bgcolor: chatTheme.listSelected },
+                      '&:hover': { bgcolor: active ? chatTheme.listSelected : chatTheme.listHover },
+                    }}
+                  >
+                    <Box sx={{ position: 'relative', mt: 0.25 }}>
+                      <ChatAvatar title={t.title} />
+                      {t.presenceStatus ? (
+                        <Box sx={{ position: 'absolute', right: 0, bottom: 0 }}>
+                          <PresenceDot status={t.presenceStatus} size={10} />
+                        </Box>
+                      ) : null}
+                    </Box>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Box display="flex" alignItems="center" gap={0.75} justifyContent="space-between">
+                        <Typography
+                          fontWeight={t.unreadCount ? 700 : 600}
+                          noWrap
+                          sx={{ fontSize: 14.5, flex: 1, minWidth: 0 }}
+                        >
                           {t.title}
                         </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: colors.textHint, flexShrink: 0, fontSize: 11.5 }}
+                        >
+                          {formatChatListTime(t.lastMessageAt)}
+                        </Typography>
+                      </Box>
+                      <Box display="flex" alignItems="center" gap={0.75} mt={0.25}>
+                        <Typography
+                          noWrap
+                          sx={{
+                            flex: 1,
+                            minWidth: 0,
+                            fontSize: 13,
+                            color: t.unreadCount ? colors.text : colors.textHint,
+                            fontWeight: t.unreadCount ? 500 : 400,
+                          }}
+                        >
+                          {t.lastMessagePreview
+                            ? formatMentionsForDisplay(t.lastMessagePreview)
+                            : t.subtitle || 'Нет сообщений'}
+                        </Typography>
                         {t.type === 'STAFF_TASK' && (
-                          <Chip size="small" label="Задача" color="primary" variant="outlined" />
+                          <Chip
+                            size="small"
+                            label="Задача"
+                            sx={{
+                              height: 20,
+                              fontSize: 10,
+                              bgcolor: colors.primarySoft,
+                              color: colors.primaryDark,
+                            }}
+                          />
                         )}
                         {t.unreadCount > 0 && (
-                          <Badge badgeContent={t.unreadCount} color="primary" />
+                          <Box
+                            sx={{
+                              minWidth: 20,
+                              height: 20,
+                              px: 0.6,
+                              borderRadius: 999,
+                              bgcolor: chatTheme.unreadPill,
+                              color: '#fff',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {t.unreadCount > 99 ? '99+' : t.unreadCount}
+                          </Box>
                         )}
                       </Box>
-                    }
-                    secondary={
-                      <>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {t.presenceStatus
-                            ? `${PRESENCE_LABEL[t.presenceStatus]} · ${t.subtitle}`
-                            : t.subtitle}
-                        </Typography>
-                        {t.lastMessagePreview && (
-                          <Typography variant="body2" noWrap color="text.secondary">
-                            {formatMentionsForDisplay(t.lastMessagePreview)}
-                          </Typography>
-                        )}
-                      </>
-                    }
-                  />
-                </ListItemButton>
-              ))
+                    </Box>
+                  </ListItemButton>
+                );
+              })
             )}
           </List>
         )}
@@ -1000,212 +1205,428 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           display: { xs: selected ? 'flex' : 'none', sm: 'flex' },
           flexDirection: 'column',
           minWidth: 0,
+          bgcolor: chatTheme.feedBg,
         }}
       >
         {!selected ? (
-          <Box flex={1} display="flex" alignItems="center" justifyContent="center" p={3}>
-            <Typography color="text.secondary">Выберите беседу</Typography>
+          <Box
+            flex={1}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            p={3}
+            sx={{ background: chatTheme.feedPattern }}
+          >
+            <Typography sx={{ color: colors.textMuted, fontSize: 15 }}>
+              Выберите беседу, чтобы начать переписку
+            </Typography>
           </Box>
         ) : (
           <>
-            <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Button
+            <Box
+              sx={{
+                px: 1.5,
+                py: 1,
+                borderBottom: `1px solid ${colors.divider}`,
+                bgcolor: colors.card,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                minHeight: 64,
+              }}
+            >
+              <IconButton
                 size="small"
-                sx={{ display: { sm: 'none' }, mb: 1 }}
+                sx={{ display: { sm: 'none' } }}
                 onClick={() => {
+                  persistFeedScroll(activeThreadId);
                   setSelectedKey(null);
                   setActiveThreadId(null);
+                  activeThreadIdRef.current = null;
                   setMessages([]);
                   cancelEdit();
                 }}
+                title="К списку"
               >
-                ← К списку
-              </Button>
-              <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-                <Box display="flex" alignItems="center" gap={1} minWidth={0}>
-                  {selected.presenceStatus ? <PresenceDot status={selected.presenceStatus} /> : null}
-                  <Typography fontWeight={700} noWrap>
-                    {selected.title}
-                  </Typography>
-                </Box>
-                <IconButton size="small" onClick={() => void openParticipants()} title="Участники">
-                  <People fontSize="small" />
-                </IconButton>
+                <ArrowBack fontSize="small" />
+              </IconButton>
+              <Box sx={{ position: 'relative' }}>
+                <ChatAvatar title={selected.title} size={40} />
+                {selected.presenceStatus ? (
+                  <Box sx={{ position: 'absolute', right: 0, bottom: 0 }}>
+                    <PresenceDot status={selected.presenceStatus} size={10} />
+                  </Box>
+                ) : null}
               </Box>
-              <Typography variant="caption" color="text.secondary">
-                {selected.presenceStatus
-                  ? `${PRESENCE_LABEL[selected.presenceStatus]} · ${selected.subtitle}`
-                  : selected.subtitle}
-              </Typography>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography fontWeight={700} noWrap sx={{ fontSize: 15, lineHeight: 1.25 }}>
+                  {selected.title}
+                </Typography>
+                <Typography variant="caption" noWrap sx={{ color: colors.textHint, display: 'block' }}>
+                  {selected.presenceStatus
+                    ? PRESENCE_LABEL[selected.presenceStatus]
+                    : selected.subtitle}
+                </Typography>
+              </Box>
+              {canViewDeleted && (
+                <IconButton
+                  size="small"
+                  title={showDeletedContent ? 'Скрыть удалённые' : 'Показать удалённые'}
+                  onClick={() => setShowDeletedContent((v) => !v)}
+                  color={showDeletedContent ? 'primary' : 'default'}
+                >
+                  {showDeletedContent ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
+                </IconButton>
+              )}
+              <IconButton size="small" onClick={() => void openParticipants()} title="Участники">
+                <People fontSize="small" />
+              </IconButton>
             </Box>
 
             {pins.length > 0 && (
               <Box
                 sx={{
                   px: 1.5,
-                  py: 1,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'action.hover',
+                  py: 0.75,
+                  borderBottom: `1px solid ${colors.divider}`,
+                  bgcolor: chatTheme.pinBarBg,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1,
                 }}
               >
-                <PushPin fontSize="small" color="primary" />
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Закреплено
+                <PushPin sx={{ fontSize: 16, color: colors.primary }} />
+                <Box sx={{ minWidth: 0, flex: 1, borderLeft: `3px solid ${colors.primary}`, pl: 1 }}>
+                  <Typography variant="caption" sx={{ color: colors.primary, fontWeight: 700, display: 'block', lineHeight: 1.2 }}>
+                    Закреплённое сообщение
                   </Typography>
-                  <Typography variant="body2" noWrap>
-                    {pins[0].body}
+                  <Typography variant="body2" noWrap sx={{ fontSize: 13 }}>
+                    {formatMentionsForDisplay(pins[0].body)}
                   </Typography>
                 </Box>
               </Box>
             )}
 
-            <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'grey.50' }}>
+            <Box
+              ref={feedRef}
+              onScroll={() => {
+                const el = feedRef.current;
+                if (!el || !activeThreadId) return;
+                const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+                nearBottomRef.current = gap < 120;
+                persistFeedScroll(activeThreadId);
+              }}
+              sx={{
+                flex: 1,
+                overflow: 'auto',
+                px: { xs: 1.25, sm: 2.5 },
+                py: 1.5,
+                background: chatTheme.feedPattern,
+              }}
+            >
               {loadingMessages ? (
                 <Box display="flex" justifyContent="center" p={3}>
                   <CircularProgress size={28} />
                 </Box>
               ) : (
-                messages.map((m) => {
+                messages
+                  .filter((m) => canViewDeleted || !m.deleted)
+                  .map((m, idx, list) => {
                   const own = isOwn(m);
+                  const deleted = Boolean(m.deleted);
+                  const showDeletedFull = deleted && canViewDeleted && showDeletedContent;
                   const canEdit =
                     own &&
+                    !deleted &&
                     (m.kind || 'TEXT') === 'TEXT' &&
                     isWithinEditWindow(m.createdAt, editLimitMinutes, nowTick);
+                  const prev = idx > 0 ? list[idx - 1] : null;
+                  const showDay =
+                    !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
+                  const mentionColor = own ? 'rgba(255,255,255,0.95)' : chatTheme.mention;
+                  const bubbleOwn = own && !deleted;
                   return (
-                    <Box
-                      key={m.id}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: own ? 'flex-end' : 'flex-start',
-                        mb: 1.5,
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          maxWidth: '75%',
-                          px: 1.5,
-                          py: 1,
-                          borderRadius: 2,
-                          bgcolor: own ? 'primary.main' : 'background.paper',
-                          color: own ? 'primary.contrastText' : 'text.primary',
-                          boxShadow: 1,
-                          position: 'relative',
-                          outline: editingId === m.id ? '2px solid' : 'none',
-                          outlineColor: 'warning.main',
-                        }}
-                      >
-                        {!own && (
-                          <Typography variant="caption" sx={{ opacity: 0.85, display: 'block' }}>
-                            {m.authorName}
-                            {m.authorType === 'PARENT' ? ' (родитель)' : ''}
-                          </Typography>
-                        )}
-                        {m.replyTo && (
+                    <React.Fragment key={m.id}>
+                      {showDay && (
+                        <Box display="flex" justifyContent="center" my={1.25}>
                           <Box
                             sx={{
-                              mb: 0.75,
-                              pl: 1,
-                              borderLeft: '3px solid',
-                              borderColor: own ? 'rgba(255,255,255,0.5)' : 'primary.main',
-                              opacity: 0.9,
+                              px: 1.25,
+                              py: 0.35,
+                              borderRadius: 999,
+                              bgcolor: chatTheme.dateChipBg,
+                              color: chatTheme.dateChipText,
+                              fontSize: 12,
+                              fontWeight: 600,
                             }}
                           >
-                            <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                              {m.replyTo.authorName}
-                            </Typography>
-                            <Typography variant="caption" sx={{ display: 'block' }} noWrap>
-                              {formatMentionsForDisplay(m.replyTo.body)}
-                            </Typography>
+                            {formatDaySeparator(m.createdAt)}
                           </Box>
-                        )}
-                        {(m.attachments || []).map((att) =>
-                          activeThreadId ? (
-                            <Box key={att.id} sx={{ mb: m.body ? 1 : 0 }}>
-                              <ChatMediaBubble
-                                mode={mode}
-                                threadId={activeThreadId}
-                                messageId={m.id}
-                                attachment={att}
-                              />
-                            </Box>
-                          ) : null
-                        )}
-                        {m.body ? (
-                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                            {renderMentionNodes(m.body, m.id)}
-                          </Typography>
-                        ) : null}
+                        </Box>
+                      )}
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: own ? 'flex-end' : 'flex-start',
+                          mb: 0.75,
+                        }}
+                      >
                         <Box
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="flex-end"
-                          gap={0.5}
-                          mt={0.5}
+                          sx={{
+                            maxWidth: { xs: '88%', sm: '72%' },
+                            px: 1.35,
+                            pt: 0.85,
+                            pb: 0.55,
+                            borderRadius: own
+                              ? '14px 14px 4px 14px'
+                              : '14px 14px 14px 4px',
+                            bgcolor: deleted
+                              ? colors.rowAlt
+                              : bubbleOwn
+                                ? chatTheme.outgoingBubble
+                                : chatTheme.incomingBubble,
+                            color: deleted
+                              ? colors.textHint
+                              : bubbleOwn
+                                ? chatTheme.outgoingText
+                                : chatTheme.incomingText,
+                            fontStyle: deleted && !showDeletedFull ? 'italic' : 'normal',
+                            boxShadow: deleted
+                              ? 'none'
+                              : bubbleOwn
+                                ? '0 1px 2px rgba(13, 75, 215, 0.25)'
+                                : '0 1px 2px rgba(0,0,0,0.08)',
+                            position: 'relative',
+                            outline: editingId === m.id ? '2px solid' : 'none',
+                            outlineColor: 'warning.main',
+                          }}
                         >
-                          {m.pinned && <PushPin sx={{ fontSize: 12, opacity: 0.8 }} />}
-                          <IconButton
-                            size="small"
-                            onClick={(e) => setMenuAnchor({ el: e.currentTarget, msg: m })}
-                            title="Действия"
-                            sx={{
-                              p: 0.25,
-                              color: 'inherit',
-                              opacity: 0.75,
-                              '&:hover': { opacity: 1 },
-                            }}
-                          >
-                            <MoreVert sx={{ fontSize: 14 }} />
-                          </IconButton>
-                          {canEdit && (
-                            <IconButton
-                              size="small"
-                              onClick={() => startEdit(m)}
-                              title="Редактировать"
+                          {deleted && (
+                            <Typography
+                              variant="caption"
                               sx={{
-                                p: 0.25,
-                                color: 'inherit',
-                                opacity: 0.75,
-                                '&:hover': { opacity: 1 },
+                                display: 'block',
+                                fontWeight: 700,
+                                color: colors.danger,
+                                mb: 0.35,
                               }}
                             >
-                              <Edit sx={{ fontSize: 14 }} />
-                            </IconButton>
+                              Удалено
+                            </Typography>
                           )}
-                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                            {m.editedAt ? 'изм. · ' : ''}
-                            {new Date(m.createdAt).toLocaleString('ru-RU', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              day: '2-digit',
-                              month: '2-digit',
-                            })}
-                          </Typography>
+                          {!own && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: colors.primary,
+                                fontWeight: 700,
+                                display: 'block',
+                                mb: 0.25,
+                              }}
+                            >
+                              {m.authorName}
+                              {m.authorType === 'PARENT' ? ' (родитель)' : ''}
+                            </Typography>
+                          )}
+                          {m.replyTo && !deleted && (
+                            <Box
+                              sx={{
+                                mb: 0.65,
+                                px: 0.85,
+                                py: 0.4,
+                                borderLeft: '3px solid',
+                                borderColor: own ? 'rgba(255,255,255,0.65)' : colors.primary,
+                                bgcolor: own ? 'rgba(255,255,255,0.12)' : 'rgba(72,128,255,0.08)',
+                                borderRadius: '0 6px 6px 0',
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                sx={{ fontWeight: 700, display: 'block', lineHeight: 1.2 }}
+                              >
+                                {m.replyTo.deleted ? 'Удалено' : m.replyTo.authorName}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  opacity: 0.9,
+                                  fontStyle: m.replyTo.deleted ? 'italic' : 'normal',
+                                }}
+                                noWrap
+                              >
+                                {m.replyTo.deleted
+                                  ? 'Сообщение удалено'
+                                  : formatMentionsForDisplay(m.replyTo.body)}
+                              </Typography>
+                            </Box>
+                          )}
+                          {deleted && canViewDeleted && !showDeletedFull ? (
+                            <Typography variant="body2" sx={{ fontSize: 14.5, fontStyle: 'italic' }}>
+                              Сообщение удалено
+                            </Typography>
+                          ) : (
+                            <>
+                              {(m.attachments || []).map((att) =>
+                                activeThreadId ? (
+                                  <Box key={att.id} sx={{ mb: m.body ? 0.75 : 0.25 }}>
+                                    <ChatMediaBubble
+                                      mode={mode}
+                                      threadId={activeThreadId}
+                                      messageId={m.id}
+                                      attachment={att}
+                                    />
+                                  </Box>
+                                ) : null
+                              )}
+                              {m.body ? (
+                                <Typography
+                                  variant="body2"
+                                  sx={{ whiteSpace: 'pre-wrap', fontSize: 14.5, lineHeight: 1.4 }}
+                                >
+                                  {renderMentionNodes(
+                                    m.body,
+                                    m.id,
+                                    deleted ? colors.textMuted : mentionColor
+                                  )}
+                                </Typography>
+                              ) : null}
+                            </>
+                          )}
+                          <Box
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="flex-end"
+                            gap={0.35}
+                            mt={0.35}
+                          >
+                            {m.pinned && !deleted && (
+                              <PushPin
+                                sx={{
+                                  fontSize: 12,
+                                  opacity: 0.8,
+                                  color: own ? chatTheme.timeMutedOwn : colors.primary,
+                                }}
+                              />
+                            )}
+                            {!deleted && (
+                              <IconButton
+                                size="small"
+                                onClick={(e) => setMenuAnchor({ el: e.currentTarget, msg: m })}
+                                title="Действия"
+                                sx={{
+                                  p: 0.2,
+                                  color: 'inherit',
+                                  opacity: 0.55,
+                                  '&:hover': { opacity: 1 },
+                                }}
+                              >
+                                <MoreVert sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            )}
+                            {canEdit && (
+                              <IconButton
+                                size="small"
+                                onClick={() => startEdit(m)}
+                                title="Редактировать"
+                                sx={{
+                                  p: 0.2,
+                                  color: 'inherit',
+                                  opacity: 0.55,
+                                  '&:hover': { opacity: 1 },
+                                }}
+                              >
+                                <Edit sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            )}
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                opacity: 1,
+                                color: deleted
+                                  ? colors.textHint
+                                  : own
+                                    ? chatTheme.timeMutedOwn
+                                    : chatTheme.timeMutedOther,
+                                fontSize: 11,
+                                lineHeight: 1,
+                              }}
+                            >
+                              {m.editedAt ? 'изм. ' : ''}
+                              {formatChatTime(m.createdAt)}
+                            </Typography>
+                            {own && !deleted && (
+                              <Box
+                                component="span"
+                                onClick={() => {
+                                  if ((m.readBy || []).length > 1) setReadByDialog(m);
+                                }}
+                                sx={{
+                                  display: 'inline-flex',
+                                  cursor: (m.readBy || []).length > 1 ? 'pointer' : 'default',
+                                  ml: 0.15,
+                                }}
+                                title={
+                                  m.readByPeer
+                                    ? (m.readBy || []).length > 1
+                                      ? `Прочитали: ${(m.readBy || []).length}`
+                                      : 'Прочитано'
+                                    : 'Доставлено'
+                                }
+                              >
+                                {m.readByPeer ? (
+                                  <DoneAll
+                                    sx={{
+                                      fontSize: 15,
+                                      color: own ? 'rgba(255,255,255,0.95)' : colors.primary,
+                                    }}
+                                  />
+                                ) : (
+                                  <Done
+                                    sx={{
+                                      fontSize: 15,
+                                      color: own ? chatTheme.timeMutedOwn : colors.textHint,
+                                    }}
+                                  />
+                                )}
+                              </Box>
+                            )}
+                          </Box>
                         </Box>
                       </Box>
-                    </Box>
+                    </React.Fragment>
                   );
                 })
               )}
               <div ref={bottomRef} />
             </Box>
 
-            {(editingId || replyTo) && (
+            {!recorderBusy && (editingId || replyTo) && (
               <Box
                 sx={{
                   px: 1.5,
-                  pt: 1,
+                  py: 0.65,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1,
-                  bgcolor: 'action.hover',
+                  bgcolor: chatTheme.composerBg,
+                  borderTop: `1px solid ${colors.divider}`,
                 }}
               >
-                {editingId ? <Edit fontSize="small" color="action" /> : <Reply fontSize="small" color="action" />}
+                <Box
+                  sx={{
+                    width: 3,
+                    alignSelf: 'stretch',
+                    borderRadius: 2,
+                    bgcolor: colors.primary,
+                    flexShrink: 0,
+                  }}
+                />
+                {editingId ? (
+                  <Edit fontSize="small" sx={{ color: colors.primary }} />
+                ) : (
+                  <Reply fontSize="small" sx={{ color: colors.primary }} />
+                )}
                 <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }} noWrap>
                   {editingId
                     ? 'Редактирование сообщения'
@@ -1224,92 +1645,158 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               </Box>
             )}
 
-            {mentionSuggestions.length > 0 && (
+            {!recorderBusy && mentionSuggestions.length > 0 && (
               <Box
                 sx={{
-                  borderTop: '1px solid',
-                  borderColor: 'divider',
-                  maxHeight: 160,
+                  borderTop: `1px solid ${colors.divider}`,
+                  maxHeight: 168,
                   overflow: 'auto',
-                  bgcolor: 'background.paper',
+                  bgcolor: colors.card,
+                  boxShadow: '0 -4px 12px rgba(0,0,0,0.06)',
                 }}
               >
                 {mentionSuggestions.map((p) => (
                   <ListItemButton key={`${p.type}:${p.id}`} dense onClick={() => insertMention(p)}>
-                    <ListItemText primary={p.name} secondary={p.roleLabel} />
+                    <ChatAvatar title={p.name} size={32} />
+                    <ListItemText
+                      sx={{ ml: 1.25 }}
+                      primary={p.name}
+                      secondary={p.roleLabel}
+                      primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }}
+                      secondaryTypographyProps={{ fontSize: 12 }}
+                    />
                   </ListItemButton>
                 ))}
               </Box>
             )}
 
-            <Box sx={{ p: 1.5, display: 'flex', gap: 0.5, borderTop: '1px solid', borderColor: 'divider', alignItems: 'flex-end' }}>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                hidden
-                onChange={(e) => void onPickFile(e)}
-              />
-              <IconButton
-                onClick={(e) => setEmojiAnchor(e.currentTarget)}
-                disabled={sending || !activeThreadId}
-                title="Смайлы"
-              >
-                <EmojiEmotions />
-              </IconButton>
-              <IconButton
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              hidden
+              onChange={(e) => void onPickFile(e)}
+            />
+
+            <Box
+              sx={{
+                px: recorderBusy ? 0 : 0.75,
+                py: recorderBusy ? 0 : 0.5,
+                display: 'flex',
+                gap: 0.5,
+                alignItems: 'center',
+                width: '100%',
+                bgcolor: chatTheme.composerBg,
+                borderTop: recorderBusy ? 'none' : `1px solid ${colors.divider}`,
+                '& > *:last-child': recorderBusy ? { width: '100%' } : undefined,
+              }}
+            >
+              {!recorderBusy && (
+                <>
+                  <IconButton
+                    disabled={sending || !activeThreadId || Boolean(editingId)}
+                    title="Фото или видео"
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{ color: colors.textHint, width: 32, height: 32 }}
+                  >
+                    <AttachFile sx={{ fontSize: 20 }} />
+                  </IconButton>
+                  <Box
+                    sx={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.25,
+                      minWidth: 0,
+                      minHeight: 36,
+                      bgcolor: colors.surface,
+                      borderRadius: 999,
+                      border: `1px solid ${colors.divider}`,
+                      pl: 1.5,
+                      pr: 0.25,
+                    }}
+                  >
+                    <TextField
+                      fullWidth
+                      variant="standard"
+                      placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение...'}
+                      value={draft}
+                      onChange={(e) => onDraftChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape' && editingId) {
+                          e.preventDefault();
+                          cancelEdit();
+                          return;
+                        }
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      multiline
+                      maxRows={4}
+                      disabled={sending || !activeThreadId}
+                      inputRef={inputRef}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          padding: 0,
+                          alignItems: 'center',
+                        },
+                        '& .MuiInputBase-input': {
+                          padding: '2px 0 !important',
+                          lineHeight: '20px',
+                          fontSize: 14.5,
+                          minHeight: '20px !important',
+                        },
+                      }}
+                      InputProps={{ disableUnderline: true }}
+                    />
+                    <IconButton
+                      onClick={(e) => setEmojiAnchor(e.currentTarget)}
+                      disabled={sending || !activeThreadId}
+                      title="Смайлы"
+                      sx={{ color: colors.textHint, width: 28, height: 28 }}
+                    >
+                      <EmojiEmotions sx={{ fontSize: 20 }} />
+                    </IconButton>
+                  </Box>
+                  {(draft.trim() || editingId) && (
+                    <IconButton
+                      onClick={handleSend}
+                      disabled={sending || !draft.trim() || !activeThreadId}
+                      sx={{
+                        bgcolor: colors.primary,
+                        color: '#fff',
+                        width: 32,
+                        height: 32,
+                        flexShrink: 0,
+                        '&:hover': { bgcolor: colors.primaryDark },
+                        '&.Mui-disabled': {
+                          bgcolor: colors.borderDisabled,
+                          color: colors.textHint,
+                        },
+                      }}
+                    >
+                      {sending ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : editingId ? (
+                        <Edit sx={{ fontSize: 18 }} />
+                      ) : (
+                        <Send sx={{ fontSize: 18 }} />
+                      )}
+                    </IconButton>
+                  )}
+                </>
+              )}
+              <ChatVoiceRecorder
                 disabled={sending || !activeThreadId || Boolean(editingId)}
-                title="Прикрепить фото/видео"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <AttachFile />
-              </IconButton>
-              <IconButton
-                disabled={sending || !activeThreadId || Boolean(editingId)}
-                color={recording === 'voice' ? 'error' : 'default'}
-                title={recording === 'voice' ? 'Остановить запись' : 'Голосовое'}
-                onClick={() => (recording === 'voice' ? stopRecording() : void startRecording('voice'))}
-              >
-                {recording === 'voice' ? <Stop /> : <Mic />}
-              </IconButton>
-              <IconButton
-                disabled={sending || !activeThreadId || Boolean(editingId)}
-                color={recording === 'video' ? 'error' : 'default'}
-                title={recording === 'video' ? 'Остановить запись' : 'Видеосообщение'}
-                onClick={() => (recording === 'video' ? stopRecording() : void startRecording('video'))}
-              >
-                {recording === 'video' ? <Stop /> : <Videocam />}
-              </IconButton>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение… (@ — упомянуть)'}
-                value={draft}
-                onChange={(e) => onDraftChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape' && editingId) {
-                    e.preventDefault();
-                    cancelEdit();
-                    return;
-                  }
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
+                hideTrigger={Boolean(draft.trim() || editingId) && !recorderBusy}
+                onBusyChange={setRecorderBusy}
+                onError={(msg) => setError(msg)}
+                onSend={(file, kind, durationMs) => {
+                  void uploadMediaFile(file, kind, durationMs);
                 }}
-                multiline
-                maxRows={4}
-                disabled={sending || !activeThreadId}
-                inputRef={inputRef}
               />
-              <Button
-                variant="contained"
-                onClick={handleSend}
-                disabled={sending || !draft.trim() || !activeThreadId}
-                sx={{ minWidth: 48 }}
-              >
-                {sending ? <CircularProgress size={20} color="inherit" /> : editingId ? <Edit /> : <Send />}
-              </Button>
             </Box>
           </>
         )}
@@ -1366,7 +1853,33 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
         >
           {menuAnchor?.msg.pinned ? 'Открепить' : 'Закрепить'}
         </MenuItem>
+        {menuAnchor && canDeleteMessage(menuAnchor.msg) && (
+          <MenuItem
+            onClick={() => {
+              if (menuAnchor) void handleDeleteMessage(menuAnchor.msg);
+            }}
+            sx={{ color: colors.danger }}
+          >
+            Удалить
+          </MenuItem>
+        )}
       </Menu>
+
+      <Dialog open={Boolean(readByDialog)} onClose={() => setReadByDialog(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Прочитали</DialogTitle>
+        <DialogContent dividers>
+          <List dense>
+            {(readByDialog?.readBy || []).map((r) => (
+              <ListItemButton key={`${r.type}:${r.id}`} disableRipple>
+                <ListItemText
+                  primary={r.name || `${r.type}:${r.id}`}
+                  secondary={new Date(r.readAt).toLocaleString('ru-RU')}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={participantsOpen} onClose={() => setParticipantsOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Участники</DialogTitle>

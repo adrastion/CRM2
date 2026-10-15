@@ -31,6 +31,7 @@ import {
   clientGetParticipants,
   clientGetPins,
   clientListThreads,
+  clientDeleteMessage,
   clientMarkRead,
   clientPatchMessage,
   clientPinMessage,
@@ -168,6 +169,7 @@ router.get(
   clientGetMedia
 );
 router.patch('/chats/threads/:id/messages/:messageId', authenticateClient, clientPatchMessage);
+router.delete('/chats/threads/:id/messages/:messageId', authenticateClient, clientDeleteMessage);
 router.post('/chats/threads/:id/read', authenticateClient, clientMarkRead);
 router.get('/chats/threads/:id/participants', authenticateClient, clientGetParticipants);
 router.get('/chats/threads/:id/pins', authenticateClient, clientGetPins);

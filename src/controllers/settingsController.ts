@@ -68,6 +68,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     clientCanViewAllBranches,
     salaryPayoutDay,
     chatMessageEditLimitMinutes,
+    chatMessageDeleteLimitMinutes,
     staffTaskColor,
   } = req.body;
 
@@ -83,12 +84,16 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   const wantsFinanceSettings =
     salaryPayoutDay !== undefined || membershipFeeResetDate !== undefined;
   const wantsChatEditLimit = chatMessageEditLimitMinutes !== undefined;
+  const wantsChatDeleteLimit = chatMessageDeleteLimitMinutes !== undefined;
   const wantsStaffTaskColor = staffTaskColor !== undefined;
 
-  if ((wantsFinanceSettings || wantsChatEditLimit || wantsStaffTaskColor) && !isOwner) {
+  if (
+    (wantsFinanceSettings || wantsChatEditLimit || wantsChatDeleteLimit || wantsStaffTaskColor) &&
+    !isOwner
+  ) {
     res.status(403).json({
       success: false,
-      error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов, лимит редактирования сообщений и цвет задач'
+      error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов, лимиты сообщений и цвет задач'
     });
     return;
   }
@@ -144,6 +149,19 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     parsedChatEditLimit = minutes;
   }
 
+  let parsedChatDeleteLimit: number | undefined;
+  if (isOwner && wantsChatDeleteLimit) {
+    const minutes = Number(chatMessageDeleteLimitMinutes);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 10080) {
+      res.status(400).json({
+        success: false,
+        error: 'Лимит удаления: целое число от 0 (без ограничения) до 10080 минут (7 суток)'
+      });
+      return;
+    }
+    parsedChatDeleteLimit = minutes;
+  }
+
   // Валидация даты сброса (формат MM-DD)
   if (isOwner && membershipFeeResetDate !== undefined && membershipFeeResetDate !== null && membershipFeeResetDate !== '') {
     const dateRegex = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
@@ -167,6 +185,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : undefined,
       chatMessageEditLimitMinutes:
         parsedChatEditLimit !== undefined ? parsedChatEditLimit : undefined,
+      chatMessageDeleteLimitMinutes:
+        parsedChatDeleteLimit !== undefined ? parsedChatDeleteLimit : undefined,
       staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : undefined,
     },
     create: {
@@ -177,6 +197,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       clientCanViewAllBranches: clientCanViewAllBranches !== undefined ? clientCanViewAllBranches : false,
       salaryPayoutDay: isOwner && salaryPayoutDay !== undefined ? Number(salaryPayoutDay) : 25,
       chatMessageEditLimitMinutes: parsedChatEditLimit !== undefined ? parsedChatEditLimit : 15,
+      chatMessageDeleteLimitMinutes:
+        parsedChatDeleteLimit !== undefined ? parsedChatDeleteLimit : 15,
       staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : '#6A1B9A',
     }
   });

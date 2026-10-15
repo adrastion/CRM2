@@ -15,6 +15,7 @@ import {
   sendPlatformChatMessage,
   unpinPlatformChatMessage,
   updatePlatformChatMessage,
+  deletePlatformChatMessage,
 } from '../controllers/platformChatController';
 import { chatMediaUpload } from '../controllers/chatController';
 import {
@@ -59,6 +60,11 @@ router.patch(
   '/chats/threads/:threadId/messages/:messageId',
   authenticateSuperAdminOrTester,
   updatePlatformChatMessage
+);
+router.delete(
+  '/chats/threads/:threadId/messages/:messageId',
+  authenticateSuperAdminOrTester,
+  deletePlatformChatMessage
 );
 router.post('/chats/threads/:threadId/read', authenticateSuperAdminOrTester, markPlatformChatRead);
 router.get(

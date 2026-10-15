@@ -36,6 +36,10 @@ export interface ChatSocketMessage {
   }>;
   mentions?: Array<{ type: string; id: string; name?: string }>;
   pinned?: boolean;
+  deleted?: boolean;
+  deletedAt?: string | null;
+  readBy?: Array<{ type: string; id: string; name?: string; readAt: string }>;
+  readByPeer?: boolean;
 }
 
 /**
@@ -49,6 +53,12 @@ export function useChatSocket(opts: {
   onMessageUpdated?: (msg: ChatSocketMessage) => void;
   onPresence?: (payload: { key: string; online: boolean }) => void;
   onPin?: (payload: { threadId: string; messageId: string; pinned: boolean }) => void;
+  onRead?: (payload: {
+    threadId: string;
+    readerType: string;
+    readerId: string;
+    lastReadAt: string;
+  }) => void;
 }): void {
   const {
     token,
@@ -58,16 +68,19 @@ export function useChatSocket(opts: {
     onMessageUpdated,
     onPresence,
     onPin,
+    onRead,
   } = opts;
   const socketRef = useRef<Socket | null>(null);
   const onMessageRef = useRef(onMessage);
   const onMessageUpdatedRef = useRef(onMessageUpdated);
   const onPresenceRef = useRef(onPresence);
   const onPinRef = useRef(onPin);
+  const onReadRef = useRef(onRead);
   onMessageRef.current = onMessage;
   onMessageUpdatedRef.current = onMessageUpdated;
   onPresenceRef.current = onPresence;
   onPinRef.current = onPin;
+  onReadRef.current = onRead;
   const joinedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +108,18 @@ export function useChatSocket(opts: {
     socket.on('chat:pin', (payload: { threadId: string; messageId: string; pinned: boolean }) => {
       onPinRef.current?.(payload);
     });
+
+    socket.on(
+      'chat:read',
+      (payload: {
+        threadId: string;
+        readerType: string;
+        readerId: string;
+        lastReadAt: string;
+      }) => {
+        onReadRef.current?.(payload);
+      }
+    );
 
     return () => {
       socket.disconnect();

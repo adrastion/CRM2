@@ -7,6 +7,7 @@ import { badRequest, unauthorized } from '../utils/httpError';
 import {
   createMessage,
   createMediaMessage,
+  deleteMessage,
   ensureThread,
   getChatAttachmentFile,
   getMessages,
@@ -226,6 +227,16 @@ export const staffPatchMessage = asyncHandler(async (req: AuthenticatedRequest, 
   res.json({ success: true, data });
 });
 
+export const staffDeleteMessage = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const actor = await staffActor(req);
+  const data = await deleteMessage(
+    actor,
+    String(req.params.id),
+    String(req.params.messageId)
+  );
+  res.json({ success: true, data });
+});
+
 export const staffMarkRead = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const actor = await staffActor(req);
   const data = await markThreadRead(actor, String(req.params.id));
@@ -349,6 +360,16 @@ export const clientPatchMessage = asyncHandler(async (req: ClientRequest, res: R
     String(req.params.id),
     String(req.params.messageId),
     String(req.body?.body || '')
+  );
+  res.json({ success: true, data });
+});
+
+export const clientDeleteMessage = asyncHandler(async (req: ClientRequest, res: Response<ApiResponse>) => {
+  const actor = await clientSideActor(req);
+  const data = await deleteMessage(
+    actor,
+    String(req.params.id),
+    String(req.params.messageId)
   );
   res.json({ success: true, data });
 });
