@@ -1307,6 +1307,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               </Box>
             )}
 
+            <Box sx={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
             <Box
               ref={feedRef}
               onScroll={() => {
@@ -1600,6 +1601,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               )}
               <div ref={bottomRef} />
             </Box>
+            <Box
+              ref={recordOverlayRef}
+              sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}
+            />
+            </Box>
 
             {!recorderBusy && (editingId || replyTo) && (
               <Box
@@ -1791,6 +1797,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
               <ChatVoiceRecorder
                 disabled={sending || !activeThreadId || Boolean(editingId)}
                 hideTrigger={Boolean(draft.trim() || editingId) && !recorderBusy}
+                overlayHostRef={recordOverlayRef}
                 onBusyChange={setRecorderBusy}
                 onError={(msg) => setError(msg)}
                 onSend={(file, kind, durationMs) => {

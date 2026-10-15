@@ -22,6 +22,9 @@ export const chatTheme = {
   dateChipText: colors.white,
   timeMutedOwn: 'rgba(255,255,255,0.75)',
   timeMutedOther: colors.textHint,
+  recDot: colors.danger,
+  lockPillBg: 'rgba(32, 34, 36, 0.78)',
+  recordBtn: colors.primary,
 } as const;
 
 export function chatInitials(title: string): string {
