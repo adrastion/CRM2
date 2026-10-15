@@ -43,6 +43,7 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
 
   // Получаем всех tenant'ов с их подписками
   const tenants = await prisma.tenant.findMany({
+    where: { subdomain: { not: 'sa-sandbox' } },
     include: {
       subscription: true,
       referredBy: {
@@ -240,6 +241,15 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
     };
   });
 
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+  const plannedAgg = await prisma.plannedExpense.aggregate({
+    where: { dueDate: { gte: monthStart, lt: monthEnd } },
+    _sum: { amount: true },
+  });
+  const plannedExpensesThisMonth = Number(plannedAgg._sum.amount || 0);
+  const plannedSpendThisMonth = plannedExpensesThisMonth + totalUnpaidMarketers;
+
   res.json({
     success: true,
     data: {
@@ -284,6 +294,8 @@ export const getAdminDashboard = asyncHandler(async (req: AuthenticatedRequest, 
         totalRevenue,
         reserveAmount,
         totalUnpaidMarketers,
+        plannedExpensesThisMonth,
+        plannedSpendThisMonth,
         totalExpenses,
         totalMarketerPayments,
         availableBudget,
@@ -574,6 +586,7 @@ export const getAllTenants = asyncHandler(async (req: AuthenticatedRequest, res:
   const { nameOf } = await loadPriceMap();
 
   const tenants = await prisma.tenant.findMany({
+    where: { subdomain: { not: 'sa-sandbox' } },
     include: {
       subscription: true,
       users: {
@@ -2474,6 +2487,7 @@ export const exportTransactions = asyncHandler(async (req: AuthenticatedRequest,
  */
 export const exportTenants = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const tenants = await prisma.tenant.findMany({
+    where: { subdomain: { not: 'sa-sandbox' } },
     include: {
       subscription: true,
       referredBy: {

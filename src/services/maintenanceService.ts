@@ -97,9 +97,15 @@ export async function isEmailAllowlisted(email: string | null | undefined): Prom
 export async function getMaintenanceStatus(): Promise<{
   enabled: boolean;
   message: string;
+  scheduledAt: string | null;
 }> {
-  const enabled = await isMaintenanceMode();
-  return { enabled, message: MAINTENANCE_MESSAGE };
+  const s = await ensureSettings();
+  clearMaintenanceCache();
+  return {
+    enabled: Boolean(s.maintenanceMode),
+    message: MAINTENANCE_MESSAGE,
+    scheduledAt: s.maintenanceScheduledAt ? s.maintenanceScheduledAt.toISOString() : null,
+  };
 }
 
 export async function getTestingModeStatus(): Promise<{
@@ -136,14 +142,19 @@ export async function getClosedTestingModeStatus(): Promise<{
 
 /** Публичный статус (без allowlist). Без кэша — CLI on/off виден сразу. */
 export async function getPublicAccessStatus(): Promise<{
-  maintenance: { enabled: boolean; message: string };
+  maintenance: { enabled: boolean; message: string; scheduledAt: string | null };
   testing: { enabled: boolean; message: string };
   closedTesting: { enabled: boolean; message: string };
 }> {
   clearMaintenanceCache();
+  const s = await ensureSettings();
   const c = await loadCache();
   return {
-    maintenance: { enabled: c.maintenance, message: MAINTENANCE_MESSAGE },
+    maintenance: {
+      enabled: c.maintenance,
+      message: MAINTENANCE_MESSAGE,
+      scheduledAt: s.maintenanceScheduledAt ? s.maintenanceScheduledAt.toISOString() : null,
+    },
     testing: { enabled: c.testing, message: TESTING_MODE_MESSAGE },
     closedTesting: { enabled: c.closedTesting, message: CLOSED_TESTING_MODE_MESSAGE },
   };
@@ -158,11 +169,48 @@ export async function setMaintenanceMode(enabled: boolean): Promise<{
     where: { id: s.id },
     data: {
       maintenanceMode: enabled,
-      ...(enabled ? { closedTestingMode: false, testingMode: false } : {}),
+      ...(enabled ? { closedTestingMode: false, testingMode: false, maintenanceScheduledAt: null } : {}),
     },
   });
   clearMaintenanceCache();
   return { enabled, message: MAINTENANCE_MESSAGE };
+}
+
+export async function setMaintenanceSchedule(scheduledAt: string | null): Promise<{
+  enabled: boolean;
+  message: string;
+  scheduledAt: string | null;
+}> {
+  const s = await ensureSettings();
+  let value: Date | null = null;
+  if (scheduledAt) {
+    value = new Date(scheduledAt);
+    if (Number.isNaN(value.getTime())) {
+      throw new Error('Некорректная дата');
+    }
+  }
+  await prisma.superAdminSettings.update({
+    where: { id: s.id },
+    data: { maintenanceScheduledAt: value },
+  });
+  clearMaintenanceCache();
+  return getMaintenanceStatus();
+}
+
+/** В запланированный момент включает тот же флаг, что и ручной переключатель. */
+export async function applyScheduledMaintenance(): Promise<void> {
+  const s = await ensureSettings();
+  if (!s.maintenanceScheduledAt || s.maintenanceScheduledAt.getTime() > Date.now()) return;
+  await prisma.superAdminSettings.update({
+    where: { id: s.id },
+    data: {
+      maintenanceMode: true,
+      maintenanceScheduledAt: null,
+      testingMode: false,
+      closedTestingMode: false,
+    },
+  });
+  clearMaintenanceCache();
 }
 
 export async function setTestingMode(params: {

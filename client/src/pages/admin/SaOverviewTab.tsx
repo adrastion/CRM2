@@ -63,6 +63,8 @@ export type SaOverviewDashboardData = {
     totalRevenue: number;
     reserveAmount: number;
     totalUnpaidMarketers: number;
+    plannedExpensesThisMonth?: number;
+    plannedSpendThisMonth?: number;
     totalExpenses: number;
     totalMarketerPayments: number;
     availableBudget: number;
@@ -126,10 +128,13 @@ const SaOverviewTab: React.FC<Props> = ({
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
-                    Резерв
+                    Запланированные траты на этот месяц
                   </Typography>
                   <Typography variant="h5" fontWeight="bold" color="info.main">
-                    {formatCurrency(data.budget.reserveAmount)}
+                    {formatCurrency(
+                      data.budget.plannedSpendThisMonth ??
+                        (data.budget.plannedExpensesThisMonth || 0) + (data.budget.totalUnpaidMarketers || 0)
+                    )}
                   </Typography>
                 </Box>
                 <AccountBalance sx={{ fontSize: 32, color: 'info.main', opacity: 0.3 }} />

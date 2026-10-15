@@ -15,6 +15,8 @@ import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
 import SiteTrafficTracker from './components/SiteTrafficTracker';
 import CookieConsentBanner from './components/CookieConsentBanner';
+import MaintenanceScheduleNotice from './components/MaintenanceScheduleNotice';
+import SandboxExitBanner from './components/SandboxExitBanner';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
 import SwitchAccountFromPush from './components/SwitchAccountFromPush';
 import SpellcheckProvider from './spellcheck/SpellcheckProvider';
@@ -452,7 +454,13 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <MaintenanceScheduleNotice isSuperAdmin={isSa} />
+      <SandboxExitBanner />
+      {children}
+    </>
+  );
 };
 
 // Main App Component

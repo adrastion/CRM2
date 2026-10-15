@@ -29,12 +29,22 @@ type AccountOption = {
 const checkboxIcon = <CheckBoxOutlineBlankIcon fontSize="small" />;
 const checkboxCheckedIcon = <CheckBoxIcon fontSize="small" />;
 
+function toLocalInput(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /**
  * Секция SA: техобслуживание + режим тестирования.
  * Список доступа — выбор из существующих аккаунтов платформы.
  */
 const SuperAdminMaintenanceTab: React.FC = () => {
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [testingEnabled, setTestingEnabled] = useState(false);
   const [closedTestingEnabled, setClosedTestingEnabled] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
@@ -59,6 +69,7 @@ const SuperAdminMaintenanceTab: React.FC = () => {
         apiService.getAdminPlatformChatSettings(),
       ]);
       setMaintenanceEnabled(Boolean(m?.enabled));
+      setScheduledAt(toLocalInput(m?.scheduledAt));
       setTestingEnabled(Boolean(t?.enabled));
       setClosedTestingEnabled(
         Boolean(t?.closedTesting?.enabled ?? publicStatus?.closedTesting?.enabled)
@@ -212,10 +223,50 @@ const SuperAdminMaintenanceTab: React.FC = () => {
           }
           label="Режим технических работ"
         />
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
           {maintenanceEnabled
             ? 'Сейчас сайт закрыт для всех, кроме супер-админа.'
             : 'Сайт не в режиме техобслуживания.'}
+        </Typography>
+        <TextField
+          label="Плановое включение"
+          type="datetime-local"
+          size="small"
+          InputLabelProps={{ shrink: true }}
+          value={scheduledAt}
+          onChange={(e) => setScheduledAt(e.target.value)}
+          disabled={savingSchedule || closedTestingEnabled}
+          sx={{ mr: 1, minWidth: 260 }}
+        />
+        <Button
+          variant="outlined"
+          disabled={savingSchedule || closedTestingEnabled}
+          onClick={async () => {
+            setSavingSchedule(true);
+            setError(null);
+            setSuccess(null);
+            try {
+              const data = await apiService.updateAdminMaintenanceSchedule(
+                scheduledAt ? new Date(scheduledAt).toISOString() : null
+              );
+              setScheduledAt(toLocalInput(data.scheduledAt));
+              setSuccess(
+                data.scheduledAt
+                  ? 'Время плановых техработ сохранено. За 15 минут пользователи увидят таймер.'
+                  : 'Плановое включение снято.'
+              );
+            } catch (e: any) {
+              setError(e?.response?.data?.error || 'Не удалось сохранить время');
+            } finally {
+              setSavingSchedule(false);
+            }
+          }}
+        >
+          Сохранить время
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Пока время в будущем, пользователи видят объявление. За 15 минут до старта — обратный отсчёт.
+          В указанный момент режим включится сам.
         </Typography>
       </Paper>
 

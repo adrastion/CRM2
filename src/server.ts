@@ -79,6 +79,8 @@ import {
   cleanupOldSiteVisits,
   mskDateString,
 } from './services/siteAnalyticsService';
+import { sweepDevNotes } from './controllers/superAdminDevNoteController';
+import { applyScheduledMaintenance } from './services/maintenanceService';
 
 // Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
 const rootEnv = path.join(__dirname, '..', '.env');
@@ -438,6 +440,28 @@ httpServer.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow',
   });
   console.log('⏰ Site visit retention cleanup scheduled (daily 03:40)');
+
+  cron.schedule('5 * * * *', async () => {
+    try {
+      await sweepDevNotes();
+    } catch (error) {
+      console.error('[Cron] Error sweeping dev notes:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Dev notes archive/trash sweep scheduled (hourly)');
+
+  cron.schedule('* * * * *', async () => {
+    try {
+      await applyScheduledMaintenance();
+    } catch (error) {
+      console.error('[Cron] Error applying scheduled maintenance:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Scheduled maintenance check (every minute)');
 });
 
 export default app;

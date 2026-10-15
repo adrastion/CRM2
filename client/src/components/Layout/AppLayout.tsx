@@ -98,6 +98,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     token: schoolToken,
     enabled: Boolean(schoolToken && user),
   });
+  const [devNotesUnread, setDevNotesUnread] = useState(0);
+  const [saNotifUnread, setSaNotifUnread] = useState(0);
 
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem('visibleTabs');
@@ -134,6 +136,34 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       window.removeEventListener('focus', onFocus);
     };
   }, [isSuperAdminRoute, isTesterRoute]);
+
+  useEffect(() => {
+    if (!isSuperAdminRoute) {
+      setDevNotesUnread(0);
+      setSaNotifUnread(0);
+      return;
+    }
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const [notes, notifs] = await Promise.all([
+          apiService.getDevNotesUnreadCount(),
+          apiService.getSaNotifications(),
+        ]);
+        if (cancelled) return;
+        setDevNotesUnread(notes);
+        setSaNotifUnread(notifs.filter((n: { readAt?: string | null }) => !n.readAt).length);
+      } catch {
+        /* сессия могла истечь */
+      }
+    };
+    void pull();
+    const timer = window.setInterval(pull, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isSuperAdminRoute, location.pathname, location.search]);
 
   useEffect(() => {
     const handler = (event: CustomEvent) => setVisibleTabs(event.detail.visibleTabs);
@@ -238,6 +268,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
             label: item.label,
             iconName: item.iconName,
             onClick: () => navigate(saDashboardPath(item.section)),
+            ...(item.section === 'development' && devNotesUnread > 0 ? { badge: devNotesUnread } : {}),
+            ...(item.section === 'notifications' && saNotifUnread > 0 ? { badge: saNotifUnread } : {}),
           })),
         ]),
         {

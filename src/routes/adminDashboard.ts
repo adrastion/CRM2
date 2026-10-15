@@ -51,6 +51,12 @@ import {
   createDevNote,
   updateDevNote,
   deleteDevNote,
+  restoreDevNote,
+  markDevNoteRead,
+  addDevNoteComment,
+  devNotesUnreadCount,
+  listSaNotifications,
+  markSaNotificationsRead,
   uploadDevNoteAttachments,
   downloadDevNoteAttachment,
   deleteDevNoteAttachment,
@@ -95,6 +101,7 @@ import {
 import {
   getAdminMaintenance,
   updateAdminMaintenance,
+  updateAdminMaintenanceSchedule,
   getAdminTestingMode,
   updateAdminTestingMode,
   getTestingAccountCandidates,
@@ -105,6 +112,18 @@ import {
   getAdminPlatformChatSettings,
   updateAdminPlatformChatSettings,
 } from '../controllers/maintenanceController';
+import {
+  listPlannedExpenses,
+  createPlannedExpense,
+  updatePlannedExpense,
+  deletePlannedExpense,
+} from '../controllers/plannedExpenseController';
+import {
+  listTestSessions,
+  enterTestSession,
+  saveTestSession,
+  deleteTestSession,
+} from '../controllers/sandboxSessionController';
 import {
   getSiteTrafficLive,
   getSiteTrafficSummary,
@@ -249,8 +268,14 @@ router.post('/tenants/bulk', bulkUpdateTenants);
 
 // Заметки разработок
 router.get('/dev-notes', listDevNotes);
+router.get('/dev-notes/unread-count', devNotesUnreadCount);
+router.get('/sa-notifications', listSaNotifications);
+router.post('/sa-notifications/read', markSaNotificationsRead);
 router.post('/dev-notes', createDevNote);
 router.put('/dev-notes/:id', updateDevNote);
+router.post('/dev-notes/:id/read', markDevNoteRead);
+router.post('/dev-notes/:id/comments', addDevNoteComment);
+router.post('/dev-notes/:id/restore', restoreDevNote);
 router.delete('/dev-notes/:id', deleteDevNote);
 router.post(
   '/dev-notes/:id/attachments',
@@ -336,6 +361,17 @@ router.get('/marketer-closing-docs/:id/file', downloadMarketerClosingDocAdmin);
 
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);
+router.put('/maintenance/schedule', updateAdminMaintenanceSchedule);
+
+router.get('/planned-expenses', listPlannedExpenses);
+router.post('/planned-expenses', createPlannedExpense);
+router.put('/planned-expenses/:id', updatePlannedExpense);
+router.delete('/planned-expenses/:id', deletePlannedExpense);
+
+router.get('/test-sessions', listTestSessions);
+router.post('/test-sessions/enter', enterTestSession);
+router.post('/test-sessions/:id/save', saveTestSession);
+router.delete('/test-sessions/:id', deleteTestSession);
 router.get('/testing-mode', getAdminTestingMode);
 router.put('/testing-mode', updateAdminTestingMode);
 router.get('/testing-mode/accounts', getTestingAccountCandidates);

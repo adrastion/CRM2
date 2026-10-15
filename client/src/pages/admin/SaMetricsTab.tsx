@@ -374,7 +374,7 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                       {formatCurrency(kpiData.mrr)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Monthly Recurring Revenue
+                      Ежемесячный доход с оплаченных подписок. Показывает, сколько платформа получает каждый месяц.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -389,7 +389,7 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                       {formatCurrency(kpiData.arr)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Annual Recurring Revenue
+                      Годовой повтор дохода: ежемесячная сумма, умноженная на 12.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -398,13 +398,13 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
-                      Churn Rate
+                      Отток
                     </Typography>
                     <Typography variant="h5" fontWeight="bold" color="error.main">
                       {kpiData.churnRate}%
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Отток клиентов
+                      Доля подписок, истекших за период, среди активных и уже истёкших.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -413,13 +413,13 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
-                      LTV
+                      Ценность клиента
                     </Typography>
                     <Typography variant="h5" fontWeight="bold" color="success.main">
                       {formatCurrency(kpiData.avgLTV)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Lifetime Value
+                      Средняя сумма успешных оплат одного платящего аккаунта за всё время.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -428,13 +428,13 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
-                      CAC
+                      Стоимость привлечения
                     </Typography>
                     <Typography variant="h5" fontWeight="bold" color="warning.main">
                       {formatCurrency(kpiData.cac)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Customer Acquisition Cost
+                      Расходы «Маркетинг и реклама» за период, делённые на число новых аккаунтов.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -443,13 +443,13 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                 <Card>
                   <CardContent>
                     <Typography color="text.secondary" gutterBottom>
-                      Conversion Rate
+                      Конверсия
                     </Typography>
                     <Typography variant="h5" fontWeight="bold" color="info.main">
                       {kpiData.conversionRate}%
                     </Typography>
                     <Typography variant="body2" color="text.secondary" mt={1}>
-                      Конверсия в платные тарифы
+                      Доля активных оплаченных тарифов среди бесплатных и платных аккаунтов.
                     </Typography>
                   </CardContent>
                 </Card>
@@ -463,6 +463,9 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                     <Typography variant="h5" fontWeight="bold" color="success.main">
                       {formatCurrency(kpiData.revenueInPeriod)}
                     </Typography>
+                    <Typography variant="body2" color="text.secondary" mt={1}>
+                      Фактически полученные деньги за выбранный период.
+                    </Typography>
                   </CardContent>
                 </Card>
               </Grid>
@@ -474,6 +477,9 @@ const SaMetricsTab: React.FC<SaMetricsTabProps> = ({
                     </Typography>
                     <Typography variant="h5" fontWeight="bold">
                       {kpiData.newTenants}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" mt={1}>
+                      Сколько школ зарегистрировалось за выбранный период.
                     </Typography>
                   </CardContent>
                 </Card>

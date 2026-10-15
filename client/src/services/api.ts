@@ -1160,7 +1160,7 @@ class ApiService {
   }
 
   async getMaintenanceStatus(): Promise<{
-    maintenance: { enabled: boolean; message: string };
+    maintenance: { enabled: boolean; message: string; scheduledAt?: string | null };
     testing: { enabled: boolean; message: string };
     closedTesting: { enabled: boolean; message: string };
     /** @deprecated use maintenance.enabled */
@@ -1198,13 +1198,21 @@ class ApiService {
     return response.data.data;
   }
 
-  async getAdminMaintenance(): Promise<{ enabled: boolean; message: string }> {
+  async getAdminMaintenance(): Promise<{ enabled: boolean; message: string; scheduledAt?: string | null }> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/maintenance');
     return response.data.data;
   }
 
   async updateAdminMaintenance(enabled: boolean): Promise<{ enabled: boolean; message: string }> {
     const response = await this.api.put<ApiResponse>('/admin-dashboard/maintenance', { enabled });
+    return response.data.data;
+  }
+
+  async updateAdminMaintenanceSchedule(scheduledAt: string | null): Promise<{
+    enabled: boolean;
+    scheduledAt: string | null;
+  }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/maintenance/schedule', { scheduledAt });
     return response.data.data;
   }
 
@@ -2897,15 +2905,23 @@ class ApiService {
     return response.data.data;
   }
 
-  async getDevNotes(params?: { status?: string }): Promise<any[]> {
+  async getDevNotes(params?: { status?: string; bucket?: string }): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/dev-notes', { params });
     return response.data.data || [];
+  }
+
+  async getDevNotesUnreadCount(): Promise<number> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/dev-notes/unread-count');
+    return Number(response.data.data?.count || 0);
   }
 
   async createDevNote(data: {
     title: string;
     description?: string | null;
     status?: string;
+    priority?: string | null;
+    dueFrom?: string | null;
+    dueTo?: string | null;
   }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/dev-notes', data);
     return response.data.data;
@@ -2913,7 +2929,14 @@ class ApiService {
 
   async updateDevNote(
     id: string,
-    data: { title?: string; description?: string | null; status?: string }
+    data: {
+      title?: string;
+      description?: string | null;
+      status?: string;
+      priority?: string | null;
+      dueFrom?: string | null;
+      dueTo?: string | null;
+    }
   ): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/admin-dashboard/dev-notes/${id}`, data);
     return response.data.data;
@@ -2921,6 +2944,79 @@ class ApiService {
 
   async deleteDevNote(id: string): Promise<void> {
     await this.api.delete(`/admin-dashboard/dev-notes/${id}`);
+  }
+
+  async restoreDevNote(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/admin-dashboard/dev-notes/${id}/restore`);
+    return response.data.data;
+  }
+
+  async markDevNoteRead(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/admin-dashboard/dev-notes/${id}/read`);
+    return response.data.data;
+  }
+
+  async addDevNoteComment(id: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/admin-dashboard/dev-notes/${id}/comments`, { body });
+    return response.data.data;
+  }
+
+  async getSaNotifications(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/sa-notifications');
+    return response.data.data || [];
+  }
+
+  async markSaNotificationsRead(): Promise<void> {
+    await this.api.post('/admin-dashboard/sa-notifications/read');
+  }
+
+  async getPlannedExpenses(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/planned-expenses');
+    return response.data.data || [];
+  }
+
+  async createPlannedExpense(data: {
+    title: string;
+    amount: number;
+    dueDate: string;
+    payeeKind: 'MARKETER' | 'OTHER';
+    payeeName?: string | null;
+    marketerId?: string | null;
+    comment?: string | null;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/planned-expenses', data);
+    return response.data.data;
+  }
+
+  async updatePlannedExpense(id: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/admin-dashboard/planned-expenses/${id}`, data);
+    return response.data.data;
+  }
+
+  async deletePlannedExpense(id: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/planned-expenses/${id}`);
+  }
+
+  async listTestSessions(): Promise<{ roles: string[]; sessions: any[] }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/test-sessions');
+    return response.data.data || { roles: [], sessions: [] };
+  }
+
+  async enterTestSession(body: { role?: string; sessionId?: string }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/test-sessions/enter', body);
+    return response.data.data;
+  }
+
+  async saveTestSession(id: string, superAdminToken: string): Promise<void> {
+    await this.api.post(`/admin-dashboard/test-sessions/${id}/save`, {}, {
+      headers: { Authorization: `Bearer ${superAdminToken}` },
+    });
+  }
+
+  async deleteTestSession(id: string, superAdminToken?: string): Promise<void> {
+    await this.api.delete(`/admin-dashboard/test-sessions/${id}`, {
+      headers: superAdminToken ? { Authorization: `Bearer ${superAdminToken}` } : undefined,
+    });
   }
 
   async uploadDevNoteAttachments(noteId: string, files: File[]): Promise<any[]> {
@@ -3584,6 +3680,11 @@ class ApiService {
   async superAdminCreateSupportKnowledge(payload: { title: string; body: string; category?: string; sortOrder?: number }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/super-admin/support/knowledge', payload);
     return response.data.data;
+  }
+
+  async superAdminListPlatformStaffUsers(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/platform-staff/users');
+    return response.data.data || [];
   }
 
   async superAdminCreatePlatformStaffUser(payload: { email: string; role: 'SUPPORT' | 'DESIGNER' | 'SECURITY'; firstName: string; lastName: string }): Promise<any> {

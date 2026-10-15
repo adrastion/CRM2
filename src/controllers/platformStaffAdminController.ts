@@ -11,6 +11,23 @@ function generateOneTimePassword(): string {
   return crypto.randomBytes(9).toString('base64url');
 }
 
+export const superAdminListPlatformStaffUsers = asyncHandler(async (_req: Request, res: Response<ApiResponse>) => {
+  const rows = await prisma.platformStaffUser.findMany({
+    where: { role: { in: ['SUPPORT', 'DESIGNER', 'SECURITY'] }, email: { not: { endsWith: '@sa-sandbox.local' } } },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+  res.json({ success: true, data: rows });
+});
+
 export const superAdminCreatePlatformStaffUser = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, role, firstName, lastName } = req.body as {
     email?: string;

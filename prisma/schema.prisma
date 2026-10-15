@@ -1043,6 +1043,7 @@ model Marketer {
   commissionLedger     MarketerCommissionLedger[]
   closingDocs          MarketerClosingDoc[]
   chatThreads          MarketerChatThread[]
+  plannedExpenses      PlannedExpense[]
 
   @@map("marketers")
 }
@@ -1427,6 +1428,8 @@ model SuperAdminSettings {
   privacyUpdatedAt    DateTime?
   /// Лимит удаления сообщений в платформенных чатах (минуты; 0 = без ограничения)
   platformChatMessageDeleteLimitMinutes Int @default(15)
+  /// Запланированное включение режима технических работ
+  maintenanceScheduledAt DateTime?
   budgetLimits        BudgetLimit[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -1559,6 +1562,12 @@ model SuperAdmin {
   grantLogs          SubscriptionGrantLog[]
   pushSubscriptions  SuperAdminPushSubscription[]
   devNotes           SuperAdminDevNote[]
+  devNotesLastEdited SuperAdminDevNote[] @relation("DevNoteLastEditor")
+  devNoteComments    SuperAdminDevNoteComment[]
+  devNoteReads       SuperAdminDevNoteRead[]
+  saNotifications    SuperAdminNotification[]
+  plannedExpenses    PlannedExpense[]
+  testSessions       SuperAdminTestSession[]
   changelogEntries   PlatformChangelogEntry[]
   plannerEvents      PlatformCalendarEvent[]
   devNoteAttachments SuperAdminDevNoteAttachment[]
@@ -1622,28 +1631,124 @@ model PlatformChangelogEntry {
 }
 
 enum DevNoteStatus {
+  REQUIRED
   IDEA
-  IN_PROGRESS
-  AWAITING_DESIGN
   NEEDS_DISCUSSION
+  AWAITING_FEEDBACK
+  AWAITING_DESIGN
+  IN_PROGRESS
   SHELVED
   DONE
+  LIKE_OTHERS
+}
+
+enum DevNotePriority {
+  URGENT
+  IMPORTANT
 }
 
 model SuperAdminDevNote {
-  id          String                       @id @default(cuid())
-  title       String
-  description String?                      @db.Text
-  status      DevNoteStatus                @default(IDEA)
-  createdById String
-  createdBy   SuperAdmin                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime                     @default(now())
-  updatedAt   DateTime                     @updatedAt
-  attachments SuperAdminDevNoteAttachment[]
-  featureIdea ClientFeatureIdea?
+  id             String                        @id @default(cuid())
+  title          String
+  description    String?                       @db.Text
+  status         DevNoteStatus                 @default(IDEA)
+  priority       DevNotePriority?
+  createdById    String
+  createdBy      SuperAdmin                    @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  lastEditedById String?
+  lastEditedBy   SuperAdmin?                   @relation("DevNoteLastEditor", fields: [lastEditedById], references: [id], onDelete: SetNull)
+  doneAt         DateTime?
+  archivedAt     DateTime?
+  deletedAt      DateTime?
+  activityAt     DateTime                      @default(now())
+  dueFrom        DateTime?
+  dueTo          DateTime?
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  attachments    SuperAdminDevNoteAttachment[]
+  comments       SuperAdminDevNoteComment[]
+  reads          SuperAdminDevNoteRead[]
+  featureIdea    ClientFeatureIdea?
 
   @@index([status, updatedAt])
+  @@index([archivedAt])
+  @@index([deletedAt])
   @@map("super_admin_dev_notes")
+}
+
+model SuperAdminDevNoteComment {
+  id        String             @id @default(cuid())
+  noteId    String
+  body      String             @db.Text
+  authorId  String
+  createdAt DateTime           @default(now())
+  note      SuperAdminDevNote  @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author    SuperAdmin         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
+  @@map("super_admin_dev_note_comments")
+}
+
+model SuperAdminDevNoteRead {
+  noteId       String
+  superAdminId String
+  readAt       DateTime          @default(now())
+  note         SuperAdminDevNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  superAdmin   SuperAdmin        @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, superAdminId])
+  @@map("super_admin_dev_note_reads")
+}
+
+model SuperAdminNotification {
+  id          String     @id @default(cuid())
+  recipientId String
+  type        String
+  title       String
+  body        String
+  link        String?
+  readAt      DateTime?
+  createdAt   DateTime   @default(now())
+  recipient   SuperAdmin @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@map("super_admin_notifications")
+}
+
+model PlannedExpense {
+  id          String     @id @default(cuid())
+  title       String
+  amount      Decimal
+  dueDate     DateTime
+  payeeKind   String
+  payeeName   String?
+  marketerId  String?
+  comment     String?
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  createdBy   SuperAdmin @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  marketer    Marketer?  @relation(fields: [marketerId], references: [id], onDelete: SetNull)
+
+  @@index([dueDate])
+  @@map("planned_expenses")
+}
+
+model SuperAdminTestSession {
+  id           String     @id @default(cuid())
+  superAdminId String
+  role         String
+  label        String
+  token        String     @db.Text
+  storageKey   String
+  dashboardPath String
+  saved        Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@index([superAdminId, role])
+  @@map("super_admin_test_sessions")
 }
 
 model SuperAdminDevNoteAttachment {

@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import {
   getMaintenanceStatus,
   setMaintenanceMode,
+  setMaintenanceSchedule,
   getTestingModeStatus,
   setTestingMode,
   getPublicAccessStatus,
@@ -41,6 +42,23 @@ export const updateAdminMaintenance = asyncHandler(
     }
     const data = await setMaintenanceMode(req.body.enabled);
     res.json({ success: true, data });
+  }
+);
+
+export const updateAdminMaintenanceSchedule = asyncHandler(
+  async (req: Request, res: Response<ApiResponse>) => {
+    const raw = req.body?.scheduledAt;
+    const scheduledAt = raw === null || raw === '' ? null : String(raw || '');
+    if (scheduledAt === '') {
+      res.status(400).json({ success: false, error: 'Укажите дату и время' });
+      return;
+    }
+    try {
+      const data = await setMaintenanceSchedule(scheduledAt);
+      res.json({ success: true, data });
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e?.message || 'Некорректная дата' });
+    }
   }
 );
 

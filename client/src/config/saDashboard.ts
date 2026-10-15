@@ -16,6 +16,7 @@ export const SA_SECTIONS = [
   'monitoring',
   'maintenance',
   'notifications',
+  'sandbox',
   'legal',
   'audit',
 ] as const;
@@ -54,7 +55,7 @@ export const SA_NAV_GROUPS: SaNavGroup[] = [
     id: 'money',
     label: 'Деньги',
     items: [
-      { section: 'transactions', label: 'История транзакций', iconName: 'finance' },
+      { section: 'transactions', label: 'Финансы', iconName: 'finance' },
       { section: 'tariffs', label: 'Управление тарифами', iconName: 'tariffs' },
       { section: 'marketers', label: 'Маркетологи', iconName: 'clients' },
     ],
@@ -82,6 +83,7 @@ export const SA_NAV_GROUPS: SaNavGroup[] = [
       { section: 'monitoring', label: 'Мониторинг', iconName: 'competitions' },
       { section: 'maintenance', label: 'Техобслуживание', iconName: 'settings' },
       { section: 'notifications', label: 'Уведомления', iconName: 'earnings' },
+      { section: 'sandbox', label: 'Тестовые кабинеты', iconName: 'staff' },
     ],
   },
   {

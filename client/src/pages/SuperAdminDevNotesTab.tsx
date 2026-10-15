@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -11,39 +11,46 @@ import {
   FormControl,
   IconButton,
   InputLabel,
-  List,
-  ListItem,
-  ListItemSecondaryAction,
-  ListItemText,
   MenuItem,
   Paper,
   Select,
+  Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import {
-  Add,
-  AttachFile,
-  Delete,
-  Download,
-  Edit,
-  NoteAlt,
-} from '@mui/icons-material';
+import { Add, AttachFile, Delete, Download, Edit, NoteAlt, Restore } from '@mui/icons-material';
 import { apiService } from '../services/api';
 
 export type DevNoteStatus =
+  | 'REQUIRED'
   | 'IDEA'
-  | 'IN_PROGRESS'
-  | 'AWAITING_DESIGN'
   | 'NEEDS_DISCUSSION'
+  | 'AWAITING_FEEDBACK'
+  | 'AWAITING_DESIGN'
+  | 'IN_PROGRESS'
   | 'SHELVED'
-  | 'DONE';
+  | 'DONE'
+  | 'LIKE_OTHERS';
+
+type Bucket = 'active' | 'archive' | 'trash';
+type Priority = 'URGENT' | 'IMPORTANT' | null;
+
+interface Person {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string;
+}
 
 interface DevNoteAttachment {
   id: string;
@@ -53,447 +60,465 @@ interface DevNoteAttachment {
   createdAt: string;
 }
 
+interface DevNoteComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author?: Person;
+}
+
 interface DevNote {
   id: string;
   title: string;
   description?: string | null;
   status: DevNoteStatus;
+  priority?: Priority;
   createdAt: string;
   updatedAt: string;
-  createdBy?: { id: string; firstName: string; lastName: string; email: string };
+  activityAt?: string;
+  doneAt?: string | null;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+  dueFrom?: string | null;
+  dueTo?: string | null;
+  unread?: boolean;
+  commentCount?: number;
+  createdBy?: Person;
+  lastEditedBy?: Person | null;
   attachments?: DevNoteAttachment[];
+  comments?: DevNoteComment[];
+  readers?: { id: string; name: string; readAt: string; current: boolean }[];
 }
 
 const STATUS_LABELS: Record<DevNoteStatus, string> = {
+  REQUIRED: 'Необходимо',
   IDEA: 'Идея',
-  IN_PROGRESS: 'В работе',
+  NEEDS_DISCUSSION: 'Требует обсуждения',
+  AWAITING_FEEDBACK: 'Ожидание обратной связи',
   AWAITING_DESIGN: 'Ожидает дизайна',
-  NEEDS_DISCUSSION: 'Требует обсуждения/ответа внутри',
+  IN_PROGRESS: 'В работе',
   SHELVED: 'На долгую полку',
   DONE: 'Готово',
+  LIKE_OTHERS: 'Как у других',
 };
 
-const STATUS_COLORS: Record<DevNoteStatus, 'default' | 'info' | 'warning' | 'success' | 'secondary' | 'error'> = {
-  IDEA: 'info',
-  IN_PROGRESS: 'warning',
-  AWAITING_DESIGN: 'secondary',
-  NEEDS_DISCUSSION: 'error',
-  SHELVED: 'default',
-  DONE: 'success',
+const STATUS_ORDER = Object.keys(STATUS_LABELS) as DevNoteStatus[];
+
+function personName(u?: Person | null) {
+  if (!u) return '—';
+  const name = `${u.lastName || ''} ${u.firstName || ''}`.trim();
+  return name || u.email || '—';
+}
+
+function fmtDate(value?: string | null) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('ru-RU');
+}
+
+function dateInput(value?: string | null) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function isImage(mime?: string) {
+  return Boolean(mime && mime.startsWith('image/'));
+}
+
+const DevNoteImage: React.FC<{ noteId: string; attachment: DevNoteAttachment }> = ({ noteId, attachment }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let revoked = '';
+    let cancelled = false;
+    (async () => {
+      try {
+        const { blob } = await apiService.downloadDevNoteAttachment(noteId, attachment.id);
+        if (cancelled) return;
+        revoked = URL.createObjectURL(blob);
+        setUrl(revoked);
+      } catch {
+        if (!cancelled) setUrl(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [noteId, attachment.id]);
+  if (!url) return null;
+  return (
+    <Box sx={{ alignSelf: 'flex-start', maxWidth: '100%' }}>
+      <Box
+        component="img"
+        src={url}
+        alt={attachment.originalName}
+        sx={{
+          display: 'block',
+          width: 'auto',
+          height: 'auto',
+          maxWidth: '100%',
+          maxHeight: 360,
+          objectFit: 'contain',
+          borderRadius: 1,
+        }}
+      />
+    </Box>
+  );
 };
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}
-
-/**
- * Вкладка «Разработка»: общие заметки-задачи супер-админов.
- */
 const SuperAdminDevNotesTab: React.FC = () => {
+  const [bucket, setBucket] = useState<Bucket>('active');
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const [notes, setNotes] = useState<DevNote[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [error, setError] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<DevNote | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<DevNoteStatus>('IDEA');
+  const [open, setOpen] = useState<DevNote | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({
+    title: '',
+    description: '',
+    status: 'IDEA' as DevNoteStatus,
+    priority: null as Priority,
+    dueFrom: '',
+    dueTo: '',
+  });
+  const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [attachments, setAttachments] = useState<DevNoteAttachment[]>([]);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
     try {
-      const data = await apiService.getDevNotes(
-        statusFilter === 'ALL' ? undefined : { status: statusFilter }
-      );
-      setNotes(data || []);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось загрузить заметки');
+      const rows = await apiService.getDevNotes({
+        bucket,
+        ...(statusFilter ? { status: statusFilter } : {}),
+      });
+      setNotes(rows);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [bucket, statusFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const openCreate = () => {
-    setEditing(null);
-    setTitle('');
-    setDescription('');
-    setStatus('IDEA');
-    setPendingFiles([]);
-    setAttachments([]);
-    setDialogOpen(true);
+  const openNote = async (note: DevNote) => {
+    setOpen(note);
+    setEditing(false);
+    setCreating(false);
+    setComment('');
+    if (note.deletedAt) return;
+    try {
+      const fresh = await apiService.markDevNoteRead(note.id);
+      setOpen(fresh);
+      setNotes((prev) => prev.map((n) => (n.id === fresh.id ? fresh : n)));
+    } catch {
+      /* карточка всё равно открыта */
+    }
   };
 
-  const openEdit = (note: DevNote) => {
-    setEditing(note);
-    setTitle(note.title);
-    setDescription(note.description || '');
-    setStatus(note.status);
-    setPendingFiles([]);
-    setAttachments(note.attachments || []);
-    setDialogOpen(true);
+  const startCreate = () => {
+    setCreating(true);
+    setEditing(true);
+    setOpen(null);
+    setDraft({ title: '', description: '', status: 'IDEA', priority: null, dueFrom: '', dueTo: '' });
   };
 
-  const handleSave = async () => {
-    if (!title.trim()) return;
+  const startEdit = () => {
+    if (!open) return;
+    setDraft({
+      title: open.title,
+      description: open.description || '',
+      status: open.status,
+      priority: open.priority || null,
+      dueFrom: dateInput(open.dueFrom),
+      dueTo: dateInput(open.dueTo),
+    });
+    setEditing(true);
+  };
+
+  const save = async () => {
     setSaving(true);
     try {
-      let noteId = editing?.id;
-      if (editing) {
-        const updated = await apiService.updateDevNote(editing.id, {
-          title: title.trim(),
-          description: description.trim() || null,
-          status,
-        });
-        noteId = updated.id;
-        setAttachments(updated.attachments || attachments);
-      } else {
-        const created = await apiService.createDevNote({
-          title: title.trim(),
-          description: description.trim() || null,
-          status,
-        });
-        noteId = created.id;
-        setEditing(created);
-        setAttachments(created.attachments || []);
+      const payload = {
+        title: draft.title.trim(),
+        description: draft.description.trim() || null,
+        status: draft.status,
+        priority: draft.priority,
+        dueFrom: draft.dueFrom || null,
+        dueTo: draft.dueTo || null,
+      };
+      if (creating) {
+        await apiService.createDevNote(payload);
+        setCreating(false);
+        setEditing(false);
+      } else if (open) {
+        const fresh = await apiService.updateDevNote(open.id, payload);
+        setOpen(fresh);
+        setEditing(false);
       }
-
-      if (noteId && pendingFiles.length) {
-        const uploaded = await apiService.uploadDevNoteAttachments(noteId, pendingFiles);
-        setAttachments((prev) => [...uploaded, ...prev]);
-        setPendingFiles([]);
-      }
-
-      setDialogOpen(false);
       await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось сохранить');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleStatusChange = async (note: DevNote, next: DevNoteStatus) => {
-    try {
-      await apiService.updateDevNote(note.id, { status: next });
-      await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось обновить статус');
-    }
+  const remove = async (note: DevNote) => {
+    await apiService.deleteDevNote(note.id);
+    setOpen(null);
+    await load();
   };
 
-  const handleDelete = async (note: DevNote) => {
-    if (!window.confirm(`Удалить заметку «${note.title}»?`)) return;
-    try {
-      await apiService.deleteDevNote(note.id);
-      await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось удалить');
-    }
+  const restore = async (note: DevNote) => {
+    await apiService.restoreDevNote(note.id);
+    setOpen(null);
+    await load();
   };
 
-  const handleDownloadAttachment = async (noteId: string, att: DevNoteAttachment) => {
-    try {
-      const { blob, filename } = await apiService.downloadDevNoteAttachment(noteId, att.id);
-      triggerBlobDownload(blob, filename || att.originalName);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось скачать файл');
-    }
+  const sendComment = async () => {
+    if (!open || !comment.trim()) return;
+    const fresh = await apiService.addDevNoteComment(open.id, comment.trim());
+    setOpen(fresh);
+    setComment('');
+    setNotes((prev) => prev.map((n) => (n.id === fresh.id ? fresh : n)));
   };
 
-  const handleDeleteAttachment = async (att: DevNoteAttachment) => {
-    if (!editing) return;
-    if (!window.confirm(`Удалить файл «${att.originalName}»?`)) return;
-    try {
-      await apiService.deleteDevNoteAttachment(editing.id, att.id);
-      setAttachments((prev) => prev.filter((a) => a.id !== att.id));
-      await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось удалить файл');
-    }
+  const uploadFiles = async (files: FileList | null) => {
+    if (!open || !files?.length) return;
+    await apiService.uploadDevNoteAttachments(open.id, Array.from(files));
+    const rows = await apiService.getDevNotes({ bucket });
+    const fresh = rows.find((n: DevNote) => n.id === open.id);
+    if (fresh) setOpen(fresh);
+    setNotes(rows);
   };
+
+  const downloadFile = async (noteId: string, file: DevNoteAttachment) => {
+    const { blob, filename } = await apiService.downloadDevNoteAttachment(noteId, file.id);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || file.originalName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const images = (open?.attachments || []).filter((a) => isImage(a.mimeType));
+  const files = (open?.attachments || []).filter((a) => !isImage(a.mimeType));
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
-        <Typography variant="h5" fontWeight="bold" display="flex" alignItems="center" gap={1}>
-          <NoteAlt /> Разработка
-        </Typography>
-        <Box display="flex" gap={2} alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Статус</InputLabel>
-            <Select
-              label="Статус"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <MenuItem value="ALL">Все</MenuItem>
-              {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
-                <MenuItem key={key} value={key}>
-                  {STATUS_LABELS[key]}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
-            Новая заметка
-          </Button>
-        </Box>
-      </Box>
-
-      {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-      )}
-
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h5">Разработка</Typography>
+        <Button startIcon={<Add />} variant="contained" onClick={startCreate}>
+          Заметка
+        </Button>
+      </Stack>
+      <Tabs value={bucket} onChange={(_, v) => setBucket(v)} sx={{ mb: 2 }}>
+        <Tab value="active" label="Актуальные" />
+        <Tab value="archive" label="Архив" />
+        <Tab value="trash" label="Корзина" />
+      </Tabs>
+      <FormControl size="small" sx={{ minWidth: 240, mb: 2 }}>
+        <InputLabel>Статус</InputLabel>
+        <Select label="Статус" value={statusFilter} onChange={(e) => setStatusFilter(String(e.target.value))}>
+          <MenuItem value="">Все</MenuItem>
+          {STATUS_ORDER.map((s) => (
+            <MenuItem key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
       {loading ? (
-        <Box display="flex" justifyContent="center" p={4}>
-          <CircularProgress />
-        </Box>
+        <CircularProgress />
       ) : (
-        <Paper>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Заголовок</TableCell>
-                  <TableCell>Описание</TableCell>
-                  <TableCell width={100}>Файлы</TableCell>
-                  <TableCell width={180}>Статус</TableCell>
-                  <TableCell>Автор</TableCell>
-                  <TableCell>Обновлено</TableCell>
-                  <TableCell align="right">Действия</TableCell>
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Заметка</TableCell>
+                <TableCell>Статус</TableCell>
+                <TableCell>Сроки</TableCell>
+                <TableCell>Последний редактор</TableCell>
+                <TableCell>Прочтение</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {notes.map((note) => (
+                <TableRow
+                  key={note.id}
+                  hover
+                  onClick={() => openNote(note)}
+                  sx={{
+                    cursor: 'pointer',
+                    bgcolor:
+                      note.priority === 'URGENT'
+                        ? 'rgba(211, 47, 47, 0.12)'
+                        : note.priority === 'IMPORTANT'
+                          ? 'rgba(237, 180, 0, 0.18)'
+                          : undefined,
+                  }}
+                >
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <NoteAlt fontSize="small" />
+                      <span>{note.title}</span>
+                      {note.priority === 'URGENT' && <Chip size="small" color="error" label="Срочно" />}
+                      {note.priority === 'IMPORTANT' && <Chip size="small" color="warning" label="Важно" />}
+                    </Stack>
+                  </TableCell>
+                  <TableCell>{STATUS_LABELS[note.status] || note.status}</TableCell>
+                  <TableCell>
+                    {note.dueFrom || note.dueTo
+                      ? `${fmtDate(note.dueFrom)} — ${fmtDate(note.dueTo)}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell>{personName(note.lastEditedBy || note.createdBy)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={note.unread ? 'error' : 'success'}
+                      label={note.unread ? 'Не прочитано' : 'Прочитано'}
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody>
-                {notes.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      <Typography color="text.secondary" sx={{ py: 3 }}>
-                        Нет заметок
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  notes.map((note) => (
-                    <TableRow key={note.id}>
-                      <TableCell>
-                        <Typography fontWeight={600}>{note.title}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{
-                            maxWidth: 360,
-                            whiteSpace: 'pre-wrap',
-                            overflow: 'hidden',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: 'vertical',
-                          }}
-                        >
-                          {note.description || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {(note.attachments?.length || 0) > 0 ? (
-                          <Chip size="small" icon={<AttachFile />} label={note.attachments!.length} />
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <FormControl size="small" fullWidth>
-                          <Select
-                            value={note.status}
-                            onChange={(e) =>
-                              handleStatusChange(note, e.target.value as DevNoteStatus)
-                            }
-                            renderValue={(v) => (
-                              <Chip
-                                size="small"
-                                label={STATUS_LABELS[v as DevNoteStatus]}
-                                color={STATUS_COLORS[v as DevNoteStatus]}
-                              />
-                            )}
-                          >
-                            {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
-                              <MenuItem key={key} value={key}>
-                                {STATUS_LABELS[key]}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                      <TableCell>
-                        {note.createdBy
-                          ? `${note.createdBy.lastName} ${note.createdBy.firstName}`.trim()
-                          : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(note.updatedAt).toLocaleString('ru-RU')}
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEdit(note)} title="Редактировать">
-                          <Edit fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(note)}
-                          title="Удалить"
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
+              ))}
+              {!notes.length && (
+                <TableRow>
+                  <TableCell colSpan={5}>Заметок нет</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editing ? 'Редактировать заметку' : 'Новая заметка'}</DialogTitle>
+      <Dialog open={creating || Boolean(open)} onClose={() => { setOpen(null); setCreating(false); setEditing(false); }} fullWidth maxWidth="md">
+        <DialogTitle>{creating ? 'Новая заметка' : open?.title}</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Заголовок"
-            fullWidth
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-          <TextField
-            margin="dense"
-            label="Описание"
-            fullWidth
-            multiline
-            minRows={4}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Статус</InputLabel>
-            <Select
-              label="Статус"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as DevNoteStatus)}
-            >
-              {(Object.keys(STATUS_LABELS) as DevNoteStatus[]).map((key) => (
-                <MenuItem key={key} value={key}>
-                  {STATUS_LABELS[key]}
-                </MenuItem>
+          {(creating || editing) && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Заголовок" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              <TextField
+                label="Описание"
+                multiline
+                minRows={4}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              />
+              <FormControl>
+                <InputLabel>Статус</InputLabel>
+                <Select
+                  label="Статус"
+                  value={draft.status}
+                  onChange={(e) => setDraft({ ...draft, status: e.target.value as DevNoteStatus })}
+                >
+                  {STATUS_ORDER.map((s) => (
+                    <MenuItem key={s} value={s}>{STATUS_LABELS[s]}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <ToggleButtonGroup
+                exclusive
+                value={draft.priority}
+                onChange={(_, v) => setDraft({ ...draft, priority: v })}
+              >
+                <ToggleButton value="URGENT">Срочно</ToggleButton>
+                <ToggleButton value="IMPORTANT">Важно</ToggleButton>
+              </ToggleButtonGroup>
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Срок с"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={draft.dueFrom}
+                  onChange={(e) => setDraft({ ...draft, dueFrom: e.target.value })}
+                />
+                <TextField
+                  label="Срок по"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={draft.dueTo}
+                  onChange={(e) => setDraft({ ...draft, dueTo: e.target.value })}
+                />
+              </Stack>
+            </Stack>
+          )}
+          {open && !editing && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip label={STATUS_LABELS[open.status] || open.status} />
+                {open.priority === 'URGENT' && <Chip color="error" label="Срочно" />}
+                {open.priority === 'IMPORTANT' && <Chip color="warning" label="Важно" />}
+                <Chip variant="outlined" label={open.unread ? 'Не прочитано' : 'Прочитано'} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                Примерные сроки: {fmtDate(open.dueFrom)} — {fmtDate(open.dueTo)}
+              </Typography>
+              <Typography sx={{ whiteSpace: 'pre-wrap' }}>{open.description || 'Без описания'}</Typography>
+              <Typography variant="body2">
+                Прочитали: {(open.readers || []).filter((r) => r.current).map((r) => r.name).join(', ') || 'пока никто'}
+              </Typography>
+              {images.map((img) => (
+                <DevNoteImage key={img.id} noteId={open.id} attachment={img} />
               ))}
-            </Select>
-          </FormControl>
-
-          <Box mt={2}>
-            <Typography variant="subtitle2" gutterBottom>
-              Вложения
-            </Typography>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                const list = Array.from(e.target.files || []);
-                if (list.length) setPendingFiles((prev) => [...prev, ...list]);
-                e.target.value = '';
-              }}
-            />
-            <Button
-              size="small"
-              startIcon={<AttachFile />}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={saving}
-            >
-              Выбрать файлы
-            </Button>
-            {pendingFiles.length > 0 && (
-              <List dense>
-                {pendingFiles.map((f, i) => (
-                  <ListItem key={`${f.name}-${i}`}>
-                    <ListItemText primary={f.name} secondary={`${formatSize(f.size)} · будет загружен при сохранении`} />
-                    <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            )}
-            {attachments.length > 0 && editing && (
-              <List dense>
-                {attachments.map((att) => (
-                  <ListItem key={att.id}>
-                    <ListItemText
-                      primary={att.originalName}
-                      secondary={formatSize(att.sizeBytes)}
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={() => handleDownloadAttachment(editing.id, att)}
-                        title="Скачать"
-                      >
-                        <Download fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteAttachment(att)}
-                        title="Удалить"
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            )}
-          </Box>
+              {files.map((file) => (
+                <Stack key={file.id} direction="row" alignItems="center" spacing={1}>
+                  <AttachFile fontSize="small" />
+                  <Typography variant="body2" sx={{ flex: 1 }}>{file.originalName}</Typography>
+                  <IconButton size="small" onClick={() => downloadFile(open.id, file)}><Download fontSize="small" /></IconButton>
+                </Stack>
+              ))}
+              <Typography variant="subtitle2">Обсуждение</Typography>
+              {(open.comments || []).map((c) => (
+                <Box key={c.id}>
+                  <Typography variant="caption" color="text.secondary">
+                    {personName(c.author)} · {new Date(c.createdAt).toLocaleString('ru-RU')}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{c.body}</Typography>
+                </Box>
+              ))}
+              {!open.deletedAt && (
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Сообщение"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
+                  <Button variant="contained" onClick={sendComment}>Отправить</Button>
+                </Stack>
+              )}
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={saving}>
-            Отмена
-          </Button>
-          <Button variant="contained" onClick={handleSave} disabled={saving || !title.trim()}>
-            {saving ? <CircularProgress size={22} /> : 'Сохранить'}
-          </Button>
+          {open && !editing && !open.deletedAt && (
+            <>
+              <Button component="label" startIcon={<AttachFile />}>
+                Файл
+                <input hidden type="file" multiple onChange={(e) => uploadFiles(e.target.files)} />
+              </Button>
+              <Button startIcon={<Edit />} onClick={startEdit}>Редактировать</Button>
+              <Button color="error" startIcon={<Delete />} onClick={() => remove(open)}>В корзину</Button>
+            </>
+          )}
+          {open?.deletedAt && (
+            <>
+              <Button startIcon={<Restore />} onClick={() => restore(open)}>Восстановить</Button>
+              <Button color="error" onClick={() => remove(open)}>Удалить навсегда</Button>
+            </>
+          )}
+          {(creating || editing) && (
+            <Button variant="contained" disabled={saving || !draft.title.trim()} onClick={save}>
+              Сохранить
+            </Button>
+          )}
+          <Button onClick={() => { setOpen(null); setCreating(false); setEditing(false); }}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Box>

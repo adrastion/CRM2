@@ -289,6 +289,8 @@ export const acceptFeatureIdea = asyncHandler(async (req: Request, res: Response
       description: `${existing.body}\n\n—\nИдея от: ${authorLine || existing.actorId}`,
       status: 'IDEA',
       createdById: superAdminId,
+      lastEditedById: superAdminId,
+      activityAt: new Date(),
     },
   });
 

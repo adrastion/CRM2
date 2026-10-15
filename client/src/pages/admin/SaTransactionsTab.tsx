@@ -24,6 +24,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
+import PlannedExpensesPanel from './PlannedExpensesPanel';
 
 export type SaTransactionsTabProps = {
   transactions: any[];
@@ -39,6 +40,7 @@ export type SaTransactionsTabProps = {
   onEndDateChange: (value: Date | null) => void;
   onClearDates: () => void;
   marketersCount: number;
+  marketers: { id: string; name: string }[];
   formatCurrency: (amount: number) => string;
   formatDateTime: (dateString: string) => string;
   onOpenExpenseDialog: () => void;
@@ -62,6 +64,7 @@ const SaTransactionsTab: React.FC<SaTransactionsTabProps> = ({
   onEndDateChange,
   onClearDates,
   marketersCount,
+  marketers,
   formatCurrency,
   formatDateTime,
   onOpenExpenseDialog,
@@ -74,7 +77,7 @@ const SaTransactionsTab: React.FC<SaTransactionsTabProps> = ({
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h5" fontWeight="bold">
-          История транзакций
+          Финансы
         </Typography>
         <Box display="flex" gap={2}>
           <Button variant="outlined" startIcon={<Add />} onClick={onOpenExpenseDialog}>
@@ -290,6 +293,7 @@ const SaTransactionsTab: React.FC<SaTransactionsTabProps> = ({
           </Box>
         </Paper>
       )}
+      <PlannedExpensesPanel marketers={marketers} formatCurrency={formatCurrency} />
     </Box>
   );
 };

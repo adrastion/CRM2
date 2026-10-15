@@ -27,6 +27,8 @@ import {
   Divider,
   FormControlLabel,
   Switch,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import type {
   SubscriptionPlanItem,
@@ -58,6 +60,7 @@ import SaMetricsSectionTab from './admin/SaMetricsTab';
 import SaAuditTab from './admin/SaAuditTab';
 import SaTariffsTab from './admin/SaTariffsTab';
 import SaMarketersTab from './admin/SaMarketersTab';
+import SaSandboxTab from './admin/SaSandboxTab';
 import {
   resolveSaLocation,
   resolveSaTab,
@@ -113,6 +116,8 @@ const AdminDashboard: React.FC = () => {
     lastName: '',
   });
   const [oneTimePassword, setOneTimePassword] = useState<string | null>(null);
+  const [accountsPane, setAccountsPane] = useState<'accounts' | 'staff'>('accounts');
+  const [platformStaff, setPlatformStaff] = useState<any[]>([]);
   
   // История транзакций
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -278,6 +283,11 @@ const AdminDashboard: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, activeTab]);
+
+  useEffect(() => {
+    if (section !== 'accounts' || accountsPane !== 'staff') return;
+    apiService.superAdminListPlatformStaffUsers().then(setPlatformStaff).catch(() => setPlatformStaff([]));
+  }, [section, accountsPane, oneTimePassword]);
 
   useEffect(() => {
     if (section === 'transactions') {
@@ -1157,19 +1167,6 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
-      <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2.5}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setOneTimePassword(null);
-              setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
-              setStaffDialog(true);
-            }}
-          >
-            Создать сотрудника платформы
-          </Button>
-      </Box>
-
       <Dialog open={staffDialog} onClose={() => setStaffDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Создание сотрудника платформы</DialogTitle>
         <DialogContent dividers>
@@ -1231,6 +1228,7 @@ const AdminDashboard: React.FC = () => {
                   lastName: newStaff.lastName,
                 });
                 setOneTimePassword(resp.oneTimePassword);
+                setPlatformStaff(await apiService.superAdminListPlatformStaffUsers());
               } catch (e: any) {
                 setError(e?.response?.data?.error || 'Ошибка создания сотрудника');
               } finally {
@@ -1277,6 +1275,7 @@ const AdminDashboard: React.FC = () => {
             setEndDate(null);
           }}
           marketersCount={data.marketers.list.length}
+          marketers={data.marketers.list}
           formatCurrency={formatCurrency}
           formatDateTime={formatDateTime}
           onOpenExpenseDialog={() => {
@@ -1302,6 +1301,12 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {section === 'accounts' && (
+        <Box>
+          <Tabs value={accountsPane} onChange={(_, v) => setAccountsPane(v)} sx={{ mb: 2 }}>
+            <Tab value="accounts" label="Аккаунты" />
+            <Tab value="staff" label="Внутренние сотрудники" />
+          </Tabs>
+          {accountsPane === 'accounts' ? (
         <SaAccountsTab
           allTenants={allTenants}
           tenantsLoading={tenantsLoading}
@@ -1319,6 +1324,52 @@ const AdminDashboard: React.FC = () => {
           onUnlinkTenantTester={handleUnlinkTenantTester}
           onOpenDeleteTenantDialog={openDeleteTenantDialog}
         />
+          ) : (
+            <Box>
+              <Box display="flex" justifyContent="flex-end" mb={2}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setOneTimePassword(null);
+                    setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
+                    setStaffDialog(true);
+                  }}
+                >
+                  Создать сотрудника платформы
+                </Button>
+              </Box>
+              <TableContainer component={Paper}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Сотрудник</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell>Роль</TableCell>
+                      <TableCell>Статус</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {platformStaff.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{`${row.lastName || ''} ${row.firstName || ''}`.trim()}</TableCell>
+                        <TableCell>{row.email}</TableCell>
+                        <TableCell>
+                          {row.role === 'SUPPORT' ? 'Поддержка' : row.role === 'DESIGNER' ? 'Дизайнер' : 'Безопасность'}
+                        </TableCell>
+                        <TableCell>{row.isActive ? 'Активен' : 'Отключён'}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!platformStaff.length && (
+                      <TableRow>
+                        <TableCell colSpan={4}>Сотрудников платформы нет</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </Box>
       )}
 
       {section === 'metrics' && (
@@ -1405,6 +1456,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {section === 'notifications' && <SaNotificationsTab />}
+      {section === 'sandbox' && <SaSandboxTab />}
 
       {section === 'planner' && <SuperAdminPlannerTab />}
 

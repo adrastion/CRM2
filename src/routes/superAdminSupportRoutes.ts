@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateSuperAdmin } from '../middleware/superAdminAuth';
-import { superAdminCreatePlatformStaffUser } from '../controllers/platformStaffAdminController';
+import { superAdminCreatePlatformStaffUser, superAdminListPlatformStaffUsers } from '../controllers/platformStaffAdminController';
 import {
   superAdminListSupportTickets,
   superAdminGetSupportMessages,
@@ -25,6 +25,7 @@ router.get('/knowledge', superAdminListKnowledgeArticles);
 router.post('/knowledge', superAdminCreateKnowledgeArticle);
 
 // Manage platform staff accounts (support/designer/security)
+router.get('/platform-staff/users', superAdminListPlatformStaffUsers);
 router.post('/platform-staff/users', superAdminCreatePlatformStaffUser);
 
 export default router;
