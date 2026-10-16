@@ -43,6 +43,7 @@ import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 import PasswordField from '../components/common/PasswordField';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
@@ -1007,6 +1008,10 @@ const Settings: React.FC = () => {
                     {saving ? 'Сохранение...' : 'Изменить пароль'}
                   </Button>
                 </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Email2faSettingsToggle />
               </Grid>
 
               {/* Активные сессии */}

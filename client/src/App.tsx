@@ -24,6 +24,7 @@ import SpellcheckProvider from './spellcheck/SpellcheckProvider';
 // Lazy load pages for better performance
 const Landing = lazy(() => import('./pages/Landing'));
 const Auth = lazy(() => import('./pages/Auth'));
+const DeviceApprove = lazy(() => import('./pages/DeviceApprove'));
 const Register = lazy(() => import('./pages/Register'));
 const PartnerRegister = lazy(() => import('./pages/PartnerRegister'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -300,8 +301,9 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // Не размонтируем дерево на каждый pathname — иначе сбрасывается обучение и т.п.
+    const applyStatus = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // Не размонтируем дерево на каждый опрос — иначе сбрасывается обучение и т.п.
       if (!hasResolvedMaintenanceOnceRef.current) setChecking(true);
       try {
         const status = await apiService.getMaintenanceStatus();
@@ -390,7 +392,15 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           setChecking(false);
         }
       }
-    })();
+    };
+
+    void applyStatus();
+    // Редкий опрос: без привязки к pathname (навигация не должна бить API).
+    const poll = window.setInterval(applyStatus, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void applyStatus();
+    };
+    document.addEventListener('visibilitychange', onVis);
 
     const onEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
@@ -422,10 +432,12 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     window.addEventListener('maintenance-mode', onEvent as EventListener);
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('maintenance-mode', onEvent as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSa, location.pathname]);
+  }, [isSa]);
 
   // Соглашение и политика всегда можно открыть (API публичный)
   if (location.pathname === '/terms' || location.pathname === '/privacy') {
@@ -541,6 +553,7 @@ const AppContent: React.FC = () => {
         <Route path="/maintenance" element={<Maintenance />} />
         {/* Unified auth — единый вход для всех ролей (Figma) */}
         <Route path="/auth" element={<Auth />} />
+        <Route path="/auth/device-approve" element={<DeviceApprove />} />
         <Route path="/login" element={<Navigate to="/auth" replace />} />
         <Route path="/client/login" element={<Navigate to="/auth" replace />} />
         <Route path="/reset-password" element={<Navigate to="/auth" replace />} />

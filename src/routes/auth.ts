@@ -57,6 +57,23 @@ import { loginRateLimiter } from '../middleware/loginRateLimit';
 import { ensureCsrfCookie } from '../middleware/authCookies';
 import { registerMarketer } from '../controllers/marketerController';
 import { getSavedAccountsUnread } from '../controllers/inboxNotificationController';
+import {
+  emailLoginRequest,
+  emailLoginVerify,
+  email2faVerify,
+  pushLoginRequest,
+  pushLoginVerify,
+  qrLoginStart,
+  qrLoginStatus,
+  qrLoginApprove,
+  qrLoginDeny,
+  getLoginSecurity,
+  updateLoginSecurity,
+  validateLoginIdentifier,
+  validateLoginCode,
+  validateQrApprove,
+} from '../controllers/loginChallengeController';
+import { authenticateLoginActor } from '../middleware/loginActorAuth';
 
 const router = Router();
 
@@ -67,6 +84,19 @@ router.post('/identify', loginRateLimiter, validateIdentify, identify);
 router.post('/setup-password', loginRateLimiter, validateSetupPassword, setupPassword);
 router.post('/unified-login', loginRateLimiter, validateUnifiedLogin, unifiedLogin);
 router.post('/select-account', loginRateLimiter, validateSelectAccount, selectAccount);
+
+// Быстрый вход / 2FA
+router.post('/login/email/request', loginRateLimiter, validateLoginIdentifier, emailLoginRequest);
+router.post('/login/email/verify', loginRateLimiter, validateLoginCode, emailLoginVerify);
+router.post('/login/2fa/verify', loginRateLimiter, validateLoginCode, email2faVerify);
+router.post('/login/push/request', loginRateLimiter, validateLoginIdentifier, pushLoginRequest);
+router.post('/login/push/verify', loginRateLimiter, validateLoginCode, pushLoginVerify);
+router.post('/login/qr/start', loginRateLimiter, validateLoginIdentifier, qrLoginStart);
+router.get('/login/qr/status', loginRateLimiter, qrLoginStatus);
+router.post('/login/qr/approve', authenticateLoginActor, validateQrApprove, qrLoginApprove);
+router.post('/login/qr/deny', authenticateLoginActor, validateQrApprove, qrLoginDeny);
+router.get('/security', authenticateLoginActor, getLoginSecurity);
+router.put('/security', authenticateLoginActor, updateLoginSecurity);
 
 // Public routes
 router.post('/register', validateRegister, register);

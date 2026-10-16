@@ -101,6 +101,10 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
     rememberMe,
     extractSessionMeta(req)
   );
+  if ('requiresEmail2fa' in result && result.requiresEmail2fa) {
+    res.json({ success: true, data: result });
+    return;
+  }
   maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result });
 });

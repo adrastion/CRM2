@@ -123,6 +123,10 @@ export interface SelectionRequired {
 
 export type LoginResult = ({ requiresSelection: false } & SessionPayload) | SelectionRequired;
 
+export type LoginOr2faResult =
+  | LoginResult
+  | { requiresEmail2fa: true; challengeToken: string };
+
 /* ------------------------------------------------------------------ */
 /* Вспомогательные функции                                             */
 /* ------------------------------------------------------------------ */
@@ -477,7 +481,7 @@ export class UnifiedAuthService {
     password: string,
     rememberMe = false,
     meta?: SessionRequestMeta | null
-  ): Promise<LoginResult> {
+  ): Promise<LoginOr2faResult> {
     if (!password) {
       throw badRequest('Введите пароль', 'password');
     }
@@ -504,7 +508,39 @@ export class UnifiedAuthService {
       throw unauthorized(LOGIN_FAILED_MESSAGE, 'password');
     }
 
+    const { maybeStartEmail2fa } = await import('./loginChallengeService');
+    const twoFa = await maybeStartEmail2fa({
+      identifier: rawIdentifier,
+      matched: matched.map((m) => ({ accountType: m.accountType, id: m.id })),
+      rememberMe,
+    });
+    if (twoFa) return twoFa;
+
     return this.completeLogin(rawIdentifier, matched, rememberMe, meta);
+  }
+
+  /**
+   * Завершение входа по уже проверенным аккаунтам (email/push/QR/2FA).
+   */
+  static async finishLoginForKeys(
+    rawIdentifier: string,
+    keys: Array<{ accountType: AccountType; id: string }>,
+    rememberMe = false,
+    meta?: SessionRequestMeta | null
+  ): Promise<LoginResult> {
+    const accounts = await this.findAccounts(rawIdentifier);
+    const matched = keys
+      .map((k) => accounts.find((a) => a.accountType === k.accountType && a.id === k.id))
+      .filter((a): a is AccountCandidate => Boolean(a));
+    if (matched.length === 0) {
+      throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
+    }
+    return this.completeLogin(rawIdentifier, matched, rememberMe, meta);
+  }
+
+  /** Публичный доступ к поиску аккаунтов для challenge-сервиса. */
+  static async findAccountsPublic(rawIdentifier: string): Promise<AccountCandidate[]> {
+    return this.findAccounts(rawIdentifier);
   }
 
   /**

@@ -174,6 +174,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   React.useEffect(() => {
     let cancelled = false;
     const run = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (!localStorage.getItem('token') || !localStorage.getItem('user')) return;
       try {
         const { syncLinkedPlatformAccounts } = await import('../../utils/authSession');
@@ -191,11 +192,16 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
     const onFocus = () => {
       void run();
     };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void run();
+    };
     window.addEventListener('focus', onFocus);
-    const timer = window.setInterval(run, 20000);
+    document.addEventListener('visibilitychange', onVis);
+    const timer = window.setInterval(run, 30_000);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
       window.clearInterval(timer);
     };
   }, [menuAnchor]);

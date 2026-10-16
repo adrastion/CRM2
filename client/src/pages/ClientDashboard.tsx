@@ -27,6 +27,7 @@ import ClientPaymentsPanel from '../components/client/ClientPaymentsPanel';
 import ClientDocumentsPanel from '../components/client/ClientDocumentsPanel';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
@@ -617,7 +618,8 @@ const ClientDashboard: React.FC = () => {
   );
 
   const notificationsContent = (
-    <Box sx={{ maxWidth: 720 }}>
+    <Box sx={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Email2faSettingsToggle />
       <NotificationSettingsPanel actor="portal" />
     </Box>
   );

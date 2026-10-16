@@ -344,7 +344,7 @@ model Parent {
 model EmailOtp {
   id          String   @id @default(cuid())
   email       String
-  /// verify | reset
+  /// verify | reset | login | 2fa
   purpose     String
   codeHash    String
   /// user | client | parent — для verify; для reset может быть null до выбора аккаунта
@@ -357,6 +357,47 @@ model EmailOtp {
   @@index([email, purpose])
   @@index([accountType, accountId, purpose])
   @@map("email_otps")
+}
+
+/// Настройки входа (2FA по email) для любого типа аккаунта единого входа.
+model LoginSecuritySetting {
+  id               String   @id @default(cuid())
+  /// TENANT_USER | CLIENT | PARENT | MARKETER | PROMO_CODE_ADMIN | SUPER_ADMIN | TESTER | PLATFORM_STAFF
+  accountType      String
+  accountId        String
+  email2faEnabled  Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([accountType, accountId])
+  @@map("login_security_settings")
+}
+
+/// Временный challenge для 2FA / быстрого входа (email, push, QR).
+model LoginChallenge {
+  id            String    @id @default(cuid())
+  /// Публичный токен (не id) — отдаём клиенту
+  tokenHash     String    @unique
+  /// EMAIL_LOGIN | EMAIL_2FA | PUSH | QR
+  method        String
+  /// PENDING | APPROVED | DENIED | USED | EXPIRED
+  status        String    @default("PENDING")
+  identifier    String?
+  /// JSON: [{ t, i }] кандидаты аккаунтов
+  accountsJson  String    @db.Text
+  codeHash      String?
+  /// Секрет для QR deep-link
+  secretHash    String?
+  rememberMe    Boolean   @default(false)
+  attempts      Int       @default(0)
+  approvedAccountType String?
+  approvedAccountId   String?
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  usedAt        DateTime?
+
+  @@index([status, expiresAt])
+  @@map("login_challenges")
 }
 
 model Achievement {

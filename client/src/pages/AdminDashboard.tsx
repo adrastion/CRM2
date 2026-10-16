@@ -1301,7 +1301,7 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {section === 'accounts' && (
-        <Box>
+                      <Box>
           <Tabs value={accountsPane} onChange={(_, v) => setAccountsPane(v)} sx={{ mb: 2 }}>
             <Tab value="accounts" label="Аккаунты" />
             <Tab value="staff" label="Внутренние сотрудники" />
@@ -1325,10 +1325,10 @@ const AdminDashboard: React.FC = () => {
           onOpenDeleteTenantDialog={openDeleteTenantDialog}
         />
           ) : (
-            <Box>
+        <Box>
               <Box display="flex" justifyContent="flex-end" mb={2}>
-                <Button
-                  variant="outlined"
+              <Button
+                variant="outlined"
                   onClick={() => {
                     setOneTimePassword(null);
                     setNewStaff({ email: '', role: 'SUPPORT', firstName: '', lastName: '' });
@@ -1337,7 +1337,7 @@ const AdminDashboard: React.FC = () => {
                 >
                   Создать сотрудника платформы
                 </Button>
-              </Box>
+            </Box>
               <TableContainer component={Paper}>
                 <Table size="small">
                   <TableHead>
@@ -1353,16 +1353,16 @@ const AdminDashboard: React.FC = () => {
                       <TableRow key={row.id}>
                         <TableCell>{`${row.lastName || ''} ${row.firstName || ''}`.trim()}</TableCell>
                         <TableCell>{row.email}</TableCell>
-                        <TableCell>
+                          <TableCell>
                           {row.role === 'SUPPORT' ? 'Поддержка' : row.role === 'DESIGNER' ? 'Дизайнер' : 'Безопасность'}
-                        </TableCell>
+                          </TableCell>
                         <TableCell>{row.isActive ? 'Активен' : 'Отключён'}</TableCell>
-                      </TableRow>
+                        </TableRow>
                     ))}
                     {!platformStaff.length && (
-                      <TableRow>
+                    <TableRow>
                         <TableCell colSpan={4}>Сотрудников платформы нет</TableCell>
-                      </TableRow>
+                    </TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -1385,9 +1385,9 @@ const AdminDashboard: React.FC = () => {
           onStartDateChange={setStartDate}
           onEndDateChange={setEndDate}
           onClearDates={() => {
-                    setStartDate(null);
-                    setEndDate(null);
-                  }}
+                      setStartDate(null);
+                      setEndDate(null);
+                    }}
           formatCurrency={formatCurrency}
           kpiData={kpiData}
           kpiLoading={kpiLoading}
@@ -1405,12 +1405,12 @@ const AdminDashboard: React.FC = () => {
           auditLogsEntityTypeFilter={auditLogsEntityTypeFilter}
           onActionFilterChange={(value) => {
             setAuditLogsActionFilter(value);
-            loadAuditLogs();
-          }}
+                    loadAuditLogs();
+                  }}
           onEntityTypeFilterChange={(value) => {
             setAuditLogsEntityTypeFilter(value);
-            loadAuditLogs();
-          }}
+                    loadAuditLogs();
+                  }}
         />
       )}
 
@@ -1424,8 +1424,8 @@ const AdminDashboard: React.FC = () => {
             const initial = emptyPlanForm();
             setPlanForm(initial);
             setCreatePlanBaseline(initial);
-            setCreatePlanDialog(true);
-          }}
+                  setCreatePlanDialog(true);
+                }}
           onEditPlan={handleEditPlan}
         />
       )}

@@ -37,6 +37,7 @@ import { apiService } from '../services/api';
 import { usePromoCodeAdminAuth } from '../contexts/PromoCodeAdminAuthContext';
 import { PromoCode, ReferralLink, Marketer, MarketerStatsSummary } from '../types';
 import PasswordField from '../components/common/PasswordField';
+import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 
 const AdminPromoCodes: React.FC = () => {
   const { admin, logout } = usePromoCodeAdminAuth();
@@ -441,6 +442,10 @@ const AdminPromoCodes: React.FC = () => {
           {error}
         </Alert>
       )}
+
+      <Box sx={{ mb: 3, maxWidth: 480 }}>
+        <Email2faSettingsToggle />
+      </Box>
 
       <Card>
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>

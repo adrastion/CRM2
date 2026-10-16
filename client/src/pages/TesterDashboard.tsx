@@ -13,6 +13,7 @@ import {
 import { Download } from '@mui/icons-material';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
+import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 import { useTesterAuth } from '../contexts/TesterAuthContext';
 import { apiService } from '../services/api';
 
@@ -168,7 +169,8 @@ const TesterDashboard: React.FC = () => {
       )}
 
       {tab === 2 && (
-        <Box sx={{ maxWidth: 640 }}>
+        <Box sx={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Email2faSettingsToggle />
           <NotificationSettingsPanel actor="tester" showChangelog />
         </Box>
       )}

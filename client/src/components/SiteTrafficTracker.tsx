@@ -3,7 +3,16 @@ import { useLocation } from 'react-router-dom';
 import { hasAnalyticsConsent } from '../utils/cookieConsent';
 
 const VISITOR_KEY = 'siteVisitorId';
-const HEARTBEAT_MS = 30_000;
+const HEARTBEAT_DESKTOP_MS = 30_000;
+const HEARTBEAT_MOBILE_MS = 60_000;
+
+function isCoarsePointer(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 900px)').matches;
+  } catch {
+    return false;
+  }
+}
 
 function ensureVisitorId(): string {
   try {
@@ -70,6 +79,7 @@ const SiteTrafficTracker: React.FC = () => {
   const location = useLocation();
   const visitorIdRef = useRef(ensureVisitorId());
   const pathRef = useRef(location.pathname);
+  const lastPingedPathRef = useRef<string | null>(null);
   const [consentOk, setConsentOk] = useState(() => hasAnalyticsConsent());
 
   useEffect(() => {
@@ -81,6 +91,8 @@ const SiteTrafficTracker: React.FC = () => {
   useEffect(() => {
     pathRef.current = location.pathname;
     if (!consentOk) return;
+    if (lastPingedPathRef.current === location.pathname) return;
+    lastPingedPathRef.current = location.pathname;
     sendPing({
       visitorId: visitorIdRef.current,
       path: location.pathname,
@@ -93,6 +105,8 @@ const SiteTrafficTracker: React.FC = () => {
   useEffect(() => {
     if (!consentOk) return;
 
+    const heartbeatMs = isCoarsePointer() ? HEARTBEAT_MOBILE_MS : HEARTBEAT_DESKTOP_MS;
+
     const tick = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       sendPing({
@@ -103,7 +117,7 @@ const SiteTrafficTracker: React.FC = () => {
       });
     };
 
-    const interval = window.setInterval(tick, HEARTBEAT_MS);
+    const interval = window.setInterval(tick, heartbeatMs);
 
     // Не закрываем сессию на blur вкладки — иначе один посетитель
     // дробится на десятки сессий за час и раздувает «Онлайн по часам».

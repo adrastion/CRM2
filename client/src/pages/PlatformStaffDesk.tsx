@@ -18,6 +18,7 @@ import {
 import { usePlatformStaffAuth } from '../contexts/PlatformStaffAuthContext';
 import { apiService } from '../services/api';
 import { useDesignerVoiceCall } from '../hooks/useDesignerVoiceCall';
+import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 
 const PlatformStaffDesk: React.FC = () => {
   const { staff, logout } = usePlatformStaffAuth();
@@ -87,15 +88,28 @@ const PlatformStaffDesk: React.FC = () => {
 
   useEffect(() => {
     if (!selectedId) return;
-    const iv = setInterval(async () => {
+    const pull = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const data = await apiService.platformStaffGetMessages(selectedId);
-        setMessages(data.messages || []);
+        const next = data.messages || [];
+        setMessages((prev) => {
+          if (prev.length === next.length && prev.every((m, i) => m.id === next[i]?.id)) return prev;
+          return next;
+        });
       } catch {
         /* ignore */
       }
-    }, 3000);
-    return () => clearInterval(iv);
+    };
+    const iv = window.setInterval(pull, 12_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void pull();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [selectedId]);
 
   const claim = async () => {
@@ -133,6 +147,10 @@ const PlatformStaffDesk: React.FC = () => {
         <Button onClick={logout}>Выйти</Button>
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+
+      <Box sx={{ mb: 2, maxWidth: 480 }}>
+        <Email2faSettingsToggle />
+      </Box>
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>

@@ -36,6 +36,10 @@ type Step =
   | 'identify'
   | 'setup'
   | 'select'
+  | 'email_code'
+  | 'twofa_code'
+  | 'push_code'
+  | 'qr_wait'
   | 'forgot_email'
   | 'forgot_code'
   | 'forgot_select'
@@ -45,10 +49,14 @@ const STEP_ORDER: Record<Step, number> = {
   identify: 0,
   setup: 1,
   select: 2,
-  forgot_email: 3,
-  forgot_code: 4,
-  forgot_select: 5,
-  forgot_new_password: 6,
+  email_code: 3,
+  twofa_code: 4,
+  push_code: 5,
+  qr_wait: 6,
+  forgot_email: 7,
+  forgot_code: 8,
+  forgot_select: 9,
+  forgot_new_password: 10,
 };
 
 const Auth: React.FC = () => {
@@ -78,6 +86,11 @@ const Auth: React.FC = () => {
   const [forgotAccounts, setForgotAccounts] = React.useState<PublicAccount[]>([]);
   const [forgotAccount, setForgotAccount] = React.useState<PublicAccount | null>(null);
   const [forgotNotice, setForgotNotice] = React.useState('');
+
+  const [challengeToken, setChallengeToken] = React.useState('');
+  const [loginCode, setLoginCode] = React.useState('');
+  const [qrSecret, setQrSecret] = React.useState('');
+  const [qrUrl, setQrUrl] = React.useState('');
 
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -109,6 +122,33 @@ const Auth: React.FC = () => {
   React.useEffect(() => {
     setSavedAccounts(listUsableSavedAccounts());
   }, [step]);
+
+  React.useEffect(() => {
+    if (step !== 'qr_wait' || !challengeToken) return;
+    let cancelled = false;
+    const pull = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const data = await apiService.getQrLoginStatus(challengeToken);
+        if (cancelled) return;
+        if (data.status === 'APPROVED' && data.session) {
+          applySession(data.session);
+        } else if (data.status === 'DENIED') {
+          setErrors({ form: 'Вход отклонён на другом устройстве' });
+          goToStep('identify');
+        }
+      } catch {
+        /* keep waiting */
+      }
+    };
+    const timer = window.setInterval(pull, 2500);
+    void pull();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, challengeToken]);
 
   const continueAsSavedAccount = async (account: SavedAccountSlot) => {
     setSwitchingAccountId(account.id);
@@ -174,6 +214,13 @@ const Auth: React.FC = () => {
       : identifier || contact;
 
   const applySession = (result: UnifiedLoginResponse) => {
+    if ('requiresEmail2fa' in result) {
+      setChallengeToken(result.challengeToken);
+      setLoginCode('');
+      goToStep('twofa_code');
+      setNotice('Введите код из письма для подтверждения входа');
+      return;
+    }
     if (result.requiresSelection) {
       setSelection(result);
       goToStep('select');
@@ -181,6 +228,106 @@ const Auth: React.FC = () => {
     }
     const dest = applyUnifiedSession(result);
     window.location.assign(dest);
+  };
+
+  const ensureIdentified = async () => {
+    const raw = contact.trim();
+    if (!raw) {
+      setErrors({ contact: 'Введите номер телефона или email' });
+      return null;
+    }
+    const identified = await apiService.identify(raw);
+    setIdentifierType(identified.identifierType);
+    setIdentifier(identified.identifier);
+    return identified.identifier;
+  };
+
+  const startEmailCodeLogin = async () => {
+    setErrors({});
+    setNotice('');
+    setLoading(true);
+    try {
+      clearAllAuthStorage();
+      const id = await ensureIdentified();
+      if (!id) return;
+      const data = await apiService.requestEmailLogin({ identifier: id, rememberMe });
+      if (!data.challengeToken) {
+        setNotice(data.message || 'Если аккаунт найден, код отправлен на почту');
+        return;
+      }
+      setChallengeToken(data.challengeToken);
+      setLoginCode('');
+      goToStep('email_code');
+      setNotice('Код отправлен на почту');
+    } catch (err) {
+      handleError(err, 'contact');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitEmailCode = async () => {
+    setErrors({});
+    if (!/^\d{6}$/.test(loginCode.trim())) {
+      setErrors({ code: 'Введите 6-значный код' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const result =
+        step === 'twofa_code'
+          ? await apiService.verifyEmail2fa({ challengeToken, code: loginCode.trim() })
+          : step === 'push_code'
+            ? await apiService.verifyPushLogin({ challengeToken, code: loginCode.trim() })
+            : await apiService.verifyEmailLogin({ challengeToken, code: loginCode.trim() });
+      applySession(result);
+    } catch (err) {
+      handleError(err, 'code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startPushLogin = async () => {
+    setErrors({});
+    setNotice('');
+    setLoading(true);
+    try {
+      clearAllAuthStorage();
+      const id = await ensureIdentified();
+      if (!id) return;
+      const data = await apiService.requestPushLogin({ identifier: id, rememberMe });
+      setChallengeToken(data.challengeToken);
+      setLoginCode('');
+      goToStep('push_code');
+      setNotice(data.message || 'Код отправлен на другое устройство');
+    } catch (err) {
+      handleError(err, 'contact');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startQrLogin = async () => {
+    setErrors({});
+    setNotice('');
+    setLoading(true);
+    try {
+      clearAllAuthStorage();
+      const id = await ensureIdentified();
+      if (!id) return;
+      const data = await apiService.startQrLogin({ identifier: id, rememberMe });
+      setChallengeToken(data.challengeToken);
+      setQrSecret(data.secret);
+      const approveUrl = `${window.location.origin}/auth/device-approve?challenge=${encodeURIComponent(data.challengeToken)}&secret=${encodeURIComponent(data.secret)}`;
+      setQrUrl(approveUrl);
+      goToStep('qr_wait');
+      setNotice('Отсканируйте QR в уже открытой сессии на телефоне');
+    } catch (err) {
+      handleError(err, 'contact');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleError = (err: unknown, defaultField?: string) => {
@@ -309,6 +456,10 @@ const Auth: React.FC = () => {
     setForgotAccounts([]);
     setForgotAccount(null);
     setForgotNotice('');
+    setChallengeToken('');
+    setLoginCode('');
+    setQrSecret('');
+    setQrUrl('');
     goToStep('identify');
   };
 
@@ -570,7 +721,7 @@ const Auth: React.FC = () => {
         )}
       </Box>
 
-      <Box sx={{ textAlign: 'center' }}>
+      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography
           component="button"
           type="button"
@@ -587,7 +738,141 @@ const Auth: React.FC = () => {
         >
           Забыли пароль?
         </Typography>
+        <Typography
+          component="button"
+          type="button"
+          disabled={loading}
+          onClick={() => void startEmailCodeLogin()}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Войти по коду с почты
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          disabled={loading}
+          onClick={() => void startPushLogin()}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Войти с другого устройства
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          disabled={loading}
+          onClick={() => void startQrLogin()}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Войти по QR-коду
+        </Typography>
       </Box>
+    </Box>
+  );
+
+  const codeStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
+      <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+        {step === 'push_code'
+          ? 'Введите код из уведомления на другом устройстве'
+          : step === 'twofa_code'
+            ? 'Введите код из письма для подтверждения входа'
+            : 'Введите код из письма'}
+      </Typography>
+      <PillField
+        name="loginCode"
+        icon={<LockOutlined />}
+        placeholder="Код из 6 цифр"
+        type="text"
+        autoComplete="one-time-code"
+        autoFocus
+        value={loginCode}
+        onChange={setLoginCode}
+        error={errors.code}
+        onEnter={submitEmailCode}
+      />
+      {errorBanner}
+      {noticeBanner}
+      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, pt: 1 }}>
+        <AuthButton onClick={submitEmailCode} loading={loading}>
+          Продолжить
+        </AuthButton>
+      </Box>
+      <Box sx={{ textAlign: 'center' }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={restart}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.textHint,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Назад
+        </Typography>
+      </Box>
+    </Box>
+  );
+
+  const qrWaitStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+      <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+        Отсканируйте код в уже открытой сессии на телефоне
+      </Typography>
+      {qrUrl ? (
+        <Box
+          component="img"
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}`}
+          alt="QR для входа"
+          sx={{ width: 240, height: 240, borderRadius: 1 }}
+        />
+      ) : null}
+      {errorBanner}
+      {noticeBanner}
+      <Typography
+        component="button"
+        type="button"
+        onClick={restart}
+        sx={{
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          color: colors.textHint,
+          fontSize: typography.hint,
+          '&:hover': { textDecoration: 'underline' },
+        }}
+      >
+        Отмена
+      </Typography>
     </Box>
   );
 
@@ -879,15 +1164,19 @@ const Auth: React.FC = () => {
       ? identifyStep
       : step === 'setup'
         ? setupStep
-        : step === 'forgot_email'
-          ? forgotEmailStep
-          : step === 'forgot_code'
-            ? forgotCodeStep
-            : step === 'forgot_select'
-              ? forgotSelectStep
-              : step === 'forgot_new_password'
-                ? forgotNewPasswordStep
-                : selectStep;
+        : step === 'email_code' || step === 'twofa_code' || step === 'push_code'
+          ? codeStep
+          : step === 'qr_wait'
+            ? qrWaitStep
+            : step === 'forgot_email'
+              ? forgotEmailStep
+              : step === 'forgot_code'
+                ? forgotCodeStep
+                : step === 'forgot_select'
+                  ? forgotSelectStep
+                  : step === 'forgot_new_password'
+                    ? forgotNewPasswordStep
+                    : selectStep;
 
   return (
     <AuthShell

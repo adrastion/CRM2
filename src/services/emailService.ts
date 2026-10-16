@@ -163,6 +163,37 @@ class EmailService {
     });
   }
 
+  /** Код для входа или 2FA. */
+  async sendLoginCodeEmail(
+    email: string,
+    data: { firstName?: string; code: string; purpose: 'login' | '2fa' }
+  ): Promise<void> {
+    const name = data.firstName ? `, ${data.firstName}` : '';
+    const title = data.purpose === '2fa' ? 'Код подтверждения входа' : 'Код для входа';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>${title}</title></head>
+      <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333">
+        <div style="max-width:560px;margin:0 auto;padding:24px">
+          <h2>${title}</h2>
+          <p>Здравствуйте${name}!</p>
+          <p>Ваш код:</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:6px">${data.code}</p>
+          <p>Код действует 10 минут. Если вы не запрашивали вход, проигнорируйте письмо.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    const text = `Здравствуйте${name}!\n\n${title}: ${data.code}\nДействует 10 минут.`;
+    await this.sendEmail({
+      to: email,
+      subject: `${title} — ПрофСпортСРМ`,
+      html,
+      text,
+    });
+  }
+
   /**
    * Send welcome email
    */

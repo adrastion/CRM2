@@ -139,7 +139,15 @@ export interface UnifiedSelectionRequired {
   staffAccounts: PublicAccount[];
 }
 
-export type UnifiedLoginResponse = UnifiedSession | UnifiedSelectionRequired;
+export type UnifiedLogin2faRequired = {
+  requiresEmail2fa: true;
+  challengeToken: string;
+};
+
+export type UnifiedLoginResponse =
+  | UnifiedSession
+  | UnifiedSelectionRequired
+  | UnifiedLogin2faRequired;
 
 /* ------------------------------------------------------------------ */
 /* Каталог тарифов (панель супер-админа)                               */

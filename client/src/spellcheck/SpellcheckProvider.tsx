@@ -261,6 +261,20 @@ const SpellcheckProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   useEffect(() => {
+    // На телефонах оставляем нативную проверку орфографии браузера —
+    // словарь и слой подчёркиваний сильно грузят слабые устройства.
+    const mobileSpellOff = (() => {
+      try {
+        return (
+          window.matchMedia('(pointer: coarse)').matches ||
+          window.matchMedia('(max-width: 900px)').matches
+        );
+      } catch {
+        return false;
+      }
+    })();
+    if (mobileSpellOff) return;
+
     ensureSpellStyles();
     const idle = window.setTimeout(() => {
       void loadRuSpell().catch(() => undefined);

@@ -383,6 +383,91 @@ class ApiService {
     return response.data.data!;
   }
 
+  async requestEmailLogin(payload: {
+    identifier: string;
+    rememberMe?: boolean;
+  }): Promise<{ sent: boolean; challengeToken?: string; message?: string }> {
+    const response = await this.api.post<ApiResponse>('/auth/login/email/request', payload);
+    return response.data.data;
+  }
+
+  async verifyEmailLogin(payload: {
+    challengeToken: string;
+    code: string;
+  }): Promise<UnifiedLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
+      '/auth/login/email/verify',
+      payload
+    );
+    return response.data.data!;
+  }
+
+  async verifyEmail2fa(payload: {
+    challengeToken: string;
+    code: string;
+  }): Promise<UnifiedLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
+      '/auth/login/2fa/verify',
+      payload
+    );
+    return response.data.data!;
+  }
+
+  async requestPushLogin(payload: {
+    identifier: string;
+    rememberMe?: boolean;
+  }): Promise<{ challengeToken: string; message?: string }> {
+    const response = await this.api.post<ApiResponse>('/auth/login/push/request', payload);
+    return response.data.data;
+  }
+
+  async verifyPushLogin(payload: {
+    challengeToken: string;
+    code: string;
+  }): Promise<UnifiedLoginResponse> {
+    const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
+      '/auth/login/push/verify',
+      payload
+    );
+    return response.data.data!;
+  }
+
+  async startQrLogin(payload: {
+    identifier: string;
+    rememberMe?: boolean;
+  }): Promise<{ challengeToken: string; secret: string }> {
+    const response = await this.api.post<ApiResponse>('/auth/login/qr/start', payload);
+    return response.data.data;
+  }
+
+  async getQrLoginStatus(challengeToken: string): Promise<{
+    status: string;
+    session?: UnifiedLoginResponse;
+  }> {
+    const response = await this.api.get<ApiResponse>('/auth/login/qr/status', {
+      params: { challengeToken },
+    });
+    return response.data.data;
+  }
+
+  async approveQrLogin(payload: { challengeToken: string; secret: string }): Promise<void> {
+    await this.api.post('/auth/login/qr/approve', payload);
+  }
+
+  async denyQrLogin(payload: { challengeToken: string; secret: string }): Promise<void> {
+    await this.api.post('/auth/login/qr/deny', payload);
+  }
+
+  async getLoginSecurity(): Promise<{ email2faEnabled: boolean }> {
+    const response = await this.api.get<ApiResponse>('/auth/security');
+    return response.data.data;
+  }
+
+  async updateLoginSecurity(payload: { email2faEnabled: boolean }): Promise<{ email2faEnabled: boolean }> {
+    const response = await this.api.put<ApiResponse>('/auth/security', payload);
+    return response.data.data;
+  }
+
   async login(credentials: LoginForm): Promise<AuthResponse> {
     const response = await this.api.post<ApiResponse<AuthResponse>>('/auth/login', credentials);
     return response.data.data!;

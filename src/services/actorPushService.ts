@@ -220,6 +220,22 @@ function withTenantPrefix(title: string, tenantName: string | null): string {
   return `«${tenantName}» · ${title}`;
 }
 
+/** Push без учёта prefs — для кодов входа. */
+export async function sendLoginCodePush(
+  actorType: NotificationActorType,
+  actorId: string,
+  title: string,
+  body: string,
+  data: Record<string, unknown> = {}
+): Promise<number> {
+  const subscriptions = await getSubscriptionsForActor(actorType, actorId);
+  if (!subscriptions.length) return 0;
+  await sendToSubscriptions(subscriptions, title, body, { ...data, type: 'LOGIN_CODE' }, (endpoint) =>
+    removeSubscription(actorType, actorId, endpoint)
+  );
+  return subscriptions.length;
+}
+
 export async function sendPushToActor(
   actorType: NotificationActorType,
   actorId: string,

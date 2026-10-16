@@ -110,19 +110,31 @@ const SupportFAB: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (open && step === 'chat' && selectedId) {
-      const t = setInterval(async () => {
-        try {
-          const data = await apiService.requesterGetSupportTicketMessages(selectedId);
-          setMessages(data.messages || []);
-          if (data.ticket) setCurrentTicket(data.ticket);
-          setCallRecordings(data.callRecordings || []);
-        } catch {
-          /* ignore poll errors */
-        }
-      }, 3000);
-      return () => clearInterval(t);
-    }
+    if (!(open && step === 'chat' && selectedId)) return;
+    const pull = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const data = await apiService.requesterGetSupportTicketMessages(selectedId);
+        const next = data.messages || [];
+        setMessages((prev) => {
+          if (prev.length === next.length && prev.every((m, i) => m.id === next[i]?.id)) return prev;
+          return next;
+        });
+        if (data.ticket) setCurrentTicket(data.ticket);
+        setCallRecordings(data.callRecordings || []);
+      } catch {
+        /* ignore poll errors */
+      }
+    };
+    const t = window.setInterval(pull, 12_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void pull();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [open, step, selectedId]);
 
   const handleOpenMenu = () => {

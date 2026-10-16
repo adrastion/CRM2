@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { badRequest } from '../utils/httpError';
 import { normalizeEmail } from '../utils/identifier';
 
-export type OtpPurpose = 'verify' | 'reset';
+export type OtpPurpose = 'verify' | 'reset' | 'login' | '2fa';
 export type OtpAccountType = 'user' | 'client' | 'parent';
 
 const CODE_TTL_MS = 10 * 60 * 1000;

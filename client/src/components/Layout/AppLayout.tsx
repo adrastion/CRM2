@@ -116,24 +116,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     // Пока в панели SA/Tester — периодически проверяем, что сессия ещё действительна
     // (отвязка инвалидирует JWT через sessionVersion).
     const ping = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        if (isSuperAdminRoute) {
-          await apiService.listPlatformChangelog();
-        } else {
-          await apiService.listPlatformChangelog();
-        }
+        await apiService.listPlatformChangelog();
       } catch {
         /* 401 interceptor сделает kick */
       }
     };
-    const timer = window.setInterval(ping, 15000);
+    const timer = window.setInterval(ping, 60_000);
     const onFocus = () => {
       void ping();
     };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void ping();
+    };
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [isSuperAdminRoute, isTesterRoute]);
 
@@ -145,6 +147,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     }
     let cancelled = false;
     const pull = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const [notes, notifs] = await Promise.all([
           apiService.getDevNotesUnreadCount(),
@@ -158,12 +161,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       }
     };
     void pull();
-    const timer = window.setInterval(pull, 20000);
+    const timer = window.setInterval(pull, 30_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void pull();
+    };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
     };
-  }, [isSuperAdminRoute, location.pathname, location.search]);
+  }, [isSuperAdminRoute]);
 
   useEffect(() => {
     const handler = (event: CustomEvent) => setVisibleTabs(event.detail.visibleTabs);

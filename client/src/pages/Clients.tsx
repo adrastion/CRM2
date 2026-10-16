@@ -389,120 +389,16 @@ const Clients: React.FC = () => {
     setEditDialogOpen(editDialog);
   }, [editDialog]);
 
-  // Принудительно открываем диалог, если он был закрыт при наличии ошибок
+  // Если диалог закрыли при ошибках валидации — один раз вернуть его (без polling).
   useEffect(() => {
+    if (editDialogOpen || !editingClient) return;
     const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-    if (hasErrors && shouldPreventCloseRef.current && !editDialogOpen && editingClient) {
-      // Если есть ошибки и диалог был закрыт, принудительно открываем его
-      // Используем requestAnimationFrame для немедленного открытия
-      requestAnimationFrame(() => {
-        if (!editDialogOpen && (hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current))) {
-          setEditDialogOpen(true);
-          setEditDialog(true);
-        }
-      });
-      // Также используем несколько таймеров для надежности
-      const timers: NodeJS.Timeout[] = [];
-      for (let i = 0; i < 50; i++) {
-        const timer = setTimeout(() => {
-          const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-          if (!editDialogOpen && stillHasErrors && editingClient) {
-            setEditDialogOpen(true);
-            setEditDialog(true);
-          }
-        }, i * 5);
-        timers.push(timer);
-      }
-      return () => {
-        timers.forEach(timer => clearTimeout(timer));
-      };
-    }
-  }, [editDialogOpen, formErrors, editingClient]);
-  
-  // Дополнительный useEffect для отслеживания изменений editDialogOpen
-  // Этот эффект будет срабатывать каждый раз, когда editDialogOpen меняется
-  useEffect(() => {
-    const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-    if (hasErrors && (shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-      // Если диалог закрыт, но есть ошибки, открываем его немедленно
-      if (!editDialogOpen) {
-        // Используем несколько методов для гарантии открытия
-        requestAnimationFrame(() => {
-          setEditDialogOpen(true);
-          setEditDialog(true);
-        });
-        // Используем множественные таймеры для гарантии открытия
-        const timers: NodeJS.Timeout[] = [];
-        for (let i = 0; i < 200; i++) {
-          const timer = setTimeout(() => {
-            const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-            if (!editDialogOpen && (stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-              setEditDialogOpen(true);
-              setEditDialog(true);
-            }
-          }, i * 5);
-          timers.push(timer);
-        }
-        return () => {
-          timers.forEach(timer => clearTimeout(timer));
-        };
-      }
-    }
-  }, [editDialogOpen, formErrors, editingClient]);
-  
-  // Агрессивный useEffect для отслеживания изменений editDialogOpen
-  // Если модальное окно закрылось при наличии ошибок, немедленно переоткрываем его
-  useEffect(() => {
-    const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-    
-    // Если диалог закрыт, но есть ошибки или идет валидация, открываем его немедленно
-    if (!editDialogOpen && (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-      console.log('Dialog closed with errors, reopening...', { hasErrors, shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current });
-      
-      // Используем множественные методы для гарантии открытия
-      requestAnimationFrame(() => {
-        const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-        if ((stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-          console.log('Reopening dialog via requestAnimationFrame');
-          setEditDialogOpen(true);
-          setEditDialog(true);
-        }
-      });
-      
-      // Используем множественные таймеры для гарантии открытия
-      const timers: NodeJS.Timeout[] = [];
-      for (let i = 0; i < 1000; i++) {
-        const timer = setTimeout(() => {
-          const stillHasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-          if (!editDialogOpen && (stillHasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-            setEditDialogOpen(true);
-            setEditDialog(true);
-          }
-        }, i * 1);
-        timers.push(timer);
-      }
-      
-      return () => {
-        timers.forEach(timer => clearTimeout(timer));
-      };
-    }
-  }, [editDialogOpen, formErrors, editingClient]);
-  
-  // Постоянный мониторинг состояния диалога с помощью setInterval
-  useEffect(() => {
-    if (!editingClient) return;
-    
-    const interval = setInterval(() => {
-      const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
-      // Если диалог закрыт, но есть ошибки или идет валидация, открываем его немедленно
-      if (!editDialogOpen && (hasErrors || shouldPreventCloseRef.current || isValidatingRef.current) && editingClient) {
-        console.log('Reopening dialog via setInterval', { hasErrors, shouldPreventClose: shouldPreventCloseRef.current, isValidating: isValidatingRef.current });
-        setEditDialogOpen(true);
-        setEditDialog(true);
-      }
-    }, 1); // Проверяем каждые 1ms
-    
-    return () => clearInterval(interval);
+    if (!hasErrors && !shouldPreventCloseRef.current && !isValidatingRef.current) return;
+    const raf = requestAnimationFrame(() => {
+      setEditDialogOpen(true);
+      setEditDialog(true);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [editDialogOpen, formErrors, editingClient]);
 
   // Handle clientId from URL params — открыть карточку спортсмена из любого раздела

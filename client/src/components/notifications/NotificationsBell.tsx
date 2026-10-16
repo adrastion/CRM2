@@ -46,8 +46,8 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<InboxPayload | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const res =
         channel === 'school'
@@ -57,14 +57,25 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
     } catch {
       /* ignore */
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [channel]);
 
   useEffect(() => {
-    void load();
-    const t = window.setInterval(() => void load(), 30000);
-    return () => window.clearInterval(t);
+    const pull = (silent = true) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void load({ silent });
+    };
+    pull(false);
+    const t = window.setInterval(() => pull(true), 30000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') pull(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [load]);
 
   const unread = data?.unreadTotal || 0;
