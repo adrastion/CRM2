@@ -70,6 +70,7 @@ import {
   getLoginSecurity,
   updateLoginSecurity,
   validateLoginIdentifier,
+  validateQrStart,
   validateLoginCode,
   validateQrApprove,
 } from '../controllers/loginChallengeController';
@@ -91,7 +92,7 @@ router.post('/login/email/verify', loginRateLimiter, validateLoginCode, emailLog
 router.post('/login/2fa/verify', loginRateLimiter, validateLoginCode, email2faVerify);
 router.post('/login/push/request', loginRateLimiter, validateLoginIdentifier, pushLoginRequest);
 router.post('/login/push/verify', loginRateLimiter, validateLoginCode, pushLoginVerify);
-router.post('/login/qr/start', loginRateLimiter, validateLoginIdentifier, qrLoginStart);
+router.post('/login/qr/start', loginRateLimiter, validateQrStart, qrLoginStart);
 router.get('/login/qr/status', loginRateLimiter, qrLoginStatus);
 router.post('/login/qr/approve', authenticateLoginActor, validateQrApprove, qrLoginApprove);
 router.post('/login/qr/deny', authenticateLoginActor, validateQrApprove, qrLoginDeny);

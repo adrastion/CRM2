@@ -313,18 +313,17 @@ const Auth: React.FC = () => {
     setNotice('');
     setLoading(true);
     try {
+      // Discord-style: почта/телефон не нужны — аккаунт возьмётся с мобильной сессии
       clearAllAuthStorage();
-      const id = await ensureIdentified();
-      if (!id) return;
-      const data = await apiService.startQrLogin({ identifier: id, rememberMe });
+      const data = await apiService.startQrLogin({ rememberMe });
       setChallengeToken(data.challengeToken);
       setQrSecret(data.secret);
       const approveUrl = `${window.location.origin}/auth/device-approve?challenge=${encodeURIComponent(data.challengeToken)}&secret=${encodeURIComponent(data.secret)}`;
       setQrUrl(approveUrl);
       goToStep('qr_wait');
-      setNotice('Отсканируйте QR в уже открытой сессии на телефоне');
+      setNotice('Отсканируйте QR на телефоне, где вы уже вошли в аккаунт');
     } catch (err) {
-      handleError(err, 'contact');
+      handleError(err, 'form');
     } finally {
       setLoading(false);
     }
@@ -845,7 +844,8 @@ const Auth: React.FC = () => {
   const qrWaitStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
       <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
-        Отсканируйте код в уже открытой сессии на телефоне
+        Отсканируйте код камерой телефона в браузере или приложении, где вы уже вошли — аккаунт
+        определится автоматически
       </Typography>
       {qrUrl ? (
         <Box

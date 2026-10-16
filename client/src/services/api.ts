@@ -432,11 +432,10 @@ class ApiService {
     return response.data.data!;
   }
 
-  async startQrLogin(payload: {
-    identifier: string;
+  async startQrLogin(payload?: {
     rememberMe?: boolean;
   }): Promise<{ challengeToken: string; secret: string }> {
-    const response = await this.api.post<ApiResponse>('/auth/login/qr/start', payload);
+    const response = await this.api.post<ApiResponse>('/auth/login/qr/start', payload || {});
     return response.data.data;
   }
 

@@ -25,6 +25,10 @@ const identifierSchema = Joi.object({
   rememberMe: Joi.boolean().default(false),
 });
 
+const qrStartSchema = Joi.object({
+  rememberMe: Joi.boolean().default(false),
+});
+
 const codeSchema = Joi.object({
   challengeToken: Joi.string().required(),
   code: Joi.string().trim().length(6).required(),
@@ -37,6 +41,7 @@ const qrApproveSchema = Joi.object({
 });
 
 export const validateLoginIdentifier = validate(identifierSchema);
+export const validateQrStart = validate(qrStartSchema);
 export const validateLoginCode = validate(codeSchema);
 export const validateQrApprove = validate(qrApproveSchema);
 
@@ -81,7 +86,7 @@ export const pushLoginVerify = asyncHandler(async (req: Request, res: Response<A
 });
 
 export const qrLoginStart = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
-  const data = await startQrLogin(req.body.identifier, Boolean(req.body.rememberMe));
+  const data = await startQrLogin(Boolean(req.body.rememberMe));
   res.json({ success: true, data });
 });
 

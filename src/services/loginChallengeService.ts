@@ -122,7 +122,7 @@ async function anyMatchedNeeds2fa(keys: AccountKey[]): Promise<boolean> {
 
 async function createChallenge(params: {
   method: ChallengeMethod;
-  identifier: string;
+  identifier?: string | null;
   accounts: AccountKey[];
   rememberMe: boolean;
   codeHash?: string | null;
@@ -134,7 +134,7 @@ async function createChallenge(params: {
       tokenHash: hash(challengeToken),
       method: params.method,
       status: 'PENDING',
-      identifier: params.identifier,
+      identifier: params.identifier || null,
       accountsJson: JSON.stringify(params.accounts),
       codeHash: params.codeHash || null,
       secretHash: params.secretHash || null,
@@ -366,17 +366,16 @@ export async function verifyPushLoginCode(params: {
   );
 }
 
-export async function startQrLogin(identifier: string, rememberMe = false) {
-  const accounts = await UnifiedAuthService.findAccountsPublic(identifier);
-  if (accounts.length === 0) {
-    throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
-  }
+/**
+ * Discord-style QR: без почты/телефона. Аккаунт определяется при approve
+ * из уже открытой мобильной сессии.
+ */
+export async function startQrLogin(rememberMe = false) {
   const secret = generateSecret();
-  const keys: AccountKey[] = accounts.map((a) => ({ t: a.accountType, i: a.id }));
   const { challengeToken } = await createChallenge({
     method: 'QR',
-    identifier,
-    accounts: keys,
+    identifier: null,
+    accounts: [],
     rememberMe,
     secretHash: hash(secret),
   });
@@ -407,18 +406,17 @@ export async function getQrStatus(challengeToken: string): Promise<{
   }
 
   if (row.status === 'APPROVED') {
-    const accounts = parseAccounts(row.accountsJson);
-    const approved =
-      row.approvedAccountType && row.approvedAccountId
-        ? {
-            accountType: row.approvedAccountType as AccountType,
-            accountId: row.approvedAccountId,
-          }
-        : undefined;
+    if (!row.approvedAccountType || !row.approvedAccountId) {
+      throw badRequest('Вход ещё не подтверждён');
+    }
+    const approved = {
+      accountType: row.approvedAccountType as AccountType,
+      accountId: row.approvedAccountId,
+    };
     const session = await markUsedAndFinish(
       row.id,
       row.identifier || '',
-      accounts,
+      [{ t: approved.accountType, i: approved.accountId }],
       row.rememberMe,
       null,
       approved
@@ -440,10 +438,14 @@ export async function approveQrChallenge(params: {
   if (!row.secretHash || row.secretHash !== hash(params.secret)) {
     throw unauthorized('Некорректный QR-код');
   }
+  // Пустой accountsJson — анонимный QR: любой залогиненный актор может подтвердить.
+  // Если список задан (legacy) — только перечисленные аккаунты.
   const accounts = parseAccounts(row.accountsJson);
-  const allowed = accounts.some((a) => a.t === params.accountType && a.i === params.accountId);
-  if (!allowed) {
-    throw unauthorized('Этот аккаунт не может подтвердить вход');
+  if (accounts.length > 0) {
+    const allowed = accounts.some((a) => a.t === params.accountType && a.i === params.accountId);
+    if (!allowed) {
+      throw unauthorized('Этот аккаунт не может подтвердить вход');
+    }
   }
   await prisma.loginChallenge.update({
     where: { id: row.id },
@@ -451,6 +453,7 @@ export async function approveQrChallenge(params: {
       status: 'APPROVED',
       approvedAccountType: params.accountType,
       approvedAccountId: params.accountId,
+      accountsJson: JSON.stringify([{ t: params.accountType, i: params.accountId }]),
     },
   });
   return { ok: true };

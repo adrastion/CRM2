@@ -82,7 +82,7 @@ const DeviceApprove: React.FC = () => {
         {!done && (
           <>
             <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
-              Разрешить вход с другого устройства?
+              Разрешить вход на другом устройстве под этим аккаунтом?
             </Typography>
             {error ? (
               <Typography sx={{ color: colors.danger, fontSize: typography.hint }}>{error}</Typography>

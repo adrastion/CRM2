@@ -528,6 +528,10 @@ export class UnifiedAuthService {
     rememberMe = false,
     meta?: SessionRequestMeta | null
   ): Promise<LoginResult> {
+    // QR Discord-style: аккаунт уже выбран на мобиле — без identifier
+    if (!rawIdentifier?.trim() && keys.length > 0) {
+      return this.finishLoginByAccountKeys(keys, rememberMe, meta);
+    }
     const accounts = await this.findAccounts(rawIdentifier);
     const matched = keys
       .map((k) => accounts.find((a) => a.accountType === k.accountType && a.id === k.id))
@@ -536,6 +540,28 @@ export class UnifiedAuthService {
       throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
     }
     return this.completeLogin(rawIdentifier, matched, rememberMe, meta);
+  }
+
+  /**
+   * Выдача сессии по известным accountType+id (QR approve с мобильной сессии).
+   */
+  static async finishLoginByAccountKeys(
+    keys: Array<{ accountType: AccountType; id: string }>,
+    rememberMe = false,
+    meta?: SessionRequestMeta | null
+  ): Promise<LoginResult> {
+    const matched: AccountCandidate[] = keys.map((k) => ({
+      accountType: k.accountType,
+      id: k.id,
+      displayName: '',
+      hasPassword: true,
+      isAccountApproved: true,
+      passwordHash: null,
+    }));
+    if (matched.length === 0) {
+      throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
+    }
+    return this.completeLogin('', matched, rememberMe, meta);
   }
 
   /** Публичный доступ к поиску аккаунтов для challenge-сервиса. */
