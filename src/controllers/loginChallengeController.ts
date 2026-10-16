@@ -19,6 +19,15 @@ import {
 } from '../services/loginChallengeService';
 import { AccountType } from '../services/unifiedAuthService';
 import { AuthenticatedRequest } from '../types';
+import { prisma } from '../lib/prisma';
+import { clearSessionCookies } from '../middleware/authCookies';
+import {
+  AuthActorType,
+  listActiveAuthSessions,
+  revokeAllAuthSessions,
+  revokeAuthSessionById,
+  revokeOtherAuthSessions,
+} from '../services/authSessionService';
 
 const identifierSchema = Joi.object({
   identifier: Joi.string().trim().min(3).max(255).required(),
@@ -164,4 +173,107 @@ export const updateLoginSecurity = asyncHandler(async (req: AuthenticatedRequest
   }
   const data = await setEmail2faEnabled(actor.accountType, actor.accountId, req.body.email2faEnabled);
   res.json({ success: true, data });
+});
+
+/** Типы, для которых ведётся таблица AuthSession. */
+function toAuthActor(accountType: AccountType): AuthActorType | null {
+  if (accountType === 'TENANT_USER') return 'USER';
+  if (accountType === 'CLIENT') return 'CLIENT';
+  if (accountType === 'PARENT') return 'PARENT';
+  if (accountType === 'SUPER_ADMIN') return 'SUPER_ADMIN';
+  if (accountType === 'TESTER') return 'TESTER';
+  return null;
+}
+
+export const listLoginActorSessions = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const actor = resolveActorFromReq(req);
+  if (!actor) {
+    res.status(401).json({ success: false, error: 'Нужна активная сессия' });
+    return;
+  }
+  const authActor = toAuthActor(actor.accountType);
+  if (!authActor) {
+    res.json({ success: true, data: { sessions: [] } });
+    return;
+  }
+  const sessions = await listActiveAuthSessions(authActor, actor.accountId);
+  res.json({
+    success: true,
+    data: {
+      sessions: sessions.map((s) => ({
+        ...s,
+        current: s.id === req.authSessionId,
+      })),
+    },
+  });
+});
+
+export const revokeLoginActorSession = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+  const actor = resolveActorFromReq(req);
+  const authActor = actor ? toAuthActor(actor.accountType) : null;
+  if (!actor || !authActor) {
+    res.status(401).json({ success: false, error: 'Нужна активная сессия' });
+    return;
+  }
+  const ok = await revokeAuthSessionById(authActor, actor.accountId, String(req.params.id));
+  if (!ok) {
+    res.status(404).json({ success: false, error: 'Сессия не найдена' });
+    return;
+  }
+  res.json({ success: true, message: 'Сессия завершена' });
+});
+
+export const revokeOtherLoginActorSessions = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const actor = resolveActorFromReq(req);
+  const authActor = actor ? toAuthActor(actor.accountType) : null;
+  if (!actor || !authActor || !req.authSessionId) {
+    res.status(401).json({ success: false, error: 'Нужна активная сессия' });
+    return;
+  }
+  const count = await revokeOtherAuthSessions(authActor, actor.accountId, req.authSessionId);
+  res.json({ success: true, data: { revoked: count }, message: 'Другие сессии завершены' });
+});
+
+export const revokeAllLoginActorSessions = asyncHandler(async (
+  req: AuthenticatedRequest,
+  res: Response<ApiResponse>
+) => {
+  const actor = resolveActorFromReq(req);
+  const authActor = actor ? toAuthActor(actor.accountType) : null;
+  if (!actor || !authActor) {
+    res.status(401).json({ success: false, error: 'Нужна активная сессия' });
+    return;
+  }
+  if (authActor === 'USER') {
+    await prisma.user.update({
+      where: { id: actor.accountId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  } else if (authActor === 'CLIENT') {
+    await prisma.client.update({
+      where: { id: actor.accountId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  } else if (authActor === 'PARENT') {
+    await prisma.parent.update({
+      where: { id: actor.accountId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  } else if (authActor === 'SUPER_ADMIN') {
+    await prisma.superAdmin.update({
+      where: { id: actor.accountId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  } else if (authActor === 'TESTER') {
+    await prisma.tester.update({
+      where: { id: actor.accountId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  }
+  const count = await revokeAllAuthSessions(authActor, actor.accountId);
+  clearSessionCookies(res);
+  res.json({ success: true, data: { revoked: count }, message: 'Все сессии завершены' });
 });

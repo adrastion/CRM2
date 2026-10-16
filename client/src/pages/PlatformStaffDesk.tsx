@@ -19,6 +19,7 @@ import { usePlatformStaffAuth } from '../contexts/PlatformStaffAuthContext';
 import { apiService } from '../services/api';
 import { useDesignerVoiceCall } from '../hooks/useDesignerVoiceCall';
 import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
+import ActiveSessionsPanel from '../components/auth/ActiveSessionsPanel';
 
 const PlatformStaffDesk: React.FC = () => {
   const { staff, logout } = usePlatformStaffAuth();
@@ -148,8 +149,9 @@ const PlatformStaffDesk: React.FC = () => {
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Box sx={{ mb: 2, maxWidth: 480 }}>
+      <Box sx={{ mb: 2, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Email2faSettingsToggle />
+        <ActiveSessionsPanel />
       </Box>
 
       {loading ? (

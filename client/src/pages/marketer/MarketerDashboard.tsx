@@ -20,6 +20,7 @@ import { apiService } from '../../services/api';
 import { colors, typography } from '../../theme/tokens';
 import { adLinkUrl } from '../../utils/refCode';
 import Email2faSettingsToggle from '../../components/auth/Email2faSettingsToggle';
+import ActiveSessionsPanel from '../../components/auth/ActiveSessionsPanel';
 
 const money = (n: number) =>
   new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(
@@ -79,8 +80,9 @@ const MarketerDashboard: React.FC = () => {
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
         Панель управления
       </Typography>
-      <Box sx={{ mb: 3, maxWidth: 480 }}>
+      <Box sx={{ mb: 3, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Email2faSettingsToggle />
+        <ActiveSessionsPanel />
       </Box>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {[

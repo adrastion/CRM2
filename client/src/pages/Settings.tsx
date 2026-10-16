@@ -22,9 +22,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Chip,
-  Stack,
-  Divider,
 } from '@mui/material';
 import {
   Save,
@@ -33,7 +30,6 @@ import {
   ViewList,
   School,
   Notifications,
-  Devices,
 } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -44,6 +40,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { canEditSchoolFinanceSettings, isOwnerOrAdmin } from '../utils/roles';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
+import ActiveSessionsPanel from '../components/auth/ActiveSessionsPanel';
 import PasswordField from '../components/common/PasswordField';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
@@ -69,31 +66,6 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
-
-type AuthSessionRow = {
-  id: string;
-  deviceLabel: string | null;
-  userAgent: string | null;
-  ipAddress: string | null;
-  createdAt: string;
-  lastSeenAt: string;
-  expiresAt: string;
-  current: boolean;
-};
-
-const formatSessionDate = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-};
 
 const Settings: React.FC = () => {
   const { user, updateUser, logout } = useAuth();
@@ -136,11 +108,6 @@ const Settings: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Активные сессии устройств
-  const [authSessions, setAuthSessions] = useState<AuthSessionRow[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [sessionsBusy, setSessionsBusy] = useState(false);
-  
   // Настройка вкладок
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>({});
 
@@ -158,66 +125,6 @@ const Settings: React.FC = () => {
     timezone: 'UTC',
   });
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-
-  const loadAuthSessions = async () => {
-    try {
-      setSessionsLoading(true);
-      const data = await apiService.getAuthSessions();
-      setAuthSessions(data.sessions || []);
-    } catch (err: any) {
-      console.error('Error loading auth sessions:', err);
-    } finally {
-      setSessionsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (tabValue === 1) {
-      void loadAuthSessions();
-    }
-  }, [tabValue]);
-
-  const handleRevokeSession = async (sessionId: string) => {
-    try {
-      setSessionsBusy(true);
-      setError(null);
-      await apiService.revokeAuthSession(sessionId);
-      await loadAuthSessions();
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Не удалось завершить сессию');
-    } finally {
-      setSessionsBusy(false);
-    }
-  };
-
-  const handleRevokeOtherSessions = async () => {
-    try {
-      setSessionsBusy(true);
-      setError(null);
-      await apiService.revokeOtherAuthSessions();
-      await loadAuthSessions();
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Не удалось завершить другие сессии');
-    } finally {
-      setSessionsBusy(false);
-    }
-  };
-
-  const handleRevokeAllSessions = async () => {
-    try {
-      setSessionsBusy(true);
-      setError(null);
-      await apiService.revokeAllAuthSessions();
-      logout();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Не удалось выйти на всех устройствах');
-      setSessionsBusy(false);
-    }
-  };
 
   const handleRestartOnboarding = async () => {
     try {
@@ -1014,99 +921,8 @@ const Settings: React.FC = () => {
                 <Email2faSettingsToggle />
               </Grid>
 
-              {/* Активные сессии */}
               <Grid item xs={12}>
-                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Devices sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Активные сессии
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Устройства, с которых выполнен вход в аккаунт. Можно завершить чужую сессию
-                    или выйти везде.
-                  </Typography>
-
-                  {sessionsLoading ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                      <CircularProgress size={28} />
-                    </Box>
-                  ) : authSessions.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      Нет активных сессий
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1.5} divider={<Divider flexItem />}>
-                      {authSessions.map((session) => (
-                        <Box
-                          key={session.id}
-                          sx={{
-                            display: 'flex',
-                            flexDirection: { xs: 'column', sm: 'row' },
-                            alignItems: { sm: 'center' },
-                            justifyContent: 'space-between',
-                            gap: 1.5,
-                          }}
-                        >
-                          <Box sx={{ minWidth: 0 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              <Typography variant="body1" fontWeight={500}>
-                                {session.deviceLabel || 'Неизвестное устройство'}
-                              </Typography>
-                              {session.current && (
-                                <Chip label="Это устройство" size="small" color="primary" variant="outlined" />
-                              )}
-                            </Box>
-                            <Typography variant="body2" color="text.secondary">
-                              IP: {session.ipAddress || '—'}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              Создана: {formatSessionDate(session.createdAt)} · Активность:{' '}
-                              {formatSessionDate(session.lastSeenAt)}
-                            </Typography>
-                          </Box>
-                          {!session.current && (
-                            <Button
-                              size="small"
-                              color="error"
-                              variant="outlined"
-                              disabled={sessionsBusy}
-                              onClick={() => handleRevokeSession(session.id)}
-                              sx={{ textTransform: 'none', alignSelf: { xs: 'stretch', sm: 'center' } }}
-                            >
-                              Завершить
-                            </Button>
-                          )}
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    sx={{ mt: 3 }}
-                  >
-                    <Button
-                      variant="outlined"
-                      disabled={sessionsBusy || authSessions.filter((s) => !s.current).length === 0}
-                      onClick={handleRevokeOtherSessions}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Завершить все другие сессии
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      disabled={sessionsBusy}
-                      onClick={handleRevokeAllSessions}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Выйти везде
-                    </Button>
-                  </Stack>
-                </Paper>
+                <ActiveSessionsPanel onLogoutEverywhere={logout} />
               </Grid>
             </Grid>
           </TabPanel>

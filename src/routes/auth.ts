@@ -14,10 +14,6 @@ import {
   changeEmail,
   requestPasswordReset,
   logout,
-  getAuthSessions,
-  revokeAuthSession,
-  revokeOtherAuthSessionsHandler,
-  revokeAllAuthSessionsHandler,
   verifyToken,
   validateRegister,
   validateLogin,
@@ -69,6 +65,10 @@ import {
   qrLoginDeny,
   getLoginSecurity,
   updateLoginSecurity,
+  listLoginActorSessions,
+  revokeLoginActorSession,
+  revokeOtherLoginActorSessions,
+  revokeAllLoginActorSessions,
   validateLoginIdentifier,
   validateQrStart,
   validateLoginCode,
@@ -98,6 +98,12 @@ router.post('/login/qr/approve', authenticateLoginActor, validateQrApprove, qrLo
 router.post('/login/qr/deny', authenticateLoginActor, validateQrApprove, qrLoginDeny);
 router.get('/security', authenticateLoginActor, getLoginSecurity);
 router.put('/security', authenticateLoginActor, updateLoginSecurity);
+
+// Активные сессии + QR-скан для любой роли единого входа
+router.get('/sessions', authenticateLoginActor, listLoginActorSessions);
+router.delete('/sessions/others', authenticateLoginActor, revokeOtherLoginActorSessions);
+router.delete('/sessions', authenticateLoginActor, revokeAllLoginActorSessions);
+router.delete('/sessions/:id', authenticateLoginActor, revokeLoginActorSession);
 
 // Public routes
 router.post('/register', validateRegister, register);
@@ -136,10 +142,6 @@ router.put('/profile', validateUpdateProfile, updateProfile);
 router.post('/change-password', validateChangePassword, changePassword);
 router.post('/change-email', validateChangeEmail, changeEmail);
 router.post('/logout', logout);
-router.get('/sessions', getAuthSessions);
-router.delete('/sessions/others', revokeOtherAuthSessionsHandler);
-router.delete('/sessions', revokeAllAuthSessionsHandler);
-router.delete('/sessions/:id', revokeAuthSession);
 router.get('/verify', verifyToken);
 
 router.post('/users', requireOwnerOrAdmin, validateCreateUser, createUser);

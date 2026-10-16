@@ -3,6 +3,7 @@ import { Box, Button, List, ListItem, ListItemText, Typography } from '@mui/mate
 import NotificationSettingsPanel from '../../components/notifications/NotificationSettingsPanel';
 import SchoolOffersPanel from '../../components/notifications/SchoolOffersPanel';
 import Email2faSettingsToggle from '../../components/auth/Email2faSettingsToggle';
+import ActiveSessionsPanel from '../../components/auth/ActiveSessionsPanel';
 import { apiService } from '../../services/api';
 
 const SaNotificationsTab: React.FC = () => {
@@ -53,8 +54,9 @@ const SaNotificationsTab: React.FC = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Чаты и публикации в «Новости». Алерты нагрузки сервера настраиваются во вкладке «Мониторинг».
       </Typography>
-      <Box sx={{ mb: 3 }}>
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Email2faSettingsToggle />
+        <ActiveSessionsPanel />
       </Box>
       <NotificationSettingsPanel actor="superAdmin" showChangelog />
       <SchoolOffersPanel />

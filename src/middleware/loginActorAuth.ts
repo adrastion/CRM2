@@ -37,6 +37,8 @@ export const authenticateLoginActor = asyncHandler(async (
     return;
   }
 
+  req.authSessionId = typeof decoded.jti === 'string' ? decoded.jti : undefined;
+
   if (decoded.type === 'client' && decoded.clientId) {
     (req as any).client = { id: decoded.clientId };
     next();
