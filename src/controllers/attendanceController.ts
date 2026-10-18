@@ -87,8 +87,7 @@ async function applyClientBillingForPresent(params: {
  * Начисление тренеру по схеме per_training_person.
  * Идемпотентно (уникальность attendanceId в реестре).
  * Не зависит от group.trainingPrice — ставка берётся из настроек тренера.
- * При снятии PRESENT / платного пропуска — откат начисления.
- * Клиентский абонемент: платный пропуск не начисляет зарплату.
+ * ЗП начисляется только за PRESENT; пропуски (в т.ч. со списанием с клиента) — откат.
  */
 async function accrueTrainerForAttendanceStatus(params: {
   tenantId: string;
@@ -96,31 +95,17 @@ async function accrueTrainerForAttendanceStatus(params: {
   clientId: string;
   trainingId: string;
   status: string;
-  /** true = не списывать с клиента (галочка «не брать плату») */
+  /** true = не списывать с клиента (для биллинга; на ЗП не влияет) */
   shouldCharge: boolean;
 }) {
   const isPresent = params.status === 'PRESENT';
-  const isPaidMiss =
-    (params.status === 'ABSENT' || params.status === 'EXCUSED') && !params.shouldCharge;
 
-  if (!isPresent && !isPaidMiss) {
+  if (!isPresent) {
     await reverseForAttendance({
       tenantId: params.tenantId,
       attendanceId: params.attendanceId,
     }).catch((err) => console.error('Trainer salary reverse failed:', err));
     return;
-  }
-
-  // Клиентский абонемент: пропуск не даёт фикс «за человека»
-  if (isPaidMiss) {
-    const clientPack = await findActiveClientMembership(params.clientId, params.tenantId);
-    if (clientPack) {
-      await reverseForAttendance({
-        tenantId: params.tenantId,
-        attendanceId: params.attendanceId,
-      }).catch((err) => console.error('Trainer salary reverse failed:', err));
-      return;
-    }
   }
 
   const training = await prisma.training.findFirst({
@@ -150,7 +135,7 @@ async function accrueTrainerForAttendanceStatus(params: {
     clientId: params.clientId,
     trainingTitle: training.title,
     trainingStart: training.startTime,
-    isMissed: isPaidMiss,
+    isMissed: false,
   });
 }
 

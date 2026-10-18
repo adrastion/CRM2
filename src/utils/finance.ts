@@ -21,13 +21,7 @@ export async function calculateTrainerEarnings(
     include: {
       group: true,
       attendances: {
-        where: {
-          OR: [
-            { status: 'PRESENT' },
-            { status: 'ABSENT', shouldCharge: false }, // shouldCharge=false означает списывать средства
-            { status: 'EXCUSED', shouldCharge: false } // shouldCharge=false означает списывать средства
-          ]
-        },
+        where: { status: 'PRESENT' },
         include: { client: true }
       }
     }
@@ -118,13 +112,7 @@ export async function calculateTrainerEarningsForAttendance(
         }
       },
       attendances: {
-        where: {
-          OR: [
-            { status: 'PRESENT' },
-            { status: 'ABSENT', shouldCharge: false }, // shouldCharge=false означает списывать средства
-            { status: 'EXCUSED', shouldCharge: false } // shouldCharge=false означает списывать средства
-          ]
-        },
+        where: { status: 'PRESENT' },
         include: { client: true }
       }
     }

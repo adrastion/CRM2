@@ -235,8 +235,8 @@ async function notifySalaryIfCreated(
 }
 
 /**
- * V1: фикс за тренировку с человека — при PRESENT / платном пропуске.
- * Платный пропуск при активном клиентском абонементе не начисляется.
+ * V1: фикс за тренировку с человека — только за фактическое посещение (PRESENT).
+ * Пропуски не начисляются.
  */
 export async function accrueForAttendance(params: {
   tenantId: string;
@@ -246,13 +246,10 @@ export async function accrueForAttendance(params: {
   clientId: string;
   trainingTitle?: string;
   trainingStart?: Date;
+  /** @deprecated пропуски больше не начисляются; при true — no-op */
   isMissed?: boolean;
 }): Promise<number> {
-  if (params.isMissed) {
-    const { findActiveClientMembership } = await import('./clientMembershipService');
-    const clientPack = await findActiveClientMembership(params.clientId, params.tenantId);
-    if (clientPack) return 0;
-  }
+  if (params.isMissed) return 0;
 
   const trainer = await prisma.trainer.findFirst({
     where: { id: params.trainerId, tenantId: params.tenantId },
@@ -277,9 +274,7 @@ export async function accrueForAttendance(params: {
   if (!client) return 0;
 
   const personName = formatPersonName(client);
-  const comment = params.isMissed
-    ? 'посещение тренировки (пропуск со списанием)'
-    : 'посещение тренировки';
+  const comment = 'посещение тренировки';
   const title = personName;
 
   const result = await createLedgerAndUpdateBalance({

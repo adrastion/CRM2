@@ -1366,25 +1366,6 @@ const Schedule: React.FC = () => {
     );
   };
 
-  const handleShouldChargeChange = (clientId: string, shouldCharge: boolean) => {
-    setAttendanceData(prev => 
-      prev.map(item => {
-        if (item.client.id === clientId) {
-          if (item.attendance) {
-            return {
-              ...item,
-              attendance: {
-                ...item.attendance,
-                shouldCharge: shouldCharge
-              } as Attendance
-            };
-          }
-        }
-        return item;
-      })
-    );
-  };
-
   const handleSaveAttendance = async () => {
     if (!selectedTraining) return;
 
@@ -4366,7 +4347,6 @@ const Schedule: React.FC = () => {
                       <TableCell align="center">Присутствовал</TableCell>
                       <TableCell align="center">Отсутствовал</TableCell>
                       <TableCell align="center">Уважительная причина</TableCell>
-                      <TableCell align="center">Списать средства</TableCell>
                       <TableCell>Примечания</TableCell>
                     </TableRow>
                   </TableHead>
@@ -4428,18 +4408,6 @@ const Schedule: React.FC = () => {
                               onChange={() => handleAttendanceStatusChange(item.client.id, 'EXCUSED' as 'PRESENT' | 'ABSENT' | 'EXCUSED')}
                               value="EXCUSED"
                             />
-                          </TableCell>
-                          <TableCell align="center">
-                            {(currentStatus === 'ABSENT' || currentStatus === 'EXCUSED') && (
-                              <Checkbox
-                                checked={item.attendance?.shouldCharge !== undefined ? item.attendance.shouldCharge : (currentStatus === 'EXCUSED')}
-                                onChange={(e) => handleShouldChargeChange(item.client.id, e.target.checked)}
-                                title="Не списывать средства за пропуск"
-                              />
-                            )}
-                            {currentStatus === 'PRESENT' && (
-                              <Typography variant="body2" color="text.secondary">-</Typography>
-                            )}
                           </TableCell>
                           <TableCell>
                             <TextField
