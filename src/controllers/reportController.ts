@@ -55,11 +55,12 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
       presentAttendances,
       upcomingTrainings
     ] = await Promise.all([
-      // Total clients - для тренера только клиенты его групп
+      // Всего клиентов — без soft-deleted (isActive: false), как в списке клиентов
       trainer && trainerGroupIds.length > 0
         ? prisma.client.count({
             where: {
               tenantId,
+              isActive: true,
               groupMemberships: {
                 some: {
                   groupId: { in: trainerGroupIds },
@@ -69,7 +70,7 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
             }
           })
         : prisma.client.count({
-            where: { tenantId }
+            where: { tenantId, isActive: true }
           }),
       // Active clients - для тренера только активные клиенты его групп
       trainer && trainerGroupIds.length > 0

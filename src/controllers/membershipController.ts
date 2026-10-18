@@ -334,28 +334,45 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
 export const deleteMembership = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const tenantId = req.tenant?.id;
     const membership = await prisma.membership.findFirst({
-      where: { id, tenantId: req.tenant?.id },
-      include: { clientMemberships: true, payments: true, membershipGroups: true },
+      where: { id, tenantId },
+      include: {
+        clientMemberships: { include: { client: { select: { id: true, isActive: true } } } },
+        membershipGroups: true,
+      },
     });
     if (!membership) {
       res.status(404).json({ success: false, error: 'Абонемент не найден' });
       return;
     }
-    if (membership.clientMemberships.length > 0 || membership.payments.length > 0) {
+    // «Используется» = выдан хотя бы одному активному клиенту.
+    // Soft-deleted клиенты и история платежей не должны блокировать удаление шаблона.
+    const usedByActiveClients = membership.clientMemberships.some((cm) => cm.client.isActive);
+    if (usedByActiveClients) {
       res.status(400).json({
         success: false,
         error: 'Нельзя удалить абонемент, который используется. Деактивируйте его.',
       });
       return;
     }
-    for (const link of membership.membershipGroups) {
-      await prisma.group.update({
-        where: { id: link.groupId },
-        data: { isMonthlyPayment: false, monthlyPaymentAmount: null, paymentDueDay: null },
+
+    await prisma.$transaction(async (tx) => {
+      for (const link of membership.membershipGroups) {
+        await tx.group.update({
+          where: { id: link.groupId },
+          data: { isMonthlyPayment: false, monthlyPaymentAmount: null, paymentDueDay: null },
+        });
+      }
+      // Связи удалённых клиентов и история платежей: отвязать, платежи оставить
+      await tx.clientMembership.deleteMany({ where: { membershipId: id, tenantId } });
+      await tx.payment.updateMany({
+        where: { membershipId: id, tenantId },
+        data: { membershipId: null },
       });
-    }
-    await prisma.membership.delete({ where: { id } });
+      await tx.membership.delete({ where: { id } });
+    });
+
     res.json({ success: true, message: 'Абонемент успешно удалён' });
   } catch (error) {
     console.error('Delete membership error:', error);
