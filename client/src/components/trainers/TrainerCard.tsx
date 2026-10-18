@@ -41,7 +41,8 @@ import { Branch, Trainer } from '../../types';
 import PasswordField from '../common/PasswordField';
 import { validateTrainerForm } from '../../utils/validation';
 import {
-  normalizeSalaryScheme,
+  resolveTrainerCardScheme,
+  resolveTrainerSalaryScheme,
   salaryRateFieldLabel,
   salarySchemeHint,
   salarySchemeLabel,
@@ -123,12 +124,9 @@ function buildFormFromEmployee(employee: any) {
     coachCategory: employee.coachCategory || '',
     judgeCategory: employee.judgeCategory || '',
     achievements: employee.achievements || '',
-    salaryScheme:
-      normalizeSalaryScheme(employee.salaryScheme || employee.salaryType) === TRAINER_FIXED_MONTHLY
-        ? TRAINER_FIXED_MONTHLY
-        : '',
+    salaryScheme: resolveTrainerCardScheme(employee.salaryScheme, employee.salaryType),
     salaryRate:
-      normalizeSalaryScheme(employee.salaryScheme || employee.salaryType) === TRAINER_FIXED_MONTHLY
+      resolveTrainerCardScheme(employee.salaryScheme, employee.salaryType) === TRAINER_FIXED_MONTHLY
         ? String(employee.salaryRate ?? employee.salaryAmount ?? '')
         : '',
     individualTrainingPrice:
@@ -477,7 +475,7 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
     }
   };
 
-  const salaryScheme = normalizeSalaryScheme(employee?.salaryScheme || employee?.salaryType);
+  const salaryScheme = resolveTrainerSalaryScheme(employee?.salaryScheme, employee?.salaryType);
   const balance = employee?.balance;
 
   if (loading && !employee) {
@@ -802,6 +800,10 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
                   <Select
                     value={formData.salaryScheme}
                     label="Зарплата сотрудника"
+                    displayEmpty
+                    renderValue={(v) =>
+                      v === TRAINER_FIXED_MONTHLY ? 'Фикс плата в месяц' : 'На группах'
+                    }
                     onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
                   >
                     <MenuItem value="">На группах</MenuItem>

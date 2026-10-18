@@ -373,6 +373,99 @@ export async function reverseForAttendance(params: {
 }
 
 /**
+ * Удаляет ошибочные начисления «фикс с человека» за пропуски:
+ * comment содержит «пропуск со списанием» или attendance не PRESENT / отсутствует.
+ * Откатывает баланс тренера и связанные transaction / financeOperation.
+ */
+export async function purgeInvalidTrainingVisitAccruals(params?: {
+  tenantId?: string;
+  trainerId?: string;
+}): Promise<{ reversedCount: number; reversedTotal: number }> {
+  const where: {
+    kind: string;
+    tenantId?: string;
+    trainerId?: string;
+  } = { kind: 'training_visit' };
+  if (params?.tenantId) where.tenantId = params.tenantId;
+  if (params?.trainerId) where.trainerId = params.trainerId;
+
+  const rows = await prisma.trainerSalaryLedger.findMany({
+    where,
+    select: {
+      id: true,
+      tenantId: true,
+      trainerId: true,
+      amount: true,
+      comment: true,
+      attendanceId: true,
+    },
+  });
+
+  if (rows.length === 0) return { reversedCount: 0, reversedTotal: 0 };
+
+  const attendanceIds = [
+    ...new Set(rows.map((r) => r.attendanceId).filter((id): id is string => Boolean(id))),
+  ];
+  const attendances =
+    attendanceIds.length > 0
+      ? await prisma.attendance.findMany({
+          where: { id: { in: attendanceIds } },
+          select: { id: true, status: true },
+        })
+      : [];
+  const statusById = new Map(attendances.map((a) => [a.id, a.status]));
+
+  const invalid = rows.filter((r) => {
+    if (r.comment.includes('пропуск со списанием')) return true;
+    if (!r.attendanceId) return true;
+    const status = statusById.get(r.attendanceId);
+    return !status || status !== 'PRESENT';
+  });
+
+  let reversedCount = 0;
+  let reversedTotal = 0;
+  const seenAttendance = new Set<string>();
+
+  for (const row of invalid) {
+    if (row.attendanceId) {
+      if (seenAttendance.has(row.attendanceId)) continue;
+      seenAttendance.add(row.attendanceId);
+      const amount = await reverseForAttendance({
+        tenantId: row.tenantId,
+        attendanceId: row.attendanceId,
+      });
+      if (amount > 0) {
+        reversedCount += 1;
+        reversedTotal += amount;
+      } else {
+        // reverse мог вернуть 0 если уже удалили — всё равно считаем попытку
+        const still = await prisma.trainerSalaryLedger.findUnique({ where: { id: row.id } });
+        if (!still) {
+          reversedCount += 1;
+        }
+      }
+      continue;
+    }
+
+    // Без attendanceId — точечный откат одной строки
+    const amount = Number(row.amount);
+    await prisma.$transaction(async (tx) => {
+      await tx.trainerSalaryLedger.delete({ where: { id: row.id } }).catch(() => undefined);
+      if (Number.isFinite(amount) && amount !== 0) {
+        await tx.trainer.update({
+          where: { id: row.trainerId },
+          data: { balance: { decrement: amount } },
+        });
+      }
+    });
+    reversedCount += 1;
+    if (Number.isFinite(amount) && amount !== 0) reversedTotal += amount;
+  }
+
+  return { reversedCount, reversedTotal };
+}
+
+/**
  * Откат начисления тренеру по paymentId (отмена дохода / отмена оплаты).
  * Идемпотентно: если записей нет — no-op.
  */
@@ -941,6 +1034,8 @@ export async function backfillTrainingVisitAccruals(tenantId: string): Promise<{
   accruedCount: number;
   accruedTotal: number;
 }> {
+  await purgeInvalidTrainingVisitAccruals({ tenantId });
+
   const rows = await prisma.attendance.findMany({
     where: { tenantId, status: 'PRESENT' },
     include: {

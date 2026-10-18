@@ -49,6 +49,46 @@ export function normalizeSalaryScheme(value?: string | null): SalarySchemeValue 
   return LEGACY_MAP[value] || 'per_training_person';
 }
 
+const KNOWN_SCHEMES = SALARY_SCHEME_OPTIONS.map((o) => o.value) as SalarySchemeValue[];
+
+/**
+ * Как серверный resolveScheme: учитывает конфликт default salaryScheme + legacy salaryType
+ * (например salaryScheme=per_training_person и salaryType=fixed → fixed_monthly).
+ */
+export function resolveTrainerSalaryScheme(
+  salaryScheme?: string | null,
+  salaryType?: string | null
+): SalarySchemeValue {
+  const s = salaryScheme;
+  const legacy = salaryType;
+
+  if (s && (KNOWN_SCHEMES as string[]).includes(s)) {
+    const scheme = s as SalarySchemeValue;
+    if (
+      scheme === 'per_training_person' &&
+      legacy &&
+      !['per_student', 'per_training', 'per_training_person'].includes(legacy) &&
+      !(KNOWN_SCHEMES as string[]).includes(legacy)
+    ) {
+      // fall through to legacy mapping
+    } else {
+      return scheme;
+    }
+  }
+
+  return normalizeSalaryScheme(legacy || s);
+}
+
+/** Значение Select на карточке тренера: фикс/мес или «На группах». */
+export function resolveTrainerCardScheme(
+  salaryScheme?: string | null,
+  salaryType?: string | null
+): '' | 'fixed_monthly' {
+  return resolveTrainerSalaryScheme(salaryScheme, salaryType) === 'fixed_monthly'
+    ? 'fixed_monthly'
+    : '';
+}
+
 export function salarySchemeLabel(value?: string | null): string {
   const scheme = normalizeSalaryScheme(value);
   return SALARY_SCHEME_OPTIONS.find((o) => o.value === scheme)?.label || scheme;

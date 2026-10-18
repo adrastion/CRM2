@@ -37,6 +37,7 @@ import {
   ToggleButtonGroup,
   CircularProgress,
   Alert,
+  Snackbar,
   Tabs,
   Tab,
   useMediaQuery,
@@ -186,6 +187,9 @@ const Schedule: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [attendanceDialog, setAttendanceDialog] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   const [athletesListExpanded, setAthletesListExpanded] = useState(false);
   const [sessionPlan, setSessionPlan] = useState<any | null>(null);
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false);
@@ -1391,10 +1395,14 @@ const Schedule: React.FC = () => {
       await fetchData();
       setAttendanceDialog(false);
       setSelectedTraining(null);
-      alert('Посещаемость сохранена');
+      setSnackbarMessage('Посещаемость сохранена');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
     } catch (error) {
       console.error('Error saving attendance:', error);
-      alert('Не удалось сохранить посещаемость');
+      setSnackbarMessage('Не удалось сохранить посещаемость');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
@@ -5246,6 +5254,22 @@ const Schedule: React.FC = () => {
           onStay={editUnsaved.stay}
         />
         {entityCardDialogs}
+
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={4000}
+          onClose={() => setSnackbarOpen(false)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert
+            onClose={() => setSnackbarOpen(false)}
+            severity={snackbarSeverity}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
       </Box>
     </LocalizationProvider>
   );

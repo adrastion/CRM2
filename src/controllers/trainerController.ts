@@ -26,6 +26,7 @@ import {
   accrueFixedMonthlyForTenant,
   backfillTrainingVisitAccruals,
   backfillPaymentAccruals,
+  purgeInvalidTrainingVisitAccruals,
   SCHEME_LABELS,
 } from '../services/trainerSalaryService';
 
@@ -984,22 +985,33 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
 
     const from = startDate ? new Date(startDate as string) : undefined;
     const to = endDate ? new Date(endDate as string) : undefined;
+    await purgeInvalidTrainingVisitAccruals({
+      tenantId: req.tenant!.id,
+      trainerId: id,
+    }).catch((err) => console.error('Purge invalid training visit accruals failed:', err));
+
+    const trainerFresh = await prisma.trainer.findFirst({
+      where: { id, tenantId: req.tenant?.id },
+      include: { user: true },
+    });
+    const trainerView = trainerFresh || trainer;
+
     const ledger = await getTrainerLedger(req.tenant!.id, id, from, to);
-    const scheme = resolveScheme(trainer);
-    const rate = resolveRate(trainer);
+    const scheme = resolveScheme(trainerView);
+    const rate = resolveRate(trainerView);
 
     res.json({
       success: true,
       data: {
         trainer: {
-          id: trainer.id,
-          name: `${trainer.user?.firstName} ${trainer.user?.lastName}`,
+          id: trainerView.id,
+          name: `${trainerView.user?.firstName} ${trainerView.user?.lastName}`,
           salaryScheme: scheme,
           salarySchemeLabel: SCHEME_LABELS[scheme],
           salaryRate: rate,
           salaryType: scheme,
           salaryAmount: rate,
-          balance: Number(trainer.balance || 0),
+          balance: Number(trainerView.balance || 0),
         },
         period: {
           startDate: startDate || null,

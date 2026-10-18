@@ -255,6 +255,18 @@ httpServer.listen(PORT, () => {
     return;
   }
 
+  // Разовая чистка ошибочных начислений ЗП за пропуски (исторические «пропуск со списанием»)
+  void import('./services/trainerSalaryService')
+    .then(({ purgeInvalidTrainingVisitAccruals }) => purgeInvalidTrainingVisitAccruals())
+    .then((r) => {
+      if (r.reversedCount > 0) {
+        console.log(
+          `[Startup] Purged ${r.reversedCount} invalid training_visit accrual(s), total ${r.reversedTotal}`
+        );
+      }
+    })
+    .catch((err) => console.error('[Startup] Purge invalid training visit accruals failed:', err));
+
   // Настройка автоматического создания ежемесячных платежей
   // Запускается каждый день в 00:00 (полночь)
   // Можно изменить время через переменную окружения CRON_MONTHLY_PAYMENTS_TIME (формат: "0 0 * * *")

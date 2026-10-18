@@ -50,7 +50,7 @@ import PasswordField from '../components/common/PasswordField';
 import PlanLimitAlert from '../components/common/PlanLimitAlert';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import {
-  normalizeSalaryScheme,
+  resolveTrainerCardScheme,
   salarySchemeLabel,
   salaryRateFieldLabel,
   salarySchemeHint,
@@ -587,7 +587,7 @@ const Trainers: React.FC = () => {
                       size="small"
                     />
                     {!isAdmin &&
-                      normalizeSalaryScheme(employee.salaryScheme || employee.salaryType) ===
+                      resolveTrainerCardScheme(employee.salaryScheme, employee.salaryType) ===
                         TRAINER_FIXED_MONTHLY && (
                       <Chip
                         label={salarySchemeLabel(TRAINER_FIXED_MONTHLY)}
@@ -685,8 +685,9 @@ const Trainers: React.FC = () => {
                       <TableCell>{isAdmin || isPromoter ? '-' : (employee.qualification || '-')}</TableCell>
                       <TableCell>{isAdmin || isPromoter ? '-' : (employee.experience ? `${employee.experience} лет` : '-')}</TableCell>
                       <TableCell>
-                        {normalizeSalaryScheme(
-                          (employee as any).salaryScheme || employee.salaryType
+                        {resolveTrainerCardScheme(
+                          (employee as any).salaryScheme,
+                          employee.salaryType
                         ) === TRAINER_FIXED_MONTHLY ? (
                           <Chip
                             label={salarySchemeLabel(TRAINER_FIXED_MONTHLY)}
@@ -997,6 +998,10 @@ const Trainers: React.FC = () => {
                 <Select
                   value={selfTrainerForm.salaryScheme}
                   label="Зарплата"
+                  displayEmpty
+                  renderValue={(v) =>
+                    v === TRAINER_FIXED_MONTHLY ? 'Фикс плата в месяц' : 'На группах'
+                  }
                   onChange={(e) =>
                     setSelfTrainerForm((prev) => ({ ...prev, salaryScheme: e.target.value }))
                   }
@@ -1228,6 +1233,10 @@ const Trainers: React.FC = () => {
                     <Select
                       value={formData.salaryScheme}
                       label="Зарплата сотрудника"
+                      displayEmpty
+                      renderValue={(v) =>
+                        v === TRAINER_FIXED_MONTHLY ? 'Фикс плата в месяц' : 'На группах'
+                      }
                       onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
                     >
                       <MenuItem value="">На группах</MenuItem>
@@ -1470,8 +1479,9 @@ const Trainers: React.FC = () => {
                           </Typography>
                           <Chip
                             label={
-                              normalizeSalaryScheme(
-                                earnings.trainer?.salaryScheme || earnings.trainer?.salaryType
+                              resolveTrainerCardScheme(
+                                earnings.trainer?.salaryScheme,
+                                earnings.trainer?.salaryType
                               ) === TRAINER_FIXED_MONTHLY
                                 ? salarySchemeLabel(TRAINER_FIXED_MONTHLY)
                                 : 'На группах'
