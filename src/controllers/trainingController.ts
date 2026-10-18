@@ -84,13 +84,13 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Trainings retrieved successfully'
+      message: 'Тренировки успешно получены'
     });
   } catch (error) {
     console.error('Get trainings error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve trainings'
+      error: 'Не удалось получить список тренировок'
     });
   }
 };
@@ -118,7 +118,7 @@ export const getTrainingById = async (req: AuthenticatedRequest, res: Response) 
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -126,13 +126,13 @@ export const getTrainingById = async (req: AuthenticatedRequest, res: Response) 
     res.json({
       success: true,
       data: training,
-      message: 'Training retrieved successfully'
+      message: 'Тренировка успешно получена'
     });
   } catch (error) {
     console.error('Get training error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve training'
+      error: 'Не удалось получить тренировку'
     });
   }
 };
@@ -144,7 +144,7 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -156,7 +156,7 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     if (!validData.title) {
       res.status(400).json({
         success: false,
-        error: 'Title is required'
+        error: 'Укажите название'
       });
       return;
     }
@@ -164,21 +164,21 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     // if (!validData.groupId) {
     //   res.status(400).json({
     //     success: false,
-    //     error: 'Group ID is required'
+    //     error: 'Требуется ID группы'
     //   });
     //   return;
     // }
     if (!validData.trainerId) {
       res.status(400).json({
         success: false,
-        error: 'Trainer ID is required'
+        error: 'Требуется ID тренера'
       });
       return;
     }
     if (!validData.branchId) {
       res.status(400).json({
         success: false,
-        error: 'Branch ID is required'
+        error: 'Требуется ID филиала'
       });
       return;
     }
@@ -198,14 +198,14 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     if (!validData.startTime) {
       res.status(400).json({
         success: false,
-        error: 'Start time is required'
+        error: 'Укажите время начала'
       });
       return;
     }
     if (!validData.endTime) {
       res.status(400).json({
         success: false,
-        error: 'End time is required'
+        error: 'Укажите время окончания'
       });
       return;
     }
@@ -326,7 +326,7 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
       res.status(200).json({
         success: true,
         data: existingTraining,
-        message: 'Training already exists',
+        message: 'Тренировка уже существует',
         duplicate: true
       });
       return;
@@ -418,13 +418,13 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
     res.status(201).json({
       success: true,
       data: training,
-      message: 'Training created successfully'
+      message: 'Тренировка успешно создана'
     });
   } catch (error: any) {
     console.error('Create training error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to create training',
+      error: error?.message || 'Не удалось создать тренировку',
       details: error?.meta || error
     });
   }
@@ -438,7 +438,7 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -448,7 +448,7 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (!Array.isArray(trainings) || trainings.length === 0) {
       res.status(400).json({
         success: false,
-        error: 'Trainings array is required and must not be empty'
+        error: 'Требуется непустой массив тренировок'
       });
       return;
     }
@@ -456,7 +456,7 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (trainings.length > 50) {
       res.status(400).json({
         success: false,
-        error: 'Maximum 50 trainings can be created in one batch'
+        error: 'За один раз можно создать не более 50 тренировок'
       });
       return;
     }
@@ -489,7 +489,7 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
         if (!validData.title || !validData.trainerId || !validData.branchId || !validData.startTime || !validData.endTime) {
           failedTrainings.push({
             training: trainingData,
-            error: 'Missing required fields'
+            error: 'Не заполнены обязательные поля'
           });
           continue;
         }
@@ -573,7 +573,7 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
       } catch (error: any) {
         failedTrainings.push({
           training: trainingData,
-          error: error?.message || 'Failed to create training'
+          error: error?.message || 'Не удалось создать тренировку'
         });
       }
     }
@@ -586,13 +586,13 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
         createdCount: createdTrainings.length,
         failedCount: failedTrainings.length
       },
-      message: `Created ${createdTrainings.length} trainings, ${failedTrainings.length} failed`
+      message: `Создано тренировок: ${createdTrainings.length}, ошибок: ${failedTrainings.length}`
     });
   } catch (error: any) {
     console.error('Create trainings batch error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to create trainings batch',
+      error: error?.message || 'Не удалось создать пакет тренировок',
       details: error
     });
   }
@@ -613,7 +613,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -741,7 +741,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
       res.json({
         success: true,
         data: updatedTraining,
-        message: `Updated ${seriesTrainings.length} trainings in series successfully`
+        message: `В серии успешно обновлено тренировок: ${seriesTrainings.length}`
       });
     } else {
       // Regular update for single training
@@ -1085,7 +1085,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
         res.json({
           success: true,
           data: updatedTraining,
-          message: 'Training updated successfully'
+          message: 'Тренировка успешно обновлена'
         });
       } catch (prismaError: any) {
         console.error('Prisma update error details:', {
@@ -1101,7 +1101,7 @@ export const updateTraining = async (req: AuthenticatedRequest, res: Response) =
     console.error('Update training error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update training'
+      error: 'Не удалось обновить тренировку'
     });
   }
 };
@@ -1114,7 +1114,7 @@ export const deleteTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -1124,7 +1124,7 @@ export const deleteTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (!Array.isArray(trainingIds) || trainingIds.length === 0) {
       res.status(400).json({
         success: false,
-        error: 'Training IDs array is required and must not be empty'
+        error: 'Требуется непустой массив ID тренировок'
       });
       return;
     }
@@ -1132,7 +1132,7 @@ export const deleteTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
     if (trainingIds.length > 50) {
       res.status(400).json({
         success: false,
-        error: 'Maximum 50 trainings can be deleted in one batch'
+        error: 'За один раз можно удалить не более 50 тренировок'
       });
       return;
     }
@@ -1151,14 +1151,14 @@ export const deleteTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
 
     res.json({
       success: true,
-      message: `Deleted ${result.count} trainings successfully`,
+      message: `Успешно удалено тренировок: ${result.count}`,
       deletedCount: result.count
     });
   } catch (error: any) {
     console.error('Delete trainings batch error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to delete trainings batch',
+      error: error?.message || 'Не удалось удалить пакет тренировок',
       details: error
     });
   }
@@ -1178,7 +1178,7 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -1201,13 +1201,13 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
 
     res.json({
       success: true,
-      message: 'Training deleted successfully'
+      message: 'Тренировка успешно удалена'
     });
   } catch (error) {
     console.error('Delete training error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete training'
+      error: 'Не удалось удалить тренировку'
     });
   }
 };
@@ -1220,7 +1220,7 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -1305,7 +1305,7 @@ export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: R
     console.error('Remove duplicate trainings error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to remove duplicate trainings'
+      error: 'Не удалось удалить дубликаты тренировок'
     });
   }
 };

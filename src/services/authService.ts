@@ -203,7 +203,7 @@ export class AuthService {
     if (matched.length === 0) {
       const anyActive = candidates.some((c) => c.isActive && c.tenant.isActive);
       if (!anyActive) {
-        throw new Error('Account is deactivated');
+        throw new Error('Аккаунт деактивирован');
       }
       throw new Error(LOGIN_FAILED_MESSAGE);
     }
@@ -272,11 +272,11 @@ export class AuthService {
     }
 
     if (!admin.isActive) {
-      throw new Error('Account is deactivated');
+      throw new Error('Аккаунт деактивирован');
     }
 
     if (!admin.tenant.isActive) {
-      throw new Error('Tenant account is deactivated');
+      throw new Error('Аккаунт организации деактивирован');
     }
 
     // Verify password
@@ -288,7 +288,7 @@ export class AuthService {
     // Generate JWT token for promo code admin
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      throw new Error('JWT_SECRET is not configured');
+      throw new Error('JWT_SECRET не настроен');
     }
     
     const token = jwt.sign(
@@ -336,11 +336,11 @@ export class AuthService {
     }
 
     if (!marketer.isActive) {
-      throw new Error('Account is deactivated');
+      throw new Error('Аккаунт деактивирован');
     }
 
     if (marketer.tenantId && marketer.tenant && !marketer.tenant.isActive) {
-      throw new Error('Tenant account is deactivated');
+      throw new Error('Аккаунт организации деактивирован');
     }
 
     // Verify password
@@ -352,7 +352,7 @@ export class AuthService {
     // Generate JWT token for marketer
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      throw new Error('JWT_SECRET is not configured');
+      throw new Error('JWT_SECRET не настроен');
     }
     
     const token = jwt.sign(
@@ -426,7 +426,7 @@ export class AuthService {
 
     if (superAdmin) {
       if (!superAdmin.isActive) {
-        throw new Error('Account is deactivated');
+        throw new Error('Аккаунт деактивирован');
       }
       const isPasswordValid = await bcrypt.compare(password, superAdmin.password);
       if (!isPasswordValid) {
@@ -434,7 +434,7 @@ export class AuthService {
       }
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
-        throw new Error('JWT_SECRET is not configured');
+        throw new Error('JWT_SECRET не настроен');
       }
       const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
       const authSession = await createAuthSession({
@@ -476,7 +476,7 @@ export class AuthService {
 
     if (staff) {
       if (!staff.isActive) {
-        throw new Error('Account is deactivated');
+        throw new Error('Аккаунт деактивирован');
       }
       const ok = await bcrypt.compare(password, staff.password);
       if (!ok) {
@@ -484,7 +484,7 @@ export class AuthService {
       }
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
-        throw new Error('JWT_SECRET is not configured');
+        throw new Error('JWT_SECRET не настроен');
       }
       const token = jwt.sign(
         {
@@ -530,7 +530,7 @@ export class AuthService {
     tenantId: string;
   }) {
     if (data.role !== 'ADMIN' && data.role !== 'TRAINER' && data.role !== 'PROMOTER') {
-      throw new Error('Role must be ADMIN, TRAINER or PROMOTER');
+      throw new Error('Роль должна быть ADMIN, TRAINER или PROMOTER');
     }
 
     await assertStaffRoleWithinLimit(data.tenantId, data.role);
@@ -543,7 +543,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new Error('Email is already registered');
+      throw new Error('Email уже зарегистрирован');
     }
 
     // Hash password
@@ -595,13 +595,13 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error('Пользователь не найден');
     }
 
     // Verify current password
     const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isCurrentPasswordValid) {
-      throw new Error('Current password is incorrect');
+      throw new Error('Текущий пароль неверен');
     }
 
     // Hash new password
@@ -614,7 +614,7 @@ export class AuthService {
     });
     await revokeSessionsOnVersionBump('USER', userId);
 
-    return { message: 'Password changed successfully' };
+    return { message: 'Пароль успешно изменён' };
   }
 
   /**
@@ -626,13 +626,13 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error('Пользователь не найден');
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      throw new Error('Password is incorrect');
+      throw new Error('Неверный пароль');
     }
 
     // Check if email is already taken in this school
@@ -645,7 +645,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new Error('Email already in use');
+      throw new Error('Email уже используется');
     }
 
     // Update email — сбрасываем подтверждение
@@ -654,7 +654,7 @@ export class AuthService {
       data: { email: newEmail.toLowerCase(), emailVerified: false }
     });
 
-    return { message: 'Email changed successfully', email: newEmail.toLowerCase() };
+    return { message: 'Email успешно изменён', email: newEmail.toLowerCase() };
   }
 
   /**
@@ -719,7 +719,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new Error('Пользователь не найден');
     }
 
     const { getSeniorAccessMeta } = await import('../utils/branchAccess');
@@ -848,7 +848,7 @@ export class AuthService {
     });
 
     if (!currentUser) {
-      throw new Error('User not found');
+      throw new Error('Пользователь не найден');
     }
 
     const updateData: any = {
@@ -870,7 +870,7 @@ export class AuthService {
       });
 
       if (existingUser) {
-        throw new Error('Email is already registered');
+        throw new Error('Email уже зарегистрирован');
       }
       updateData.email = normalizedEmail;
     }

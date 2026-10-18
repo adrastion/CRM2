@@ -52,16 +52,16 @@ export function hasCertificateFile(value: unknown): boolean {
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
   const match = dataUrl.trim().match(/^data:([^;]+);base64,(.+)$/i);
   if (!match) {
-    throw new Error('Invalid data URL');
+    throw new Error('Некорректный data URL');
   }
   const mime = match[1].toLowerCase().trim();
   const buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length) {
-    throw new Error('Empty certificate file');
+    throw new Error('Пустой файл сертификата');
   }
   // ~8 MB raw
   if (buffer.length > 8 * 1024 * 1024) {
-    throw new Error('Certificate file too large');
+    throw new Error('Файл сертификата слишком большой');
   }
   return { mime, buffer };
 }

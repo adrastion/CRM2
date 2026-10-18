@@ -108,7 +108,7 @@ export const getServerMetricsVapidKey = asyncHandler(async (
   if (!publicKey) {
     res.status(503).json({
       success: false,
-      error: 'Push notifications not configured (VAPID keys missing)',
+      error: 'Push-уведомления не настроены (отсутствуют VAPID-ключи)',
     });
     return;
   }
@@ -124,14 +124,14 @@ export const subscribeSuperAdminPush = asyncHandler(async (
 ) => {
   const superAdmin = (req as any).superAdmin;
   if (!superAdmin?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
 
   if (!getVapidPublicKey()) {
     res.status(503).json({
       success: false,
-      error: 'Push notifications not configured',
+      error: 'Push-уведомления не настроены',
     });
     return;
   }
@@ -140,7 +140,7 @@ export const subscribeSuperAdminPush = asyncHandler(async (
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
     res.status(400).json({
       success: false,
-      error: 'Invalid subscription data',
+      error: 'Некорректные данные подписки',
     });
     return;
   }
@@ -169,13 +169,13 @@ export const unsubscribeSuperAdminPush = asyncHandler(async (
 ) => {
   const superAdmin = (req as any).superAdmin;
   if (!superAdmin?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
 
   const endpoint = req.body?.endpoint || req.body?.subscription?.endpoint;
   if (!endpoint) {
-    res.status(400).json({ success: false, error: 'Endpoint is required' });
+    res.status(400).json({ success: false, error: 'Требуется endpoint' });
     return;
   }
 
@@ -193,7 +193,7 @@ export const getSuperAdminPushSubscriptionStatus = asyncHandler(async (
 ) => {
   const superAdmin = (req as any).superAdmin;
   if (!superAdmin?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
 

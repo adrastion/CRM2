@@ -71,7 +71,7 @@ export async function pingSiteVisit(input: {
 }): Promise<{ sessionId: string }> {
   const visitorId = String(input.visitorId || '').trim().slice(0, 64);
   if (!visitorId || visitorId.length < 8) {
-    throw Object.assign(new Error('Invalid visitorId'), { statusCode: 400 });
+    throw Object.assign(new Error('Некорректный visitorId'), { statusCode: 400 });
   }
 
   const now = new Date();

@@ -260,7 +260,7 @@ export const listFeatureIdeasAdmin = asyncHandler(async (req: Request, res: Resp
 export const acceptFeatureIdea = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const id = req.params.id;
@@ -319,7 +319,7 @@ export const acceptFeatureIdea = asyncHandler(async (req: Request, res: Response
 export const rejectFeatureIdea = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const id = req.params.id;

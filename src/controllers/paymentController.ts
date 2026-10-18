@@ -403,13 +403,13 @@ export const getPayments = async (req: AuthenticatedRequest, res: Response) => {
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Payments retrieved successfully'
+      message: 'Платежи успешно получены'
     });
   } catch (error) {
     console.error('Get payments error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve payments'
+      error: 'Не удалось получить список платежей'
     });
   }
 };
@@ -433,7 +433,7 @@ export const getPaymentById = async (req: AuthenticatedRequest, res: Response) =
     if (!payment) {
       res.status(404).json({
         success: false,
-        error: 'Payment not found'
+        error: 'Платёж не найден'
       });
       return;
     }
@@ -441,13 +441,13 @@ export const getPaymentById = async (req: AuthenticatedRequest, res: Response) =
     res.json({
       success: true,
       data: payment,
-      message: 'Payment retrieved successfully'
+      message: 'Платёж успешно получен'
     });
   } catch (error) {
     console.error('Get payment error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve payment'
+      error: 'Не удалось получить платёж'
     });
   }
 };
@@ -640,13 +640,13 @@ export const createPayment = async (req: AuthenticatedRequest, res: Response) =>
     res.status(201).json({
       success: true,
       data: payment,
-      message: 'Payment created successfully'
+      message: 'Платёж успешно создан'
     });
   } catch (error) {
     console.error('Create payment error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create payment'
+      error: 'Не удалось создать платёж'
     });
   }
 };
@@ -665,7 +665,7 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
     if (!payment) {
       res.status(404).json({
         success: false,
-        error: 'Payment not found'
+        error: 'Платёж не найден'
       });
       return;
     }
@@ -738,13 +738,13 @@ export const updatePayment = async (req: AuthenticatedRequest, res: Response) =>
     res.json({
       success: true,
       data: updatedPayment,
-      message: 'Payment updated successfully'
+      message: 'Платёж успешно обновлён'
     });
   } catch (error) {
     console.error('Update payment error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update payment'
+      error: 'Не удалось обновить платёж'
     });
   }
 };
@@ -1072,7 +1072,7 @@ export const deletePayment = async (req: AuthenticatedRequest, res: Response) =>
     const { id } = req.params;
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -1083,7 +1083,7 @@ export const deletePayment = async (req: AuthenticatedRequest, res: Response) =>
     if (!payment) {
       res.status(404).json({
         success: false,
-        error: 'Payment not found'
+        error: 'Платёж не найден'
       });
       return;
     }
@@ -1136,13 +1136,13 @@ export const deletePayment = async (req: AuthenticatedRequest, res: Response) =>
 
     res.json({
       success: true,
-      message: 'Payment deleted successfully'
+      message: 'Платёж успешно удалён'
     });
   } catch (error) {
     console.error('Delete payment error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete payment'
+      error: 'Не удалось удалить платёж'
     });
   }
 };
@@ -1156,7 +1156,7 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -1230,13 +1230,13 @@ export const createMonthlyPayments = async (req: AuthenticatedRequest, res: Resp
         payments: createdPayments,
         errorDetails: errors
       },
-      message: `Created ${createdPayments.length} monthly payments${errors.length > 0 ? `, ${errors.length} errors` : ''}`
+      message: `Создано ежемесячных платежей: ${createdPayments.length}${errors.length > 0 ? `, ошибок: ${errors.length}` : ''}`
     });
   } catch (error) {
     console.error('Create monthly payments error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create monthly payments'
+      error: 'Не удалось создать ежемесячные платежи'
     });
   }
 };
@@ -1383,7 +1383,7 @@ export const recalculateMonthlyPayment = async (req: AuthenticatedRequest, res: 
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
       res.status(403).json({
         success: false,
-        error: 'Only owners and administrators can recalculate payments'
+        error: 'Пересчитывать платежи могут только владельцы и администраторы'
       });
       return;
     }
@@ -1391,7 +1391,7 @@ export const recalculateMonthlyPayment = async (req: AuthenticatedRequest, res: 
     if (!newAmount || isNaN(Number(newAmount)) || Number(newAmount) <= 0) {
       res.status(400).json({
         success: false,
-        error: 'Valid newAmount is required'
+        error: 'Укажите корректную новую сумму'
       });
       return;
     }
@@ -1407,7 +1407,7 @@ export const recalculateMonthlyPayment = async (req: AuthenticatedRequest, res: 
     if (!payment) {
       res.status(404).json({
         success: false,
-        error: 'Monthly payment not found'
+        error: 'Ежемесячный платёж не найден'
       });
       return;
     }
@@ -1431,13 +1431,13 @@ export const recalculateMonthlyPayment = async (req: AuthenticatedRequest, res: 
     res.json({
       success: true,
       data: updatedPayment,
-      message: 'Payment recalculated successfully'
+      message: 'Платёж успешно пересчитан'
     });
   } catch (error) {
     console.error('Recalculate payment error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to recalculate payment'
+      error: 'Не удалось пересчитать платёж'
     });
   }
 };

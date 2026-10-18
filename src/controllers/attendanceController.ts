@@ -203,13 +203,13 @@ export const getAttendances = async (req: AuthenticatedRequest, res: Response) =
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Attendances retrieved successfully'
+      message: 'Посещаемость успешно получена'
     });
   } catch (error) {
     console.error('Get attendances error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve attendances'
+      error: 'Не удалось получить список посещаемости'
     });
   }
 };
@@ -241,7 +241,7 @@ export const getAttendanceById = async (req: AuthenticatedRequest, res: Response
     if (!attendance) {
       res.status(404).json({
         success: false,
-        error: 'Attendance not found'
+        error: 'Отметка посещаемости не найдена'
       });
       return;
     }
@@ -249,13 +249,13 @@ export const getAttendanceById = async (req: AuthenticatedRequest, res: Response
     res.json({
       success: true,
       data: attendance,
-      message: 'Attendance retrieved successfully'
+      message: 'Отметка посещаемости успешно получена'
     });
   } catch (error) {
     console.error('Get attendance error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve attendance'
+      error: 'Не удалось получить отметку посещаемости'
     });
   }
 };
@@ -287,7 +287,7 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -362,13 +362,13 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
         training,
         clients: result
       },
-      message: 'Training attendance retrieved successfully'
+      message: 'Посещаемость тренировки успешно получена'
     });
   } catch (error) {
     console.error('Get training attendances error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve training attendances'
+      error: 'Не удалось получить посещаемость тренировки'
     });
   }
 };
@@ -380,7 +380,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!tenantId) {
       res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
       return;
     }
@@ -390,7 +390,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!clientId || !trainingId || !status) {
       res.status(400).json({
         success: false,
-        error: 'Client ID, Training ID, and status are required'
+        error: 'Требуются ID клиента, ID тренировки и статус'
       });
       return;
     }
@@ -406,7 +406,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -422,7 +422,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!client) {
       res.status(404).json({
         success: false,
-        error: 'Client not found'
+        error: 'Клиент не найден'
       });
       return;
     }
@@ -440,7 +440,7 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     if (existingAttendance) {
       res.status(400).json({
         success: false,
-        error: 'Attendance already exists for this client and training'
+        error: 'Отметка посещаемости для этого клиента и тренировки уже существует'
       });
       return;
     }
@@ -554,19 +554,19 @@ export const createAttendance = async (req: AuthenticatedRequest, res: Response)
     res.status(201).json({
       success: true,
       data: attendance,
-      message: 'Attendance created successfully'
+      message: 'Отметка посещаемости успешно создана'
     });
   } catch (error: any) {
     console.error('Create attendance error:', error);
     if (error.code === 'P2002') {
       res.status(400).json({
         success: false,
-        error: 'Attendance already exists for this client and training'
+        error: 'Отметка посещаемости для этого клиента и тренировки уже существует'
       });
     } else {
       res.status(500).json({
         success: false,
-        error: 'Failed to create attendance'
+        error: 'Не удалось создать отметку посещаемости'
       });
     }
   }
@@ -587,7 +587,7 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!attendance) {
       res.status(404).json({
         success: false,
-        error: 'Attendance not found'
+        error: 'Отметка посещаемости не найдена'
       });
       return;
     }
@@ -652,13 +652,13 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
     res.json({
       success: true,
       data: updatedAttendance,
-      message: 'Attendance updated successfully'
+      message: 'Отметка посещаемости успешно обновлена'
     });
   } catch (error) {
     console.error('Update attendance error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update attendance'
+      error: 'Не удалось обновить отметку посещаемости'
     });
   }
 };
@@ -677,7 +677,7 @@ export const deleteAttendance = async (req: AuthenticatedRequest, res: Response)
     if (!attendance) {
       res.status(404).json({
         success: false,
-        error: 'Attendance not found'
+        error: 'Отметка посещаемости не найдена'
       });
       return;
     }
@@ -703,13 +703,13 @@ export const deleteAttendance = async (req: AuthenticatedRequest, res: Response)
 
     res.json({
       success: true,
-      message: 'Attendance deleted successfully'
+      message: 'Отметка посещаемости успешно удалена'
     });
   } catch (error) {
     console.error('Delete attendance error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete attendance'
+      error: 'Не удалось удалить отметку посещаемости'
     });
   }
 };
@@ -721,7 +721,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     if (!tenantId) {
       res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
       return;
     }
@@ -731,7 +731,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     if (!trainingId || !Array.isArray(attendances)) {
       res.status(400).json({
         success: false,
-        error: 'Training ID and attendances array are required'
+        error: 'Требуются ID тренировки и массив отметок'
       });
       return;
     }
@@ -747,7 +747,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
     if (!training) {
       res.status(404).json({
         success: false,
-        error: 'Training not found'
+        error: 'Тренировка не найдена'
       });
       return;
     }
@@ -762,7 +762,7 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
 
       if (!clientId || !status) {
         console.warn(`Skipping attendance record: missing clientId or status`, att);
-        errors.push({ clientId, error: 'Missing clientId or status' });
+        errors.push({ clientId, error: 'Не указаны clientId или status' });
         continue;
       }
 
@@ -889,13 +889,13 @@ export const bulkUpdateAttendance = async (req: AuthenticatedRequest, res: Respo
       success: true,
       data: results,
       errors: errors.length > 0 ? errors : undefined,
-      message: `Attendances updated successfully. Created/updated: ${results.length}, Errors: ${errors.length}`
+      message: `Посещаемость обновлена. Создано/обновлено: ${results.length}, ошибок: ${errors.length}`
     });
   } catch (error) {
     console.error('Bulk update attendance error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update attendances'
+      error: 'Не удалось обновить посещаемость'
     });
   }
 };
@@ -941,7 +941,7 @@ export const exportAttendanceExcel = async (req: AuthenticatedRequest, res: Resp
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 

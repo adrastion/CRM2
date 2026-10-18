@@ -30,7 +30,7 @@ function actorFromReq(req: Request): ChatActor {
   if (platform?.kind === 'TESTER') return resolveTesterActor(platform.id);
   if ((req as any).superAdmin?.id) return resolveSuperAdminActor((req as any).superAdmin.id);
   if ((req as any).tester?.id) return resolveTesterActor((req as any).tester.id);
-  throw Object.assign(new Error('Unauthorized'), { statusCode: 401 });
+  throw Object.assign(new Error('Не авторизован'), { statusCode: 401 });
 }
 
 function parseMentions(raw: unknown) {

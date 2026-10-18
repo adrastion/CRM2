@@ -80,7 +80,7 @@ export const requireOwnerAdminOrSenior = async (
   next: NextFunction
 ): Promise<void> => {
   if (!req.user) {
-    res.status(401).json({ success: false, error: 'Authentication required' });
+    res.status(401).json({ success: false, error: 'Требуется аутентификация' });
     return;
   }
 
@@ -98,7 +98,7 @@ export const requireOwnerAdminOrSenior = async (
     }
   }
 
-  res.status(403).json({ success: false, error: 'Insufficient permissions' });
+  res.status(403).json({ success: false, error: 'Недостаточно прав' });
 };
 
 /** Пересечение запрошенных branchIds с доступными старшему; для OWNER/ADMIN — без ограничений. */

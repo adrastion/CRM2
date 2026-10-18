@@ -14,7 +14,7 @@ export const getStandards = asyncHandler(async (req: AuthenticatedRequest, res: 
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -83,7 +83,7 @@ export const getStandard = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -114,7 +114,7 @@ export const getStandard = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (!standard) {
     res.status(404).json({
       success: false,
-      error: 'Standard not found'
+      error: 'Норматив не найден'
     });
     return;
   }
@@ -136,7 +136,7 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -144,7 +144,7 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!name) {
     res.status(400).json({
       success: false,
-      error: 'Name is required'
+      error: 'Укажите название'
     });
     return;
   }
@@ -188,7 +188,7 @@ export const createStandard = asyncHandler(async (req: AuthenticatedRequest, res
   res.status(201).json({
     success: true,
     data: standard,
-    message: 'Standard created successfully'
+    message: 'Норматив успешно создан'
   });
 });
 
@@ -204,7 +204,7 @@ export const updateStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -217,7 +217,7 @@ export const updateStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!existingStandard) {
     res.status(404).json({
       success: false,
-      error: 'Standard not found'
+      error: 'Норматив не найден'
     });
     return;
   }
@@ -267,7 +267,7 @@ export const updateStandard = asyncHandler(async (req: AuthenticatedRequest, res
   res.json({
     success: true,
     data: standard,
-    message: 'Standard updated successfully'
+    message: 'Норматив успешно обновлён'
   });
 });
 
@@ -281,7 +281,7 @@ export const deleteStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -294,7 +294,7 @@ export const deleteStandard = asyncHandler(async (req: AuthenticatedRequest, res
   if (!standard) {
     res.status(404).json({
       success: false,
-      error: 'Standard not found'
+      error: 'Норматив не найден'
     });
     return;
   }
@@ -311,7 +311,7 @@ export const deleteStandard = asyncHandler(async (req: AuthenticatedRequest, res
 
   res.json({
     success: true,
-    message: 'Standard deleted successfully'
+    message: 'Норматив успешно удалён'
   });
 });
 
@@ -326,7 +326,7 @@ export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest,
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -351,7 +351,7 @@ export const getClientStandards = asyncHandler(async (req: AuthenticatedRequest,
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -425,7 +425,7 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -450,7 +450,7 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -479,7 +479,7 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
   if (!standard) {
     res.status(404).json({
       success: false,
-      error: 'Standard not found or not available for this client\'s groups'
+      error: 'Норматив не найден или недоступен для групп этого клиента'
     });
     return;
   }
@@ -515,7 +515,7 @@ export const addClientStandard = asyncHandler(async (req: AuthenticatedRequest, 
   res.status(201).json({
     success: true,
     data: clientStandard,
-    message: 'Client standard added successfully'
+    message: 'Норматив клиента успешно добавлен'
   });
 });
 
@@ -530,7 +530,7 @@ export const updateClientStandard = asyncHandler(async (req: AuthenticatedReques
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -550,7 +550,7 @@ export const updateClientStandard = asyncHandler(async (req: AuthenticatedReques
   if (!clientStandard || clientStandard.client.tenantId !== tenantId) {
     res.status(404).json({
       success: false,
-      error: 'Client standard not found'
+      error: 'Норматив клиента не найден'
     });
     return;
   }
@@ -588,7 +588,7 @@ export const updateClientStandard = asyncHandler(async (req: AuthenticatedReques
   res.json({
     success: true,
     data: updated,
-    message: 'Client standard updated successfully'
+    message: 'Норматив клиента успешно обновлён'
   });
 });
 
@@ -602,7 +602,7 @@ export const deleteClientStandard = asyncHandler(async (req: AuthenticatedReques
   if (!tenantId) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
     return;
   }
@@ -621,7 +621,7 @@ export const deleteClientStandard = asyncHandler(async (req: AuthenticatedReques
   if (!clientStandard || clientStandard.client.tenantId !== tenantId) {
     res.status(404).json({
       success: false,
-      error: 'Client standard not found'
+      error: 'Норматив клиента не найден'
     });
     return;
   }
@@ -632,7 +632,7 @@ export const deleteClientStandard = asyncHandler(async (req: AuthenticatedReques
 
   res.json({
     success: true,
-    message: 'Client standard deleted successfully'
+    message: 'Норматив клиента успешно удалён'
   });
 });
 

@@ -582,7 +582,7 @@ export const getClientTrainerCard = asyncHandler(
       throw unauthorized('Требуется авторизация');
     }
     if (!trainerId) {
-      res.status(400).json({ success: false, error: 'Trainer ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID тренера' });
       return;
     }
 

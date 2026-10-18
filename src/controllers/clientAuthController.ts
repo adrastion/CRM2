@@ -39,7 +39,7 @@ async function resolvePortalClientId(req: Request): Promise<PortalClientResolve>
   const userType = (req as any).userType as string | undefined;
   const tenantId = ((req as any).client?.tenantId || (req as any).parent?.tenantId) as string | undefined;
   if (!tenantId || (!authClientId && !authParentId)) {
-    return { ok: false, status: 401, error: 'Unauthorized' };
+    return { ok: false, status: 401, error: 'Не авторизован' };
   }
 
   // Финансовые и данные ЛК — только после подтверждения аккаунта школой
@@ -130,7 +130,7 @@ async function resolvePortalClientId(req: Request): Promise<PortalClientResolve>
     ? authClientId
     : [...allowedIds][0];
   if (!clientId) {
-    return { ok: false, status: 401, error: 'Unauthorized' };
+    return { ok: false, status: 401, error: 'Не авторизован' };
   }
   return { ok: true, clientId, tenantId, userType };
 }
@@ -145,7 +145,7 @@ export const findClientsForRegistration = async (req: Request, res: Response<Api
     if (!phone && !email) {
       return res.status(400).json({
         success: false,
-        error: 'Phone or email is required'
+        error: 'Укажите телефон или email'
       });
     }
 
@@ -215,7 +215,7 @@ export const findClientsForRegistration = async (req: Request, res: Response<Api
     console.error('Find clients for registration error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to find clients'
+      error: 'Не удалось найти клиентов'
     });
   }
 };
@@ -230,7 +230,7 @@ export const registerClient = async (req: Request, res: Response<ApiResponse>) =
     if (!clientId || !tenantId || !password) {
       return res.status(400).json({
         success: false,
-        error: 'Client ID, tenant ID, and password are required'
+        error: 'Требуются ID клиента, ID организации и пароль'
       });
     }
 
@@ -249,7 +249,7 @@ export const registerClient = async (req: Request, res: Response<ApiResponse>) =
     if (!client) {
       return res.status(404).json({
         success: false,
-        error: 'Client not found'
+        error: 'Клиент не найден'
       });
     }
 
@@ -283,13 +283,13 @@ export const registerClient = async (req: Request, res: Response<ApiResponse>) =
 
     return res.json({
       success: true,
-      message: 'Registration successful. Please wait for administrator approval.'
+      message: 'Регистрация успешна. Дождитесь одобрения администратором.'
     });
   } catch (error: any) {
     console.error('Register client error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to register client'
+      error: 'Не удалось зарегистрировать клиента'
     });
   }
 };
@@ -304,7 +304,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
     if ((!phone && !email) || !password || !tenantId) {
       return res.status(400).json({
         success: false,
-        error: 'Phone or email, password, and tenant ID are required'
+        error: 'Укажите телефон или email, пароль и ID организации'
       });
     }
 
@@ -416,7 +416,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!process.env.JWT_SECRET) {
         return res.status(500).json({
           success: false,
-          error: 'JWT_SECRET is not configured'
+          error: 'JWT_SECRET не настроен'
         });
       }
 
@@ -443,7 +443,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!client.tenant) {
         return res.status(500).json({
           success: false,
-          error: 'Tenant not found'
+          error: 'Организация не найдена'
         });
       }
 
@@ -470,7 +470,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
           userType: 'client',
           isAccountApproved: client.isAccountApproved,
         },
-        message: 'Login successful'
+        message: 'Вход выполнен успешно'
       });
     }
 
@@ -504,7 +504,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!process.env.JWT_SECRET) {
         return res.status(500).json({
           success: false,
-          error: 'JWT_SECRET is not configured'
+          error: 'JWT_SECRET не настроен'
         });
       }
 
@@ -531,7 +531,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
       if (!parent.tenant) {
         return res.status(500).json({
           success: false,
-          error: 'Tenant not found'
+          error: 'Организация не найдена'
         });
       }
 
@@ -562,7 +562,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
           userType: 'parent',
           isAccountApproved: parent.isAccountApproved,
         },
-        message: 'Login successful'
+        message: 'Вход выполнен успешно'
       });
     }
 
@@ -574,7 +574,7 @@ export const loginClient = async (req: Request, res: Response<ApiResponse>) => {
     console.error('Login client/parent error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to login'
+      error: 'Не удалось войти'
     });
   }
 };
@@ -593,7 +593,7 @@ export const getClientProfile = async (req: Request, res: Response<ApiResponse>)
     if ((!clientId && !parentId) || !tenantId) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
     }
 
@@ -651,7 +651,7 @@ export const getClientProfile = async (req: Request, res: Response<ApiResponse>)
       if (!client) {
         return res.status(404).json({
           success: false,
-          error: 'Client not found'
+          error: 'Клиент не найден'
         });
       }
 
@@ -722,7 +722,7 @@ export const getClientProfile = async (req: Request, res: Response<ApiResponse>)
       if (!parent) {
         return res.status(404).json({
           success: false,
-          error: 'Parent not found'
+          error: 'Родитель не найден'
         });
       }
 
@@ -744,13 +744,13 @@ export const getClientProfile = async (req: Request, res: Response<ApiResponse>)
 
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized'
+      error: 'Не авторизован'
     });
   } catch (error: any) {
     console.error('Get client/parent profile error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to get profile'
+      error: 'Не удалось получить профиль'
     });
   }
 };
@@ -773,7 +773,7 @@ export const getClientTrainings = async (req: Request, res: Response<ApiResponse
       if (!parent) {
         return res.status(404).json({
           success: false,
-          error: 'Parent not found'
+          error: 'Родитель не найден'
         });
       }
 
@@ -784,7 +784,7 @@ export const getClientTrainings = async (req: Request, res: Response<ApiResponse
     if (!clientId || !tenantId) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
     }
 
@@ -927,7 +927,7 @@ export const getClientTrainings = async (req: Request, res: Response<ApiResponse
     console.error('Get client trainings error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to get client trainings'
+      error: 'Не удалось получить тренировки клиента'
     });
   }
 };
@@ -946,7 +946,7 @@ export const findParentsForRegistration = asyncHandler(async (req: Request, res:
     if (!phone && !email) {
       return res.status(400).json({
         success: false,
-        error: 'Phone or email is required'
+        error: 'Укажите телефон или email'
       });
     }
 
@@ -1028,7 +1028,7 @@ export const findParentsForRegistration = asyncHandler(async (req: Request, res:
     console.error('Find parents for registration error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to find parents'
+      error: 'Не удалось найти родителей'
     });
   }
 });
@@ -1043,7 +1043,7 @@ export const registerParent = asyncHandler(async (req: Request, res: Response<Ap
     if (!parentId || !tenantId || !password) {
       return res.status(400).json({
         success: false,
-        error: 'Parent ID, tenant ID, and password are required'
+        error: 'Требуются ID родителя, ID организации и пароль'
       });
     }
 
@@ -1097,13 +1097,13 @@ export const registerParent = asyncHandler(async (req: Request, res: Response<Ap
 
     return res.json({
       success: true,
-      message: 'Registration successful. Please wait for administrator approval.'
+      message: 'Регистрация успешна. Дождитесь одобрения администратором.'
     });
   } catch (error: any) {
     console.error('Register parent error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to register parent'
+      error: 'Не удалось зарегистрировать родителя'
     });
   }
 });
@@ -1120,7 +1120,7 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
   const requestedId = (req.query.clientId as string | undefined) || authClientId;
 
   if (!tenantId || (!authClientId && !authParentId)) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'Не авторизован' });
   }
 
   const normalizePhone = (phone: string | null | undefined) => {
@@ -1191,7 +1191,7 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
     [...allowedIds][0];
 
   if (!clientId) {
-    return res.status(404).json({ success: false, error: 'Athlete not found' });
+    return res.status(404).json({ success: false, error: 'Спортсмен не найден' });
   }
 
   const client = await prisma.client.findFirst({
@@ -1224,7 +1224,7 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
   });
 
   if (!client) {
-    return res.status(404).json({ success: false, error: 'Client not found' });
+    return res.status(404).json({ success: false, error: 'Клиент не найден' });
   }
 
   const groupIds = client.groupMemberships.map((gm) => gm.groupId).filter(Boolean) as string[];

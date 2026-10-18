@@ -259,7 +259,7 @@ export async function deductFromClientBalance(
   });
 
   if (!client) {
-    throw new Error('Client not found');
+    throw new Error('Клиент не найден');
   }
 
   const currentBalance = Number(client.balance || 0);
@@ -338,7 +338,7 @@ export async function addToTrainerBalance(
   });
 
   if (!trainer) {
-    throw new Error('Trainer not found');
+    throw new Error('Тренер не найден');
   }
 
   const currentBalance = Number(trainer.balance || 0);

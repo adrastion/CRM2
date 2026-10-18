@@ -10,7 +10,7 @@ import { maybeSetAuthCookies } from '../middleware/authCookies';
 export const platformStaffLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    res.status(400).json({ success: false, error: 'Email and password are required' });
+    res.status(400).json({ success: false, error: 'Укажите email и пароль' });
     return;
   }
   const staff = await prisma.platformStaffUser.findUnique({
@@ -27,7 +27,7 @@ export const platformStaffLogin = asyncHandler(async (req: Request, res: Respons
   }
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {
-    res.status(500).json({ success: false, error: 'JWT_SECRET is not configured' });
+    res.status(500).json({ success: false, error: 'JWT_SECRET не настроен' });
     return;
   }
   const token = jwt.sign(
@@ -60,11 +60,11 @@ export const platformStaffChangePassword = asyncHandler(async (req: any, res: Re
   const staff = req.platformStaff as any;
   const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
   if (!currentPassword || !newPassword) {
-    res.status(400).json({ success: false, error: 'currentPassword and newPassword are required' });
+    res.status(400).json({ success: false, error: 'Укажите текущий и новый пароль' });
     return;
   }
   if (newPassword.length < 6) {
-    res.status(400).json({ success: false, error: 'New password must be at least 6 characters' });
+    res.status(400).json({ success: false, error: 'Новый пароль должен содержать не менее 6 символов' });
     return;
   }
   const ok = await bcrypt.compare(currentPassword, staff.password);

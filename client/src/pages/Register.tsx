@@ -138,11 +138,19 @@ const Register: React.FC = () => {
       
       // Translate common errors
       let translatedError = errorMessage;
-      if (errorMessage.includes('Email is already registered') || errorMessage.includes('already exists')) {
+      if (
+        errorMessage.includes('Email is already registered') ||
+        errorMessage.includes('Email уже зарегистрирован') ||
+        errorMessage.includes('already exists') ||
+        errorMessage.includes('уже существует')
+      ) {
         translatedError = 'Этот email уже зарегистрирован. Используйте другой email или войдите в систему.';
-      } else if (errorMessage.includes('Subdomain is already taken')) {
+      } else if (
+        errorMessage.includes('Subdomain is already taken') ||
+        errorMessage.includes('поддомен')
+      ) {
         translatedError = 'Ошибка создания аккаунта. Попробуйте другое название школы.';
-      } else if (errorMessage.includes('validation')) {
+      } else if (errorMessage.includes('validation') || errorMessage.includes('проверки данных')) {
         translatedError = 'Проверьте правильность заполнения всех полей.';
       }
       

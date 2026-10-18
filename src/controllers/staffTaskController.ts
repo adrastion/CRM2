@@ -210,7 +210,7 @@ export const updateStaffTask = asyncHandler(
     if (req.body?.status != null) {
       const status = String(req.body.status).toUpperCase();
       if (!['OPEN', 'DONE', 'CANCELLED'].includes(status)) {
-        throw badRequest('status: OPEN | DONE | CANCELLED', 'status');
+        throw badRequest('status: OPEN, DONE или CANCELLED', 'status');
       }
       data.status = status;
     }
@@ -261,7 +261,7 @@ export const updateStaffTaskStatus = asyncHandler(
     const { id } = req.params;
     const status = String(req.body?.status || '').toUpperCase();
     if (!['OPEN', 'DONE', 'CANCELLED'].includes(status)) {
-      throw badRequest('status: OPEN | DONE | CANCELLED', 'status');
+      throw badRequest('status: OPEN, DONE или CANCELLED', 'status');
     }
 
     const existing = await prisma.staffTask.findFirst({

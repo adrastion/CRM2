@@ -44,7 +44,7 @@ async function getPlatformInternalTenantId(): Promise<string> {
       where: { subdomain: PLATFORM_INTERNAL_SUBDOMAIN },
     });
     if (again) return again.id;
-    throw new Error('Could not create platform internal tenant');
+    throw new Error('Не удалось создать внутреннюю организацию платформы');
   }
 }
 
@@ -119,12 +119,12 @@ function requesterTicketWhere(
 export const requesterCreateSupportTicket = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const requester = req.supportRequester as { kind: string; id: string; tenantId: string } | undefined;
   if (!requester?.tenantId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const { subject, message, channel } = req.body as { subject?: string; message?: string; channel?: string };
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ch: ClientTicketChannel =
@@ -150,7 +150,7 @@ export const requesterCreateSupportTicket = asyncHandler(async (req: any, res: R
 export const requesterListSupportTickets = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const requester = req.supportRequester as { tenantId: string } | undefined;
   if (!requester?.tenantId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const q = req.query.channel as string | undefined;
@@ -174,14 +174,14 @@ export const requesterGetSupportMessages = asyncHandler(async (req: any, res: Re
   const requester = req.supportRequester as { tenantId: string } | undefined;
   const { ticketId } = req.params;
   if (!requester?.tenantId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const ticket = await prisma.supportTicket.findFirst({
     where: requesterTicketWhere(requester.tenantId, ticketId),
   });
   if (!ticket) {
-    res.status(404).json({ success: false, error: 'Ticket not found' });
+    res.status(404).json({ success: false, error: 'Обращение не найдено' });
     return;
   }
   const messages = await prisma.supportTicketMessage.findMany({
@@ -218,18 +218,18 @@ export const requesterPostSupportMessage = asyncHandler(async (req: any, res: Re
   const { ticketId } = req.params;
   const { message } = req.body as { message?: string };
   if (!requester?.tenantId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ticket = await prisma.supportTicket.findFirst({
     where: requesterTicketWhere(requester.tenantId, ticketId),
   });
   if (!ticket || ticket.status === 'CLOSED') {
-    res.status(404).json({ success: false, error: 'Ticket not found or closed' });
+    res.status(404).json({ success: false, error: 'Обращение не найдено или закрыто' });
     return;
   }
   const msg = await prisma.supportTicketMessage.create({
@@ -249,12 +249,12 @@ export const requesterPostSupportMessage = asyncHandler(async (req: any, res: Re
 export const requesterUploadDesignerCallRecording = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const requester = req.supportRequester as { kind: string; id: string; tenantId: string } | undefined;
   if (!requester?.tenantId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const file = req.file as Express.Multer.File | undefined;
   if (!file) {
-    res.status(400).json({ success: false, error: 'File required' });
+    res.status(400).json({ success: false, error: 'Требуется файл' });
     return;
   }
   const { ticketId } = req.params;
@@ -268,7 +268,7 @@ export const requesterUploadDesignerCallRecording = asyncHandler(async (req: any
   });
   if (!ticket || ticket.status === 'CLOSED') {
     fs.unlinkSync(file.path);
-    res.status(404).json({ success: false, error: 'Designer ticket not found or closed' });
+    res.status(404).json({ success: false, error: 'Заявка дизайнера не найдена или закрыта' });
     return;
   }
   const relPath = `call-recordings/${file.filename}`;
@@ -297,16 +297,16 @@ export const clientCreateSupportTicket = asyncHandler(async (req: ClientRequest,
   const clientId = req.client?.id;
   const parentId = req.parent?.id;
   if (!tenantId || (!clientId && !parentId)) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const { channel, subject, message } = req.body as { channel?: string; subject?: string; message?: string };
   if (!channel || !isClientChannel(channel)) {
-    res.status(400).json({ success: false, error: 'channel must be SUPPORT or DESIGNER' });
+    res.status(400).json({ success: false, error: 'channel должен быть SUPPORT или DESIGNER' });
     return;
   }
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ticket = await prisma.supportTicket.create({
@@ -336,7 +336,7 @@ export const clientListSupportTickets = asyncHandler(async (req: ClientRequest, 
   const clientId = req.client?.id;
   const parentId = req.parent?.id;
   if (!tenantId || (!clientId && !parentId)) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const tickets = await prisma.supportTicket.findMany({
@@ -358,7 +358,7 @@ export const clientGetSupportMessages = asyncHandler(async (req: ClientRequest, 
   const parentId = req.parent?.id;
   const { ticketId } = req.params;
   if (!tenantId || (!clientId && !parentId)) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const ticket = await prisma.supportTicket.findFirst({
@@ -369,7 +369,7 @@ export const clientGetSupportMessages = asyncHandler(async (req: ClientRequest, 
     },
   });
   if (!ticket) {
-    res.status(404).json({ success: false, error: 'Ticket not found' });
+    res.status(404).json({ success: false, error: 'Обращение не найдено' });
     return;
   }
   const messages = await prisma.supportTicketMessage.findMany({
@@ -386,11 +386,11 @@ export const clientPostSupportMessage = asyncHandler(async (req: ClientRequest, 
   const { ticketId } = req.params;
   const { message } = req.body as { message?: string };
   if (!tenantId || (!clientId && !parentId)) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ticket = await prisma.supportTicket.findFirst({
@@ -401,7 +401,7 @@ export const clientPostSupportMessage = asyncHandler(async (req: ClientRequest, 
     },
   });
   if (!ticket || ticket.status === 'CLOSED') {
-    res.status(404).json({ success: false, error: 'Ticket not found or closed' });
+    res.status(404).json({ success: false, error: 'Обращение не найдено или закрыто' });
     return;
   }
   const msg = await prisma.supportTicketMessage.create({
@@ -494,13 +494,13 @@ export const staffListTickets = asyncHandler(async (req: any, res: Response<ApiR
 export const staffClaimTicket = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const staff = req.platformStaff;
   if (staff.role === 'SECURITY') {
-    res.status(403).json({ success: false, error: 'Read-only role' });
+    res.status(403).json({ success: false, error: 'Роль только для чтения' });
     return;
   }
   const { ticketId } = req.params;
   const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
   if (!ticket) {
-    res.status(404).json({ success: false, error: 'Not found' });
+    res.status(404).json({ success: false, error: 'Не найдено' });
     return;
   }
   if (ticket.channel === DESIGNER_SUPERADMIN_CHANNEL) {
@@ -512,7 +512,7 @@ export const staffClaimTicket = asyncHandler(async (req: any, res: Response<ApiR
   }
   const needChannel: ClientTicketChannel = staff.role === 'DESIGNER' ? 'DESIGNER' : 'SUPPORT';
   if (ticket.channel !== needChannel) {
-    res.status(403).json({ success: false, error: 'Wrong channel for your role' });
+    res.status(403).json({ success: false, error: 'Неверный канал для вашей роли' });
     return;
   }
   const updated = await prisma.supportTicket.update({
@@ -527,17 +527,17 @@ export const staffGetTicketMessages = asyncHandler(async (req: any, res: Respons
   const { ticketId } = req.params;
   const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
   if (!ticket) {
-    res.status(404).json({ success: false, error: 'Not found' });
+    res.status(404).json({ success: false, error: 'Не найдено' });
     return;
   }
   if (staff.role !== 'SECURITY') {
     if (staff.role === 'SUPPORT') {
       if (ticket.channel !== 'SUPPORT') {
-        res.status(403).json({ success: false, error: 'Forbidden' });
+        res.status(403).json({ success: false, error: 'Доступ запрещён' });
         return;
       }
     } else if (!designerCanAccessTicket(staff, ticket)) {
-      res.status(403).json({ success: false, error: 'Forbidden' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
   }
@@ -551,27 +551,27 @@ export const staffGetTicketMessages = asyncHandler(async (req: any, res: Respons
 export const staffPostTicketMessage = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const staff = req.platformStaff;
   if (staff.role === 'SECURITY') {
-    res.status(403).json({ success: false, error: 'Read-only role' });
+    res.status(403).json({ success: false, error: 'Роль только для чтения' });
     return;
   }
   const { ticketId } = req.params;
   const { message } = req.body as { message?: string };
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
   if (!ticket || ticket.status === 'CLOSED') {
-    res.status(404).json({ success: false, error: 'Not found or closed' });
+    res.status(404).json({ success: false, error: 'Не найдено или закрыто' });
     return;
   }
   if (staff.role === 'SUPPORT') {
     if (ticket.channel !== 'SUPPORT') {
-      res.status(403).json({ success: false, error: 'Forbidden' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
   } else if (!designerCanAccessTicket(staff, ticket)) {
-    res.status(403).json({ success: false, error: 'Forbidden' });
+    res.status(403).json({ success: false, error: 'Доступ запрещён' });
     return;
   }
   const msg = await prisma.supportTicketMessage.create({
@@ -605,12 +605,12 @@ export const staffListKnowledge = asyncHandler(async (req: any, res: Response<Ap
 export const staffRegisterCallRecording = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
   const staff = req.platformStaff;
   if (staff.role !== 'DESIGNER') {
-    res.status(403).json({ success: false, error: 'Only designers upload call recordings' });
+    res.status(403).json({ success: false, error: 'Записи звонков загружают только дизайнеры' });
     return;
   }
   const file = req.file as Express.Multer.File | undefined;
   if (!file) {
-    res.status(400).json({ success: false, error: 'File required' });
+    res.status(400).json({ success: false, error: 'Требуется файл' });
     return;
   }
   const { ticketId, startedAt, endedAt, durationSec } = req.body as {
@@ -621,13 +621,13 @@ export const staffRegisterCallRecording = asyncHandler(async (req: any, res: Res
   };
   if (!ticketId) {
     fs.unlinkSync(file.path);
-    res.status(400).json({ success: false, error: 'ticketId required' });
+    res.status(400).json({ success: false, error: 'Требуется ticketId' });
     return;
   }
   const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
   if (!ticket || ticket.channel !== 'DESIGNER') {
     fs.unlinkSync(file.path);
-    res.status(400).json({ success: false, error: 'Invalid designer ticket' });
+    res.status(400).json({ success: false, error: 'Некорректная заявка дизайнера' });
     return;
   }
   const relPath = `call-recordings/${file.filename}`;
@@ -682,7 +682,7 @@ export const superAdminGetSupportMessages = asyncHandler(async (req: any, res: R
     },
   });
   if (!ticket) {
-    res.status(404).json({ success: false, error: 'Not found' });
+    res.status(404).json({ success: false, error: 'Не найдено' });
     return;
   }
   res.json({ success: true, data: ticket });
@@ -693,12 +693,12 @@ export const superAdminPostSupportMessage = asyncHandler(async (req: any, res: R
   const { ticketId } = req.params;
   const { message } = req.body as { message?: string };
   if (!message?.trim()) {
-    res.status(400).json({ success: false, error: 'message is required' });
+    res.status(400).json({ success: false, error: 'Укажите сообщение' });
     return;
   }
   const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
   if (!ticket || ticket.status === 'CLOSED') {
-    res.status(404).json({ success: false, error: 'Not found or closed' });
+    res.status(404).json({ success: false, error: 'Не найдено или закрыто' });
     return;
   }
   const msg = await prisma.supportTicketMessage.create({
@@ -746,7 +746,7 @@ export const superAdminDownloadCallRecording = asyncHandler(async (req: any, res
   const { id } = req.params;
   const rec = await prisma.designerCallRecording.findUnique({ where: { id } });
   if (!rec) {
-    res.status(404).json({ success: false, error: 'Not found' });
+    res.status(404).json({ success: false, error: 'Не найдено' });
     return;
   }
   if (rec.expiresAt && rec.expiresAt.getTime() < Date.now()) {
@@ -758,7 +758,7 @@ export const superAdminDownloadCallRecording = asyncHandler(async (req: any, res
   try {
     abs = absoluteUploadPath(rec.storagePath);
   } catch {
-    res.status(400).json({ success: false, error: 'Invalid path' });
+    res.status(400).json({ success: false, error: 'Некорректный путь' });
     return;
   }
   if (!fs.existsSync(abs)) {
@@ -787,7 +787,7 @@ export const superAdminCreateKnowledgeArticle = asyncHandler(async (req: any, re
     sortOrder?: number;
   };
   if (!title?.trim() || !body?.trim()) {
-    res.status(400).json({ success: false, error: 'title and body required' });
+    res.status(400).json({ success: false, error: 'Укажите заголовок и текст' });
     return;
   }
   const article = await prisma.supportKnowledgeArticle.create({
@@ -805,7 +805,7 @@ export const superAdminDeleteCallRecording = asyncHandler(async (req: any, res: 
   const { id } = req.params;
   const rec = await prisma.designerCallRecording.findUnique({ where: { id } });
   if (!rec) {
-    res.status(404).json({ success: false, error: 'Not found' });
+    res.status(404).json({ success: false, error: 'Не найдено' });
     return;
   }
   safeUnlink(rec.storagePath);

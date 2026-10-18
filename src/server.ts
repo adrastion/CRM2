@@ -132,7 +132,7 @@ app.use(csrfProtection);
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'), // limit each IP to 1000 requests per windowMs (увеличено для поддержки множественных запросов)
-  message: 'Too many requests from this IP, please try again later.',
+  message: 'Слишком много запросов с этого IP. Попробуйте позже.',
   standardHeaders: true,
   legacyHeaders: false,
   // Исключаем batch endpoints и health check из строгого лимитирования

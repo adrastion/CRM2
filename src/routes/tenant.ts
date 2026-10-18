@@ -11,14 +11,14 @@ router.get('/profile', requireOwnerOrAdmin, (req: any, res) => {
   res.json({
     success: true,
     data: req.tenant,
-    message: 'Tenant profile retrieved successfully'
+    message: 'Профиль организации успешно получен'
   });
 });
 
 router.put('/profile', requireOwnerOrAdmin, (req, res) => {
   res.json({
     success: true,
-    message: 'Tenant profile updated successfully'
+    message: 'Профиль организации успешно обновлён'
   });
 });
 

@@ -18,7 +18,7 @@ function saId(req: AuthenticatedRequest): string | null {
 export const listTestSessions = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const id = saId(req);
   if (!id) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const rows = await listSandboxSessions(id);
@@ -28,7 +28,7 @@ export const listTestSessions = asyncHandler(async (req: AuthenticatedRequest, r
 export const enterTestSession = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const id = saId(req);
   if (!id) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const sessionId = req.body?.sessionId ? String(req.body.sessionId) : '';
@@ -53,7 +53,7 @@ export const enterTestSession = asyncHandler(async (req: AuthenticatedRequest, r
 export const saveTestSession = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const id = saId(req);
   if (!id) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const saved = await saveSandboxSession(id, String(req.params.id));
@@ -67,7 +67,7 @@ export const saveTestSession = asyncHandler(async (req: AuthenticatedRequest, re
 export const deleteTestSession = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const id = saId(req);
   if (!id) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const ok = await deleteSandboxSession(id, String(req.params.id));

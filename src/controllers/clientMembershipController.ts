@@ -39,7 +39,7 @@ export const getClientMemberships = async (req: AuthenticatedRequest, res: Respo
     console.error('Get client memberships error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve client memberships'
+      error: 'Не удалось получить абонементы клиента'
     });
   }
 };
@@ -55,7 +55,7 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -63,7 +63,7 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
     if (!clientId || !membershipId) {
       res.status(400).json({
         success: false,
-        error: 'clientId and membershipId are required',
+        error: 'Требуются clientId и membershipId',
       });
       return;
     }
@@ -127,21 +127,21 @@ export const createClientMembership = async (req: AuthenticatedRequest, res: Res
             : null,
         summary: toMembershipSummary(clientMembership),
       },
-      message: 'Client membership created successfully'
+      message: 'Абонемент клиента успешно создан'
     });
   } catch (error: any) {
     console.error('Create client membership error:', error);
     if (error?.statusCode === 404) {
-      res.status(404).json({ success: false, error: 'Membership not found' });
+      res.status(404).json({ success: false, error: 'Абонемент не найден' });
       return;
     }
     if (error?.statusCode === 400) {
-      res.status(400).json({ success: false, error: error.message || 'Bad request' });
+      res.status(400).json({ success: false, error: error.message || 'Некорректный запрос' });
       return;
     }
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to create client membership'
+      error: error.message || 'Не удалось создать абонемент клиента'
     });
   }
 };
@@ -158,7 +158,7 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
     const tenantId = req.tenant?.id;
 
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -179,7 +179,7 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
         const status = err?.statusCode || 500;
         res.status(status).json({
           success: false,
-          error: err?.message || 'Failed to update remaining visits',
+          error: err?.message || 'Не удалось обновить оставшиеся посещения',
         });
         return;
       }
@@ -195,7 +195,7 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
     if (!clientMembership) {
       res.status(404).json({
         success: false,
-        error: 'Client membership not found'
+        error: 'Абонемент клиента не найден'
       });
       return;
     }
@@ -238,13 +238,13 @@ export const updateClientMembership = async (req: AuthenticatedRequest, res: Res
         remaining: updated.visitsTotal != null ? updated.visitsTotal - updated.visitsUsed : null,
         summary: toMembershipSummary(updated),
       },
-      message: 'Client membership updated successfully'
+      message: 'Абонемент клиента успешно обновлён'
     });
   } catch (error) {
     console.error('Update client membership error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update client membership'
+      error: 'Не удалось обновить абонемент клиента'
     });
   }
 };
@@ -271,7 +271,7 @@ export const markVisitUsed = async (req: AuthenticatedRequest, res: Response) =>
     if (!clientMembership) {
       res.status(404).json({
         success: false,
-        error: 'Active client membership not found'
+        error: 'Активный абонемент клиента не найден'
       });
       return;
     }
@@ -305,7 +305,7 @@ export const markVisitUsed = async (req: AuthenticatedRequest, res: Response) =>
     console.error('Mark visit used error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to mark visit as used'
+      error: 'Не удалось отметить посещение'
     });
   }
 };
@@ -327,7 +327,7 @@ export const deleteClientMembership = async (req: AuthenticatedRequest, res: Res
     if (!clientMembership) {
       res.status(404).json({
         success: false,
-        error: 'Client membership not found'
+        error: 'Абонемент клиента не найден'
       });
       return;
     }
@@ -338,13 +338,13 @@ export const deleteClientMembership = async (req: AuthenticatedRequest, res: Res
 
     res.json({
       success: true,
-      message: 'Client membership deleted successfully'
+      message: 'Абонемент клиента успешно удалён'
     });
   } catch (error) {
     console.error('Delete client membership error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete client membership'
+      error: 'Не удалось удалить абонемент клиента'
     });
   }
 };

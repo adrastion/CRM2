@@ -38,7 +38,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
-        error: 'Access token is required'
+        error: 'Требуется токен доступа'
       });
       return;
     }
@@ -48,7 +48,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (!process.env.JWT_SECRET) {
       res.status(500).json({
         success: false,
-        error: 'JWT secret not configured'
+        error: 'JWT секрет не настроен'
       });
       return;
     }
@@ -60,7 +60,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (decoded.type !== 'SUPER_ADMIN') {
       res.status(403).json({
         success: false,
-        error: 'Invalid token type. Super admin token required.'
+        error: 'Неверный тип токена. Требуется токен супер-администратора.'
       });
       return;
     }
@@ -73,7 +73,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (!superAdmin || !superAdmin.isActive || !isSessionVersionValid(decoded, superAdmin.sessionVersion)) {
       res.status(401).json({
         success: false,
-        error: 'Invalid or inactive super admin'
+        error: 'Недействительный или неактивный супер-администратор'
       });
       return;
     }
@@ -81,7 +81,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
       res.status(401).json({
         success: false,
-        error: 'Session revoked or expired'
+        error: 'Сессия отозвана или истекла'
       });
       return;
     }
@@ -101,7 +101,7 @@ export const authenticateSuperAdmin = asyncHandler(async (
     if (error instanceof jwt.JsonWebTokenError) {
       res.status(401).json({
         success: false,
-        error: 'Invalid token'
+        error: 'Недействительный токен'
       });
       return;
     }
@@ -124,12 +124,12 @@ export const authenticatePlatformViewer = asyncHandler(async (
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Access token is required' });
+    res.status(401).json({ success: false, error: 'Требуется токен доступа' });
     return;
   }
 
   if (!process.env.JWT_SECRET) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
 
@@ -139,7 +139,7 @@ export const authenticatePlatformViewer = asyncHandler(async (
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch {
-    res.status(401).json({ success: false, error: 'Invalid token' });
+    res.status(401).json({ success: false, error: 'Недействительный токен' });
     return;
   }
 
@@ -150,11 +150,11 @@ export const authenticatePlatformViewer = asyncHandler(async (
       !superAdmin.isActive ||
       !isSessionVersionValid(decoded, superAdmin.sessionVersion)
     ) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive super admin' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный супер-администратор' });
       return;
     }
     if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
-      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      res.status(401).json({ success: false, error: 'Сессия отозвана или истекла' });
       return;
     }
 
@@ -173,7 +173,7 @@ export const authenticatePlatformViewer = asyncHandler(async (
   if (decoded.type === 'PLATFORM_STAFF') {
     const staff = await prisma.platformStaffUser.findUnique({ where: { id: decoded.userId } });
     if (!staff || !staff.isActive) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive staff account' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный аккаунт сотрудника' });
       return;
     }
 
@@ -208,7 +208,7 @@ export const requirePlatformWrite = (
   const actor = (req as any).platformActor as PlatformActor | undefined;
 
   if (!actor) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
 

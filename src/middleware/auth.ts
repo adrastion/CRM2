@@ -27,7 +27,7 @@ export const authenticate = async (
     if (!token) {
       res.status(401).json({
         success: false,
-        error: 'Access token is required'
+        error: 'Требуется токен доступа'
       });
       return;
     }
@@ -35,7 +35,7 @@ export const authenticate = async (
     if (!process.env.JWT_SECRET) {
       res.status(500).json({
         success: false,
-        error: 'JWT secret not configured'
+        error: 'JWT секрет не настроен'
       });
       return;
     }
@@ -56,7 +56,7 @@ export const authenticate = async (
     ) {
       res.status(401).json({
         success: false,
-        error: 'Invalid or inactive user'
+        error: 'Недействительный или неактивный пользователь'
       });
       return;
     }
@@ -65,7 +65,7 @@ export const authenticate = async (
     if (!sessionOk) {
       res.status(401).json({
         success: false,
-        error: 'Session revoked or expired'
+        error: 'Сессия отозвана или истекла'
       });
       return;
     }
@@ -74,7 +74,7 @@ export const authenticate = async (
     if (!user.tenant.isActive) {
       res.status(401).json({
         success: false,
-        error: 'Tenant account is inactive'
+        error: 'Аккаунт организации неактивен'
       });
       return;
     }
@@ -90,18 +90,18 @@ export const authenticate = async (
     if (error instanceof jwt.JsonWebTokenError) {
       res.status(401).json({
         success: false,
-        error: 'Invalid token'
+        error: 'Недействительный токен'
       });
     } else if (error instanceof jwt.TokenExpiredError) {
       res.status(401).json({
         success: false,
-        error: 'Token expired'
+        error: 'Срок действия токена истёк'
       });
     } else {
       console.error('Authentication error:', error);
       res.status(500).json({
         success: false,
-        error: 'Authentication failed'
+        error: 'Ошибка аутентификации'
       });
     }
   }
@@ -115,7 +115,7 @@ export const authorize = (...roles: string[]) => {
     if (!req.user) {
       res.status(401).json({
         success: false,
-        error: 'Authentication required'
+        error: 'Требуется аутентификация'
       });
       return;
     }
@@ -123,7 +123,7 @@ export const authorize = (...roles: string[]) => {
     if (!roles.includes(req.user.role)) {
       res.status(403).json({
         success: false,
-        error: 'Insufficient permissions'
+        error: 'Недостаточно прав'
       });
       return;
     }
@@ -172,7 +172,7 @@ export const checkTenantAccess = (req: AuthenticatedRequest, res: Response<ApiRe
   if (requestedTenantId && requestedTenantId !== req.tenantId) {
     res.status(403).json({
       success: false,
-      error: 'Access denied to this tenant'
+      error: 'Нет доступа к этой организации'
     });
     return;
   }
@@ -194,7 +194,7 @@ export const validateTenantSubdomain = async (
     if (!subdomain) {
       res.status(400).json({
         success: false,
-        error: 'Tenant subdomain is required'
+        error: 'Требуется поддомен организации'
       });
       return;
     }
@@ -206,7 +206,7 @@ export const validateTenantSubdomain = async (
     if (!tenant || !tenant.isActive) {
       res.status(404).json({
         success: false,
-        error: 'Tenant not found or inactive'
+        error: 'Организация не найдена или неактивна'
       });
       return;
     }
@@ -219,7 +219,7 @@ export const validateTenantSubdomain = async (
     console.error('Tenant validation error:', error);
     res.status(500).json({
       success: false,
-      error: 'Tenant validation failed'
+      error: 'Ошибка проверки организации'
     });
   }
 };

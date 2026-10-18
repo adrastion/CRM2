@@ -185,7 +185,7 @@ export const devNotesUnreadCount = asyncHandler(async (req: AuthenticatedRequest
 export const createDevNote = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
 
@@ -342,7 +342,7 @@ export const restoreDevNote = asyncHandler(async (req: AuthenticatedRequest, res
 export const markDevNoteRead = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const { id } = req.params;
@@ -363,7 +363,7 @@ export const markDevNoteRead = asyncHandler(async (req: AuthenticatedRequest, re
 export const addDevNoteComment = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const { id } = req.params;
@@ -406,7 +406,7 @@ export const listSaNotifications = asyncHandler(async (req: AuthenticatedRequest
 export const markSaNotificationsRead = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const superAdminId = getSuperAdminId(req);
   if (!superAdminId) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   await prisma.superAdminNotification.updateMany({
@@ -423,7 +423,7 @@ export const uploadDevNoteAttachments = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const superAdminId = getSuperAdminId(req);
     if (!superAdminId) {
-      res.status(401).json({ success: false, error: 'Super admin required' });
+      res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
       return;
     }
 

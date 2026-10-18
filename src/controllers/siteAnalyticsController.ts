@@ -22,7 +22,7 @@ export const postSiteAnalyticsPing = asyncHandler(async (req: Request, res: Resp
     res.json({ success: true, data });
   } catch (e: any) {
     if (e?.statusCode === 400) {
-      res.status(400).json({ success: false, error: e.message || 'Bad request' });
+      res.status(400).json({ success: false, error: e.message || 'Некорректный запрос' });
       return;
     }
     throw e;

@@ -18,7 +18,7 @@ export function absoluteUploadPath(relativePath: string): string {
   const abs = path.resolve(uploadsRoot(), relativePath);
   const root = path.resolve(uploadsRoot());
   if (!abs.startsWith(root + path.sep) && abs !== root) {
-    throw new Error('Invalid storage path');
+    throw new Error('Некорректный путь хранения');
   }
   return abs;
 }

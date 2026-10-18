@@ -84,7 +84,7 @@ export const getSchoolEvents = async (req: AuthenticatedRequest, res: Response) 
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -111,7 +111,7 @@ export const getSchoolEvents = async (req: AuthenticatedRequest, res: Response) 
     res.json({ success: true, data: events });
   } catch (err: any) {
     console.error('getSchoolEvents error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Failed to get events' });
+    res.status(500).json({ success: false, error: err.message || 'Не удалось получить события' });
   }
 };
 
@@ -119,7 +119,7 @@ export const getSchoolEventById = async (req: AuthenticatedRequest, res: Respons
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -129,14 +129,14 @@ export const getSchoolEventById = async (req: AuthenticatedRequest, res: Respons
     });
 
     if (!event) {
-      res.status(404).json({ success: false, error: 'Event not found' });
+      res.status(404).json({ success: false, error: 'Событие не найдено' });
       return;
     }
 
     res.json({ success: true, data: event });
   } catch (err: any) {
     console.error('getSchoolEventById error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Failed to get event' });
+    res.status(500).json({ success: false, error: err.message || 'Не удалось получить событие' });
   }
 };
 
@@ -144,7 +144,7 @@ export const createSchoolEvent = async (req: AuthenticatedRequest, res: Response
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -200,7 +200,7 @@ export const createSchoolEvent = async (req: AuthenticatedRequest, res: Response
     res.status(201).json({ success: true, data: event });
   } catch (err: any) {
     console.error('createSchoolEvent error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Failed to create event' });
+    res.status(500).json({ success: false, error: err.message || 'Не удалось создать событие' });
   }
 };
 
@@ -208,7 +208,7 @@ export const updateSchoolEvent = async (req: AuthenticatedRequest, res: Response
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -216,7 +216,7 @@ export const updateSchoolEvent = async (req: AuthenticatedRequest, res: Response
       where: { id: req.params.id, tenantId },
     });
     if (!existing) {
-      res.status(404).json({ success: false, error: 'Event not found' });
+      res.status(404).json({ success: false, error: 'Событие не найдено' });
       return;
     }
 
@@ -335,7 +335,7 @@ export const updateSchoolEvent = async (req: AuthenticatedRequest, res: Response
     res.json({ success: true, data: event });
   } catch (err: any) {
     console.error('updateSchoolEvent error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Failed to update event' });
+    res.status(500).json({ success: false, error: err.message || 'Не удалось обновить событие' });
   }
 };
 
@@ -343,7 +343,7 @@ export const deleteSchoolEvent = async (req: AuthenticatedRequest, res: Response
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -351,14 +351,14 @@ export const deleteSchoolEvent = async (req: AuthenticatedRequest, res: Response
       where: { id: req.params.id, tenantId },
     });
     if (!existing) {
-      res.status(404).json({ success: false, error: 'Event not found' });
+      res.status(404).json({ success: false, error: 'Событие не найдено' });
       return;
     }
 
     await prisma.schoolEvent.delete({ where: { id: existing.id } });
-    res.json({ success: true, message: 'Event deleted' });
+    res.json({ success: true, message: 'Событие удалено' });
   } catch (err: any) {
     console.error('deleteSchoolEvent error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Failed to delete event' });
+    res.status(500).json({ success: false, error: err.message || 'Не удалось удалить событие' });
   }
 };

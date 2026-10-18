@@ -61,7 +61,7 @@ router.post(
   (req, res, next) => {
     paymentQrUpload.single('qr')(req, res, (err) => {
       if (err) {
-        res.status(400).json({ success: false, error: err.message || 'Upload failed' });
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
         return;
       }
       next();
@@ -75,7 +75,7 @@ router.put(
   (req, res, next) => {
     paymentQrUpload.single('qr')(req, res, (err) => {
       if (err) {
-        res.status(400).json({ success: false, error: err.message || 'Upload failed' });
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
         return;
       }
       next();

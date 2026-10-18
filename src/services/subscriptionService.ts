@@ -212,7 +212,7 @@ export class SubscriptionService {
     });
 
     if (!marketer) {
-      throw new Error('Marketer not found');
+      throw new Error('Маркетолог не найден');
     }
 
     // Создаем связь tenant -> marketer
@@ -326,7 +326,7 @@ export class SubscriptionService {
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
     if (!shopId || !secretKey) {
-      throw new Error('YooKassa credentials are not configured');
+      throw new Error('Учётные данные ЮKassa не настроены');
     }
 
     const credentials = `${shopId}:${secretKey}`;
@@ -663,7 +663,7 @@ export class SubscriptionService {
 
     if (!paymentId) {
       console.error('Payment ID is missing in webhook:', event);
-      throw new Error('Payment ID is missing');
+      throw new Error('Отсутствует ID платежа');
     }
 
     console.log('Processing YooKassa webhook:', {
@@ -676,7 +676,7 @@ export class SubscriptionService {
     // Обрабатываем только события об изменении статуса платежа
     if (eventType && !eventType.includes('payment')) {
       console.log('Ignoring non-payment event:', eventType);
-      return { success: true, message: 'Non-payment event ignored' };
+      return { success: true, message: 'Событие без оплаты проигнорировано' };
     }
 
     // Получаем информацию о платеже из YooKassa
@@ -711,7 +711,7 @@ export class SubscriptionService {
 
     if (!subscriptionPayment) {
       console.error('Subscription payment not found for YooKassa payment:', paymentId);
-      throw new Error('Subscription payment not found');
+      throw new Error('Платёж подписки не найден');
     }
 
     console.log('Found subscription payment:', {
@@ -756,7 +756,7 @@ export class SubscriptionService {
     // Если платеж уже был обработан ранее, не активируем подписку повторно
     if (wasAlreadyProcessed) {
       console.log('Payment was already processed, skipping subscription activation');
-      return { success: true, message: 'Payment already processed' };
+      return { success: true, message: 'Платёж уже обработан' };
     }
 
     // Если платеж успешен, активируем подписку
@@ -847,7 +847,7 @@ export class SubscriptionService {
           paymentMetadata: payment.metadata,
           subscription: subscriptionPayment.subscription
         });
-        throw new Error('Missing planType or tenantId for subscription activation');
+        throw new Error('Не указаны planType или tenantId для активации подписки');
       }
     }
 
@@ -1247,7 +1247,7 @@ export class SubscriptionService {
   static async updatePlan(tenantId: string, newPlanType: PlanType) {
     const subscription = await this.getSubscription(tenantId);
     if (!subscription) {
-      throw new Error('Subscription not found');
+      throw new Error('Подписка не найдена');
     }
 
     const newPlan = await PlanCatalogService.requireByCode(newPlanType);
@@ -1391,7 +1391,7 @@ export class SubscriptionService {
 
     const current = await prisma.subscription.findUnique({ where: { tenantId } });
     if (!current) {
-      throw new Error('Subscription not found');
+      throw new Error('Подписка не найдена');
     }
 
     const oldEndDate = current.endDate;

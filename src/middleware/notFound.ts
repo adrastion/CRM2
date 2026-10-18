@@ -7,6 +7,6 @@ import { ApiResponse } from '../types';
 export const notFound = (req: Request, res: Response<ApiResponse>): void => {
   res.status(404).json({
     success: false,
-    error: `Route ${req.originalUrl} not found`
+    error: `Маршрут ${req.originalUrl} не найден`
   });
 };

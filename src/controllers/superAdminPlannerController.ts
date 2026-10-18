@@ -201,7 +201,7 @@ export const createPlannerEvent = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const superAdminId = getSuperAdminId(req);
     if (!superAdminId) {
-      res.status(401).json({ success: false, error: 'Super admin required' });
+      res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
       return;
     }
 

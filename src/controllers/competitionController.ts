@@ -94,13 +94,13 @@ export const getCompetitions = async (req: AuthenticatedRequest, res: Response) 
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Competitions retrieved successfully'
+      message: 'Соревнования успешно получены'
     });
   } catch (error: any) {
     console.error('Get competitions error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to retrieve competitions',
+      error: error?.message || 'Не удалось получить список соревнований',
       details: error
     });
   }
@@ -148,7 +148,7 @@ export const getCompetitionById = async (req: AuthenticatedRequest, res: Respons
     if (!competition) {
       res.status(404).json({
         success: false,
-        error: 'Competition not found'
+        error: 'Соревнование не найдено'
       });
       return;
     }
@@ -156,13 +156,13 @@ export const getCompetitionById = async (req: AuthenticatedRequest, res: Respons
     res.json({
       success: true,
       data: competition,
-      message: 'Competition retrieved successfully'
+      message: 'Соревнование успешно получено'
     });
   } catch (error) {
     console.error('Get competition error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve competition'
+      error: 'Не удалось получить соревнование'
     });
   }
 };
@@ -287,13 +287,13 @@ export const createCompetition = async (req: AuthenticatedRequest, res: Response
     res.status(201).json({
       success: true,
       data: competitionWithRelations,
-      message: 'Competition created successfully'
+      message: 'Соревнование успешно создано'
     });
   } catch (error: any) {
     console.error('Create competition error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to create competition',
+      error: error?.message || 'Не удалось создать соревнование',
       details: error?.meta || error
     });
   }
@@ -327,7 +327,7 @@ export const updateCompetition = async (req: AuthenticatedRequest, res: Response
     if (!competition) {
       res.status(404).json({
         success: false,
-        error: 'Competition not found'
+        error: 'Соревнование не найдено'
       });
       return;
     }
@@ -501,13 +501,13 @@ export const updateCompetition = async (req: AuthenticatedRequest, res: Response
     res.json({
       success: true,
       data: updatedCompetition,
-      message: 'Competition updated successfully'
+      message: 'Соревнование успешно обновлено'
     });
   } catch (error: any) {
     console.error('Update competition error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to update competition',
+      error: error?.message || 'Не удалось обновить соревнование',
       details: error?.meta || error
     });
   }
@@ -528,7 +528,7 @@ export const deleteCompetition = async (req: AuthenticatedRequest, res: Response
     if (!competition) {
       res.status(404).json({
         success: false,
-        error: 'Competition not found'
+        error: 'Соревнование не найдено'
       });
       return;
     }
@@ -539,13 +539,13 @@ export const deleteCompetition = async (req: AuthenticatedRequest, res: Response
 
     res.json({
       success: true,
-      message: 'Competition deleted successfully'
+      message: 'Соревнование успешно удалено'
     });
   } catch (error: any) {
     console.error('Delete competition error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to delete competition'
+      error: error?.message || 'Не удалось удалить соревнование'
     });
   }
 };
@@ -577,13 +577,13 @@ export const addCompetitionResult = async (req: AuthenticatedRequest, res: Respo
     res.status(201).json({
       success: true,
       data: competitionResult,
-      message: 'Competition result added successfully'
+      message: 'Результат соревнования успешно добавлен'
     });
   } catch (error: any) {
     console.error('Add competition result error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to add competition result'
+      error: error?.message || 'Не удалось добавить результат соревнования'
     });
   }
 };
@@ -604,7 +604,7 @@ export const updateCompetitionResult = async (req: AuthenticatedRequest, res: Re
     if (!competitionResult || competitionResult.competition.tenantId !== req.tenant?.id) {
       res.status(404).json({
         success: false,
-        error: 'Competition result not found'
+        error: 'Результат соревнования не найден'
       });
       return;
     }
@@ -629,13 +629,13 @@ export const updateCompetitionResult = async (req: AuthenticatedRequest, res: Re
     res.json({
       success: true,
       data: updatedResult,
-      message: 'Competition result updated successfully'
+      message: 'Результат соревнования успешно обновлён'
     });
   } catch (error: any) {
     console.error('Update competition result error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to update competition result'
+      error: error?.message || 'Не удалось обновить результат соревнования'
     });
   }
 };
@@ -655,7 +655,7 @@ export const deleteCompetitionResult = async (req: AuthenticatedRequest, res: Re
     if (!competitionResult || competitionResult.competition.tenantId !== req.tenant?.id) {
       res.status(404).json({
         success: false,
-        error: 'Competition result not found'
+        error: 'Результат соревнования не найден'
       });
       return;
     }
@@ -666,13 +666,13 @@ export const deleteCompetitionResult = async (req: AuthenticatedRequest, res: Re
 
     res.json({
       success: true,
-      message: 'Competition result deleted successfully'
+      message: 'Результат соревнования успешно удалён'
     });
   } catch (error: any) {
     console.error('Delete competition result error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to delete competition result'
+      error: error?.message || 'Не удалось удалить результат соревнования'
     });
   }
 };
@@ -697,7 +697,7 @@ export const updateCompetitionAttendance = async (req: AuthenticatedRequest, res
     if (!participant) {
       res.status(404).json({
         success: false,
-        error: 'Participant not found'
+        error: 'Участник не найден'
       });
       return;
     }
@@ -728,13 +728,13 @@ export const updateCompetitionAttendance = async (req: AuthenticatedRequest, res
     res.json({
       success: true,
       data: attendance,
-      message: 'Competition attendance updated successfully'
+      message: 'Посещаемость соревнования успешно обновлена'
     });
   } catch (error: any) {
     console.error('Update competition attendance error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to update competition attendance'
+      error: error?.message || 'Не удалось обновить посещаемость соревнования'
     });
   }
 };
@@ -748,7 +748,7 @@ export const getTrainerConflicts = async (req: AuthenticatedRequest, res: Respon
     if (!startDate || !endDate) {
       res.status(400).json({
         success: false,
-        error: 'startDate and endDate are required'
+        error: 'Укажите startDate и endDate'
       });
       return;
     }
@@ -766,7 +766,7 @@ export const getTrainerConflicts = async (req: AuthenticatedRequest, res: Respon
     if (!competition) {
       res.status(404).json({
         success: false,
-        error: 'Competition not found'
+        error: 'Соревнование не найдено'
       });
       return;
     }
@@ -818,13 +818,13 @@ export const getTrainerConflicts = async (req: AuthenticatedRequest, res: Respon
     res.json({
       success: true,
       data: conflictingTrainings,
-      message: 'Trainer conflicts retrieved successfully'
+      message: 'Конфликты тренеров успешно получены'
     });
   } catch (error: any) {
     console.error('Get trainer conflicts error:', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to get trainer conflicts'
+      error: error?.message || 'Не удалось получить конфликты тренеров'
     });
   }
 };

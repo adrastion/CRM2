@@ -13,25 +13,25 @@ export const authenticatePlatformStaff = asyncHandler(async (
 ): Promise<void> => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Access token is required' });
+    res.status(401).json({ success: false, error: 'Требуется токен доступа' });
     return;
   }
   const token = authHeader.substring(7);
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
   const decoded = jwt.verify(token, jwtSecret) as any;
   if (decoded.type !== 'PLATFORM_STAFF') {
-    res.status(403).json({ success: false, error: 'Platform staff token required' });
+    res.status(403).json({ success: false, error: 'Требуется токен сотрудника платформы' });
     return;
   }
   const staff = await prisma.platformStaffUser.findUnique({
     where: { id: decoded.userId },
   });
   if (!staff?.isActive) {
-    res.status(401).json({ success: false, error: 'Invalid or inactive staff account' });
+    res.status(401).json({ success: false, error: 'Недействительный или неактивный аккаунт сотрудника' });
     return;
   }
   (req as any).platformStaff = staff;
@@ -42,11 +42,11 @@ export const requirePlatformStaffRoles = (...roles: PlatformStaffRole[]) =>
   asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction): Promise<void> => {
     const staff = (req as any).platformStaff;
     if (!staff) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     if (!roles.includes(staff.role as PlatformStaffRole)) {
-      res.status(403).json({ success: false, error: 'Insufficient role' });
+      res.status(403).json({ success: false, error: 'Недостаточно прав для роли' });
       return;
     }
     next();

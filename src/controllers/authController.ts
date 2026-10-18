@@ -102,7 +102,7 @@ export const register = asyncHandler(async (req: Request, res: Response<ApiRespo
   res.status(201).json({
     success: true,
     data: result,
-    message: 'Tenant registered successfully'
+    message: 'Организация успешно зарегистрирована'
   });
 });
 
@@ -116,7 +116,7 @@ export const login = asyncHandler(async (req: Request, res: Response<ApiResponse
   res.json({
     success: true,
     data: result,
-    message: 'Login successful'
+    message: 'Вход выполнен успешно'
   });
   return;
 });
@@ -131,7 +131,7 @@ export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response
   res.json({
     success: true,
     data: result,
-    message: 'Login successful',
+    message: 'Вход выполнен успешно',
   });
 });
 
@@ -145,7 +145,7 @@ export const marketerLogin = asyncHandler(async (req: Request, res: Response<Api
   res.json({
     success: true,
     data: result,
-    message: 'Marketer login successful'
+    message: 'Вход маркетолога выполнен успешно'
   });
   return;
 });
@@ -160,7 +160,7 @@ export const promoCodeAdminLogin = asyncHandler(async (req: Request, res: Respon
   res.json({
     success: true,
     data: result,
-    message: 'Promo code admin login successful'
+    message: 'Вход администратора промокодов выполнен успешно'
   });
   return;
 });
@@ -223,7 +223,7 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
   res.status(201).json({
     success: true,
     data: result,
-    message: 'User created successfully'
+    message: 'Пользователь успешно создан'
   });
   return;
 });
@@ -266,7 +266,7 @@ export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res:
   res.json({
     success: true,
     data: result,
-    message: 'Profile updated successfully'
+    message: 'Профиль успешно обновлён'
   });
   return;
 });
@@ -302,7 +302,7 @@ export const updateUserById = asyncHandler(async (req: AuthenticatedRequest, res
   res.json({
     success: true,
     data: result,
-    message: 'User updated successfully'
+    message: 'Пользователь успешно обновлён'
   });
   return;
 });
@@ -390,7 +390,7 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   clearSessionCookies(res);
   res.json({
     success: true,
-    message: 'Logout successful'
+    message: 'Выход выполнен успешно'
   });
   return;
 });
@@ -401,7 +401,7 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const getAuthSessions = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const sessions = await listActiveAuthSessions('USER', req.user.id);
@@ -421,7 +421,7 @@ export const getAuthSessions = asyncHandler(
 export const revokeAuthSession = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const { id } = req.params;
@@ -438,7 +438,7 @@ export const revokeAuthSession = asyncHandler(
 export const revokeOtherAuthSessionsHandler = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id || !req.authSessionId) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const count = await revokeOtherAuthSessions('USER', req.user.id, req.authSessionId);
@@ -457,7 +457,7 @@ export const revokeOtherAuthSessionsHandler = asyncHandler(
 export const revokeAllAuthSessionsHandler = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     await prisma.user.update({
@@ -511,7 +511,7 @@ export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID не найден'
+      error: 'ID организации не найден'
     });
     return;
   }

@@ -11,7 +11,7 @@ export const getSubscription = asyncHandler(async (req: AuthenticatedRequest, re
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -39,7 +39,7 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -49,7 +49,7 @@ export const createPayment = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!planType || !(await PlanCatalogService.findByCode(String(planType)))) {
     res.status(400).json({
       success: false,
-      error: 'Invalid plan type',
+      error: 'Неверный тип тарифа',
     });
     return;
   }
@@ -79,7 +79,7 @@ export const getPromoCodeStatus = asyncHandler(async (req: AuthenticatedRequest,
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -105,7 +105,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -115,7 +115,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
   if (!promoCode) {
     res.status(400).json({
       success: false,
-      error: 'Promo code is required',
+      error: 'Укажите промокод',
     });
     return;
   }
@@ -123,7 +123,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
   if (!planType) {
     res.status(400).json({
       success: false,
-      error: 'Invalid plan type',
+      error: 'Неверный тип тарифа',
     });
     return;
   }
@@ -187,7 +187,7 @@ export const validatePromoCode = asyncHandler(async (req: AuthenticatedRequest, 
     
     res.status(400).json({
       success: false,
-      error: error.message || 'Invalid promo code',
+      error: error.message || 'Неверный промокод',
       hasUsedMarketerPromo, // Информация для фронтенда
       hasUsedNonMarketerPromo,
       canUseNonMarketerPromo: hasUsedMarketerPromo && !hasUsedNonMarketerPromo, // Можно использовать промокод без маркетолога, если использован промокод маркетолога
@@ -219,7 +219,7 @@ export const handleWebhook = asyncHandler(async (req: Request, res: Response) =>
     console.error('Webhook error:', error);
     res.status(400).json({
       success: false,
-      error: error.message || 'Webhook processing failed',
+      error: error.message || 'Ошибка обработки webhook',
     });
   }
 });
@@ -231,7 +231,7 @@ export const updatePlan = asyncHandler(async (req: AuthenticatedRequest, res: Re
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -241,7 +241,7 @@ export const updatePlan = asyncHandler(async (req: AuthenticatedRequest, res: Re
   if (!planType || !(await PlanCatalogService.findByCode(String(planType)))) {
     res.status(400).json({
       success: false,
-      error: 'Invalid plan type',
+      error: 'Неверный тип тарифа',
     });
     return;
   }
@@ -251,7 +251,7 @@ export const updatePlan = asyncHandler(async (req: AuthenticatedRequest, res: Re
   res.json({
     success: true,
     data: subscription,
-    message: 'Subscription plan updated successfully',
+    message: 'Тариф подписки успешно обновлён',
   });
 });
 
@@ -262,7 +262,7 @@ export const getPlanUsage = asyncHandler(async (req: AuthenticatedRequest, res: 
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -282,7 +282,7 @@ export const checkResourceLimit = asyncHandler(async (req: AuthenticatedRequest,
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -292,7 +292,7 @@ export const checkResourceLimit = asyncHandler(async (req: AuthenticatedRequest,
   if (!resource || typeof resource !== 'string') {
     res.status(400).json({
       success: false,
-      error: 'Resource type is required',
+      error: 'Укажите тип ресурса',
     });
     return;
   }
@@ -301,7 +301,7 @@ export const checkResourceLimit = asyncHandler(async (req: AuthenticatedRequest,
   if (!allowedResources.includes(resource)) {
     res.status(400).json({
       success: false,
-      error: 'Invalid resource type',
+      error: 'Неверный тип ресурса',
     });
     return;
   }

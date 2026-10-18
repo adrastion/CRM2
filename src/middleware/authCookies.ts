@@ -101,7 +101,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
     res.status(403).json({
       success: false,
-      error: 'CSRF token missing or invalid',
+      error: 'CSRF-токен отсутствует или недействителен',
     } satisfies ApiResponse);
     return;
   }

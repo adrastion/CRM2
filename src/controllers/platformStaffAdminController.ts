@@ -37,23 +37,23 @@ export const superAdminCreatePlatformStaffUser = asyncHandler(async (req: Reques
   };
 
   if (!email || !role || !firstName || !lastName) {
-    res.status(400).json({ success: false, error: 'email, role, firstName, lastName are required' });
+    res.status(400).json({ success: false, error: 'Укажите email, role, firstName, lastName' });
     return;
   }
 
   const normalizedEmail = email.toLowerCase().trim();
   if (!normalizedEmail.includes('@')) {
-    res.status(400).json({ success: false, error: 'Invalid email' });
+    res.status(400).json({ success: false, error: 'Некорректный email' });
     return;
   }
   if (!['SUPPORT', 'DESIGNER', 'SECURITY'].includes(role)) {
-    res.status(400).json({ success: false, error: 'Invalid role' });
+    res.status(400).json({ success: false, error: 'Некорректная роль' });
     return;
   }
 
   const existing = await prisma.platformStaffUser.findUnique({ where: { email: normalizedEmail } });
   if (existing) {
-    res.status(409).json({ success: false, error: 'User with this email already exists' });
+    res.status(409).json({ success: false, error: 'Пользователь с таким email уже существует' });
     return;
   }
 

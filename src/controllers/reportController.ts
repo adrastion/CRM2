@@ -9,7 +9,7 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
     if (!tenantId) {
       res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
       return;
     }
@@ -245,13 +245,13 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
         upcomingTrainings,
         trainerMonthlyEarnings: trainer ? trainerMonthlyEarnings : undefined
       },
-      message: 'Dashboard stats retrieved successfully'
+      message: 'Статистика панели успешно получена'
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve dashboard stats'
+      error: 'Не удалось получить статистику панели'
     });
   }
 };
@@ -266,7 +266,7 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
     if (!tenantId) {
       res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
       return;
     }
@@ -585,13 +585,13 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
     res.json({
       success: true,
       data: limitedActivities,
-      message: 'Recent activity retrieved successfully'
+      message: 'Недавняя активность успешно получена'
     });
   } catch (error) {
     console.error('Get recent activity error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve recent activity'
+      error: 'Не удалось получить недавнюю активность'
     });
   }
 };
@@ -605,7 +605,7 @@ export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Respo
     if (!tenantId) {
       res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
       return;
     }
@@ -683,13 +683,13 @@ export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Respo
     res.json({
       success: true,
       data: formattedTrainings,
-      message: 'Upcoming trainings retrieved successfully'
+      message: 'Ближайшие тренировки успешно получены'
     });
   } catch (error) {
     console.error('Get upcoming trainings error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve upcoming trainings'
+      error: 'Не удалось получить ближайшие тренировки'
     });
   }
 };

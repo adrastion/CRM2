@@ -14,7 +14,7 @@ function getActorScope(req: any): ActorScope {
   if (req.marketer?.id) return { kind: 'marketer', marketerId: req.marketer.id };
   const schoolTenantId = req.promoCodeAdminTenantId || req.tenantId;
   if (!schoolTenantId) {
-    const err: any = new Error('Tenant ID is required');
+    const err: any = new Error('Требуется ID организации');
     err.statusCode = 400;
     throw err;
   }

@@ -40,7 +40,7 @@ async function signToken(
   payload: Record<string, unknown>
 ) {
   const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET is not configured');
+  if (!secret) throw new Error('JWT_SECRET не настроен');
   const expiresIn = actorType === 'CLIENT' || actorType === 'PARENT' ? '30d' : process.env.JWT_EXPIRES_IN || '7d';
   if (actorType === 'MARKETER' || actorType === 'PLATFORM_STAFF') {
     return jwt.sign(payload, secret, { expiresIn } as jwt.SignOptions);

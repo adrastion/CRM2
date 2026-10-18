@@ -130,7 +130,7 @@ export const selectAccount = asyncHandler(async (req: Request, res: Response<Api
 export const getLinkedSessions = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const userId = (req as any).user?.id as string | undefined;
   if (!userId) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const result = await UnifiedAuthService.getLinkedSessionsForUser(

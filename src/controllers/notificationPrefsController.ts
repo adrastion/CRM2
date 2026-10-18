@@ -42,7 +42,7 @@ function schoolRoleAllowsSchedule(role?: string): boolean {
 export const getSchoolNotificationPrefs = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await getOrCreateNotificationPrefs('USER', req.user.id);
@@ -53,7 +53,7 @@ export const getSchoolNotificationPrefs = asyncHandler(
 export const updateSchoolNotificationPrefs = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await updateNotificationPrefs('USER', req.user.id, parseUpdate(req.body), {
@@ -72,7 +72,7 @@ export const getPortalNotificationPrefs = asyncHandler(
           ? ({ type: 'CLIENT' as const, id: req.client.id })
           : null;
     if (!actor) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await getOrCreateNotificationPrefs(actor.type, actor.id);
@@ -89,7 +89,7 @@ export const updatePortalNotificationPrefs = asyncHandler(
           ? ({ type: 'CLIENT' as const, id: req.client.id })
           : null;
     if (!actor) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await updateNotificationPrefs(actor.type, actor.id, parseUpdate(req.body), {
@@ -103,7 +103,7 @@ export const getSuperAdminNotificationPrefs = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     const sa = (req as any).superAdmin;
     if (!sa?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await getOrCreateNotificationPrefs('SUPER_ADMIN', sa.id);
@@ -115,7 +115,7 @@ export const updateSuperAdminNotificationPrefs = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     const sa = (req as any).superAdmin;
     if (!sa?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await updateNotificationPrefs('SUPER_ADMIN', sa.id, parseUpdate(req.body), {
@@ -129,7 +129,7 @@ export const getTesterNotificationPrefs = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     const tester = (req as any).tester;
     if (!tester?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await getOrCreateNotificationPrefs('TESTER', tester.id);
@@ -141,7 +141,7 @@ export const updateTesterNotificationPrefs = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     const tester = (req as any).tester;
     if (!tester?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const data = await updateNotificationPrefs('TESTER', tester.id, parseUpdate(req.body), {
@@ -159,7 +159,7 @@ async function handleSubscribe(
 ) {
   const { subscription, userAgent } = body || {};
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
-    res.status(400).json({ success: false, error: 'Invalid subscription data' });
+    res.status(400).json({ success: false, error: 'Некорректные данные подписки' });
     return;
   }
   await saveActorPushSubscription(
@@ -171,7 +171,7 @@ async function handleSubscribe(
     },
     userAgent
   );
-  res.json({ success: true, message: 'Subscribed' });
+  res.json({ success: true, message: 'Подписка оформлена' });
 }
 
 async function handleUnsubscribe(
@@ -182,17 +182,17 @@ async function handleUnsubscribe(
 ) {
   const endpoint = body?.endpoint || body?.subscription?.endpoint;
   if (!endpoint) {
-    res.status(400).json({ success: false, error: 'endpoint required' });
+    res.status(400).json({ success: false, error: 'Требуется endpoint' });
     return;
   }
   await removeActorPushSubscription(actorType, actorId, String(endpoint));
-  res.json({ success: true, message: 'Unsubscribed' });
+  res.json({ success: true, message: 'Подписка отменена' });
 }
 
 export const getSharedVapidKey = asyncHandler(async (_req: Request, res: Response<ApiResponse>) => {
   const publicKey = getVapidPublicKey();
   if (!publicKey) {
-    res.status(503).json({ success: false, error: 'Push notifications not configured' });
+    res.status(503).json({ success: false, error: 'Push-уведомления не настроены' });
     return;
   }
   res.json({ success: true, data: { publicKey } });
@@ -206,7 +206,7 @@ export const subscribePortalPush = asyncHandler(async (req: ClientRequest, res: 
         ? ({ type: 'CLIENT' as const, id: req.client.id })
         : null;
   if (!actor) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   await handleSubscribe(res, actor.type, actor.id, req.body);
@@ -220,7 +220,7 @@ export const unsubscribePortalPush = asyncHandler(async (req: ClientRequest, res
         ? ({ type: 'CLIENT' as const, id: req.client.id })
         : null;
   if (!actor) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   await handleUnsubscribe(res, actor.type, actor.id, req.body);
@@ -234,7 +234,7 @@ export const portalPushStatus = asyncHandler(async (req: ClientRequest, res: Res
         ? ({ type: 'CLIENT' as const, id: req.client.id })
         : null;
   if (!actor) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const subs = await getSubscriptionsForActor(actor.type, actor.id);
@@ -244,7 +244,7 @@ export const portalPushStatus = asyncHandler(async (req: ClientRequest, res: Res
 export const subscribeTesterPush = asyncHandler(async (req: Request, res: Response) => {
   const tester = (req as any).tester;
   if (!tester?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   await handleSubscribe(res, 'TESTER', tester.id, req.body);
@@ -253,7 +253,7 @@ export const subscribeTesterPush = asyncHandler(async (req: Request, res: Respon
 export const unsubscribeTesterPush = asyncHandler(async (req: Request, res: Response) => {
   const tester = (req as any).tester;
   if (!tester?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   await handleUnsubscribe(res, 'TESTER', tester.id, req.body);
@@ -262,7 +262,7 @@ export const unsubscribeTesterPush = asyncHandler(async (req: Request, res: Resp
 export const testerPushStatus = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const tester = (req as any).tester;
   if (!tester?.id) {
-    res.status(401).json({ success: false, error: 'Unauthorized' });
+    res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const subs = await getSubscriptionsForActor('TESTER', tester.id);

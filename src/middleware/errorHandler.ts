@@ -49,7 +49,7 @@ export const errorHandler = (
   if (error instanceof Prisma.PrismaClientValidationError) {
     res.status(400).json({
       success: false,
-      error: 'Validation error: Invalid data provided'
+      error: 'Ошибка проверки: переданы некорректные данные'
     });
     return;
   }
@@ -58,7 +58,7 @@ export const errorHandler = (
   if (error.name === 'JsonWebTokenError') {
     res.status(401).json({
       success: false,
-      error: 'Invalid token'
+      error: 'Недействительный токен'
     });
     return;
   }
@@ -66,7 +66,7 @@ export const errorHandler = (
   if (error.name === 'TokenExpiredError') {
     res.status(401).json({
       success: false,
-      error: 'Token expired'
+      error: 'Срок действия токена истёк'
     });
     return;
   }
@@ -96,11 +96,15 @@ export const errorHandler = (
     error.message.toLowerCase().includes('неверный логин или пароль') ||
     error.message === 'Invalid credentials' ||
     error.message === 'Account is deactivated' ||
-    error.message === 'Tenant account is deactivated'
+    error.message === 'Tenant account is deactivated' ||
+    error.message === 'Аккаунт деактивирован' ||
+    error.message === 'Аккаунт организации деактивирован'
   ) {
     const isDeactivated =
       error.message === 'Account is deactivated' ||
-      error.message === 'Tenant account is deactivated';
+      error.message === 'Tenant account is deactivated' ||
+      error.message === 'Аккаунт деактивирован' ||
+      error.message === 'Аккаунт организации деактивирован';
     res.status(401).json({
       success: false,
       error: isDeactivated ? 'Аккаунт деактивирован' : 'Неверный логин или пароль',
@@ -112,7 +116,7 @@ export const errorHandler = (
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
+      ? 'Внутренняя ошибка сервера' 
       : error.message
   });
 };
@@ -130,7 +134,7 @@ const handlePrismaError = (
       const field = error.meta?.target as string[];
       res.status(409).json({
         success: false,
-        error: `A record with this ${field?.join(', ') || 'field'} already exists`
+        error: `Запись с таким ${field?.join(', ') || 'полем'} уже существует`
       });
       break;
 
@@ -138,7 +142,7 @@ const handlePrismaError = (
       // Record not found
       res.status(404).json({
         success: false,
-        error: 'Record not found'
+        error: 'Запись не найдена'
       });
       break;
 
@@ -146,7 +150,7 @@ const handlePrismaError = (
       // Foreign key constraint violation
       res.status(400).json({
         success: false,
-        error: 'Referenced record does not exist'
+        error: 'Связанная запись не существует'
       });
       break;
 
@@ -154,14 +158,14 @@ const handlePrismaError = (
       // Required relation violation
       res.status(400).json({
         success: false,
-        error: 'Required relation is missing'
+        error: 'Отсутствует обязательная связь'
       });
       break;
 
     default:
       res.status(500).json({
         success: false,
-        error: 'Database operation failed'
+        error: 'Ошибка операции с базой данных'
       });
   }
 };
@@ -177,28 +181,28 @@ const handleMulterError = (
     case 'LIMIT_FILE_SIZE':
       res.status(400).json({
         success: false,
-        error: 'File size too large'
+        error: 'Файл слишком большой'
       });
       break;
 
     case 'LIMIT_FILE_COUNT':
       res.status(400).json({
         success: false,
-        error: 'Too many files uploaded'
+        error: 'Загружено слишком много файлов'
       });
       break;
 
     case 'LIMIT_UNEXPECTED_FILE':
       res.status(400).json({
         success: false,
-        error: 'Unexpected file field'
+        error: 'Неожиданное поле файла'
       });
       break;
 
     default:
       res.status(400).json({
         success: false,
-        error: 'File upload error'
+        error: 'Ошибка загрузки файла'
       });
   }
 };

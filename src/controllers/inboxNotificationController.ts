@@ -18,7 +18,7 @@ import { prisma } from '../lib/prisma';
 export const getSchoolNotifications = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const tenantId = req.tenant?.id || req.user.tenantId;
@@ -34,7 +34,7 @@ export const getSchoolNotifications = asyncHandler(
 export const getSchoolNotificationsUnreadCount = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const tenantId = req.tenant?.id || req.user.tenantId;
@@ -46,7 +46,7 @@ export const getSchoolNotificationsUnreadCount = asyncHandler(
 export const markSchoolNotificationsRead = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const count = await markInboxRead('USER', req.user.id, {
@@ -63,7 +63,7 @@ export const getPortalNotifications = asyncHandler(
     const actorType = req.userType === 'parent' ? 'PARENT' : 'CLIENT';
     const actorId = req.userType === 'parent' ? req.parent?.id : req.client?.id;
     if (!actorId) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const tenantId =
@@ -85,7 +85,7 @@ export const getPortalNotificationsUnreadCount = asyncHandler(
     const actorType = req.userType === 'parent' ? 'PARENT' : 'CLIENT';
     const actorId = req.userType === 'parent' ? req.parent?.id : req.client?.id;
     if (!actorId) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const tenantId =
@@ -100,7 +100,7 @@ export const markPortalNotificationsRead = asyncHandler(
     const actorType = req.userType === 'parent' ? 'PARENT' : 'CLIENT';
     const actorId = req.userType === 'parent' ? req.parent?.id : req.client?.id;
     if (!actorId) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
     const count = await markInboxRead(actorType, actorId, {

@@ -24,7 +24,7 @@ export function requireTenantId(
 ): string | null {
   const tenantId = req.tenantId || req.tenant?.id;
   if (!tenantId) {
-    res.status(401).json({ success: false, error: 'Tenant context required' });
+    res.status(401).json({ success: false, error: 'Требуется контекст организации' });
     return null;
   }
   return tenantId;

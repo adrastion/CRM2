@@ -93,7 +93,7 @@ export function attachSupportCallSocket(httpServer: HttpServer): Server {
     try {
       const token = socket.handshake.auth?.token as string | undefined;
       if (!token) {
-        next(new Error('Unauthorized'));
+        next(new Error('Не авторизован'));
         return;
       }
       const secret = process.env.JWT_SECRET;
@@ -104,13 +104,13 @@ export function attachSupportCallSocket(httpServer: HttpServer): Server {
       const decoded = jwt.verify(token, secret) as any;
       const identity = await resolveIdentity(decoded);
       if (!identity) {
-        next(new Error('Unauthorized'));
+        next(new Error('Не авторизован'));
         return;
       }
       (socket.data as any).identity = identity;
       next();
     } catch {
-      next(new Error('Unauthorized'));
+      next(new Error('Не авторизован'));
     }
   });
 
@@ -120,17 +120,17 @@ export function attachSupportCallSocket(httpServer: HttpServer): Server {
     socket.on('join-ticket', async (ticketId: string, cb?: (r: { ok: boolean; error?: string; role?: JoinRole; peersInRoom?: number }) => void) => {
       try {
         if (typeof ticketId !== 'string' || !ticketId) {
-          cb?.({ ok: false, error: 'ticketId required' });
+          cb?.({ ok: false, error: 'Требуется ticketId' });
           return;
         }
         const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
         if (!ticket) {
-          cb?.({ ok: false, error: 'Not found' });
+          cb?.({ ok: false, error: 'Не найдено' });
           return;
         }
         const allowed = await validateDesignerTicketAccess(identity, ticket);
         if (!allowed) {
-          cb?.({ ok: false, error: 'Forbidden' });
+          cb?.({ ok: false, error: 'Доступ запрещён' });
           return;
         }
 
@@ -155,7 +155,7 @@ export function attachSupportCallSocket(httpServer: HttpServer): Server {
         socket.to(room).emit('peer-joined', { role: jr });
         cb?.({ ok: true, role: jr, peersInRoom: size });
       } catch {
-        cb?.({ ok: false, error: 'Server error' });
+        cb?.({ ok: false, error: 'Ошибка сервера' });
       }
     });
 

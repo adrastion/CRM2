@@ -191,7 +191,7 @@ async function assertSeniorCanAccessPayment(
 
 export const listFinanceTypes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
   const types = await FinanceService.listTypes(req.tenant.id);
@@ -200,7 +200,7 @@ export const listFinanceTypes = asyncHandler(async (req: AuthenticatedRequest, r
 
 export const createFinanceType = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
   const type = await FinanceService.createType(req.tenant.id, {
@@ -213,7 +213,7 @@ export const createFinanceType = asyncHandler(async (req: AuthenticatedRequest, 
 
 export const listFinanceOperations = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
 
@@ -251,7 +251,7 @@ export const listFinanceOperations = asyncHandler(async (req: AuthenticatedReque
 
 export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
 
@@ -312,7 +312,7 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
 
 export const deleteFinanceOperation = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
   const { id } = req.params;
@@ -326,7 +326,7 @@ export const deleteFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
 export const purgeUnlinkedFinanceHistory = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
     const data = await FinanceService.purgeUnlinkedSalaryAndClientHistory(req.tenant.id);
@@ -340,7 +340,7 @@ export const purgeUnlinkedFinanceHistory = asyncHandler(
 
 export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
 
@@ -381,7 +381,7 @@ export const payoutTrainerSalary = asyncHandler(async (req: AuthenticatedRequest
 
 export const getSalarySummary = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
 
@@ -413,7 +413,7 @@ export const getSalarySummary = asyncHandler(async (req: AuthenticatedRequest, r
 export const getMembershipFinanceSummary = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -445,7 +445,7 @@ export const getMembershipFinanceSummary = asyncHandler(
 export const receiveMembershipPayment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -822,11 +822,11 @@ export const receiveMembershipPayment = asyncHandler(
 export const correctMembershipAccrual = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
     if (!req.user?.id) {
-      res.status(401).json({ success: false, error: 'Unauthorized' });
+      res.status(401).json({ success: false, error: 'Не авторизован' });
       return;
     }
 
@@ -852,7 +852,7 @@ export const correctMembershipAccrual = asyncHandler(
 export const updateMembershipAmount = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -917,7 +917,7 @@ export const updateMembershipAmount = asyncHandler(
 export const changeMembershipPack = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
     const { clientId, membershipId } = req.body;
@@ -944,7 +944,7 @@ export const changeMembershipPack = asyncHandler(
 export const getMonthChargesBreakdown = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     if (!req.tenant?.id) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
     const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
@@ -981,7 +981,7 @@ export const getMonthChargesBreakdown = asyncHandler(
 
 export const getFinanceRefs = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   if (!req.tenant?.id) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
   const data = await FinanceService.getRefs(req.tenant.id);

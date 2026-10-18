@@ -25,7 +25,7 @@ export const authenticateLoginActor = asyncHandler(async (
     return;
   }
   if (!process.env.JWT_SECRET) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
 

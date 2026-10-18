@@ -102,7 +102,7 @@ export const createPromoCodeAdmin = asyncHandler(async (req: AuthenticatedReques
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -110,7 +110,7 @@ export const createPromoCodeAdmin = asyncHandler(async (req: AuthenticatedReques
   if (!password) {
     res.status(400).json({
       success: false,
-      error: 'Password is required',
+      error: 'Укажите пароль',
     });
     return;
   }

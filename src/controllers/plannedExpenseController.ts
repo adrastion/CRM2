@@ -28,7 +28,7 @@ export const listPlannedExpenses = asyncHandler(async (_req: AuthenticatedReques
 export const createPlannedExpense = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const createdById = saId(req);
   if (!createdById) {
-    res.status(401).json({ success: false, error: 'Super admin required' });
+    res.status(401).json({ success: false, error: 'Требуются права супер-администратора' });
     return;
   }
   const title = String(req.body?.title || '').trim();

@@ -251,13 +251,13 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
         total: trainersTotal + adminsTotal,
         totalPages: Math.ceil((trainersTotal + adminsTotal) / Number(limit))
       },
-      message: 'Employees retrieved successfully'
+      message: 'Сотрудники успешно получены'
     });
   } catch (error) {
     console.error('Get employees error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve employees'
+      error: 'Не удалось получить список сотрудников'
     });
   }
 };
@@ -287,7 +287,7 @@ export const getTrainerById = async (req: AuthenticatedRequest, res: Response) =
     if (!trainer) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -301,13 +301,13 @@ export const getTrainerById = async (req: AuthenticatedRequest, res: Response) =
     res.json({
       success: true,
       data: trainer,
-      message: 'Trainer retrieved successfully'
+      message: 'Тренер успешно получен'
     });
   } catch (error) {
     console.error('Get trainer error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve trainer'
+      error: 'Не удалось получить тренера'
     });
   }
 };
@@ -346,7 +346,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
       const { getSeniorBranchIds } = await import('../utils/branchAccess');
       seniorBranchIds = await getSeniorBranchIds(req.user.id, req.tenant.id);
       if (seniorBranchIds.length === 0) {
-        res.status(403).json({ success: false, error: 'Insufficient permissions' });
+        res.status(403).json({ success: false, error: 'Недостаточно прав' });
         return;
       }
       if (!branchId || !seniorBranchIds.includes(branchId)) {
@@ -445,7 +445,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
     res.status(201).json({
       success: true,
       data: trainer,
-      message: 'Trainer created successfully'
+      message: 'Тренер успешно создан'
     });
     return;
   } catch (error: any) {
@@ -459,7 +459,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
     }
     res.status(500).json({
       success: false,
-      error: 'Failed to create trainer'
+      error: 'Не удалось создать тренера'
     });
     return;
   }
@@ -584,7 +584,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
     if (!trainer) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -704,7 +704,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
     res.json({
       success: true,
       data: updatedTrainer,
-      message: 'Trainer updated successfully'
+      message: 'Тренер успешно обновлён'
     });
   } catch (error: any) {
     console.error('Update trainer error:', error);
@@ -717,7 +717,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
     }
     res.status(500).json({
       success: false,
-      error: 'Failed to update trainer'
+      error: 'Не удалось обновить тренера'
     });
   }
 };
@@ -731,7 +731,7 @@ export const getTrainerDeletionImpact = async (req: AuthenticatedRequest, res: R
       select: { id: true },
     });
     if (!trainer || !tenantId) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     const { getTrainerDeletionImpact: impact } = await import('../services/deletionPurgeService');
@@ -739,7 +739,7 @@ export const getTrainerDeletionImpact = async (req: AuthenticatedRequest, res: R
     res.json({ success: true, data });
   } catch (error) {
     console.error('Trainer deletion impact error:', error);
-    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+    res.status(500).json({ success: false, error: 'Не удалось загрузить последствия удаления' });
   }
 };
 
@@ -758,7 +758,7 @@ export const deleteTrainer = async (req: AuthenticatedRequest, res: Response) =>
     if (!trainer || !tenantId) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -773,13 +773,13 @@ export const deleteTrainer = async (req: AuthenticatedRequest, res: Response) =>
 
     res.json({
       success: true,
-      message: 'Trainer deleted successfully'
+      message: 'Тренер успешно удалён'
     });
   } catch (error) {
     console.error('Delete trainer error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete trainer'
+      error: 'Не удалось удалить тренера'
     });
   }
 };
@@ -792,7 +792,7 @@ export const addBranchToTrainer = async (req: AuthenticatedRequest, res: Respons
     if (!branchId) {
       res.status(400).json({
         success: false,
-        error: 'Branch ID is required'
+        error: 'Требуется ID филиала'
       });
       return;
     }
@@ -808,7 +808,7 @@ export const addBranchToTrainer = async (req: AuthenticatedRequest, res: Respons
     if (!trainer) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -824,7 +824,7 @@ export const addBranchToTrainer = async (req: AuthenticatedRequest, res: Respons
     if (!branch) {
       res.status(404).json({
         success: false,
-        error: 'Branch not found'
+        error: 'Филиал не найден'
       });
       return;
     }
@@ -842,7 +842,7 @@ export const addBranchToTrainer = async (req: AuthenticatedRequest, res: Respons
     if (existingAssignment) {
       res.status(400).json({
         success: false,
-        error: 'Trainer is already assigned to this branch'
+        error: 'Тренер уже назначен в этот филиал'
       });
       return;
     }
@@ -866,19 +866,19 @@ export const addBranchToTrainer = async (req: AuthenticatedRequest, res: Respons
     res.status(201).json({
       success: true,
       data: assignment,
-      message: 'Trainer assigned to branch successfully'
+      message: 'Тренер успешно назначен в филиал'
     });
   } catch (error: any) {
     console.error('Add branch to trainer error:', error);
     if (error.code === 'P2002') {
       res.status(400).json({
         success: false,
-        error: 'Trainer is already assigned to this branch'
+        error: 'Тренер уже назначен в этот филиал'
       });
     } else {
       res.status(500).json({
         success: false,
-        error: 'Failed to assign trainer to branch'
+        error: 'Не удалось назначить тренера в филиал'
       });
     }
   }
@@ -900,7 +900,7 @@ export const removeBranchFromTrainer = async (req: AuthenticatedRequest, res: Re
     if (!trainer) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -918,7 +918,7 @@ export const removeBranchFromTrainer = async (req: AuthenticatedRequest, res: Re
     if (!assignment) {
       res.status(404).json({
         success: false,
-        error: 'Trainer is not assigned to this branch'
+        error: 'Тренер не назначен в этот филиал'
       });
       return;
     }
@@ -935,13 +935,13 @@ export const removeBranchFromTrainer = async (req: AuthenticatedRequest, res: Re
 
     res.json({
       success: true,
-      message: 'Trainer removed from branch successfully'
+      message: 'Тренер успешно удалён из филиала'
     });
   } catch (error) {
     console.error('Remove branch from trainer error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to remove trainer from branch'
+      error: 'Не удалось удалить тренера из филиала'
     });
   }
 };
@@ -968,7 +968,7 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
     if (!trainer) {
       res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
       return;
     }
@@ -977,7 +977,7 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
     if (req.user?.role === 'TRAINER' && trainer.userId !== req.user.id) {
       res.status(403).json({
         success: false,
-        error: 'Access denied'
+        error: 'Доступ запрещён'
       });
       return;
     }
@@ -1031,7 +1031,7 @@ export const getTrainerEarnings = async (req: AuthenticatedRequest, res: Respons
     console.error('Get trainer earnings error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve trainer earnings'
+      error: 'Не удалось получить заработок тренера'
     });
   }
 };
@@ -1044,11 +1044,11 @@ export const getTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Res
       where: { id, tenantId: req.tenant?.id },
     });
     if (!trainer) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     if (req.user?.role === 'TRAINER' && trainer.userId !== req.user.id) {
-      res.status(403).json({ success: false, error: 'Access denied' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
     const fromDate = from || startDate ? new Date((from || startDate) as string) : undefined;
@@ -1057,14 +1057,14 @@ export const getTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Res
     res.json({ success: true, data: ledger });
   } catch (error) {
     console.error('Get salary ledger error:', error);
-    res.status(500).json({ success: false, error: 'Failed to retrieve salary ledger' });
+    res.status(500).json({ success: false, error: 'Не удалось получить журнал зарплаты' });
   }
 };
 
 export const postTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ success: false, error: 'Access denied' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
     const { id } = req.params;
@@ -1079,10 +1079,10 @@ export const postTrainerSalaryLedger = async (req: AuthenticatedRequest, res: Re
       occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       personName: personName ?? null,
     });
-    res.status(201).json({ success: true, data: result, message: 'Ledger entry created' });
+    res.status(201).json({ success: true, data: result, message: 'Запись в журнале создана' });
   } catch (error: any) {
     console.error('Post salary ledger error:', error);
-    res.status(400).json({ success: false, error: error?.message || 'Failed to create ledger entry' });
+    res.status(400).json({ success: false, error: error?.message || 'Не удалось создать запись в журнале' });
   }
 };
 
@@ -1096,21 +1096,21 @@ export const getSalaryPayoutReminder = async (req: AuthenticatedRequest, res: Re
     res.json({ success: true, data: reminder });
   } catch (error) {
     console.error('Payout reminder error:', error);
-    res.status(500).json({ success: false, error: 'Failed to get payout reminder' });
+    res.status(500).json({ success: false, error: 'Не удалось получить напоминание о выплате' });
   }
 };
 
 export const accrueFixedMonthlySalaries = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ success: false, error: 'Access denied' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
     const count = await accrueFixedMonthlyForTenant(req.tenant!.id, new Date());
     res.json({ success: true, data: { accruedCount: count }, message: `Начислено: ${count}` });
   } catch (error) {
     console.error('Accrue fixed monthly error:', error);
-    res.status(500).json({ success: false, error: 'Failed to accrue fixed monthly salaries' });
+    res.status(500).json({ success: false, error: 'Не удалось начислить фиксированные зарплаты' });
   }
 };
 
@@ -1118,7 +1118,7 @@ export const accrueFixedMonthlySalaries = async (req: AuthenticatedRequest, res:
 export const backfillSalaryFromAttendance = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ success: false, error: 'Access denied' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
     if (!req.tenant?.id) {
@@ -1133,7 +1133,7 @@ export const backfillSalaryFromAttendance = async (req: AuthenticatedRequest, re
     });
   } catch (error) {
     console.error('Backfill salary from attendance error:', error);
-    res.status(500).json({ success: false, error: 'Failed to backfill salary accruals' });
+    res.status(500).json({ success: false, error: 'Не удалось доначислить зарплаты' });
   }
 };
 
@@ -1141,7 +1141,7 @@ export const backfillSalaryFromAttendance = async (req: AuthenticatedRequest, re
 export const backfillSalaryFromPayments = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ success: false, error: 'Access denied' });
+      res.status(403).json({ success: false, error: 'Доступ запрещён' });
       return;
     }
     if (!req.tenant?.id) {
@@ -1156,7 +1156,7 @@ export const backfillSalaryFromPayments = async (req: AuthenticatedRequest, res:
     });
   } catch (error) {
     console.error('Backfill salary from payments error:', error);
-    res.status(500).json({ success: false, error: 'Failed to backfill payment salary accruals' });
+    res.status(500).json({ success: false, error: 'Не удалось доначислить зарплаты по платежам' });
   }
 };
 
@@ -1183,7 +1183,7 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
     if (!trainer) {
       return res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
     }
 
@@ -1191,7 +1191,7 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
     if (req.user?.role === 'TRAINER' && trainer.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied'
+        error: 'Доступ запрещён'
       });
     }
 
@@ -1220,7 +1220,7 @@ export const getTrainerNotificationSettings = async (req: AuthenticatedRequest, 
     console.error('Get notification settings error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to get notification settings'
+      error: 'Не удалось получить настройки уведомлений'
     });
   }
 };
@@ -1246,7 +1246,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
     if (!trainer) {
       return res.status(404).json({
         success: false,
-        error: 'Trainer not found'
+        error: 'Тренер не найден'
       });
     }
 
@@ -1254,7 +1254,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
     if (req.user?.role === 'TRAINER' && trainer.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied'
+        error: 'Доступ запрещён'
       });
     }
 
@@ -1264,7 +1264,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
       if (isNaN(time) || time < 0 || time > 1439) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid allTrainingsTime. Must be between 0 and 1439 minutes'
+          error: 'Некорректное allTrainingsTime. Допустимо от 0 до 1439 минут'
         });
       }
     }
@@ -1275,7 +1275,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
       if (!validPeriods.includes(notificationPeriod)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid notificationPeriod. Must be one of: tomorrow, week, month'
+          error: 'Некорректный notificationPeriod. Допустимо: tomorrow, week, month'
         });
       }
     }
@@ -1286,7 +1286,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
       if (isNaN(minutes) || minutes < 0) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid reminderBeforeMinutes. Must be a positive number'
+          error: 'Некорректный reminderBeforeMinutes. Укажите положительное число'
         });
       }
     }
@@ -1299,7 +1299,7 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
       } catch (error) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid timezone. Must be a valid IANA timezone identifier (e.g., Europe/Moscow, UTC, America/New_York)'
+          error: 'Некорректный часовой пояс. Укажите идентификатор IANA (например, Europe/Moscow)'
         });
       }
     }
@@ -1329,13 +1329,13 @@ export const updateTrainerNotificationSettings = async (req: AuthenticatedReques
     return res.json({
       success: true,
       data: settings,
-      message: 'Notification settings updated successfully'
+      message: 'Настройки уведомлений успешно обновлены'
     });
   } catch (error) {
     console.error('Update notification settings error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to update notification settings'
+      error: 'Не удалось обновить настройки уведомлений'
     });
   }
 };
@@ -1346,7 +1346,7 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
     if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
       res.status(403).json({
         success: false,
-        error: 'Access denied'
+        error: 'Доступ запрещён'
       });
       return;
     }
@@ -1371,7 +1371,7 @@ export const getAllTrainersEarnings = async (req: AuthenticatedRequest, res: Res
     console.error('Get all trainers earnings error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve trainers earnings'
+      error: 'Не удалось получить заработок тренеров'
     });
   }
 };
@@ -1383,7 +1383,7 @@ export const listTrainerDocuments = async (req: AuthenticatedRequest, res: Respo
       where: { id, tenantId: req.tenant?.id },
     });
     if (!trainer) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     const access = await resolveTrainerEditAccess(req, trainer);
@@ -1398,7 +1398,7 @@ export const listTrainerDocuments = async (req: AuthenticatedRequest, res: Respo
     res.json({ success: true, data: documents });
   } catch (error) {
     console.error('List trainer documents error:', error);
-    res.status(500).json({ success: false, error: 'Failed to list documents' });
+    res.status(500).json({ success: false, error: 'Не удалось получить список документов' });
   }
 };
 
@@ -1409,7 +1409,7 @@ export const uploadTrainerDocument = async (req: AuthenticatedRequest, res: Resp
       where: { id, tenantId: req.tenant?.id },
     });
     if (!trainer) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     const access = await resolveTrainerEditAccess(req, trainer);
@@ -1452,7 +1452,7 @@ export const uploadTrainerDocument = async (req: AuthenticatedRequest, res: Resp
     if (req.file?.filename && req.tenant?.id) {
       safeUnlink(path.join('trainer-docs', String(req.tenant.id), req.file.filename).replace(/\\/g, '/'));
     }
-    res.status(500).json({ success: false, error: 'Failed to upload document' });
+    res.status(500).json({ success: false, error: 'Не удалось загрузить документ' });
   }
 };
 
@@ -1463,7 +1463,7 @@ export const downloadTrainerDocument = async (req: AuthenticatedRequest, res: Re
       where: { id, tenantId: req.tenant?.id },
     });
     if (!trainer) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     const access = await resolveTrainerEditAccess(req, trainer);
@@ -1494,7 +1494,7 @@ export const downloadTrainerDocument = async (req: AuthenticatedRequest, res: Re
     fs.createReadStream(abs).pipe(res);
   } catch (error) {
     console.error('Download trainer document error:', error);
-    res.status(500).json({ success: false, error: 'Failed to download document' });
+    res.status(500).json({ success: false, error: 'Не удалось скачать документ' });
   }
 };
 
@@ -1505,7 +1505,7 @@ export const deleteTrainerDocument = async (req: AuthenticatedRequest, res: Resp
       where: { id, tenantId: req.tenant?.id },
     });
     if (!trainer) {
-      res.status(404).json({ success: false, error: 'Trainer not found' });
+      res.status(404).json({ success: false, error: 'Тренер не найден' });
       return;
     }
     const access = await resolveTrainerEditAccess(req, trainer);
@@ -1527,6 +1527,6 @@ export const deleteTrainerDocument = async (req: AuthenticatedRequest, res: Resp
     res.json({ success: true, message: 'Документ удалён' });
   } catch (error) {
     console.error('Delete trainer document error:', error);
-    res.status(500).json({ success: false, error: 'Failed to delete document' });
+    res.status(500).json({ success: false, error: 'Не удалось удалить документ' });
   }
 };

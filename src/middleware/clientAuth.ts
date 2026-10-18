@@ -38,7 +38,7 @@ export const authenticateClient = async (
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'No token provided'
+        error: 'Токен не передан'
       });
     }
 
@@ -46,7 +46,7 @@ export const authenticateClient = async (
     if (!jwtSecret) {
       return res.status(500).json({
         success: false,
-        error: 'Server configuration error'
+        error: 'Ошибка конфигурации сервера'
       });
     }
     const decoded = jwt.verify(token, jwtSecret) as {
@@ -71,13 +71,13 @@ export const authenticateClient = async (
       ) {
         return res.status(401).json({
           success: false,
-          error: 'Invalid or inactive client'
+          error: 'Недействительный или неактивный клиент'
         });
       }
       if (!(await assertAuthSessionActive(decoded.jti, 'CLIENT', client.id))) {
         return res.status(401).json({
           success: false,
-          error: 'Session revoked or expired'
+          error: 'Сессия отозвана или истекла'
         });
       }
       req.client = {
@@ -101,13 +101,13 @@ export const authenticateClient = async (
       ) {
         return res.status(401).json({
           success: false,
-          error: 'Invalid or inactive parent'
+          error: 'Недействительный или неактивный родитель'
         });
       }
       if (!(await assertAuthSessionActive(decoded.jti, 'PARENT', parent.id))) {
         return res.status(401).json({
           success: false,
-          error: 'Session revoked or expired'
+          error: 'Сессия отозвана или истекла'
         });
       }
       req.parent = {
@@ -121,19 +121,19 @@ export const authenticateClient = async (
 
     return res.status(401).json({
       success: false,
-      error: 'Invalid token type'
+      error: 'Неверный тип токена'
     });
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        error: 'Token expired'
+        error: 'Срок действия токена истёк'
       });
     }
 
     return res.status(401).json({
       success: false,
-      error: 'Invalid token'
+      error: 'Недействительный токен'
     });
   }
 };

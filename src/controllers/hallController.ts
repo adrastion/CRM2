@@ -51,13 +51,13 @@ export const getHalls = async (req: AuthenticatedRequest, res: Response) => {
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Halls retrieved successfully'
+      message: 'Залы успешно получены'
     });
   } catch (error) {
     console.error('Get halls error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve halls'
+      error: 'Не удалось получить список залов'
     });
   }
 };
@@ -84,7 +84,7 @@ export const getHallById = async (req: AuthenticatedRequest, res: Response) => {
     if (!hall) {
       res.status(404).json({
         success: false,
-        error: 'Hall not found'
+        error: 'Зал не найден'
       });
       return;
     }
@@ -92,13 +92,13 @@ export const getHallById = async (req: AuthenticatedRequest, res: Response) => {
     res.json({
       success: true,
       data: hall,
-      message: 'Hall retrieved successfully'
+      message: 'Зал успешно получен'
     });
   } catch (error) {
     console.error('Get hall error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve hall'
+      error: 'Не удалось получить зал'
     });
   }
 };
@@ -110,7 +110,7 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!branchId) {
       res.status(400).json({
         success: false,
-        error: 'Branch ID is required'
+        error: 'Требуется ID филиала'
       });
       return;
     }
@@ -118,7 +118,7 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!name) {
       res.status(400).json({
         success: false,
-        error: 'Hall name is required'
+        error: 'Укажите название зала'
       });
       return;
     }
@@ -134,7 +134,7 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!branch) {
       res.status(404).json({
         success: false,
-        error: 'Branch not found'
+        error: 'Филиал не найден'
       });
       return;
     }
@@ -154,7 +154,7 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!tenantId) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Требуется ID организации'
       });
       return;
     }
@@ -182,13 +182,13 @@ export const createHall = async (req: AuthenticatedRequest, res: Response) => {
     res.status(201).json({
       success: true,
       data: hall,
-      message: 'Hall created successfully'
+      message: 'Зал успешно создан'
     });
   } catch (error) {
     console.error('Create hall error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create hall'
+      error: 'Не удалось создать зал'
     });
   }
 };
@@ -207,7 +207,7 @@ export const updateHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!hall) {
       res.status(404).json({
         success: false,
-        error: 'Hall not found'
+        error: 'Зал не найден'
       });
       return;
     }
@@ -230,7 +230,7 @@ export const updateHall = async (req: AuthenticatedRequest, res: Response) => {
       if (!branch) {
         res.status(404).json({
           success: false,
-          error: 'Branch not found'
+          error: 'Филиал не найден'
         });
         return;
       }
@@ -254,13 +254,13 @@ export const updateHall = async (req: AuthenticatedRequest, res: Response) => {
     res.json({
       success: true,
       data: updatedHall,
-      message: 'Hall updated successfully'
+      message: 'Зал успешно обновлён'
     });
   } catch (error) {
     console.error('Update hall error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update hall'
+      error: 'Не удалось обновить зал'
     });
   }
 };
@@ -279,7 +279,7 @@ export const deleteHall = async (req: AuthenticatedRequest, res: Response) => {
     if (!hall) {
       res.status(404).json({
         success: false,
-        error: 'Hall not found'
+        error: 'Зал не найден'
       });
       return;
     }
@@ -291,13 +291,13 @@ export const deleteHall = async (req: AuthenticatedRequest, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Hall deleted successfully'
+      message: 'Зал успешно удалён'
     });
   } catch (error) {
     console.error('Delete hall error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete hall'
+      error: 'Не удалось удалить зал'
     });
   }
 };

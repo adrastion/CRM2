@@ -9,7 +9,7 @@ const pingLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many pings' },
+  message: { success: false, error: 'Слишком много запросов' },
 });
 
 router.post('/ping', pingLimiter, postSiteAnalyticsPing);

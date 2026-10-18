@@ -17,12 +17,12 @@ export const authenticateTester = asyncHandler(async (
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Access token is required' });
+    res.status(401).json({ success: false, error: 'Требуется токен доступа' });
     return;
   }
 
   if (!process.env.JWT_SECRET) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
 
@@ -35,11 +35,11 @@ export const authenticateTester = asyncHandler(async (
 
     const tester = await prisma.tester.findUnique({ where: { id: decoded.userId } });
     if (!tester || !tester.isActive || !isSessionVersionValid(decoded, tester.sessionVersion)) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive tester' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный тестировщик' });
       return;
     }
     if (!(await assertAuthSessionActive(decoded.jti, 'TESTER', tester.id))) {
-      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      res.status(401).json({ success: false, error: 'Сессия отозвана или истекла' });
       return;
     }
 
@@ -48,7 +48,7 @@ export const authenticateTester = asyncHandler(async (
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      res.status(401).json({ success: false, error: 'Invalid token' });
+      res.status(401).json({ success: false, error: 'Недействительный токен' });
       return;
     }
     throw error;
@@ -66,12 +66,12 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Access token is required' });
+    res.status(401).json({ success: false, error: 'Требуется токен доступа' });
     return;
   }
 
   if (!process.env.JWT_SECRET) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
 
@@ -79,7 +79,7 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
   try {
     decoded = jwt.verify(authHeader.substring(7), process.env.JWT_SECRET);
   } catch {
-    res.status(401).json({ success: false, error: 'Invalid token' });
+    res.status(401).json({ success: false, error: 'Недействительный токен' });
     return;
   }
 
@@ -90,11 +90,11 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
       !superAdmin.isActive ||
       !isSessionVersionValid(decoded, superAdmin.sessionVersion)
     ) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive super admin' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный супер-администратор' });
       return;
     }
     if (!(await assertAuthSessionActive(decoded.jti, 'SUPER_ADMIN', superAdmin.id))) {
-      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      res.status(401).json({ success: false, error: 'Сессия отозвана или истекла' });
       return;
     }
     (req as any).superAdmin = superAdmin;
@@ -107,11 +107,11 @@ export const authenticateSuperAdminOrTester = asyncHandler(async (
   if (decoded.type === 'TESTER') {
     const tester = await prisma.tester.findUnique({ where: { id: decoded.userId } });
     if (!tester || !tester.isActive || !isSessionVersionValid(decoded, tester.sessionVersion)) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive tester' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный тестировщик' });
       return;
     }
     if (!(await assertAuthSessionActive(decoded.jti, 'TESTER', tester.id))) {
-      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      res.status(401).json({ success: false, error: 'Сессия отозвана или истекла' });
       return;
     }
     (req as any).tester = tester;

@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma';
 
 function requireMarketerId(req: AuthenticatedRequest): string {
   const id = (req as any).marketer?.id;
-  if (!id) throw badRequest('Marketer auth required');
+  if (!id) throw badRequest('Требуется авторизация маркетолога');
   return String(id);
 }
 

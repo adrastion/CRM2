@@ -446,7 +446,7 @@ export const getTenantDetails = asyncHandler(async (req: AuthenticatedRequest, r
   if (!tenant) {
     res.status(404).json({
       success: false,
-      error: 'Tenant not found',
+      error: 'Организация не найдена',
     });
     return;
   }
@@ -712,7 +712,7 @@ export const createExpenseCategory = asyncHandler(async (req: AuthenticatedReque
   if (!name) {
     res.status(400).json({
       success: false,
-      error: 'Name is required',
+      error: 'Укажите название',
     });
     return;
   }
@@ -908,7 +908,7 @@ export const createExpense = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!amount || !description) {
     res.status(400).json({
       success: false,
-      error: 'Amount and description are required',
+      error: 'Укажите сумму и описание',
     });
     return;
   }
@@ -988,7 +988,7 @@ export const updateExpense = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!existingExpense || existingExpense.type !== 'expense') {
     res.status(404).json({
       success: false,
-      error: 'Expense not found',
+      error: 'Расход не найден',
     });
     return;
   }
@@ -1059,7 +1059,7 @@ export const deleteExpense = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!existingExpense || existingExpense.type !== 'expense') {
     res.status(404).json({
       success: false,
-      error: 'Expense not found',
+      error: 'Расход не найден',
     });
     return;
   }
@@ -1082,7 +1082,7 @@ export const deleteExpense = asyncHandler(async (req: AuthenticatedRequest, res:
 
   res.json({
     success: true,
-    message: 'Expense deleted successfully',
+    message: 'Расход успешно удалён',
   });
 });
 
@@ -1096,7 +1096,7 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (!marketerId || !amount) {
     res.status(400).json({
       success: false,
-      error: 'Marketer ID and amount are required',
+      error: 'Требуются ID маркетолога и сумма',
     });
     return;
   }
@@ -1108,7 +1108,7 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (!marketer) {
     res.status(404).json({
       success: false,
-      error: 'Marketer not found',
+      error: 'Маркетолог не найден',
     });
     return;
   }
@@ -1119,7 +1119,7 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (paymentAmount > currentBalance) {
     res.status(400).json({
       success: false,
-      error: 'Payment amount exceeds marketer balance',
+      error: 'Сумма выплаты превышает баланс маркетолога',
     });
     return;
   }
@@ -1252,7 +1252,7 @@ export const updateTenantPlan = asyncHandler(async (req: AuthenticatedRequest, r
   if (!tenant) {
     res.status(404).json({
       success: false,
-      error: 'Tenant not found',
+      error: 'Организация не найдена',
     });
     return;
   }
@@ -1680,7 +1680,7 @@ export const bulkUpdateTenants = asyncHandler(async (req: AuthenticatedRequest, 
   if (!tenantIds || !Array.isArray(tenantIds) || tenantIds.length === 0) {
     res.status(400).json({
       success: false,
-      error: 'Tenant IDs are required',
+      error: 'Требуются ID организаций',
     });
     return;
   }
@@ -1746,7 +1746,7 @@ export const bulkUpdateTenants = asyncHandler(async (req: AuthenticatedRequest, 
 
   res.json({
     success: true,
-    message: `Successfully ${action} ${tenantIds.length} tenant(s)`,
+    message: `Успешно: ${action} организаций — ${tenantIds.length}`,
   });
 });
 
@@ -2200,7 +2200,7 @@ export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, r
     if (!marketer) {
       res.status(404).json({
         success: false,
-        error: 'Marketer not found',
+        error: 'Маркетолог не найден',
       });
       return;
     }
@@ -2660,7 +2660,7 @@ export const getDashboardPresets = asyncHandler(async (req: AuthenticatedRequest
   if (!superAdmin) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized',
+      error: 'Не авторизован',
     });
     return;
   }
@@ -2694,7 +2694,7 @@ export const saveDashboardPreset = asyncHandler(async (req: AuthenticatedRequest
   if (!superAdmin) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized',
+      error: 'Не авторизован',
     });
     return;
   }
@@ -2702,7 +2702,7 @@ export const saveDashboardPreset = asyncHandler(async (req: AuthenticatedRequest
   if (!name || !widgetOrder || !widgetVisibility) {
     res.status(400).json({
       success: false,
-      error: 'Name, widgetOrder and widgetVisibility are required',
+      error: 'Укажите name, widgetOrder и widgetVisibility',
     });
     return;
   }
@@ -2777,7 +2777,7 @@ export const deleteDashboardPreset = asyncHandler(async (req: AuthenticatedReque
   if (!superAdmin) {
     res.status(401).json({
       success: false,
-      error: 'Unauthorized',
+      error: 'Не авторизован',
     });
     return;
   }
@@ -2789,7 +2789,7 @@ export const deleteDashboardPreset = asyncHandler(async (req: AuthenticatedReque
   if (!preset || preset.superAdminId !== superAdmin.id) {
     res.status(404).json({
       success: false,
-      error: 'Preset not found',
+      error: 'Пресет не найден',
     });
     return;
   }
@@ -2812,7 +2812,7 @@ export const deleteDashboardPreset = asyncHandler(async (req: AuthenticatedReque
 
   res.json({
     success: true,
-    message: 'Preset deleted successfully',
+    message: 'Пресет успешно удалён',
   });
 });
 

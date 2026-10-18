@@ -335,7 +335,7 @@ export async function issueClientMembership(params: {
     where: { id: params.membershipId, tenantId: params.tenantId },
   });
   if (!membership) {
-    throw Object.assign(new Error('Membership not found'), { statusCode: 404 });
+    throw Object.assign(new Error('Абонемент не найден'), { statusCode: 404 });
   }
   if (membership.category === 'GROUP') {
     throw Object.assign(new Error('Групповой абонемент нельзя выдать клиенту лично'), { statusCode: 400 });
@@ -452,7 +452,7 @@ export async function setClientMembershipRemaining(params: {
     include: { membership: true },
   });
   if (!row) {
-    throw Object.assign(new Error('Client membership not found'), { statusCode: 404 });
+    throw Object.assign(new Error('Абонемент клиента не найден'), { statusCode: 404 });
   }
   if (row.visitsTotal == null) {
     throw Object.assign(new Error('У месячного абонемента нет лимита посещений'), {
@@ -597,7 +597,7 @@ export async function schedulePortalMembershipChange(params: {
     where: { id: params.membershipId, tenantId: params.tenantId },
   });
   if (!membership) {
-    throw Object.assign(new Error('Membership not found'), { statusCode: 404 });
+    throw Object.assign(new Error('Абонемент не найден'), { statusCode: 404 });
   }
   if (membership.category === 'GROUP') {
     throw Object.assign(new Error('Групповой абонемент нельзя выдать клиенту лично'), {

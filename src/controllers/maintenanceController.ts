@@ -37,7 +37,7 @@ export const getAdminMaintenance = asyncHandler(
 export const updateAdminMaintenance = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     if (typeof req.body?.enabled !== 'boolean') {
-      res.status(400).json({ success: false, error: 'enabled (boolean) required' });
+      res.status(400).json({ success: false, error: 'Требуется enabled (boolean)' });
       return;
     }
     const data = await setMaintenanceMode(req.body.enabled);
@@ -72,7 +72,7 @@ export const getAdminTestingMode = asyncHandler(
 export const updateAdminTestingMode = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     if (typeof req.body?.enabled !== 'boolean') {
-      res.status(400).json({ success: false, error: 'enabled (boolean) required' });
+      res.status(400).json({ success: false, error: 'Требуется enabled (boolean)' });
       return;
     }
     let allowlist: string[] | undefined;

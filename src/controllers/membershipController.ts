@@ -73,7 +73,7 @@ export const getMemberships = async (req: AuthenticatedRequest, res: Response) =
     });
   } catch (error) {
     console.error('Get memberships error:', error);
-    res.status(500).json({ success: false, error: 'Failed to retrieve memberships' });
+    res.status(500).json({ success: false, error: 'Не удалось получить список абонементов' });
   }
 };
 
@@ -85,13 +85,13 @@ export const getMembershipById = async (req: AuthenticatedRequest, res: Response
       include: membershipInclude(),
     });
     if (!membership) {
-      res.status(404).json({ success: false, error: 'Membership not found' });
+      res.status(404).json({ success: false, error: 'Абонемент не найден' });
       return;
     }
     res.json({ success: true, data: membership });
   } catch (error) {
     console.error('Get membership error:', error);
-    res.status(500).json({ success: false, error: 'Failed to retrieve membership' });
+    res.status(500).json({ success: false, error: 'Не удалось получить абонемент' });
   }
 };
 
@@ -99,7 +99,7 @@ export const createMembership = async (req: AuthenticatedRequest, res: Response)
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
@@ -210,7 +210,7 @@ export const createMembership = async (req: AuthenticatedRequest, res: Response)
     res.status(201).json({ success: true, data: full });
   } catch (error: any) {
     console.error('Create membership error:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to create membership' });
+    res.status(500).json({ success: false, error: error.message || 'Не удалось создать абонемент' });
   }
 };
 
@@ -220,7 +220,7 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
     const tenantId = req.tenant?.id;
     const membership = await prisma.membership.findFirst({ where: { id, tenantId } });
     if (!membership) {
-      res.status(404).json({ success: false, error: 'Membership not found' });
+      res.status(404).json({ success: false, error: 'Абонемент не найден' });
       return;
     }
 
@@ -327,7 +327,7 @@ export const updateMembership = async (req: AuthenticatedRequest, res: Response)
     res.json({ success: true, data: full });
   } catch (error: any) {
     console.error('Update membership error:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to update membership' });
+    res.status(500).json({ success: false, error: error.message || 'Не удалось обновить абонемент' });
   }
 };
 
@@ -339,13 +339,13 @@ export const deleteMembership = async (req: AuthenticatedRequest, res: Response)
       include: { clientMemberships: true, payments: true, membershipGroups: true },
     });
     if (!membership) {
-      res.status(404).json({ success: false, error: 'Membership not found' });
+      res.status(404).json({ success: false, error: 'Абонемент не найден' });
       return;
     }
     if (membership.clientMemberships.length > 0 || membership.payments.length > 0) {
       res.status(400).json({
         success: false,
-        error: 'Cannot delete membership that is in use. Deactivate it instead.',
+        error: 'Нельзя удалить абонемент, который используется. Деактивируйте его.',
       });
       return;
     }
@@ -356,10 +356,10 @@ export const deleteMembership = async (req: AuthenticatedRequest, res: Response)
       });
     }
     await prisma.membership.delete({ where: { id } });
-    res.json({ success: true, message: 'Membership deleted successfully' });
+    res.json({ success: true, message: 'Абонемент успешно удалён' });
   } catch (error) {
     console.error('Delete membership error:', error);
-    res.status(500).json({ success: false, error: 'Failed to delete membership' });
+    res.status(500).json({ success: false, error: 'Не удалось удалить абонемент' });
   }
 };
 
@@ -367,28 +367,28 @@ export const mergeMemberships = async (req: AuthenticatedRequest, res: Response)
   try {
     const tenantId = req.tenant?.id;
     if (!tenantId) {
-      res.status(400).json({ success: false, error: 'Tenant ID is required' });
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
       return;
     }
 
     const { targetId, sourceIds } = req.body as { targetId?: string; sourceIds?: string[] };
 
     if (!targetId || typeof targetId !== 'string') {
-      res.status(400).json({ success: false, error: 'targetId is required' });
+      res.status(400).json({ success: false, error: 'Требуется targetId' });
       return;
     }
     if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
-      res.status(400).json({ success: false, error: 'sourceIds must be a non-empty array' });
+      res.status(400).json({ success: false, error: 'sourceIds должен быть непустым массивом' });
       return;
     }
 
     const uniqueSourceIds = [...new Set(sourceIds.map(String).filter(Boolean))];
     if (uniqueSourceIds.length === 0) {
-      res.status(400).json({ success: false, error: 'sourceIds must be a non-empty array' });
+      res.status(400).json({ success: false, error: 'sourceIds должен быть непустым массивом' });
       return;
     }
     if (uniqueSourceIds.includes(targetId)) {
-      res.status(400).json({ success: false, error: 'targetId must not be in sourceIds' });
+      res.status(400).json({ success: false, error: 'targetId не должен входить в sourceIds' });
       return;
     }
 
@@ -399,14 +399,14 @@ export const mergeMemberships = async (req: AuthenticatedRequest, res: Response)
     });
     const foundIds = new Set(found.map((m) => m.id));
     if (!foundIds.has(targetId)) {
-      res.status(404).json({ success: false, error: 'Target membership not found' });
+      res.status(404).json({ success: false, error: 'Целевой абонемент не найден' });
       return;
     }
     const missingSources = uniqueSourceIds.filter((id) => !foundIds.has(id));
     if (missingSources.length > 0) {
       res.status(404).json({
         success: false,
-        error: `Source membership(s) not found: ${missingSources.join(', ')}`,
+        error: `Исходные абонементы не найдены: ${missingSources.join(', ')}`,
       });
       return;
     }
@@ -434,6 +434,6 @@ export const mergeMemberships = async (req: AuthenticatedRequest, res: Response)
     res.json({ success: true, data: full });
   } catch (error: any) {
     console.error('Merge memberships error:', error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to merge memberships' });
+    res.status(500).json({ success: false, error: error.message || 'Не удалось объединить абонементы' });
   }
 };

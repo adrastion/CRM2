@@ -134,7 +134,7 @@ export type LoginOr2faResult =
 function jwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    throw new HttpError(500, 'JWT_SECRET is not configured');
+    throw new HttpError(500, 'JWT_SECRET не настроен');
   }
   return secret;
 }

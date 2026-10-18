@@ -73,7 +73,7 @@ function parseMentions(raw: unknown): ChatMentionDto[] | undefined {
 
 async function staffActor(req: AuthenticatedRequest) {
   if (!req.user?.id || !req.tenant?.id) {
-    throw unauthorized('Unauthorized');
+    throw unauthorized('Не авторизован');
   }
   return resolveStaffActor(req.user.id, req.tenant.id);
 }
@@ -81,7 +81,7 @@ async function staffActor(req: AuthenticatedRequest) {
 async function clientSideActor(req: ClientRequest) {
   const tenantId = req.client?.tenantId || req.parent?.tenantId;
   if (!tenantId) {
-    throw unauthorized('Unauthorized');
+    throw unauthorized('Не авторизован');
   }
   return resolveClientActor({
     clientId: req.client?.id,

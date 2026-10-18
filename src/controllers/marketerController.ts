@@ -302,7 +302,7 @@ export const registerMarketer = asyncHandler(async (req: Request, res: Response<
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {
-    res.status(500).json({ success: false, error: 'JWT_SECRET is not configured' });
+    res.status(500).json({ success: false, error: 'JWT_SECRET не настроен' });
     return;
   }
   const token = jwt.sign(

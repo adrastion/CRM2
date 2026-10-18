@@ -21,7 +21,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (!email || !password) {
     res.status(400).json({
       success: false,
-      error: 'Email and password are required'
+      error: 'Укажите email и пароль'
     });
     return;
   }
@@ -63,7 +63,7 @@ export const superAdminLogin = asyncHandler(async (req: Request, res: Response<A
   if (!jwtSecret) {
     res.status(500).json({
       success: false,
-      error: 'JWT_SECRET is not configured'
+      error: 'JWT_SECRET не настроен'
     });
     return;
   }

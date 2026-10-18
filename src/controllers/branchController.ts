@@ -69,13 +69,13 @@ export const getBranches = async (req: AuthenticatedRequest, res: Response) => {
         total,
         totalPages: Math.ceil(total / Number(limit)),
       },
-      message: 'Branches retrieved successfully',
+      message: 'Филиалы успешно получены',
     });
   } catch (error) {
     console.error('Get branches error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve branches',
+      error: 'Не удалось получить список филиалов',
     });
   }
 };
@@ -101,7 +101,7 @@ export const getBranchById = async (req: AuthenticatedRequest, res: Response) =>
     if (!branch) {
       res.status(404).json({
         success: false,
-        error: 'Branch not found',
+        error: 'Филиал не найден',
       });
       return;
     }
@@ -116,13 +116,13 @@ export const getBranchById = async (req: AuthenticatedRequest, res: Response) =>
     res.json({
       success: true,
       data: branch,
-      message: 'Branch retrieved successfully',
+      message: 'Филиал успешно получен',
     });
   } catch (error) {
     console.error('Get branch error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve branch',
+      error: 'Не удалось получить филиал',
     });
   }
 };
@@ -184,13 +184,13 @@ export const createBranch = async (req: AuthenticatedRequest, res: Response) => 
     res.status(201).json({
       success: true,
       data: branch,
-      message: 'Branch created successfully',
+      message: 'Филиал успешно создан',
     });
   } catch (error) {
     console.error('Create branch error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create branch',
+      error: 'Не удалось создать филиал',
     });
   }
 };
@@ -209,7 +209,7 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
     if (!branch) {
       res.status(404).json({
         success: false,
-        error: 'Branch not found',
+        error: 'Филиал не найден',
       });
       return;
     }
@@ -222,7 +222,7 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
     if (!isOwnerAdmin && !isSeniorHere) {
       res.status(403).json({
         success: false,
-        error: 'Insufficient permissions',
+        error: 'Недостаточно прав',
       });
       return;
     }
@@ -263,13 +263,13 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
     res.json({
       success: true,
       data: updatedBranch,
-      message: 'Branch updated successfully',
+      message: 'Филиал успешно обновлён',
     });
   } catch (error) {
     console.error('Update branch error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update branch',
+      error: 'Не удалось обновить филиал',
     });
   }
 };
@@ -290,7 +290,7 @@ export const getBranchDeletionImpact = async (req: AuthenticatedRequest, res: Re
       select: { id: true },
     });
     if (!branch || !tenantId) {
-      res.status(404).json({ success: false, error: 'Branch not found' });
+      res.status(404).json({ success: false, error: 'Филиал не найден' });
       return;
     }
     const { getBranchDeletionImpact: impact } = await import('../services/deletionPurgeService');
@@ -298,7 +298,7 @@ export const getBranchDeletionImpact = async (req: AuthenticatedRequest, res: Re
     res.json({ success: true, data });
   } catch (error) {
     console.error('Branch deletion impact error:', error);
-    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+    res.status(500).json({ success: false, error: 'Не удалось загрузить последствия удаления' });
   }
 };
 
@@ -325,7 +325,7 @@ export const deleteBranch = async (req: AuthenticatedRequest, res: Response) => 
     if (!branch || !tenantId) {
       res.status(404).json({
         success: false,
-        error: 'Branch not found',
+        error: 'Филиал не найден',
       });
       return;
     }
@@ -340,13 +340,13 @@ export const deleteBranch = async (req: AuthenticatedRequest, res: Response) => 
 
     res.json({
       success: true,
-      message: 'Branch deleted successfully',
+      message: 'Филиал успешно удалён',
     });
   } catch (error) {
     console.error('Delete branch error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete branch',
+      error: 'Не удалось удалить филиал',
     });
   }
 };

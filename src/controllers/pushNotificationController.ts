@@ -17,7 +17,7 @@ export const getVapidKey = async (req: AuthenticatedRequest, res: Response) => {
     if (!publicKey) {
       return res.status(503).json({
         success: false,
-        error: 'Push notifications not configured'
+        error: 'Push-уведомления не настроены'
       });
     }
 
@@ -29,7 +29,7 @@ export const getVapidKey = async (req: AuthenticatedRequest, res: Response) => {
     console.error('Get VAPID key error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to get VAPID key'
+      error: 'Не удалось получить VAPID-ключ'
     });
   }
 };
@@ -44,7 +44,7 @@ export const subscribeToPush = async (req: AuthenticatedRequest, res: Response) 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
     }
 
@@ -53,7 +53,7 @@ export const subscribeToPush = async (req: AuthenticatedRequest, res: Response) 
     if (!subscription || !subscription.endpoint || !subscription.keys) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid subscription data'
+        error: 'Некорректные данные подписки'
       });
     }
 
@@ -71,13 +71,13 @@ export const subscribeToPush = async (req: AuthenticatedRequest, res: Response) 
 
     return res.json({
       success: true,
-      message: 'Successfully subscribed to push notifications'
+      message: 'Подписка на push-уведомления оформлена'
     });
   } catch (error) {
     console.error('Subscribe to push error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to subscribe to push notifications'
+      error: 'Не удалось подписаться на push-уведомления'
     });
   }
 };
@@ -92,7 +92,7 @@ export const unsubscribeFromPush = async (req: AuthenticatedRequest, res: Respon
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
     }
 
@@ -101,7 +101,7 @@ export const unsubscribeFromPush = async (req: AuthenticatedRequest, res: Respon
     if (!endpoint) {
       return res.status(400).json({
         success: false,
-        error: 'Endpoint is required'
+        error: 'Требуется endpoint'
       });
     }
 
@@ -109,13 +109,13 @@ export const unsubscribeFromPush = async (req: AuthenticatedRequest, res: Respon
 
     return res.json({
       success: true,
-      message: 'Successfully unsubscribed from push notifications'
+      message: 'Подписка на push-уведомления отменена'
     });
   } catch (error) {
     console.error('Unsubscribe from push error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to unsubscribe from push notifications'
+      error: 'Не удалось отписаться от push-уведомлений'
     });
   }
 };
@@ -130,7 +130,7 @@ export const getUserPushSubscriptions = async (req: AuthenticatedRequest, res: R
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized'
+        error: 'Не авторизован'
       });
     }
 
@@ -144,7 +144,7 @@ export const getUserPushSubscriptions = async (req: AuthenticatedRequest, res: R
     console.error('Get user subscriptions error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to get subscriptions'
+      error: 'Не удалось получить подписки'
     });
   }
 };

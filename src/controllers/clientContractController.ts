@@ -409,7 +409,7 @@ export const staffDownloadCertificate = asyncHandler(
     const kind: CertificateKind | null =
       kindRaw === 'birth' || kindRaw === 'medical' ? kindRaw : null;
     if (!kind) {
-      res.status(400).json({ success: false, error: 'kind: birth | medical' });
+      res.status(400).json({ success: false, error: 'Укажите kind: birth или medical' });
       return;
     }
     const client = await prisma.client.findFirst({
@@ -444,7 +444,7 @@ export const clientDownloadCertificate = asyncHandler(
     const kind: CertificateKind | null =
       kindRaw === 'birth' || kindRaw === 'medical' ? kindRaw : null;
     if (!kind) {
-      res.status(400).json({ success: false, error: 'kind: birth | medical' });
+      res.status(400).json({ success: false, error: 'Укажите kind: birth или medical' });
       return;
     }
     const access = await assertClientAccess(req, clientId);

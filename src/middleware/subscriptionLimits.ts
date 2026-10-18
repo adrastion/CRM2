@@ -25,7 +25,7 @@ export const checkSubscriptionLimit = (resource: ResourceType) => {
     if (!req.tenant?.id) {
       res.status(400).json({
         success: false,
-        error: 'Tenant ID is required',
+        error: 'Требуется ID организации',
       });
       return;
     }
@@ -57,7 +57,7 @@ export const checkSubscriptionActive = asyncHandler(async (
   if (!req.tenant?.id) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required',
+      error: 'Требуется ID организации',
     });
     return;
   }
@@ -67,7 +67,7 @@ export const checkSubscriptionActive = asyncHandler(async (
   if (!subscription) {
     res.status(500).json({
       success: false,
-      error: 'Subscription not found',
+      error: 'Подписка не найдена',
     });
     return;
   }

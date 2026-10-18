@@ -216,12 +216,12 @@ export const getExerciseMediaFile = asyncHandler(
       where: { id: mediaId, exercise: { tenantId } },
     });
     if (!media) {
-      res.status(404).json({ success: false, error: 'Not found' });
+      res.status(404).json({ success: false, error: 'Не найдено' });
       return;
     }
     const abs = absoluteUploadPath(media.storagePath);
     if (!fs.existsSync(abs)) {
-      res.status(404).json({ success: false, error: 'File missing' });
+      res.status(404).json({ success: false, error: 'Файл отсутствует' });
       return;
     }
     res.setHeader('Content-Type', media.mimeType);
@@ -258,7 +258,7 @@ export const createTemplate = asyncHandler(
     const kind = String(req.body?.kind || '').toUpperCase();
     if (!title) throw badRequest('Укажите название', 'title');
     if (!['WARMUP', 'WORKOUT'].includes(kind)) {
-      throw badRequest('kind: WARMUP | WORKOUT', 'kind');
+      throw badRequest('kind: WARMUP или WORKOUT', 'kind');
     }
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     const row = await prisma.workoutTemplate.create({
@@ -299,7 +299,7 @@ export const updateTemplate = asyncHandler(
     }
     if (req.body?.kind != null) {
       const kind = String(req.body.kind).toUpperCase();
-      if (!['WARMUP', 'WORKOUT'].includes(kind)) throw badRequest('kind: WARMUP | WORKOUT');
+      if (!['WARMUP', 'WORKOUT'].includes(kind)) throw badRequest('kind: WARMUP или WORKOUT');
       data.kind = kind;
     }
 
@@ -586,7 +586,7 @@ export const upsertSessionPlan = asyncHandler(
           data: items.map((it: any, idx: number) => {
             const section = String(it.section || 'MAIN').toUpperCase();
             if (!['WARMUP', 'MAIN'].includes(section)) {
-              throw badRequest('section: WARMUP | MAIN');
+              throw badRequest('section: WARMUP или MAIN');
             }
             return {
               planId,
@@ -624,7 +624,7 @@ export const applyTemplateToSession = asyncHandler(
       sectionRaw === 'WARMUP' || sectionRaw === 'MAIN'
         ? sectionRaw
         : null;
-    if (!section) throw badRequest('section: WARMUP | MAIN');
+    if (!section) throw badRequest('section: WARMUP или MAIN');
 
     const training = await prisma.training.findFirst({
       where: { id: trainingId, tenantId },

@@ -104,13 +104,13 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
         total,
         totalPages: Math.ceil(total / Number(limit))
       },
-      message: 'Groups retrieved successfully'
+      message: 'Группы успешно получены'
     });
   } catch (error) {
     console.error('Get groups error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve groups'
+      error: 'Не удалось получить список групп'
     });
   }
 };
@@ -143,7 +143,7 @@ export const getGroupById = async (req: AuthenticatedRequest, res: Response) => 
     if (!group) {
       res.status(404).json({
         success: false,
-        error: 'Group not found'
+        error: 'Группа не найдена'
       });
       return;
     }
@@ -160,13 +160,13 @@ export const getGroupById = async (req: AuthenticatedRequest, res: Response) => 
     res.json({
       success: true,
       data: group,
-      message: 'Group retrieved successfully'
+      message: 'Группа успешно получена'
     });
   } catch (error) {
     console.error('Get group error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to retrieve group'
+      error: 'Не удалось получить группу'
     });
   }
 };
@@ -311,13 +311,13 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
     res.status(201).json({
       success: true,
       data: group,
-      message: 'Group created successfully'
+      message: 'Группа успешно создана'
     });
   } catch (error) {
     console.error('Create group error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create group'
+      error: 'Не удалось создать группу'
     });
   }
 };
@@ -336,7 +336,7 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
     if (!group) {
       res.status(404).json({
         success: false,
-        error: 'Group not found'
+        error: 'Группа не найдена'
       });
       return;
     }
@@ -502,13 +502,13 @@ export const updateGroup = async (req: AuthenticatedRequest, res: Response) => {
     res.json({
       success: true,
       data: updatedGroup,
-      message: 'Group updated successfully'
+      message: 'Группа успешно обновлена'
     });
   } catch (error) {
     console.error('Update group error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update group'
+      error: 'Не удалось обновить группу'
     });
   }
 };
@@ -522,7 +522,7 @@ export const getGroupDeletionImpact = async (req: AuthenticatedRequest, res: Res
       select: { id: true },
     });
     if (!group || !tenantId) {
-      res.status(404).json({ success: false, error: 'Group not found' });
+      res.status(404).json({ success: false, error: 'Группа не найдена' });
       return;
     }
     const { getGroupDeletionImpact: impact } = await import('../services/deletionPurgeService');
@@ -530,7 +530,7 @@ export const getGroupDeletionImpact = async (req: AuthenticatedRequest, res: Res
     res.json({ success: true, data });
   } catch (error) {
     console.error('Group deletion impact error:', error);
-    res.status(500).json({ success: false, error: 'Failed to load deletion impact' });
+    res.status(500).json({ success: false, error: 'Не удалось загрузить последствия удаления' });
   }
 };
 
@@ -549,7 +549,7 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
     if (!group || !tenantId) {
       res.status(404).json({
         success: false,
-        error: 'Group not found'
+        error: 'Группа не найдена'
       });
       return;
     }
@@ -566,13 +566,13 @@ export const deleteGroup = async (req: AuthenticatedRequest, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Group deleted successfully'
+      message: 'Группа успешно удалена'
     });
   } catch (error) {
     console.error('Delete group error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete group'
+      error: 'Не удалось удалить группу'
     });
   }
 };
@@ -587,7 +587,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     if (!clientId) {
       res.status(400).json({
         success: false,
-        error: 'Client ID is required'
+        error: 'Требуется ID клиента'
       });
       return;
     }
@@ -603,7 +603,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     if (!group) {
       res.status(404).json({
         success: false,
-        error: 'Group not found'
+        error: 'Группа не найдена'
       });
       return;
     }
@@ -619,7 +619,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     if (!client) {
       res.status(404).json({
         success: false,
-        error: 'Client not found'
+        error: 'Клиент не найден'
       });
       return;
     }
@@ -686,7 +686,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
         res.json({
           success: true,
           data: updated,
-          message: 'Client re-added to group successfully'
+          message: 'Клиент снова добавлен в группу'
         });
         return;
       } else if (existingMembership.isTrial) {
@@ -720,13 +720,13 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
         res.json({
           success: true,
           data: updated,
-          message: 'Client permanently added to group'
+          message: 'Клиент окончательно добавлен в группу'
         });
         return;
       } else {
         res.status(400).json({
           success: false,
-          error: 'Client is already in this group'
+          error: 'Клиент уже в этой группе'
         });
         return;
       }
@@ -744,7 +744,7 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
       if (activeMembersCount >= group.maxMembers) {
         res.status(400).json({
           success: false,
-          error: `Group has reached maximum capacity of ${group.maxMembers} members`
+          error: `Группа достигла максимальной вместимости: ${group.maxMembers} участников`
         });
         return;
       }
@@ -774,19 +774,19 @@ export const addClientToGroup = async (req: AuthenticatedRequest, res: Response)
     res.status(201).json({
       success: true,
       data: membership,
-      message: 'Client added to group successfully'
+      message: 'Клиент успешно добавлен в группу'
     });
   } catch (error: any) {
     console.error('Add client to group error:', error);
     if (error.code === 'P2002') {
       res.status(400).json({
         success: false,
-        error: 'Client is already in this group'
+        error: 'Клиент уже в этой группе'
       });
     } else {
       res.status(500).json({
         success: false,
-        error: 'Failed to add client to group'
+        error: 'Не удалось добавить клиента в группу'
       });
     }
   }
@@ -808,7 +808,7 @@ export const removeClientFromGroup = async (req: AuthenticatedRequest, res: Resp
     if (!group) {
       res.status(404).json({
         success: false,
-        error: 'Group not found'
+        error: 'Группа не найдена'
       });
       return;
     }
@@ -826,7 +826,7 @@ export const removeClientFromGroup = async (req: AuthenticatedRequest, res: Resp
     if (!membership) {
       res.status(404).json({
         success: false,
-        error: 'Client is not a member of this group'
+        error: 'Клиент не состоит в этой группе'
       });
       return;
     }
@@ -847,13 +847,13 @@ export const removeClientFromGroup = async (req: AuthenticatedRequest, res: Resp
 
     res.json({
       success: true,
-      message: 'Client removed from group successfully'
+      message: 'Клиент успешно удалён из группы'
     });
   } catch (error) {
     console.error('Remove client from group error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to remove client from group'
+      error: 'Не удалось удалить клиента из группы'
     });
   }
 };

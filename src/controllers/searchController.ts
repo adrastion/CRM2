@@ -16,7 +16,7 @@ export const globalSearch = asyncHandler(async (
   const q = String(req.query.q || '').trim();
 
   if (!tenantId) {
-    res.status(400).json({ success: false, error: 'Tenant required' });
+    res.status(400).json({ success: false, error: 'Требуется организация' });
     return;
   }
 

@@ -20,7 +20,7 @@ router.get('/revenue', requireOwnerAdminOrTrainer, (req, res) => {
   res.json({
     success: true,
     data: {},
-    message: 'Revenue report retrieved successfully'
+    message: 'Отчёт по выручке успешно получен'
   });
 });
 
@@ -28,7 +28,7 @@ router.get('/attendance', requireOwnerAdminOrTrainer, (req, res) => {
   res.json({
     success: true,
     data: {},
-    message: 'Attendance report retrieved successfully'
+    message: 'Отчёт по посещаемости успешно получен'
   });
 });
 
@@ -36,7 +36,7 @@ router.get('/trainer-salary', requireOwnerAdminOrTrainer, (req, res) => {
   res.json({
     success: true,
     data: {},
-    message: 'Trainer salary report retrieved successfully'
+    message: 'Отчёт по зарплате тренеров успешно получен'
   });
 });
 

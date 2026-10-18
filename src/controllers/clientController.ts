@@ -160,7 +160,7 @@ export const updateMembershipFeeStatus = asyncHandler(async (req: AuthenticatedR
   if (!existingClient) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -418,7 +418,7 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -429,7 +429,7 @@ export const getClient = asyncHandler(async (req: AuthenticatedRequest, res: Res
   ) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -462,7 +462,7 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -574,7 +574,7 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   res.status(201).json({
     success: true,
     data: sanitizeClientCertificateFields(client as any),
-    message: 'Client created successfully'
+    message: 'Клиент успешно создан'
   });
 });
 
@@ -594,7 +594,7 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   if (!existingClient) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -725,7 +725,7 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   res.json({
     success: true,
     data: sanitizeClientCertificateFields(client as any),
-    message: 'Client updated successfully'
+    message: 'Клиент успешно обновлён'
   });
 });
 
@@ -758,7 +758,7 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
   if (!existingClient) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -766,7 +766,7 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
   if (!existingClient.password) {
     res.status(400).json({
       success: false,
-      error: 'Client has not registered yet'
+      error: 'Клиент ещё не зарегистрирован'
     });
     return;
   }
@@ -774,7 +774,7 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
   if (existingClient.isAccountApproved) {
     res.status(400).json({
       success: false,
-      error: 'Client account is already approved'
+      error: 'Аккаунт клиента уже одобрен'
     });
     return;
   }
@@ -792,7 +792,7 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
   res.json({
     success: true,
     data: updatedClient,
-    message: 'Client account approved successfully'
+    message: 'Аккаунт клиента успешно одобрен'
   });
 });
 
@@ -818,7 +818,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
   if (!existingClient) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -826,7 +826,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
   if (!existingClient.password) {
     res.status(400).json({
       success: false,
-      error: 'Client has not registered yet'
+      error: 'Клиент ещё не зарегистрирован'
     });
     return;
   }
@@ -834,7 +834,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
   if (existingClient.isAccountApproved) {
     res.status(400).json({
       success: false,
-      error: 'Cannot reject an already approved account'
+      error: 'Нельзя отклонить уже одобренный аккаунт'
     });
     return;
   }
@@ -856,7 +856,7 @@ export const rejectClientAccount = asyncHandler(async (req: AuthenticatedRequest
   res.json({
     success: true,
     data: { ...safe, hasPassword: false, password: undefined },
-    message: 'Client registration rejected'
+    message: 'Регистрация клиента отклонена'
   });
 });
 
@@ -866,7 +866,7 @@ export const getClientDeletionImpact = asyncHandler(
     const { id } = req.params;
     const existing = await prisma.client.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!existing) {
-      res.status(404).json({ success: false, error: 'Client not found' });
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
       return;
     }
     const { getClientDeletionImpact: impact } = await import('../services/deletionPurgeService');
@@ -887,7 +887,7 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
   if (!existingClient) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -905,7 +905,7 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   res.json({
     success: true,
-    message: 'Client deleted successfully'
+    message: 'Клиент успешно удалён'
   });
 });
 
@@ -925,7 +925,7 @@ export const addAchievement = asyncHandler(async (req: AuthenticatedRequest, res
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -943,7 +943,7 @@ export const addAchievement = asyncHandler(async (req: AuthenticatedRequest, res
   res.status(201).json({
     success: true,
     data: achievement,
-    message: 'Achievement added successfully'
+    message: 'Достижение успешно добавлено'
   });
 });
 
@@ -962,7 +962,7 @@ export const removeAchievement = asyncHandler(async (req: AuthenticatedRequest, 
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -978,7 +978,7 @@ export const removeAchievement = asyncHandler(async (req: AuthenticatedRequest, 
   if (!achievement) {
     res.status(404).json({
       success: false,
-      error: 'Achievement not found'
+      error: 'Достижение не найдено'
     });
     return;
   }
@@ -989,7 +989,7 @@ export const removeAchievement = asyncHandler(async (req: AuthenticatedRequest, 
 
   res.json({
     success: true,
-    message: 'Achievement removed successfully'
+    message: 'Достижение успешно удалено'
   });
 });
 
@@ -1008,7 +1008,7 @@ export const getClientStats = asyncHandler(async (req: AuthenticatedRequest, res
   if (!client) {
     res.status(404).json({
       success: false,
-      error: 'Client not found'
+      error: 'Клиент не найден'
     });
     return;
   }
@@ -1132,7 +1132,7 @@ export const exportClients = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -1237,7 +1237,7 @@ export const importClients = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -1245,7 +1245,7 @@ export const importClients = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!req.file) {
     res.status(400).json({
       success: false,
-      error: 'Excel file is required'
+      error: 'Требуется файл Excel'
     });
     return;
   }
@@ -1366,7 +1366,7 @@ export const assignClientTrial = asyncHandler(async (req: AuthenticatedRequest, 
   const { trainingId } = req.body || {};
 
   if (!tenantId) {
-    res.status(400).json({ success: false, error: 'Tenant ID is required' });
+    res.status(400).json({ success: false, error: 'Требуется ID организации' });
     return;
   }
   if (!trainingId || typeof trainingId !== 'string') {

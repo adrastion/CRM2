@@ -18,7 +18,7 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
-        error: 'Access token is required'
+        error: 'Требуется токен доступа'
       });
       return;
     }
@@ -28,7 +28,7 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (!process.env.JWT_SECRET) {
       res.status(500).json({
         success: false,
-        error: 'JWT secret not configured'
+        error: 'JWT секрет не настроен'
       });
       return;
     }
@@ -40,7 +40,7 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (decoded.type !== 'PROMO_CODE_ADMIN') {
       res.status(403).json({
         success: false,
-        error: 'Invalid token type. Promo code admin token required.'
+        error: 'Неверный тип токена. Требуется токен администратора промокодов.'
       });
       return;
     }
@@ -54,7 +54,7 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (!admin || !admin.isActive) {
       res.status(401).json({
         success: false,
-        error: 'Invalid or inactive admin'
+        error: 'Недействительный или неактивный администратор'
       });
       return;
     }
@@ -63,7 +63,7 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (!admin.tenant.isActive) {
       res.status(401).json({
         success: false,
-        error: 'Tenant account is inactive'
+        error: 'Аккаунт организации неактивен'
       });
       return;
     }
@@ -78,18 +78,18 @@ export const authenticatePromoCodeAdmin = asyncHandler(async (
     if (error instanceof jwt.JsonWebTokenError) {
       res.status(401).json({
         success: false,
-        error: 'Invalid token'
+        error: 'Недействительный токен'
       });
     } else if (error instanceof jwt.TokenExpiredError) {
       res.status(401).json({
         success: false,
-        error: 'Token expired'
+        error: 'Срок действия токена истёк'
       });
     } else {
       console.error('Promo code admin authentication error:', error);
       res.status(500).json({
         success: false,
-        error: 'Authentication failed'
+        error: 'Ошибка аутентификации'
       });
     }
   }

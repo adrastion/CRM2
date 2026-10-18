@@ -12,7 +12,7 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -52,7 +52,7 @@ export const getSettings = asyncHandler(async (req: AuthenticatedRequest, res: R
       hasCompletedOnboarding,
       onboardingDeclined,
     },
-    message: 'Settings retrieved successfully'
+    message: 'Настройки успешно получены'
   });
 });
 
@@ -75,7 +75,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -119,7 +119,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     if (typeof defaultTrainingDuration !== 'number' || defaultTrainingDuration < 15 || defaultTrainingDuration > 480) {
       res.status(400).json({
         success: false,
-        error: 'Default training duration must be between 15 and 480 minutes'
+        error: 'Длительность тренировки по умолчанию должна быть от 15 до 480 минут'
       });
       return;
     }
@@ -130,7 +130,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     if (!Number.isInteger(day) || day < 1 || day > 28) {
       res.status(400).json({
         success: false,
-        error: 'Salary payout day must be an integer between 1 and 28'
+        error: 'День выплаты зарплаты должен быть целым числом от 1 до 28'
       });
       return;
     }
@@ -168,7 +168,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     if (!dateRegex.test(membershipFeeResetDate)) {
       res.status(400).json({
         success: false,
-        error: 'Membership fee reset date must be in format MM-DD (e.g., 12-01 for December 1st)'
+        error: 'Дата сброса абонементов должна быть в формате ММ-ДД (например, 12-01)'
       });
       return;
     }
@@ -206,7 +206,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   res.json({
     success: true,
     data: settings,
-    message: 'Settings updated successfully'
+    message: 'Настройки успешно обновлены'
   });
 });
 
@@ -251,7 +251,7 @@ export const updateOnboardingStatus = asyncHandler(async (req: AuthenticatedRequ
   res.json({
     success: true,
     data: updated,
-    message: 'Onboarding status updated successfully'
+    message: 'Статус онбординга успешно обновлён'
   });
 });
 
@@ -264,7 +264,7 @@ export const resetMembershipFees = asyncHandler(async (req: AuthenticatedRequest
   if (!tenantId) {
     res.status(400).json({
       success: false,
-      error: 'Tenant ID is required'
+      error: 'Требуется ID организации'
     });
     return;
   }
@@ -278,7 +278,7 @@ export const resetMembershipFees = asyncHandler(async (req: AuthenticatedRequest
     res.json({
       success: true,
       data: { resetCount: 0 },
-      message: 'Membership fee reset date is not configured'
+      message: 'Дата сброса абонементов не настроена'
     });
     return;
   }
@@ -294,7 +294,7 @@ export const resetMembershipFees = asyncHandler(async (req: AuthenticatedRequest
     res.json({
       success: true,
       data: { resetCount: 0 },
-      message: `Reset date is ${settings.membershipFeeResetDate}, today is ${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+      message: `Дата сброса: ${settings.membershipFeeResetDate}, сегодня: ${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
     });
     return;
   }

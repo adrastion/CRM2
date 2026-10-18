@@ -114,7 +114,7 @@ export function attachChatNamespace(io: Server): void {
     try {
       const token = socket.handshake.auth?.token as string | undefined;
       if (!token) {
-        next(new Error('Unauthorized'));
+        next(new Error('Не авторизован'));
         return;
       }
       const secret = process.env.JWT_SECRET;
@@ -125,7 +125,7 @@ export function attachChatNamespace(io: Server): void {
       const decoded = jwt.verify(token, secret) as any;
       const actor = await resolveChatIdentity(decoded);
       if (!actor) {
-        next(new Error('Unauthorized'));
+        next(new Error('Не авторизован'));
         return;
       }
       const presenceKey = presenceKeyForActor(actor);
@@ -133,7 +133,7 @@ export function attachChatNamespace(io: Server): void {
       (socket.data as ChatSocketIdentity).presenceKey = presenceKey;
       next();
     } catch {
-      next(new Error('Unauthorized'));
+      next(new Error('Не авторизован'));
     }
   });
 
@@ -158,18 +158,18 @@ export function attachChatNamespace(io: Server): void {
       async (threadId: string, cb?: (r: { ok: boolean; error?: string }) => void) => {
         try {
           if (!threadId) {
-            cb?.({ ok: false, error: 'threadId required' });
+            cb?.({ ok: false, error: 'Требуется threadId' });
             return;
           }
           const thread = await prisma.chatThread.findFirst({ where: { id: threadId } });
           if (!thread || !(await canAccessThread(actor, thread))) {
-            cb?.({ ok: false, error: 'Forbidden' });
+            cb?.({ ok: false, error: 'Доступ запрещён' });
             return;
           }
           await socket.join(roomName(threadId));
           cb?.({ ok: true });
         } catch {
-          cb?.({ ok: false, error: 'Error' });
+          cb?.({ ok: false, error: 'Ошибка' });
         }
       }
     );

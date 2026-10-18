@@ -50,7 +50,7 @@ export const validate = (schema: Joi.ObjectSchema) => {
 
       res.status(400).json({
         success: false,
-        error: 'Validation failed',
+        error: 'Ошибка проверки данных',
         data: errorMessages
       });
       return;
@@ -78,7 +78,7 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
 
       res.status(400).json({
         success: false,
-        error: 'Query validation failed',
+        error: 'Ошибка проверки параметров запроса',
         data: errorMessages
       });
       return;

@@ -31,32 +31,32 @@ type AnyJwt = Record<string, unknown> & {
 export const authenticateSupportRequester = asyncHandler(async (req: any, res: Response<ApiResponse>, next: NextFunction) => {
   const authHeader = req.headers.authorization as string | undefined;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Access token is required' });
+    res.status(401).json({ success: false, error: 'Требуется токен доступа' });
     return;
   }
   const token = authHeader.substring(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    res.status(500).json({ success: false, error: 'JWT secret not configured' });
+    res.status(500).json({ success: false, error: 'JWT секрет не настроен' });
     return;
   }
   let decoded: AnyJwt;
   try {
     decoded = jwt.verify(token, secret) as AnyJwt;
   } catch {
-    res.status(401).json({ success: false, error: 'Invalid token' });
+    res.status(401).json({ success: false, error: 'Недействительный токен' });
     return;
   }
 
   if (decoded.type === 'SUPER_ADMIN') {
-    res.status(403).json({ success: false, error: 'Super admin cannot use support requester API' });
+    res.status(403).json({ success: false, error: 'Супер-администратор не может использовать API заявителя поддержки' });
     return;
   }
 
   const userId = decoded.userId;
   const tenantId = decoded.tenantId;
   if (!userId || !tenantId) {
-    res.status(401).json({ success: false, error: 'Unsupported token for support requests' });
+    res.status(401).json({ success: false, error: 'Неподдерживаемый токен для обращений в поддержку' });
     return;
   }
 
@@ -78,11 +78,11 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
       user.tenantId !== tenantId ||
       !isSessionVersionValid(decoded, user.sessionVersion)
     ) {
-      res.status(401).json({ success: false, error: 'Invalid or inactive user' });
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный пользователь' });
       return;
     }
     if (!(await assertAuthSessionActive(decoded.jti, 'USER', user.id))) {
-      res.status(401).json({ success: false, error: 'Session revoked or expired' });
+      res.status(401).json({ success: false, error: 'Сессия отозвана или истекла' });
       return;
     }
     (req as SupportRequesterRequest).supportRequester = {
