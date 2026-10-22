@@ -119,8 +119,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               tenantId: profile.tenantId || user.tenantId,
               isSeniorTrainer: Boolean(profile.isSeniorTrainer),
               seniorBranchIds: profile.seniorBranchIds || [],
-              trainerId: profile.trainerId ?? profile.trainer?.id ?? null,
-              isTrainer: Boolean(profile.trainerId ?? profile.trainer?.id),
+              trainerId:
+                profile.trainerId ??
+                (profile.trainer?.isActive !== false ? profile.trainer?.id : null) ??
+                null,
+              isTrainer: Boolean(
+                profile.trainerId ??
+                  (profile.trainer?.isActive !== false ? profile.trainer?.id : null)
+              ),
             };
             localStorage.setItem('user', JSON.stringify(nextUser));
             dispatch({ type: 'UPDATE_USER', payload: nextUser });

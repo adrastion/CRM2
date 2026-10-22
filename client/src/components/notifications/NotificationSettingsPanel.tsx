@@ -21,6 +21,15 @@ import {
   subscribeActorPush,
   unsubscribeActorPush,
 } from '../../utils/actorPush';
+import { colors, radii } from '../../theme/tokens';
+
+const panelPaperSx = {
+  p: { xs: 2, sm: 2.5 },
+  mb: 2,
+  borderRadius: `${radii.panel}px`,
+  border: `1px solid ${colors.divider}`,
+  boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+};
 
 const DAY_LABELS: Array<{ value: number; label: string }> = [
   { value: 1, label: 'Пн' },
@@ -248,7 +257,7 @@ const NotificationSettingsPanel: React.FC<Props> = ({
         </Alert>
       )}
 
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+      <Paper elevation={0} sx={panelPaperSx}>
         <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
           Браузерные уведомления
         </Typography>
@@ -267,7 +276,18 @@ const NotificationSettingsPanel: React.FC<Props> = ({
             color={subscribed ? 'error' : 'primary'}
             onClick={handleTogglePush}
             disabled={pushBusy || permission === 'denied' || permission === 'unsupported'}
-            sx={{ textTransform: 'none' }}
+            sx={{
+              textTransform: 'none',
+              borderRadius: `${radii.button}px`,
+              fontWeight: 600,
+              ...(subscribed
+                ? {}
+                : {
+                    bgcolor: colors.primary,
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+                  }),
+            }}
           >
             {pushBusy ? 'Обработка…' : subscribed ? 'Отключить' : 'Включить уведомления'}
           </Button>
@@ -275,167 +295,135 @@ const NotificationSettingsPanel: React.FC<Props> = ({
             Статус браузера: {permission}
           </Typography>
         </Box>
-        <FormControlLabel
-          sx={{ mt: 2, display: 'block' }}
-          control={
-            <Switch
-              checked={prefs.pushMasterEnabled}
-              onChange={(_, v) => patchLocal({ pushMasterEnabled: v })}
-              color="primary"
-            />
-          }
-          label="Получать браузерные уведомления"
-        />
+        <Box
+          sx={{
+            mt: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+          }}
+        >
+          <Typography variant="body2" sx={{ color: colors.text, fontWeight: 500 }}>
+            Получать браузерные уведомления
+          </Typography>
+          <Switch
+            checked={prefs.pushMasterEnabled}
+            onChange={(_, v) => patchLocal({ pushMasterEnabled: v })}
+            color="primary"
+          />
+        </Box>
       </Paper>
 
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+      <Paper elevation={0} sx={panelPaperSx}>
         <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
           Типы уведомлений
         </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={prefs.chatMessagesEnabled}
-              onChange={(_, v) => patchLocal({ chatMessagesEnabled: v })}
-              color="primary"
-            />
-          }
-          label="Новые сообщения в чатах"
-        />
-        {showChangelog && (
-          <FormControlLabel
-            sx={{ display: 'block' }}
-            control={
-              <Switch
-                checked={prefs.changelogEnabled}
-                onChange={(_, v) => patchLocal({ changelogEnabled: v })}
-                color="primary"
-              />
-            }
-            label="Новые публикации в «Новости»"
-          />
-        )}
-        {actor === 'school' && (schoolRole === 'OWNER' || schoolRole === 'ADMIN') && (
-          <>
-            <FormControlLabel
-              sx={{ display: 'block' }}
-              control={
-                <Switch
-                  checked={prefs.athleteCreatedEnabled !== false}
-                  onChange={(_, v) => patchLocal({ athleteCreatedEnabled: v })}
-                  color="primary"
-                />
-              }
-              label="Новый спортсмен"
-            />
-            {schoolRole === 'OWNER' && (
-              <>
-                <FormControlLabel
-                  sx={{ display: 'block' }}
-                  control={
-                    <Switch
-                      checked={prefs.financeEnabled !== false}
-                      onChange={(_, v) => patchLocal({ financeEnabled: v })}
-                      color="primary"
-                    />
-                  }
-                  label="Финансы"
-                />
-                <FormControlLabel
-                  sx={{ display: 'block' }}
-                  control={
-                    <Switch
-                      checked={prefs.offersEnabled !== false}
-                      onChange={(_, v) => patchLocal({ offersEnabled: v })}
-                      color="primary"
-                    />
-                  }
-                  label="Предложения платформы"
-                />
-              </>
-            )}
-            {schoolRole === 'ADMIN' && (
-              <FormControlLabel
-                sx={{ display: 'block' }}
-                control={
-                  <Switch
-                    checked={prefs.attendanceEnabled !== false}
-                    onChange={(_, v) => patchLocal({ attendanceEnabled: v })}
-                    color="primary"
-                  />
-                }
-                label="Посещаемость и начало тренировок"
-              />
-            )}
-          </>
-        )}
-        {actor === 'school' && schoolRole === 'TRAINER' && (
-          <FormControlLabel
-            sx={{ display: 'block' }}
-            control={
-              <Switch
-                checked={prefs.salaryEnabled !== false}
-                onChange={(_, v) => patchLocal({ salaryEnabled: v })}
-                color="primary"
-              />
-            }
-            label="Зарплата (начисление / выплата)"
-          />
-        )}
-        {actor === 'school' && (
-          <FormControlLabel
-            sx={{ display: 'block' }}
-            control={
-              <Switch
-                checked={prefs.taskRemindersEnabled !== false}
-                onChange={(_, v) => patchLocal({ taskRemindersEnabled: v })}
-                color="primary"
-              />
-            }
-            label="Напоминания о дедлайнах задач"
-          />
-        )}
-        {actor === 'portal' && (
-          <>
-            <FormControlLabel
-              sx={{ display: 'block' }}
-              control={
-                <Switch
-                  checked={prefs.paymentsEnabled !== false}
-                  onChange={(_, v) => patchLocal({ paymentsEnabled: v })}
-                  color="primary"
-                />
-              }
-              label="Оплата и задолженность"
-            />
-            <FormControlLabel
-              sx={{ display: 'block' }}
-              control={
-                <Switch
-                  checked={prefs.trainingRemindersEnabled !== false}
-                  onChange={(_, v) => patchLocal({ trainingRemindersEnabled: v })}
-                  color="primary"
-                />
-              }
-              label="Напоминания о тренировках"
-            />
-            <FormControlLabel
-              sx={{ display: 'block' }}
-              control={
-                <Switch
-                  checked={prefs.scheduleChangesEnabled !== false}
-                  onChange={(_, v) => patchLocal({ scheduleChangesEnabled: v })}
-                  color="primary"
-                />
-              }
-              label="Перенос и отмена тренировок"
-            />
-          </>
-        )}
+        {(
+          [
+            {
+              key: 'chat',
+              label: 'Новые сообщения в чатах',
+              checked: prefs.chatMessagesEnabled,
+              onChange: (v: boolean) => patchLocal({ chatMessagesEnabled: v }),
+              show: true,
+            },
+            {
+              key: 'changelog',
+              label: 'Новые публикации в «Новости»',
+              checked: prefs.changelogEnabled,
+              onChange: (v: boolean) => patchLocal({ changelogEnabled: v }),
+              show: Boolean(showChangelog),
+            },
+            {
+              key: 'athlete',
+              label: 'Новый спортсмен',
+              checked: prefs.athleteCreatedEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ athleteCreatedEnabled: v }),
+              show: actor === 'school' && (schoolRole === 'OWNER' || schoolRole === 'ADMIN'),
+            },
+            {
+              key: 'finance',
+              label: 'Финансы',
+              checked: prefs.financeEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ financeEnabled: v }),
+              show: actor === 'school' && schoolRole === 'OWNER',
+            },
+            {
+              key: 'offers',
+              label: 'Предложения платформы',
+              checked: prefs.offersEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ offersEnabled: v }),
+              show: actor === 'school' && schoolRole === 'OWNER',
+            },
+            {
+              key: 'attendance',
+              label: 'Посещаемость и начало тренировок',
+              checked: prefs.attendanceEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ attendanceEnabled: v }),
+              show: actor === 'school' && schoolRole === 'ADMIN',
+            },
+            {
+              key: 'salary',
+              label: 'Зарплата (начисление / выплата)',
+              checked: prefs.salaryEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ salaryEnabled: v }),
+              show: actor === 'school' && schoolRole === 'TRAINER',
+            },
+            {
+              key: 'tasks',
+              label: 'Напоминания о дедлайнах задач',
+              checked: prefs.taskRemindersEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ taskRemindersEnabled: v }),
+              show: actor === 'school',
+            },
+            {
+              key: 'payments',
+              label: 'Оплата и задолженность',
+              checked: prefs.paymentsEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ paymentsEnabled: v }),
+              show: actor === 'portal',
+            },
+            {
+              key: 'trainingReminders',
+              label: 'Напоминания о тренировках',
+              checked: prefs.trainingRemindersEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ trainingRemindersEnabled: v }),
+              show: actor === 'portal',
+            },
+            {
+              key: 'scheduleChanges',
+              label: 'Перенос и отмена тренировок',
+              checked: prefs.scheduleChangesEnabled !== false,
+              onChange: (v: boolean) => patchLocal({ scheduleChangesEnabled: v }),
+              show: actor === 'portal',
+            },
+          ] as const
+        )
+          .filter((row) => row.show)
+          .map((row) => (
+            <Box
+              key={row.key}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                py: 0.75,
+                borderBottom: `1px solid ${colors.divider}`,
+                '&:last-of-type': { borderBottom: 'none' },
+              }}
+            >
+              <Typography variant="body2" sx={{ color: colors.text, fontWeight: 500 }}>
+                {row.label}
+              </Typography>
+              <Switch checked={row.checked} onChange={(_, v) => row.onChange(v)} color="primary" />
+            </Box>
+          ))}
       </Paper>
 
       {showSchedule && (
-        <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+        <Paper elevation={0} sx={panelPaperSx}>
           <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
             Расписание доставки
           </Typography>
@@ -520,7 +508,14 @@ const NotificationSettingsPanel: React.FC<Props> = ({
         variant="contained"
         onClick={handleSave}
         disabled={saving}
-        sx={{ textTransform: 'none' }}
+        sx={{
+          textTransform: 'none',
+          borderRadius: `${radii.button}px`,
+          bgcolor: colors.primary,
+          fontWeight: 600,
+          boxShadow: 'none',
+          '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+        }}
       >
         {saving ? 'Сохранение…' : 'Сохранить настройки'}
       </Button>

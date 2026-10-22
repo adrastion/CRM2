@@ -1,31 +1,38 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControlLabel,
   IconButton,
+  Menu,
   MenuItem,
-  Paper,
   Stack,
-  Switch,
-  Tab,
-  Tabs,
-  TextField,
   Typography,
 } from '@mui/material';
-import { Add, Chat, Delete, Edit } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import {
+  Add,
+  AssignmentTurnedInOutlined,
+  FilterList,
+  FileUploadOutlined,
+  MoreHoriz,
+  NoteAltOutlined,
+} from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
-import { colors } from '../theme/tokens';
+import { colors, radii } from '../theme/tokens';
+import CreateNoteDialog from '../components/staff/CreateNoteDialog';
+import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
+import NotesBoard, { type StaffNoteRow } from '../components/staff/NotesBoard';
+import TasksBoard, { type StaffTaskRow } from '../components/staff/TasksBoard';
+
+const btnPrimary = {
+  textTransform: 'none' as const,
+  borderRadius: `${radii.button}px`,
+  bgcolor: colors.primary,
+  fontWeight: 700,
+  boxShadow: 'none',
+  '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+};
 
 type StaffUser = {
   id: string;
@@ -36,69 +43,24 @@ type StaffUser = {
   email?: string;
 };
 
-type StaffNote = {
-  id: string;
-  title: string;
-  body: string;
-  visibility: 'PERSONAL' | 'SHARED';
-  authorUserId: string;
-  author: StaffUser;
-  updatedAt: string;
-};
-
-type StaffTask = {
-  id: string;
-  title: string;
-  body: string;
-  dueAt: string | null;
-  status: string;
-  createdByUserId: string;
-  createdBy: StaffUser;
-  assignees: Array<{ userId: string; user: StaffUser }>;
-  chatThread: { id: string; threadKey: string; type: string } | null;
-};
-
-function personLabel(u: Pick<StaffUser, 'lastName' | 'firstName' | 'middleName' | 'role'>) {
-  const name = [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ');
-  const role =
-    u.role === 'OWNER' ? 'Владелец' : u.role === 'ADMIN' ? 'Админ' : u.role === 'TRAINER' ? 'Тренер' : u.role;
-  return `${name} (${role})`;
-}
-
-function toLocalInput(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 const StaffWorkspace: React.FC = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const isOwner = user?.role === 'OWNER';
   const [tab, setTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [notes, setNotes] = useState<StaffNote[]>([]);
-  const [tasks, setTasks] = useState<StaffTask[]>([]);
+  const [notes, setNotes] = useState<StaffNoteRow[]>([]);
+  const [tasks, setTasks] = useState<StaffTaskRow[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [noteFilter, setNoteFilter] = useState<'ALL' | 'PERSONAL' | 'SHARED'>('ALL');
-  const [taskStatus, setTaskStatus] = useState<'ALL' | 'OPEN' | 'DONE'>('OPEN');
 
   const [noteDialog, setNoteDialog] = useState(false);
-  const [editingNote, setEditingNote] = useState<StaffNote | null>(null);
-  const [noteTitle, setNoteTitle] = useState('');
-  const [noteBody, setNoteBody] = useState('');
-  const [noteVisibility, setNoteVisibility] = useState<'PERSONAL' | 'SHARED'>('PERSONAL');
-
   const [taskDialog, setTaskDialog] = useState(false);
-  const [editingTask, setEditingTask] = useState<StaffTask | null>(null);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskBody, setTaskBody] = useState('');
-  const [taskDueAt, setTaskDueAt] = useState('');
-  const [taskAssignees, setTaskAssignees] = useState<StaffUser[]>([]);
-  const [createChat, setCreateChat] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [editingTask, setEditingTask] = useState<StaffTaskRow | null>(null);
+  const [taskDraft, setTaskDraft] = useState<{ title: string; body: string } | null>(null);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
+  const [newMenuEl, setNewMenuEl] = useState<null | HTMLElement>(null);
+  const [moreMenuEl, setMoreMenuEl] = useState<null | HTMLElement>(null);
 
   const loadNotes = useCallback(async () => {
     const data = await apiService.listStaffNotes(
@@ -108,11 +70,9 @@ const StaffWorkspace: React.FC = () => {
   }, [noteFilter]);
 
   const loadTasks = useCallback(async () => {
-    const data = await apiService.listStaffTasks(
-      taskStatus === 'ALL' ? undefined : { status: taskStatus }
-    );
+    const data = await apiService.listStaffTasks();
     setTasks(data);
-  }, [taskStatus]);
+  }, []);
 
   const load = useCallback(async () => {
     setError(null);
@@ -132,418 +92,249 @@ const StaffWorkspace: React.FC = () => {
   }, [load]);
 
   const openNewNote = () => {
-    setEditingNote(null);
-    setNoteTitle('');
-    setNoteBody('');
-    setNoteVisibility('PERSONAL');
+    setNewMenuEl(null);
+    setTab(0);
     setNoteDialog(true);
-  };
-
-  const openEditNote = (n: StaffNote) => {
-    setEditingNote(n);
-    setNoteTitle(n.title);
-    setNoteBody(n.body);
-    setNoteVisibility(n.visibility);
-    setNoteDialog(true);
-  };
-
-  const saveNote = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      if (editingNote) {
-        await apiService.updateStaffNote(editingNote.id, {
-          title: noteTitle,
-          body: noteBody,
-          visibility: noteVisibility,
-        });
-      } else {
-        await apiService.createStaffNote({
-          title: noteTitle,
-          body: noteBody,
-          visibility: noteVisibility,
-        });
-      }
-      setNoteDialog(false);
-      await loadNotes();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось сохранить заметку');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeNote = async (id: string) => {
-    if (!window.confirm('Удалить заметку?')) return;
-    try {
-      await apiService.deleteStaffNote(id);
-      await loadNotes();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось удалить');
-    }
   };
 
   const openNewTask = () => {
+    setNewMenuEl(null);
     setEditingTask(null);
-    setTaskTitle('');
-    setTaskBody('');
-    setTaskDueAt('');
-    setTaskAssignees([]);
-    setCreateChat(true);
+    setTaskDraft(null);
+    setTab(1);
     setTaskDialog(true);
   };
 
-  const openEditTask = (t: StaffTask) => {
-    setEditingTask(t);
-    setTaskTitle(t.title);
-    setTaskBody(t.body);
-    setTaskDueAt(toLocalInput(t.dueAt));
-    setTaskAssignees(t.assignees.map((a) => a.user));
-    setCreateChat(false);
+  const createTaskFromNote = (note: StaffNoteRow) => {
+    setEditingTask(null);
+    setTaskDraft({ title: note.title, body: note.body || '' });
+    setTab(1);
     setTaskDialog(true);
   };
-
-  const saveTask = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const payload = {
-        title: taskTitle,
-        body: taskBody,
-        dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : null,
-        assigneeIds: taskAssignees.map((u) => u.id),
-        createChat,
-      };
-      if (editingTask) {
-        await apiService.updateStaffTask(editingTask.id, payload);
-      } else {
-        await apiService.createStaffTask(payload);
-      }
-      setTaskDialog(false);
-      await loadTasks();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось сохранить задачу');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const setTaskDone = async (t: StaffTask, status: string) => {
-    try {
-      await apiService.updateStaffTaskStatus(t.id, status);
-      await loadTasks();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось обновить статус');
-    }
-  };
-
-  const openTaskChat = async (t: StaffTask) => {
-    try {
-      const thread = await apiService.ensureStaffTaskChat(t.id);
-      navigate(`/chats?threadId=${thread.id}`);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось открыть чат');
-    }
-  };
-
-  const filteredNotes = useMemo(() => notes, [notes]);
 
   return (
     <Box>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        alignItems={{ xs: 'stretch', md: 'flex-start' }}
+        justifyContent="space-between"
+        spacing={1.5}
+        sx={{ mb: 2 }}
+      >
+        <Box>
+          <Typography
+            sx={{
+              fontWeight: 800,
+              fontSize: { xs: 22, md: 26 },
+              color: '#1B2438',
+              letterSpacing: '-0.03em',
+            }}
+          >
+            Заметки и задачи
+          </Typography>
+          <Typography sx={{ fontSize: 13.5, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
+            Фиксируйте идеи, ведите планерки и ставьте задачи себе и команде.
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <IconButton
+            size="small"
+            onClick={(e) => setMoreMenuEl(e.currentTarget)}
+            sx={{ border: '1px solid #EEF1F6', borderRadius: '10px' }}
+          >
+            <MoreHoriz />
+          </IconButton>
+          {tab === 0 ? (
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<FileUploadOutlined />}
+                onClick={() => setError('Импорт / экспорт появится в следующем обновлении')}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  borderRadius: '10px',
+                  borderColor: '#C9D7FF',
+                  color: colors.primary,
+                }}
+              >
+                Импорт / Экспорт
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                endIcon={<MoreHoriz sx={{ fontSize: 16, opacity: 0.7 }} />}
+                onClick={(e) => setNewMenuEl(e.currentTarget)}
+                sx={btnPrimary}
+              >
+                Новая запись
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<FilterList />}
+                onClick={() => setError('Расширенные фильтры появятся в следующем обновлении')}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  borderRadius: '10px',
+                  borderColor: '#C9D7FF',
+                  color: colors.primary,
+                }}
+              >
+                Фильтры
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                endIcon={<MoreHoriz sx={{ fontSize: 16, opacity: 0.7 }} />}
+                onClick={openNewTask}
+                sx={btnPrimary}
+              >
+                Новая задача
+              </Button>
+            </>
+          )}
+          <Menu
+            anchorEl={newMenuEl}
+            open={Boolean(newMenuEl)}
+            onClose={() => setNewMenuEl(null)}
+          >
+            <MenuItem onClick={openNewNote}>Новая заметка</MenuItem>
+            <MenuItem onClick={openNewTask}>Новая задача</MenuItem>
+          </Menu>
+          <Menu
+            anchorEl={moreMenuEl}
+            open={Boolean(moreMenuEl)}
+            onClose={() => setMoreMenuEl(null)}
+          >
+            <MenuItem
+              onClick={() => {
+                setMoreMenuEl(null);
+                void load();
+              }}
+            >
+              Обновить
+            </MenuItem>
+          </Menu>
+        </Stack>
+      </Stack>
+
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2, borderRadius: `${radii.panel}px` }}
+          onClose={() => setError(null)}
+        >
           {error}
         </Alert>
       )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Заметки" />
-        <Tab label="Задачи" />
-      </Tabs>
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+        <Button
+          onClick={() => setTab(0)}
+          startIcon={<NoteAltOutlined />}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 800,
+            borderRadius: '999px',
+            px: 2,
+            py: 1,
+            bgcolor: tab === 0 ? '#fff' : 'transparent',
+            color: tab === 0 ? colors.primary : '#8B93A7',
+            border: tab === 0 ? '1px solid #EEF1F6' : '1px solid transparent',
+            boxShadow: tab === 0 ? '0 2px 10px rgba(27,36,56,0.06)' : 'none',
+          }}
+        >
+          Заметки
+        </Button>
+        <Button
+          onClick={() => setTab(1)}
+          startIcon={<AssignmentTurnedInOutlined />}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 800,
+            borderRadius: '999px',
+            px: 2,
+            py: 1,
+            bgcolor: tab === 1 ? '#fff' : 'transparent',
+            color: tab === 1 ? colors.primary : '#8B93A7',
+            border: tab === 1 ? '1px solid #EEF1F6' : '1px solid transparent',
+            boxShadow: tab === 1 ? '0 2px 10px rgba(27,36,56,0.06)' : 'none',
+          }}
+        >
+          Задачи
+        </Button>
+      </Stack>
 
       {tab === 0 && (
-        <Box>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }} alignItems="center">
-            <TextField
-              select
-              size="small"
-              label="Показать"
-              value={noteFilter}
-              onChange={(e) => setNoteFilter(e.target.value as any)}
-              sx={{ minWidth: 180 }}
-            >
-              <MenuItem value="ALL">Все</MenuItem>
-              <MenuItem value="PERSONAL">Личные</MenuItem>
-              <MenuItem value="SHARED">Общие</MenuItem>
-            </TextField>
-            <Box flex={1} />
-            <Button variant="contained" startIcon={<Add />} onClick={openNewNote} sx={{ textTransform: 'none' }}>
-              Новая заметка
-            </Button>
-          </Stack>
-
-          <Stack spacing={1.5}>
-            {filteredNotes.map((n) => (
-              <Paper key={n.id} sx={{ p: 2 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
-                  <Box>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                      <Typography fontWeight={700}>{n.title}</Typography>
-                      <Chip
-                        size="small"
-                        label={n.visibility === 'PERSONAL' ? 'Личная' : 'Общая'}
-                        color={n.visibility === 'PERSONAL' ? 'default' : 'primary'}
-                      />
-                    </Stack>
-                    <Typography
-                      variant="body2"
-                      sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', mb: 1 }}
-                    >
-                      {n.body || '—'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {personLabel(n.author)} · {new Date(n.updatedAt).toLocaleString('ru-RU')}
-                    </Typography>
-                  </Box>
-                  <Stack direction="row">
-                    {(n.authorUserId === user?.id || (isOwner && n.visibility === 'SHARED')) && (
-                      <>
-                        <IconButton size="small" onClick={() => openEditNote(n)} aria-label="Изменить">
-                          <Edit fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" onClick={() => void removeNote(n.id)} aria-label="Удалить">
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </>
-                    )}
-                  </Stack>
-                </Stack>
-              </Paper>
-            ))}
-            {!filteredNotes.length && (
-              <Typography color="text.secondary">Пока нет заметок</Typography>
-            )}
-          </Stack>
-        </Box>
+        <NotesBoard
+          notes={notes}
+          currentUserId={user?.id}
+          isOwner={isOwner}
+          filter={noteFilter}
+          onFilter={setNoteFilter}
+          onReload={loadNotes}
+          onError={setError}
+          onCreateTaskFromNote={createTaskFromNote}
+          initialSelectedId={focusNoteId}
+          onOpenTask={(taskId) => {
+            setFocusTaskId(taskId);
+            setTab(1);
+          }}
+        />
       )}
 
       {tab === 1 && (
-        <Box>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }} alignItems="center">
-            <TextField
-              select
-              size="small"
-              label="Статус"
-              value={taskStatus}
-              onChange={(e) => setTaskStatus(e.target.value as any)}
-              sx={{ minWidth: 160 }}
-            >
-              <MenuItem value="OPEN">Открытые</MenuItem>
-              <MenuItem value="DONE">Выполненные</MenuItem>
-              <MenuItem value="ALL">Все</MenuItem>
-            </TextField>
-            <Box flex={1} />
-            <Button variant="contained" startIcon={<Add />} onClick={openNewTask} sx={{ textTransform: 'none' }}>
-              Новая задача
-            </Button>
-          </Stack>
-
-          <Stack spacing={1.5}>
-            {tasks.map((t) => {
-              const overdue =
-                t.status === 'OPEN' && t.dueAt && new Date(t.dueAt).getTime() < Date.now();
-              return (
-                <Paper
-                  key={t.id}
-                  sx={{
-                    p: 2,
-                    borderLeft: overdue ? `4px solid ${colors.danger}` : undefined,
-                  }}
-                >
-                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
-                    <Box flex={1}>
-                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
-                        <Typography fontWeight={700}>{t.title}</Typography>
-                        <Chip size="small" label={t.status === 'OPEN' ? 'Открыта' : t.status === 'DONE' ? 'Готово' : t.status} />
-                        {overdue && <Chip size="small" color="error" label="Просрочена" />}
-                      </Stack>
-                      <Typography
-                        variant="body2"
-                        sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', mb: 1 }}
-                      >
-                        {t.body || '—'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Дедлайн:{' '}
-                        {t.dueAt ? new Date(t.dueAt).toLocaleString('ru-RU') : 'не указан'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Исполнители:{' '}
-                        {t.assignees.map((a) => personLabel(a.user)).join(', ') || '—'}
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="flex-start">
-                      <Button
-                        size="small"
-                        startIcon={<Chat />}
-                        onClick={() => void openTaskChat(t)}
-                        sx={{ textTransform: 'none' }}
-                      >
-                        {t.chatThread ? 'Открыть чат' : 'Создать чат'}
-                      </Button>
-                      {t.status === 'OPEN' && (
-                        <Button size="small" onClick={() => void setTaskDone(t, 'DONE')} sx={{ textTransform: 'none' }}>
-                          Готово
-                        </Button>
-                      )}
-                      {t.status === 'DONE' && (
-                        <Button size="small" onClick={() => void setTaskDone(t, 'OPEN')} sx={{ textTransform: 'none' }}>
-                          Открыть снова
-                        </Button>
-                      )}
-                      {(isOwner || t.createdByUserId === user?.id) && (
-                        <IconButton size="small" onClick={() => openEditTask(t)}>
-                          <Edit fontSize="small" />
-                        </IconButton>
-                      )}
-                      {(isOwner || t.createdByUserId === user?.id) && (
-                        <IconButton
-                          size="small"
-                          onClick={async () => {
-                            if (!window.confirm('Удалить задачу?')) return;
-                            try {
-                              await apiService.deleteStaffTask(t.id);
-                              await loadTasks();
-                            } catch (e: any) {
-                              setError(e?.response?.data?.error || 'Не удалось удалить');
-                            }
-                          }}
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Stack>
-                  </Stack>
-                </Paper>
-              );
-            })}
-            {!tasks.length && (
-              <Typography color="text.secondary">Пока нет задач</Typography>
-            )}
-          </Stack>
-        </Box>
+        <TasksBoard
+          tasks={tasks}
+          staffUsers={staffUsers}
+          currentUserId={user?.id}
+          isOwner={isOwner}
+          onReload={loadTasks}
+          onError={setError}
+          onCreate={openNewTask}
+          initialSelectedId={focusTaskId}
+        />
       )}
 
-      <Dialog open={noteDialog} onClose={() => setNoteDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingNote ? 'Редактировать заметку' : 'Новая заметка'}</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="Заголовок"
-            value={noteTitle}
-            onChange={(e) => setNoteTitle(e.target.value)}
-            sx={{ mt: 1, mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={5}
-            label="Текст"
-            value={noteBody}
-            onChange={(e) => setNoteBody(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            select
-            fullWidth
-            label="Видимость"
-            value={noteVisibility}
-            onChange={(e) => setNoteVisibility(e.target.value as any)}
-          >
-            <MenuItem value="PERSONAL">Личная</MenuItem>
-            <MenuItem value="SHARED">Видят все сотрудники школы</MenuItem>
-          </TextField>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNoteDialog(false)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveNote()} disabled={saving || !noteTitle.trim()}>
-            Сохранить
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateNoteDialog
+        open={noteDialog}
+        onClose={() => setNoteDialog(false)}
+        onError={setError}
+        onSaved={async (note, opts) => {
+          setFocusNoteId(note?.id || null);
+          await loadNotes();
+          if (opts.createTask && note) {
+            setEditingTask(null);
+            setTaskDraft({ title: note.title, body: note.body || '' });
+            setTab(1);
+            setTaskDialog(true);
+          }
+        }}
+      />
 
-      <Dialog open={taskDialog} onClose={() => setTaskDialog(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>{editingTask ? 'Редактировать задачу' : 'Новая задача'}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Назначьте задачу администратору или тренеру, укажите дедлайн и при необходимости создайте чат по задаче.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Заголовок"
-            value={taskTitle}
-            onChange={(e) => setTaskTitle(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={10}
-            label="Описание задачи"
-            value={taskBody}
-            onChange={(e) => setTaskBody(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            type="datetime-local"
-            label="Дедлайн"
-            value={taskDueAt}
-            onChange={(e) => setTaskDueAt(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ mb: 2 }}
-          />
-          <Autocomplete
-            multiple
-            options={staffUsers}
-            value={taskAssignees}
-            onChange={(_, v) => setTaskAssignees(v)}
-            getOptionLabel={(o) => personLabel(o)}
-            isOptionEqualToValue={(a, b) => a.id === b.id}
-            filterOptions={(options, state) => {
-              const q = state.inputValue.trim().toLowerCase();
-              if (!q) return options;
-              return options.filter((o) => personLabel(o).toLowerCase().includes(q));
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Исполнители"
-                helperText="Выберите из списка или начните вводить ФИО"
-              />
-            )}
-            sx={{ mb: 2 }}
-          />
-          <FormControlLabel
-            control={<Switch checked={createChat} onChange={(_, v) => setCreateChat(v)} />}
-            label="Создать чат по этой задаче"
-          />
-          <Divider sx={{ my: 1 }} />
-          <Typography variant="caption" color="text.secondary">
-            Если исполнителей несколько, будет создан групповой чат с пометкой «Задача» в списке чатов.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTaskDialog(false)}>Отмена</Button>
-          <Button
-            variant="contained"
-            onClick={() => void saveTask()}
-            disabled={saving || !taskTitle.trim() || taskAssignees.length === 0}
-          >
-            {editingTask ? 'Сохранить' : 'Создать задачу'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateStaffTaskDialog
+        open={taskDialog}
+        onClose={() => {
+          setTaskDialog(false);
+          setEditingTask(null);
+          setTaskDraft(null);
+        }}
+        onSaved={async () => {
+          await loadTasks();
+        }}
+        staffUsers={staffUsers}
+        initialTask={
+          editingTask?.id
+            ? editingTask
+            : taskDraft
+              ? ({ title: taskDraft.title, body: taskDraft.body } as any)
+              : null
+        }
+      />
     </Box>
   );
 };

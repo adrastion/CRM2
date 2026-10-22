@@ -63,7 +63,7 @@ import {
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { Client, Membership } from '../types';
-import ClientsList from '../components/dashboard/ClientsList';
+import ClientsBoard from '../components/clients/ClientsBoard';
 import AttendanceExcelExport from '../components/AttendanceExcelExport';
 import DeletionScopeDialog, {
   PurgeOption,
@@ -116,6 +116,7 @@ const Clients: React.FC = () => {
   const [editDialog, setEditDialog] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [cardFromSection, setCardFromSection] = useState('Клиенты');
   const [formErrors, setFormErrors] = useState<ValidationErrors>({});
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [validFields, setValidFields] = useState<Set<string>>(new Set());
@@ -395,16 +396,17 @@ const Clients: React.FC = () => {
     const hasErrors = hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current);
     if (!hasErrors && !shouldPreventCloseRef.current && !isValidatingRef.current) return;
     const raf = requestAnimationFrame(() => {
-      setEditDialogOpen(true);
-      setEditDialog(true);
+          setEditDialogOpen(true);
+          setEditDialog(true);
     });
     return () => cancelAnimationFrame(raf);
   }, [editDialogOpen, formErrors, editingClient]);
-
-  // Handle clientId from URL params — открыть карточку спортсмена из любого раздела
+  
+  // Deep link /clients?clientId=&from= — карточка как подстраница, не модалка
   useEffect(() => {
     const clientIdFromUrl = searchParams.get('clientId');
-    if (!clientIdFromUrl || editDialog) return;
+    if (!clientIdFromUrl) return;
+    if (editDialog && editingClient?.id === clientIdFromUrl) return;
 
     let cancelled = false;
 
@@ -416,11 +418,9 @@ const Clients: React.FC = () => {
         }
         if (cancelled || !client) return;
 
+        const from = searchParams.get('from');
+        setCardFromSection(from && from.trim() ? from.trim() : 'Клиенты');
         await handleEditClient(client);
-
-        const newSearchParams = new URLSearchParams(searchParams);
-        newSearchParams.delete('clientId');
-        setSearchParams(newSearchParams, { replace: true });
       } catch (err) {
         console.error('Failed to open client card from URL:', err);
       }
@@ -429,7 +429,7 @@ const Clients: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [clients, searchParams, editDialog, setSearchParams]);
+  }, [clients, searchParams, editDialog, editingClient?.id, setSearchParams]);
 
   // Validate field in real-time
   const validateFieldValue = (fieldName: string, value: any, parentIndex?: number) => {
@@ -940,7 +940,7 @@ const Clients: React.FC = () => {
     if (!deleteTarget) return;
     const clientId = deleteTarget.id;
     await apiService.deleteClient(clientId, purge);
-    await fetchClients();
+        await fetchClients();
     if (editingClient?.id === clientId) {
       setEditDialogOpen(false);
       setEditDialog(false);
@@ -1016,6 +1016,7 @@ const Clients: React.FC = () => {
     setEditDialogOpen(false);
     setEditDialog(false);
     setEditingClient(null);
+    setCardFromSection('Клиенты');
     setFormData({ ...EMPTY_CLIENT_FORM });
     setEditFormBaseline({ ...EMPTY_CLIENT_FORM });
     setPhotoPreview(null);
@@ -1031,10 +1032,16 @@ const Clients: React.FC = () => {
     setTouchedFields(new Set());
     setValidFields(new Set());
     setError('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('clientId');
+      next.delete('from');
+      return next;
+    }, { replace: true });
     setTimeout(() => {
       isCancellingRef.current = false;
     }, 100);
-  }, []);
+  }, [setSearchParams]);
 
   const editDirty = editDialogOpen && isDirtyValue(formData, editFormBaseline);
 
@@ -1089,18 +1096,58 @@ const Clients: React.FC = () => {
     }
   };
 
+  // Подстраница карточки спортсмена (не модальное окно)
+  if (editDialogOpen && editingClient) {
+    return (
+      <Box sx={{ pb: 2 }}>
+        <AthleteCard
+          mode="staff"
+          clientId={editingClient.id}
+          fromSection={cardFromSection}
+          onFromSectionClick={discardEditForm}
+          onSaved={async () => {
+            await fetchClients();
+            try {
+              const refreshed = await apiService.getClient(editingClient.id);
+              setEditingClient(refreshed);
+            } catch (_) {}
+          }}
+          onClose={discardEditForm}
+        />
+        <UnsavedChangesDialog
+          open={editUnsaved.confirmOpen}
+          onStay={editUnsaved.stay}
+          onDiscard={editUnsaved.discard}
+          onSave={editUnsaved.save}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box>
-      <ClientsList
-        clients={filteredAndSortedClients}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        sortBy={sortBy}
-        onSort={handleClientsSort}
-        onEdit={handleEditClient}
+      <ClientsBoard
+        clients={clients}
+        branches={branches}
+        groups={groups}
+        isPromoter={isPromoter}
+        onAdd={openAddClientDialog}
+        onExport={isPromoter ? undefined : handleExportClients}
+        onImport={
+          isPromoter
+            ? undefined
+            : () => {
+                setImportDialog(true);
+                setImportResult(null);
+              }
+        }
+        onEdit={(client) => {
+          setCardFromSection('Клиенты');
+          const qs = new URLSearchParams({ clientId: client.id, from: 'Клиенты' });
+          setSearchParams(qs, { replace: false });
+          void handleEditClient(client);
+        }}
         onDelete={isPromoter ? undefined : handleDeleteClient}
-        onApproveAccount={isPromoter ? undefined : handleApproveAccount}
-        onRejectAccount={isPromoter ? undefined : handleRejectAccount}
         onGroupClick={
           isPromoter
             ? undefined
@@ -1131,93 +1178,6 @@ const Clients: React.FC = () => {
                 }
               }
         }
-        toolbarActions={
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              flexWrap: 'wrap',
-              gap: 1,
-              width: '100%',
-            }}
-          >
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              sx={{ textTransform: 'none', borderRadius: '19px', bgcolor: colors.primary, width: { xs: '100%', sm: 'auto' } }}
-              onClick={openAddClientDialog}
-              data-onboarding="add-client-button"
-            >
-              Добавить клиента
-            </Button>
-            {!isPromoter && (
-              <>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownload />}
-              sx={{ textTransform: 'none', borderRadius: '19px', width: { xs: '100%', sm: 'auto' } }}
-              onClick={handleExportClients}
-            >
-              Экспорт в Excel
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<FileUpload />}
-              sx={{ textTransform: 'none', borderRadius: '19px', width: { xs: '100%', sm: 'auto' } }}
-              onClick={() => {
-                setImportDialog(true);
-                setImportResult(null);
-              }}
-            >
-              Импорт из Excel
-            </Button>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
-              <InputLabel>Филиал</InputLabel>
-              <Select
-                value={filterBranchId}
-                onChange={(e) => setFilterBranchId(e.target.value)}
-                label="Филиал"
-              >
-                <MenuItem value="">Все филиалы</MenuItem>
-                {branches.map((branch) => (
-                  <MenuItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 }, width: { xs: '100%', sm: 'auto' } }}>
-              <InputLabel>Группа</InputLabel>
-              <Select
-                value={filterGroupId}
-                onChange={(e) => setFilterGroupId(e.target.value)}
-                label="Группа"
-              >
-                <MenuItem value="">Все группы</MenuItem>
-                {groups.filter(g => g.isActive).map((group) => (
-                  <MenuItem key={group.id} value={group.id}>
-                    {group.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 }, width: { xs: '100%', sm: 'auto' } }}>
-              <InputLabel>Статус</InputLabel>
-              <Select
-                value={filterAccountStatus}
-                onChange={(e) => setFilterAccountStatus(e.target.value)}
-                label="Статус"
-              >
-                <MenuItem value="">Все статусы</MenuItem>
-                <MenuItem value="lead">Лид</MenuItem>
-                <MenuItem value="unregistered">Не зарегистрирован</MenuItem>
-                <MenuItem value="registered">Зарегистрирован</MenuItem>
-              </Select>
-            </FormControl>
-              </>
-            )}
-          </Box>
-        }
       />
 
       <CreateClientDialog
@@ -1225,218 +1185,11 @@ const Clients: React.FC = () => {
         onClose={() => setOpenDialog(false)}
         onSuccess={fetchClients}
       />
-      {/* Диалог редактирования клиента */}
-      <Dialog
-open={editDialogOpen}
-        onClose={(_event, reason) => {
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-            editUnsaved.requestClose(reason);
-          }
-        }}
-        maxWidth="lg"
-        fullWidth
-        scroll="paper"
-        disableEscapeKeyDown={hasFormErrors(formErrors) || hasFormErrors(currentErrorsRef.current) || shouldPreventCloseRef.current || isValidatingRef.current}
-        PaperProps={{
-          sx: {
-            borderRadius: `${radii.panel}px`,
-            maxHeight: '90vh',
-          },
-        }}
-      >
-        <DialogContent
-          sx={{
-            p: 2,
-            overflow: 'auto',
-          }}
-        >
-          {(user?.role === 'OWNER' || user?.role === 'ADMIN') && editingClient && (
-            <Box
-              sx={{
-                mb: 2,
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                gap: 1.5,
-                alignItems: 'stretch',
-              }}
-            >
-              <Paper
-                sx={{
-                  p: 1.5,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'background.default',
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>
-                  Личная скидка (ежемес.)
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <FormControl size="small" sx={{ minWidth: 110 }}>
-                    <InputLabel>Тип</InputLabel>
-                    <Select
-                      label="Тип"
-                      value={editingClient.personalDiscountType || ''}
-                      onChange={(e) => {
-                        const type = (e.target.value || null) as 'percent' | 'fixed' | null;
-                        setEditingClient({
-                          ...editingClient,
-                          personalDiscountType: type,
-                          personalDiscountValue: type
-                            ? editingClient.personalDiscountValue ?? 0
-                            : null,
-                        });
-                      }}
-                    >
-                      <MenuItem value="">Нет</MenuItem>
-                      <MenuItem value="percent">%</MenuItem>
-                      <MenuItem value="fixed">₽</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    label="Значение"
-                    type="number"
-                    disabled={!editingClient.personalDiscountType}
-                    value={
-                      editingClient.personalDiscountValue != null
-                        ? editingClient.personalDiscountValue
-                        : ''
-                    }
-                    onChange={(e) => {
-                      const v = e.target.value === '' ? null : Number(e.target.value);
-                      setEditingClient({
-                        ...editingClient,
-                        personalDiscountValue: v != null && Number.isFinite(v) ? v : null,
-                      });
-                    }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          {editingClient.personalDiscountType === 'percent' ? '%' : '₽'}
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={{ width: 140 }}
-                  />
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={async () => {
-                      try {
-                        const type = editingClient.personalDiscountType || null;
-                        const updated = await apiService.updateClient(editingClient.id, {
-                          personalDiscountType: type,
-                          personalDiscountValue: type ? editingClient.personalDiscountValue ?? 0 : null,
-                        });
-                        setEditingClient({ ...editingClient, ...updated });
-                        await fetchClients();
-                      } catch (err: any) {
-                        setError(err.response?.data?.error || 'Не удалось сохранить скидку');
-                      }
-                    }}
-                  >
-                    Сохранить
-                  </Button>
-                </Box>
-              </Paper>
-              <Paper
-                sx={{
-                  p: 1.5,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'background.default',
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Payment color={editingClient.membershipFeePaid ? 'success' : 'disabled'} />
-                    <Typography variant="body2" fontWeight="medium">Членский взнос</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip
-                      label={editingClient.membershipFeePaid ? 'Оплачен' : 'Не оплачен'}
-                      color={editingClient.membershipFeePaid ? 'success' : 'default'}
-                      size="small"
-                    />
-                    <Button
-                      variant={editingClient.membershipFeePaid ? 'outlined' : 'contained'}
-                      color={editingClient.membershipFeePaid ? 'error' : 'success'}
-                      size="small"
-                      onClick={async () => {
-                        if (!editingClient) return;
-                        try {
-                          const updated = await apiService.updateClientMembershipFeeStatus(
-                            editingClient.id,
-                            !editingClient.membershipFeePaid
-                          );
-                          setEditingClient({ ...editingClient, ...updated });
-                          await fetchClients();
-                        } catch (err: any) {
-                          setError(err.response?.data?.error || 'Не удалось обновить статус взноса');
-                        }
-                      }}
-                    >
-                      {editingClient.membershipFeePaid ? 'Снять отметку' : 'Отметить оплату'}
-                    </Button>
-                  </Box>
-                </Box>
-              </Paper>
-            </Box>
-          )}
-          {editingClient && (
-            <Box sx={{ mt: 2, mb: 1 }}>
-              <AttendanceExcelExport
-                scope="client"
-                entityId={editingClient.id}
-                entityName={[editingClient.lastName, editingClient.firstName, editingClient.middleName]
-                  .filter(Boolean)
-                  .join(' ')}
-              />
-            </Box>
-          )}
-          {editingClient && (
-            <AthleteCard
-              mode="staff"
-              clientId={editingClient.id}
-              onSaved={async () => {
-                await fetchClients();
-                try {
-                  const refreshed = await apiService.getClient(editingClient.id);
-                  setEditingClient(refreshed);
-                } catch (_) {}
-              }}
-              onClose={() => {
-                discardEditForm();
-                setSearchParams((prev) => {
-                  const next = new URLSearchParams(prev);
-                  next.delete('clientId');
-                  return next;
-                });
-              }}
-            />
-          )}
-          {(user?.role === 'OWNER' || user?.role === 'ADMIN') && editingClient && (
-            <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-              <Button
-                color="error"
-                variant="outlined"
-                fullWidth
-                onClick={() => handleDeleteClient(editingClient.id)}
-              >
-                Удалить клиента
-              </Button>
-            </Box>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Import Dialog */}
-      <Dialog open={importDialog} onClose={() => {
+      <Dialog
+        open={importDialog}
+              onClose={() => {
         if (!importing) {
           setImportDialog(false);
           setImportFile(null);
@@ -1446,8 +1199,19 @@ open={editDialogOpen}
             fileInputRef.current.value = '';
           }
         }
-      }} maxWidth="md" fullWidth>
-        <DialogTitle>Импорт клиентов из Excel</DialogTitle>
+      }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 0, sm: `${radii.panel}px` },
+            bgcolor: colors.surface,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: { xs: 18, md: 20 }, color: colors.text }}>
+          Импорт клиентов из Excel
+        </DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -1688,13 +1452,13 @@ open={editDialogOpen}
       />
 
       <ClientGroupsDialog
-        open={groupsDialog}
+        open={groupsDialog} 
         client={selectedClientForGroups}
         groups={groups}
         onClose={() => {
           setGroupsDialog(false);
           setSelectedClientForGroups(null);
-        }}
+        }} 
         onChanged={async (updated) => {
           setSelectedClientForGroups(updated);
           await fetchClients();
@@ -1715,7 +1479,7 @@ open={editDialogOpen}
           setSelectedMembershipId('');
           setMembershipStartDate(new Date());
         }}
-        maxWidth="sm"
+        maxWidth="sm" 
         fullWidth
       >
         <DialogTitle>
@@ -1754,7 +1518,7 @@ open={editDialogOpen}
             ) : (
               <Typography variant="body2" color="text.secondary">
                 Активного абонемента нет. Выберите тариф из каталога.
-              </Typography>
+            </Typography>
             )}
 
             <Alert severity="warning">
@@ -1788,8 +1552,8 @@ open={editDialogOpen}
                     {m.name}
                     {m.visits != null ? ` (${m.visits} пос.)` : ''}
                     {m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}
-                  </MenuItem>
-                ))}
+                    </MenuItem>
+                  ))}
               </Select>
             </FormControl>
 

@@ -132,10 +132,8 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
         value={section}
         onChange={(_, v) => setSection(v)}
         sx={{
-          minHeight: 40,
           borderBottom: 1,
           borderColor: 'divider',
-          '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: 14 },
         }}
       >
         <Tab

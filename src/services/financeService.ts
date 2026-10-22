@@ -74,13 +74,27 @@ function applyDatePreset(preset?: string): { from?: Date; to?: Date } {
     }
     case 'this_month': {
       const from = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
-      return { from, to: endOfDay(now) };
+      const to = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+      return { from, to };
     }
     case 'last_month': {
       const from = startOfDay(new Date(now.getFullYear(), now.getMonth() - 1, 1));
       const to = endOfDay(new Date(now.getFullYear(), now.getMonth(), 0));
       return { from, to };
     }
+    case 'this_year': {
+      const from = startOfDay(new Date(now.getFullYear(), 0, 1));
+      const to = endOfDay(new Date(now.getFullYear(), 11, 31));
+      return { from, to };
+    }
+    case 'last_year': {
+      const y = now.getFullYear() - 1;
+      const from = startOfDay(new Date(y, 0, 1));
+      const to = endOfDay(new Date(y, 11, 31));
+      return { from, to };
+    }
+    case 'all':
+      return {};
     default:
       return {};
   }

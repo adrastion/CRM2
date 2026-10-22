@@ -85,14 +85,78 @@ export const listExercises = asyncHandler(
   }
 );
 
+function parseExerciseTags(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  if (Array.isArray(v)) {
+    const tags = v.map(String).map((s) => s.trim()).filter(Boolean);
+    return tags.length ? JSON.stringify(tags) : null;
+  }
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!t) return null;
+    try {
+      const parsed = JSON.parse(t);
+      if (Array.isArray(parsed)) {
+        const tags = parsed.map(String).map((s) => s.trim()).filter(Boolean);
+        return tags.length ? JSON.stringify(tags) : null;
+      }
+    } catch {
+      /* comma-separated */
+    }
+    const tags = t
+      .split(/[,;]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return tags.length ? JSON.stringify(tags) : null;
+  }
+  return null;
+}
+
+function pickExerciseFields(body: Record<string, unknown>) {
+  const num = (v: unknown) => {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  };
+  const strOrNull = (v: unknown, max?: number) => {
+    if (v == null || v === '') return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    return max ? s.slice(0, max) : s;
+  };
+  return {
+    category: strOrNull(body.category),
+    exerciseType: strOrNull(body.exerciseType),
+    sets: num(body.sets),
+    reps: num(body.reps),
+    restSec: num(body.restSec),
+    difficulty: strOrNull(body.difficulty),
+    inventory: strOrNull(body.inventory),
+    tempo: strOrNull(body.tempo),
+    videoUrl: strOrNull(body.videoUrl, 500),
+    tags: parseExerciseTags(body.tags),
+  };
+}
+
 export const createExercise = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const { tenantId, userId } = requireCtx(req);
     const title = String(req.body?.title || '').trim();
     if (!title) throw badRequest('Укажите название', 'title');
-    const description = String(req.body?.description || '');
+    let description = String(req.body?.description || '');
+    if (description.length > 1000) description = description.slice(0, 1000);
+    if (!req.body?.category || !String(req.body.category).trim()) {
+      throw badRequest('Выберите категорию', 'category');
+    }
+    const extra = pickExerciseFields(req.body);
     const row = await prisma.exercise.create({
-      data: { tenantId, createdByUserId: userId, title, description },
+      data: {
+        tenantId,
+        createdByUserId: userId,
+        title,
+        description,
+        ...extra,
+      },
       include: exerciseInclude,
     });
     res.status(201).json({ success: true, data: row });
@@ -105,13 +169,33 @@ export const updateExercise = asyncHandler(
     const { id } = req.params;
     const existing = await prisma.exercise.findFirst({ where: { id, tenantId } });
     if (!existing) throw notFound('Упражнение не найдено');
-    const data: { title?: string; description?: string } = {};
+    const data: Record<string, unknown> = {};
     if (req.body?.title != null) {
       const title = String(req.body.title).trim();
       if (!title) throw badRequest('Укажите название', 'title');
       data.title = title;
     }
-    if (req.body?.description != null) data.description = String(req.body.description);
+    if (req.body?.description != null) {
+      data.description = String(req.body.description).slice(0, 1000);
+    }
+    const fieldKeys = [
+      'category',
+      'exerciseType',
+      'sets',
+      'reps',
+      'restSec',
+      'difficulty',
+      'inventory',
+      'tempo',
+      'videoUrl',
+      'tags',
+    ] as const;
+    if (fieldKeys.some((k) => req.body?.[k] !== undefined)) {
+      const extra = pickExerciseFields(req.body);
+      for (const k of fieldKeys) {
+        if (req.body?.[k] !== undefined) data[k] = extra[k];
+      }
+    }
     const row = await prisma.exercise.update({
       where: { id },
       data,
@@ -355,8 +439,16 @@ export const listAccessibleGroups = asyncHandler(
         name: true,
         branchId: true,
         trainerId: true,
+        ageMin: true,
+        ageMax: true,
         color: true,
-        branch: { select: { name: true } },
+        branch: { select: { id: true, name: true } },
+        trainer: {
+          select: {
+            id: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -445,6 +537,8 @@ export const listCycles = asyncHandler(
   }
 );
 
+const CYCLE_FREQUENCIES = new Set(['WEEKLY', 'MONTHLY', 'CUSTOM']);
+
 export const createCycle = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const { tenantId, userId, user } = requireCtx(req);
@@ -463,12 +557,44 @@ export const createCycle = asyncHandler(
     }
     if (dateTo < dateFrom) throw badRequest('dateTo раньше dateFrom');
 
-    const title = req.body?.title ? String(req.body.title).trim() : null;
+    const title = req.body?.title ? String(req.body.title).trim() : '';
+    if (!title) throw badRequest('Укажите название цикла', 'title');
+
+    let description: string | null = null;
+    if (req.body?.description != null && String(req.body.description).trim()) {
+      description = String(req.body.description).trim();
+      if (description.length > 500) {
+        throw badRequest('Описание не длиннее 500 символов', 'description');
+      }
+    }
+
+    const frequencyRaw = req.body?.frequency
+      ? String(req.body.frequency).trim().toUpperCase()
+      : 'WEEKLY';
+    if (!CYCLE_FREQUENCIES.has(frequencyRaw)) {
+      throw badRequest('Некорректная периодичность', 'frequency');
+    }
+
+    let quantity: number | null = null;
+    if (frequencyRaw !== 'CUSTOM') {
+      const q = Number(req.body?.quantity);
+      if (!Number.isFinite(q) || q < 1) {
+        throw badRequest('Укажите количество периодов', 'quantity');
+      }
+      quantity = Math.floor(q);
+    } else if (req.body?.quantity != null && req.body.quantity !== '') {
+      const q = Number(req.body.quantity);
+      if (Number.isFinite(q) && q >= 1) quantity = Math.floor(q);
+    }
+
     const cycle = await prisma.trainingCycle.create({
       data: {
         tenantId,
         createdByUserId: userId,
         title,
+        description,
+        frequency: frequencyRaw,
+        quantity,
         dateFrom: startOfDay(dateFrom),
         dateTo: endOfDay(dateTo),
         groups: { create: groupIds.map((groupId) => ({ groupId })) },

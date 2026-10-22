@@ -1006,14 +1006,36 @@ class ApiService {
     return response.data.data || [];
   }
 
-  async createStaffNote(data: { title: string; body: string; visibility: string }): Promise<any> {
+  async createStaffNote(data: {
+    title: string;
+    body: string;
+    visibility: string;
+    color?: string | null;
+    categoryKey?: string;
+    reminderKey?: string;
+    pinned?: boolean;
+    tags?: string[] | null;
+    relatedTaskIds?: string[] | null;
+    relatedLink?: { type: string; id: string; label?: string } | null;
+  }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/staff-workspace/notes', data);
     return response.data.data;
   }
 
   async updateStaffNote(
     id: string,
-    data: Partial<{ title: string; body: string; visibility: string }>
+    data: Partial<{
+      title: string;
+      body: string;
+      visibility: string;
+      color: string | null;
+      categoryKey: string;
+      reminderKey: string;
+      pinned: boolean;
+      tags: string[] | null;
+      relatedTaskIds: string[] | null;
+      relatedLink: { type: string; id: string; label?: string } | null;
+    }>
   ): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/staff-workspace/notes/${id}`, data);
     return response.data.data;
@@ -1021,6 +1043,30 @@ class ApiService {
 
   async deleteStaffNote(id: string): Promise<void> {
     await this.api.delete(`/staff-workspace/notes/${id}`);
+  }
+
+  async duplicateStaffNote(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/staff-workspace/notes/${id}/duplicate`);
+    return response.data.data;
+  }
+
+  async uploadStaffNoteAttachment(noteId: string, file: File): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post<ApiResponse>(
+      `/staff-workspace/notes/${noteId}/attachments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async deleteStaffNoteAttachment(noteId: string, attachmentId: string): Promise<void> {
+    await this.api.delete(`/staff-workspace/notes/${noteId}/attachments/${attachmentId}`);
+  }
+
+  staffNoteAttachmentUrl(noteId: string, attachmentId: string): string {
+    return `/api/staff-workspace/notes/${noteId}/attachments/${attachmentId}/file`;
   }
 
   async listStaffWorkspaceUsers(): Promise<any[]> {
@@ -1033,6 +1079,13 @@ class ApiService {
     from?: string;
     to?: string;
     mine?: boolean;
+    assignedByMe?: boolean;
+    assignedToMe?: boolean;
+    favorite?: boolean;
+    archived?: boolean;
+    projectKey?: string;
+    relatedTrainingId?: string;
+    relatedSchoolEventId?: string;
   }): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/staff-workspace/tasks', {
       params: params
@@ -1041,6 +1094,15 @@ class ApiService {
             ...(params.from ? { from: params.from } : {}),
             ...(params.to ? { to: params.to } : {}),
             ...(params.mine ? { mine: '1' } : {}),
+            ...(params.assignedByMe ? { assignedByMe: '1' } : {}),
+            ...(params.assignedToMe ? { assignedToMe: '1' } : {}),
+            ...(params.favorite ? { favorite: '1' } : {}),
+            ...(params.archived ? { archived: '1' } : {}),
+            ...(params.projectKey ? { projectKey: params.projectKey } : {}),
+            ...(params.relatedTrainingId ? { relatedTrainingId: params.relatedTrainingId } : {}),
+            ...(params.relatedSchoolEventId
+              ? { relatedSchoolEventId: params.relatedSchoolEventId }
+              : {}),
           }
         : undefined,
     });
@@ -1053,6 +1115,16 @@ class ApiService {
     dueAt?: string | null;
     assigneeIds: string[];
     createChat?: boolean;
+    relatedTrainingId?: string | null;
+    relatedSchoolEventId?: string | null;
+    status?: string;
+    priority?: string;
+    projectKey?: string;
+    favorite?: boolean;
+    archived?: boolean;
+    recurrence?: string;
+    subtasks?: Array<{ id?: string; title: string; done?: boolean }>;
+    notifyAssignees?: boolean;
   }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/staff-workspace/tasks', data);
     return response.data.data;
@@ -1067,10 +1139,90 @@ class ApiService {
       assigneeIds: string[];
       status: string;
       createChat: boolean;
+      relatedTrainingId: string | null;
+      relatedSchoolEventId: string | null;
+      priority: string;
+      projectKey: string;
+      favorite: boolean;
+      archived: boolean;
+      recurrence: string;
+      subtasks: Array<{ id?: string; title: string; done?: boolean }> | null;
+      notifyAssignees: boolean;
     }>
   ): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/staff-workspace/tasks/${id}`, data);
     return response.data.data;
+  }
+
+  async uploadStaffTaskAttachment(taskId: string, file: File): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post<ApiResponse>(
+      `/staff-workspace/tasks/${taskId}/attachments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async deleteStaffTaskAttachment(taskId: string, attachmentId: string): Promise<void> {
+    await this.api.delete(`/staff-workspace/tasks/${taskId}/attachments/${attachmentId}`);
+  }
+
+  staffTaskAttachmentUrl(taskId: string, attachmentId: string): string {
+    return `/api/staff-workspace/tasks/${taskId}/attachments/${attachmentId}/file`;
+  }
+
+  async createStaffTaskComment(taskId: string, body: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/staff-workspace/tasks/${taskId}/comments`,
+      { body }
+    );
+    return response.data.data;
+  }
+
+  async deleteStaffTaskComment(taskId: string, commentId: string): Promise<void> {
+    await this.api.delete(`/staff-workspace/tasks/${taskId}/comments/${commentId}`);
+  }
+
+  async getScheduleSummary(params?: {
+    startDate?: string;
+    endDate?: string;
+    branchId?: string;
+    hallId?: string;
+    trainerId?: string;
+    groupId?: string;
+  }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/reports/schedule-summary', { params });
+    return response.data.data;
+  }
+
+  async listCalendarNotes(params: {
+    trainingId?: string;
+    schoolEventId?: string;
+    competitionId?: string;
+  }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/calendar-notes', { params });
+    return response.data.data || [];
+  }
+
+  async createCalendarNote(data: {
+    body: string;
+    trainingId?: string;
+    schoolEventId?: string;
+    competitionId?: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/calendar-notes', data);
+    return response.data.data;
+  }
+
+  async updateCalendarNote(id: string, data: { body: string }): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/calendar-notes/${id}`, data);
+    return response.data.data;
+  }
+
+  async deleteCalendarNote(id: string): Promise<void> {
+    await this.api.delete(`/calendar-notes/${id}`);
   }
 
   async updateStaffTaskStatus(id: string, status: string): Promise<any> {
@@ -1102,12 +1254,38 @@ class ApiService {
     return response.data.data || [];
   }
 
-  async createExercise(data: { title: string; description?: string }): Promise<any> {
+  async createExercise(data: {
+    title: string;
+    description?: string;
+    category?: string;
+    exerciseType?: string | null;
+    sets?: number | null;
+    reps?: number | null;
+    restSec?: number | null;
+    difficulty?: string | null;
+    inventory?: string | null;
+    tempo?: string | null;
+    videoUrl?: string | null;
+    tags?: string[] | string | null;
+  }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/training-plan/exercises', data);
     return response.data.data;
   }
 
-  async updateExercise(id: string, data: Partial<{ title: string; description: string }>): Promise<any> {
+  async updateExercise(id: string, data: Partial<{
+    title: string;
+    description: string;
+    category: string;
+    exerciseType: string | null;
+    sets: number | null;
+    reps: number | null;
+    restSec: number | null;
+    difficulty: string | null;
+    inventory: string | null;
+    tempo: string | null;
+    videoUrl: string | null;
+    tags: string[] | string | null;
+  }>): Promise<any> {
     const response = await this.api.put<ApiResponse>(`/training-plan/exercises/${id}`, data);
     return response.data.data;
   }
@@ -1165,7 +1343,10 @@ class ApiService {
   }
 
   async createTrainingCycle(data: {
-    title?: string | null;
+    title: string;
+    description?: string | null;
+    frequency?: 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+    quantity?: number | null;
     dateFrom: string;
     dateTo: string;
     groupIds: string[];
@@ -2047,6 +2228,26 @@ class ApiService {
 
   async deleteMembership(id: string): Promise<void> {
     await this.api.delete(`/memberships/${id}`);
+  }
+
+  async getMembershipStats(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/memberships/stats');
+    return response.data.data;
+  }
+
+  async archiveMembership(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/memberships/${id}/archive`);
+    return response.data.data;
+  }
+
+  async restoreMembership(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/memberships/${id}/restore`);
+    return response.data.data;
+  }
+
+  async duplicateMembership(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/memberships/${id}/duplicate`);
+    return response.data.data;
   }
 
   async mergeMemberships(targetId: string, sourceIds: string[]): Promise<any> {

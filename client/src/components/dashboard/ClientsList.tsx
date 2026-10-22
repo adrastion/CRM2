@@ -1,7 +1,7 @@
 import React from 'react';
-import { Box, Typography, InputBase, ButtonBase } from '@mui/material';
+import { Box, Typography, InputBase, ButtonBase, Link as MuiLink } from '@mui/material';
 import { Client } from '../../types';
-import { colors, typography } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 import ClientNameLink from '../ClientNameLink';
 import DesignIcon from '../common/DesignIcon';
 import {
@@ -10,6 +10,33 @@ import {
 } from '../../utils/clientAccountStatus';
 
 const SOFT_DANGER = '#EC7C94';
+
+/** Пастельные акценты строк списка (макет 05). */
+const PASTEL_ROW = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'] as const;
+
+const membershipStatusChip = (
+  client: Client
+): { label: string; bg: string; fg: string } => {
+  const m = client.activeMembership;
+  if (!m) {
+    return { label: 'Нет абонемента', bg: 'rgba(249, 60, 101, 0.12)', fg: colors.danger };
+  }
+  if (m.remaining != null && m.remaining <= 0) {
+    return {
+      label: m.remaining < 0 ? `Долг ${Math.abs(m.remaining)}` : 'Нет занятий',
+      bg: 'rgba(249, 60, 101, 0.12)',
+      fg: colors.danger,
+    };
+  }
+  if (m.remaining != null && m.remaining <= 3) {
+    return {
+      label: `Осталось ${m.remaining}`,
+      bg: 'rgba(237, 108, 2, 0.14)',
+      fg: '#C45A00',
+    };
+  }
+  return { label: 'Активен', bg: 'rgba(0, 182, 155, 0.14)', fg: colors.success };
+};
 
 export interface ClientsListProps {
   clients: Client[];
@@ -167,10 +194,11 @@ const ClientsList: React.FC<ClientsListProps> = ({
             gap: 1,
             px: 2,
             py: 0.75,
-            borderRadius: '12px',
-            border: `1px solid ${colors.primary}`,
+            borderRadius: `${radii.panel}px`,
+            border: `1px solid ${colors.primarySoft}`,
             bgcolor: colors.card,
-            minHeight: 40,
+            minHeight: 44,
+            boxShadow: '0 1px 4px rgba(47, 107, 255, 0.06)',
           }}
         >
           <DesignIcon category="ui" name="search" size={18} />
@@ -242,7 +270,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
           <Box
             sx={{
               bgcolor: colors.card,
-              borderRadius: '12px',
+              borderRadius: `${radii.panel}px`,
               py: 4,
               textAlign: 'center',
             }}
@@ -252,18 +280,20 @@ const ClientsList: React.FC<ClientsListProps> = ({
             </Typography>
           </Box>
         ) : (
-          clients.map((client) => {
+          clients.map((client, index) => {
             const groupName = primaryGroupName(client);
             const membership = membershipChipLabel(client);
             const remainingNeg =
               membership.remaining != null && membership.remaining < 0;
+            const statusChip = membershipStatusChip(client);
+            const pastel = PASTEL_ROW[index % PASTEL_ROW.length];
             return (
               <Box
                 key={client.id}
                 sx={{
-                  bgcolor: colors.card,
-                  borderRadius: '12px',
-                  boxShadow: '0 2px 8px rgba(32, 34, 36, 0.04)',
+                  bgcolor: { xs: pastel, md: colors.card },
+                  borderRadius: `${radii.panel}px`,
+                  boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
                   minHeight: { xs: 'auto', md: 72 },
                   display: 'grid',
                   gridTemplateColumns: {
@@ -271,9 +301,10 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     md: gridTemplate,
                   },
                   alignItems: 'center',
-                  px: { xs: 1.5, md: 2 },
-                  py: { xs: 1.5, md: 1 },
-                  gap: { xs: 1.5, md: 0 },
+                  px: { xs: 1.75, md: 2 },
+                  py: { xs: 1.75, md: 1 },
+                  gap: { xs: 1.25, md: 0 },
+                  border: { xs: 'none', md: `1px solid ${colors.divider}` },
                 }}
               >
                 {/* Клиент */}
@@ -284,38 +315,81 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     minWidth: 0,
                   }}
                 >
-                  <ClientNameLink
-                    clientId={client.id}
-                    client={client}
-                    onOpen={() => onEdit(client)}
+                  <Box
                     sx={{
-                      fontWeight: 600,
-                      fontSize: typography.label,
-                      color: colors.text,
-                      lineHeight: 1.25,
-                      wordBreak: 'break-word',
-                      display: 'block',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 1,
                       mb: 0.5,
-                      '&:hover': {
-                        color: colors.primary,
-                      },
                     }}
-                  />
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25, minWidth: 0 }}>
-                    <DesignIcon category="ui" name="phone" size={14} />
-                    <Typography
+                  >
+                    <ClientNameLink
+                      clientId={client.id}
+                      client={client}
+                      onOpen={() => onEdit(client)}
                       sx={{
-                        fontSize: typography.hint,
-                        color: colors.primary,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        fontWeight: 700,
+                        fontSize: { xs: 15, md: typography.label },
+                        color: colors.text,
+                        lineHeight: 1.25,
+                        wordBreak: 'break-word',
+                        display: 'block',
+                        '&:hover': {
+                          color: colors.primary,
+                        },
+                      }}
+                    />
+                    {/* Мобильный чип статуса абонемента (макет 05) */}
+                    <Box
+                      sx={{
+                        display: { xs: 'inline-flex', md: 'none' },
+                        flexShrink: 0,
+                        bgcolor: statusChip.bg,
+                        color: statusChip.fg,
+                        px: 1,
+                        py: 0.35,
+                        borderRadius: `${radii.button}px`,
+                        fontWeight: 600,
+                        fontSize: 11,
                         whiteSpace: 'nowrap',
+                        lineHeight: 1.2,
                       }}
                     >
-                      {client.phone || '—'}
-                    </Typography>
+                      {statusChip.label}
+                    </Box>
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25, minWidth: 0 }}>
+                    <DesignIcon category="ui" name="phone" size={14} />
+                    {client.phone ? (
+                      <MuiLink
+                        href={`tel:${client.phone}`}
+                        underline="hover"
+                        sx={{
+                          fontSize: typography.hint,
+                          color: colors.primary,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {client.phone}
+                      </MuiLink>
+                    ) : (
+                      <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
+                        —
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box
+                    sx={{
+                      display: { xs: 'none', md: 'flex' },
+                      alignItems: 'center',
+                      gap: 0.75,
+                      minWidth: 0,
+                    }}
+                  >
                     <DesignIcon category="ui" name="email" size={14} />
                     <Typography
                       sx={{
@@ -329,12 +403,45 @@ const ClientsList: React.FC<ClientsListProps> = ({
                       {client.email || '—'}
                     </Typography>
                   </Box>
+                  {/* Мобилка: группа под контактом */}
+                  <Box
+                    sx={{
+                      display: { xs: 'flex', md: 'none' },
+                      alignItems: 'center',
+                      gap: 0.75,
+                      mt: 0.75,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={() => onGroupClick?.(client)}
+                      disabled={!onGroupClick}
+                      sx={{
+                        border: 'none',
+                        cursor: onGroupClick ? 'pointer' : 'default',
+                        bgcolor: colors.card,
+                        color: colors.primary,
+                        px: 1.25,
+                        py: 0.4,
+                        borderRadius: `${radii.button}px`,
+                        fontWeight: 600,
+                        fontSize: 12,
+                      }}
+                    >
+                      {groupName}
+                    </Box>
+                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.textMuted }}>
+                      {formatBalance(client.balance)}
+                    </Typography>
+                  </Box>
                 </Box>
 
                 {/* Аккаунт */}
                 <Box
                   sx={{
-                    display: 'flex',
+                    display: { xs: 'none', md: 'flex' },
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -396,7 +503,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                 {/* Группа */}
                 <Box
                   sx={{
-                    display: 'flex',
+                    display: { xs: 'none', md: 'flex' },
                     justifyContent: 'center',
                     px: { md: 1 },
                     borderRight: { md: `1px solid ${colors.divider}` },
@@ -438,7 +545,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                 {/* Абонемент */}
                 <Box
                   sx={{
-                    display: 'flex',
+                    display: { xs: 'none', md: 'flex' },
                     justifyContent: 'center',
                     px: { md: 1 },
                     borderRight: { md: `1px solid ${colors.divider}` },
@@ -497,8 +604,8 @@ const ClientsList: React.FC<ClientsListProps> = ({
                 {/* Баланс */}
                 <Box
                   sx={{
-                    display: 'flex',
-                    justifyContent: { xs: 'flex-start', md: 'center' },
+                    display: { xs: 'none', md: 'flex' },
+                    justifyContent: 'center',
                     px: { md: 1 },
                     borderRight: { md: `1px solid ${colors.divider}` },
                   }}
@@ -526,27 +633,55 @@ const ClientsList: React.FC<ClientsListProps> = ({
                     display: 'flex',
                     flexDirection: { xs: 'row', md: 'column' },
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 0.5,
+                    justifyContent: { xs: 'stretch', md: 'center' },
+                    gap: 0.75,
                     pl: { md: 1 },
                     flexWrap: 'wrap',
+                    mt: { xs: 0.5, md: 0 },
                   }}
                 >
                   <ButtonBase
                     onClick={() => onEdit(client)}
                     sx={{
-                      bgcolor: colors.primarySoft,
-                      color: colors.text,
-                      px: 1.25,
-                      py: 0.4,
-                      borderRadius: '10px',
+                      flex: { xs: 1, md: 'none' },
+                      bgcolor: colors.primary,
+                      color: colors.white,
+                      px: 1.5,
+                      py: 0.65,
+                      borderRadius: `${radii.button}px`,
                       fontWeight: 600,
                       fontSize: typography.hint,
-                      minWidth: 96,
+                      minWidth: { xs: 0, md: 96 },
+                      '&:hover': { bgcolor: colors.primaryDark },
                     }}
                   >
-                    Редактировать
+                    <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>
+                      Карточка
+                    </Box>
+                    <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>
+                      Редактировать
+                    </Box>
                   </ButtonBase>
+                  {client.phone && (
+                    <ButtonBase
+                      component="a"
+                      href={`tel:${client.phone}`}
+                      sx={{
+                        display: { xs: 'inline-flex', md: 'none' },
+                        bgcolor: colors.card,
+                        color: colors.primary,
+                        px: 1.5,
+                        py: 0.65,
+                        borderRadius: `${radii.button}px`,
+                        fontWeight: 600,
+                        fontSize: typography.hint,
+                        minWidth: 88,
+                        border: `1px solid ${colors.primarySoft}`,
+                      }}
+                    >
+                      Звонок
+                    </ButtonBase>
+                  )}
                 </Box>
               </Box>
             );

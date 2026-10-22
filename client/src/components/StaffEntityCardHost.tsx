@@ -1,95 +1,53 @@
-import React, { useCallback, useState } from 'react';
-import { Dialog, DialogContent, useMediaQuery, useTheme } from '@mui/material';
-import AthleteCard from './athlete/AthleteCard';
-import TrainerCard from './trainers/TrainerCard';
-import { apiService } from '../services/api';
-import { Branch, Trainer } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-type TrainerLike = Trainer | { id: string; user?: { id?: string }; [key: string]: unknown };
-
+/**
+ * Deep-link карточки сотрудников/клиентов.
+ * Клиент → /clients?clientId=&from=
+ * Тренер → /trainers?trainerId=&from=
+ * (не модалки — подстраницы, как в макетах)
+ */
 export function useStaffEntityCards(opts?: {
-  branches?: Branch[];
-  trainers?: TrainerLike[];
+  /** @deprecated не используется — карточка открывается на /trainers */
+  branches?: unknown[];
+  /** @deprecated не используется — карточка открывается на /trainers */
+  trainers?: unknown[];
+  sourceLabel?: string;
 }) {
-  const { user } = useAuth();
-  const theme = useTheme();
-  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'));
-  const isOwner = user?.role === 'OWNER';
+  const navigate = useNavigate();
 
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [trainer, setTrainer] = useState<TrainerLike | null>(null);
-
-  const openClient = useCallback((id: string) => {
-    setClientId(id);
-  }, []);
+  const openClient = useCallback(
+    (id: string, from?: string) => {
+      const label = from || opts?.sourceLabel || 'Клиенты';
+      const qs = new URLSearchParams({ clientId: id, from: label });
+      navigate(`/clients?${qs.toString()}`);
+    },
+    [navigate, opts?.sourceLabel]
+  );
 
   const openTrainer = useCallback(
-    async (trainerId: string) => {
-      const fromList = opts?.trainers?.find(
-        (t) => t.id === trainerId || (t as any).user?.id === trainerId
-      );
-      if (fromList) {
-        setTrainer(fromList);
-        return;
-      }
-      try {
-        const loaded = await apiService.getTrainer(trainerId);
-        setTrainer(loaded);
-      } catch {
-        /* ignore */
-      }
+    (id: string, from?: string) => {
+      const label = from || opts?.sourceLabel || 'Сотрудники';
+      const qs = new URLSearchParams({ trainerId: id, from: label });
+      navigate(`/trainers?${qs.toString()}`);
     },
-    [opts?.trainers]
+    [navigate, opts?.sourceLabel]
   );
 
-  const closeClient = useCallback(() => setClientId(null), []);
-  const closeTrainer = useCallback(() => setTrainer(null), []);
+  const closeClient = useCallback(() => {
+    navigate('/clients');
+  }, [navigate]);
 
-  const dialogs = (
-    <>
-      <Dialog
-        open={Boolean(clientId)}
-        onClose={closeClient}
-        maxWidth="lg"
-        fullWidth
-        fullScreen={isNarrow}
-      >
-        <DialogContent>
-          {clientId && (
-            <AthleteCard mode="staff" clientId={clientId} onClose={closeClient} />
-          )}
-        </DialogContent>
-      </Dialog>
+  const closeTrainer = useCallback(() => {
+    navigate('/trainers');
+  }, [navigate]);
 
-      <Dialog
-        open={Boolean(trainer)}
-        onClose={closeTrainer}
-        maxWidth="md"
-        fullWidth
-        fullScreen={isNarrow}
-      >
-        <DialogContent>
-          {trainer && (
-            <TrainerCard
-              employee={trainer as any}
-              branches={opts?.branches || []}
-              isOwner={isOwner}
-              onClose={closeTrainer}
-              onSaved={async () => {
-                try {
-                  const refreshed = await apiService.getTrainer((trainer as any).id);
-                  setTrainer(refreshed);
-                } catch {
-                  /* keep current */
-                }
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-
-  return { openClient, openTrainer, closeClient, closeTrainer, dialogs };
+  return {
+    openClient,
+    openTrainer,
+    closeClient,
+    closeTrainer,
+    /** @deprecated карточки больше не в Dialog — оставлено пустым для совместимости вызовов */
+    dialogs: null as React.ReactNode,
+  };
 }

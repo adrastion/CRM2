@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
-  Card,
-  CardContent,
   TextField,
   Button,
   Grid,
@@ -24,12 +23,16 @@ import {
   DialogActions,
 } from '@mui/material';
 import {
+  AccountCircleOutlined,
+  CalendarMonthOutlined,
+  ExtensionOutlined,
+  LockOutlined,
+  NotificationsNoneOutlined,
+  PaletteOutlined,
+  PolicyOutlined,
   Save,
-  Email,
-  Lock,
-  ViewList,
   School,
-  Notifications,
+  StorefrontOutlined,
 } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -44,6 +47,26 @@ import ActiveSessionsPanel from '../components/auth/ActiveSessionsPanel';
 import PasswordField from '../components/common/PasswordField';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
+import { colors, radii } from '../theme/tokens';
+import SettingsSchedulePanel from '../components/settings/SettingsSchedulePanel';
+import { ScheduleConfig } from '../components/settings/scheduleConfig';
+
+const sectionPaperSx = {
+  p: { xs: 2, sm: 2.5 },
+  borderRadius: `${radii.panel}px`,
+  border: `1px solid ${colors.divider}`,
+  boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+  bgcolor: colors.card,
+};
+
+const btnPrimarySx = {
+  textTransform: 'none' as const,
+  borderRadius: `${radii.button}px`,
+  bgcolor: colors.primary,
+  fontWeight: 600,
+  boxShadow: 'none',
+  '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+};
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -62,27 +85,47 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`settings-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>}
     </div>
   );
 }
 
 const Settings: React.FC = () => {
   const { user, updateUser, logout } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canEditFinanceSettings = canEditSchoolFinanceSettings(user?.role);
   const canEditSchoolSettings = isOwnerOrAdmin(user?.role);
   const showNotificationsTab =
     user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER';
-  const notificationsTabIndex = 2;
-  const interfaceTabIndex = showNotificationsTab ? 3 : 2;
+  const TAB = {
+    schedule: 0,
+    account: 1,
+    notifications: 2,
+    interface: 3,
+    branches: 4,
+    roles: 5,
+    integrations: 6,
+    security: 7,
+  } as const;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [tabValue, setTabValue] = useState(0);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'notifications' && showNotificationsTab) {
+      setTabValue(TAB.notifications);
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, showNotificationsTab]);
   
   // Настройки расписания
-  const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60);
+  const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(90);
   const [membershipFeeResetDate, setMembershipFeeResetDate] = useState<string>('');
   const [salaryPayoutDay, setSalaryPayoutDay] = useState<number>(25);
   const [clientCanViewAllTrainers, setClientCanViewAllTrainers] = useState<boolean>(false);
@@ -90,6 +133,7 @@ const Settings: React.FC = () => {
   const [chatMessageEditLimitMinutes, setChatMessageEditLimitMinutes] = useState<number>(15);
   const [chatMessageDeleteLimitMinutes, setChatMessageDeleteLimitMinutes] = useState<number>(15);
   const [staffTaskColor, setStaffTaskColor] = useState<string>('#6A1B9A');
+  const [scheduleConfigRaw, setScheduleConfigRaw] = useState<unknown>(null);
   
   // Смена email
   const [newEmail, setNewEmail] = useState('');
@@ -157,7 +201,7 @@ const Settings: React.FC = () => {
         setLoading(true);
         const response = await apiService.getSettings();
         if (response.data) {
-          setDefaultTrainingDuration(response.data.defaultTrainingDuration || 60);
+          setDefaultTrainingDuration(response.data.defaultTrainingDuration || 90);
           setMembershipFeeResetDate(response.data.membershipFeeResetDate || '12-01');
           setSalaryPayoutDay(response.data.salaryPayoutDay || 25);
           setClientCanViewAllTrainers(response.data.clientCanViewAllTrainers || false);
@@ -177,6 +221,7 @@ const Settings: React.FC = () => {
               ? response.data.staffTaskColor
               : '#6A1B9A'
           );
+          setScheduleConfigRaw(response.data.scheduleConfig ?? null);
         }
         
         // Загрузить настройки видимых вкладок
@@ -329,6 +374,40 @@ const Settings: React.FC = () => {
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось сохранить настройки');
       console.error('Error saving settings:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveSchedule = async (payload: {
+    defaultTrainingDuration: number;
+    salaryPayoutDay?: number;
+    staffTaskColor?: string;
+    scheduleConfig: ScheduleConfig;
+  }) => {
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(false);
+      await apiService.updateSettings({
+        defaultTrainingDuration: payload.defaultTrainingDuration,
+        ...(canEditFinanceSettings
+          ? {
+              salaryPayoutDay: payload.salaryPayoutDay,
+              staffTaskColor: payload.staffTaskColor,
+            }
+          : {}),
+        ...(canEditSchoolSettings ? { scheduleConfig: payload.scheduleConfig } : {}),
+      });
+      setDefaultTrainingDuration(payload.defaultTrainingDuration);
+      if (payload.salaryPayoutDay != null) setSalaryPayoutDay(payload.salaryPayoutDay);
+      if (payload.staffTaskColor) setStaffTaskColor(payload.staffTaskColor);
+      setScheduleConfigRaw(payload.scheduleConfig);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось сохранить настройки расписания');
+      console.error('Error saving schedule settings:', err);
     } finally {
       setSaving(false);
     }
@@ -519,298 +598,77 @@ const Settings: React.FC = () => {
           mb: 3,
         }}
       >
-        <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
-          Настройки
-        </Typography>
+        <Box>
+          <Typography
+            variant="h5"
+            component="h1"
+            sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.02em' }}
+          >
+            Настройки
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: colors.textHint, mt: 0.25 }}>
+            Настройте систему под задачи вашей организации
+          </Typography>
+        </Box>
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: `${radii.panel}px` }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
       {success && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>
+        <Alert severity="success" sx={{ mb: 2, borderRadius: `${radii.panel}px` }} onClose={() => setSuccess(false)}>
           Настройки успешно сохранены
         </Alert>
       )}
 
-      <Card>
-        <CardContent sx={{ px: { xs: 1.5, sm: 2, md: 3 }, py: { xs: 2, md: 3 } }}>
-          <Tabs
-            value={tabValue}
-            onChange={(e, newValue) => setTabValue(newValue)}
-            variant="scrollable"
-            scrollButtons="auto"
-            allowScrollButtonsMobile
-            sx={{ mb: 3 }}
-          >
-            <Tab label="Расписание" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-            <Tab label="Аккаунт" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-            {showNotificationsTab && (
-              <Tab label="Уведомления" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-            )}
-            <Tab label="Интерфейс" sx={{ textTransform: 'none', minWidth: { xs: 'auto', sm: 120 } }} />
-          </Tabs>
+      <Tabs
+        value={tabValue}
+        onChange={(e, newValue) => setTabValue(newValue)}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+        sx={{
+          mb: 2.5,
+          borderBottom: `1px solid ${colors.divider}`,
+          '& .MuiTab-root': { gap: 0.75 },
+        }}
+      >
+        <Tab icon={<CalendarMonthOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Расписание" />
+        <Tab icon={<AccountCircleOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Аккаунт" />
+        <Tab icon={<NotificationsNoneOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Уведомления" />
+        <Tab icon={<PaletteOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Интерфейс" />
+        <Tab icon={<StorefrontOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Филиалы" />
+        <Tab icon={<PolicyOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Роли и права" />
+        <Tab icon={<ExtensionOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Интеграции" />
+        <Tab icon={<LockOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Безопасность" />
+      </Tabs>
 
           {/* Настройки расписания */}
-          <TabPanel value={tabValue} index={0}>
-          <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-            Настройки расписания
-          </Typography>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={8}>
-              <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                  Длительность тренировки по умолчанию
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  При создании тренировки время окончания будет автоматически устанавливаться на указанное количество минут после времени начала.
-                </Typography>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Длительность (минуты)"
-                  value={defaultTrainingDuration}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (value >= 15 && value <= 480) {
-                      setDefaultTrainingDuration(value);
-                    }
-                  }}
-                  inputProps={{ min: 15, max: 480, step: 15 }}
-                  helperText="Минимум: 15 минут, максимум: 480 минут (8 часов)"
-                  sx={{ mb: 2 }}
-                />
-                {canEditFinanceSettings && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                      День выплаты зарплаты
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      День месяца (1–28), когда выплачивается зарплата. Напоминание OWNER/ADMIN появится за 5 дней.
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      type="number"
-                      label="День месяца"
-                      value={salaryPayoutDay}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value, 10);
-                        if (value >= 1 && value <= 28) setSalaryPayoutDay(value);
-                      }}
-                      inputProps={{ min: 1, max: 28 }}
-                      helperText="По умолчанию: 25"
-                      sx={{ mb: 2 }}
-                    />
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                      Цвет задач на календарном плане
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Единый цвет чипов задач (Staff Workspace) на календаре сотрудников.
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                      <TextField
-                        type="color"
-                        label="Цвет"
-                        value={staffTaskColor}
-                        onChange={(e) => setStaffTaskColor(e.target.value.toUpperCase())}
-                        sx={{ width: 120 }}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                      <TextField
-                        label="HEX"
-                        value={staffTaskColor}
-                        onChange={(e) => {
-                          const v = e.target.value.trim();
-                          if (v === '' || /^#[0-9A-Fa-f]{0,6}$/.test(v)) {
-                            setStaffTaskColor(v.toUpperCase() || '#');
-                          }
-                        }}
-                        onBlur={() => {
-                          if (!/^#[0-9A-Fa-f]{6}$/.test(staffTaskColor)) {
-                            setStaffTaskColor('#6A1B9A');
-                          }
-                        }}
-                        sx={{ width: 140 }}
-                        inputProps={{ maxLength: 7 }}
-                      />
-                    </Box>
-                  </Box>
-                )}
-                {/* Настройка даты сброса членского взноса */}
-                {canEditFinanceSettings && (
-                  <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                      Автоматический сброс отметок членского взноса
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Укажите дату, когда автоматически будут сбрасываться все отметки о членском взносе (формат: ММ-ДД, например 12-01 для 1 декабря)
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Дата сброса (ММ-ДД)"
-                      value={membershipFeeResetDate}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        // Разрешаем только формат MM-DD
-                        if (value === '' || /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])?$/.test(value)) {
-                          setMembershipFeeResetDate(value);
-                        }
-                      }}
-                      placeholder="12-01"
-                      helperText="Формат: ММ-ДД (например, 12-01 для 1 декабря). По умолчанию: 1 декабря"
-                      sx={{ mb: 2 }}
-                    />
-                  </Box>
-                )}
-                {canEditFinanceSettings && (
-                  <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                      Редактирование сообщений в чатах
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Сколько времени после отправки сотрудники, клиенты и родители могут править свои сообщения.
-                      Платформенные чаты супер-админов этим лимитом не ограничиваются.
-                    </Typography>
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel id="chat-edit-limit-label">Лимит редактирования</InputLabel>
-                      <Select
-                        labelId="chat-edit-limit-label"
-                        label="Лимит редактирования"
-                        value={chatMessageEditLimitMinutes}
-                        onChange={(e) => setChatMessageEditLimitMinutes(Number(e.target.value))}
-                      >
-                        <MenuItem value={5}>5 минут</MenuItem>
-                        <MenuItem value={15}>15 минут</MenuItem>
-                        <MenuItem value={30}>30 минут</MenuItem>
-                        <MenuItem value={60}>1 час</MenuItem>
-                        <MenuItem value={180}>3 часа</MenuItem>
-                        <MenuItem value={1440}>24 часа</MenuItem>
-                        <MenuItem value={0}>Без ограничения</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium" sx={{ mt: 2 }}>
-                      Удаление сообщений в чатах
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Сколько времени после отправки автор может удалить своё сообщение. Владелец
-                      школы всегда видит удалённые сообщения и может удалять любые без лимита.
-                    </Typography>
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel id="chat-delete-limit-label">Лимит удаления</InputLabel>
-                      <Select
-                        labelId="chat-delete-limit-label"
-                        label="Лимит удаления"
-                        value={chatMessageDeleteLimitMinutes}
-                        onChange={(e) => setChatMessageDeleteLimitMinutes(Number(e.target.value))}
-                      >
-                        <MenuItem value={5}>5 минут</MenuItem>
-                        <MenuItem value={15}>15 минут</MenuItem>
-                        <MenuItem value={30}>30 минут</MenuItem>
-                        <MenuItem value={60}>1 час</MenuItem>
-                        <MenuItem value={180}>3 часа</MenuItem>
-                        <MenuItem value={1440}>24 часа</MenuItem>
-                        <MenuItem value={0}>Без ограничения</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-                {/* Настройки личного кабинета клиента */}
-                {canEditSchoolSettings && (
-                  <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                      Настройки личного кабинета клиента
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                      Управляйте тем, какую информацию видят клиенты в своем личном кабинете. Эти настройки влияют на отображение данных в расписании и профиле клиента.
-                    </Typography>
-                    
-                    <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'rgba(72, 128, 255, 0.04)' }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={clientCanViewAllTrainers}
-                            onChange={(e) => setClientCanViewAllTrainers(e.target.checked)}
-                            color="primary"
-                          />
-                        }
-                        label={
-                          <Box>
-                            <Typography variant="body1" fontWeight="medium">
-                              Клиенты могут видеть всех тренеров
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {clientCanViewAllTrainers 
-                                ? 'Клиенты видят всех тренеров школы в своем расписании и профиле'
-                                : 'Клиенты видят только своего тренера (тренера из их группы)'}
-                            </Typography>
-                          </Box>
-                        }
-                        sx={{ display: 'flex', alignItems: 'flex-start', width: '100%', m: 0 }}
-                      />
-                    </Paper>
-
-                    <Paper variant="outlined" sx={{ p: 2, backgroundColor: 'rgba(72, 128, 255, 0.04)' }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={clientCanViewAllBranches}
-                            onChange={(e) => setClientCanViewAllBranches(e.target.checked)}
-                            color="primary"
-                          />
-                        }
-                        label={
-                          <Box>
-                            <Typography variant="body1" fontWeight="medium">
-                              Клиенты могут видеть все филиалы
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {clientCanViewAllBranches 
-                                ? 'Клиенты видят все филиалы школы в своем расписании и профиле'
-                                : 'Клиенты видят только свой филиал (филиал из их группы)'}
-                            </Typography>
-                          </Box>
-                        }
-                        sx={{ display: 'flex', alignItems: 'flex-start', width: '100%', m: 0 }}
-                      />
-                    </Paper>
-                  </Box>
-                )}
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 3 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<Save />}
-                      onClick={handleSaveSettings}
-                    disabled={saving}
-                    sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
-                  >
-                    {saving ? 'Сохранение...' : 'Сохранить настройки'}
-                  </Button>
-                </Box>
-              </Paper>
-            </Grid>
-          </Grid>
+          <TabPanel value={tabValue} index={TAB.schedule}>
+            <SettingsSchedulePanel
+              defaultTrainingDuration={defaultTrainingDuration}
+              salaryPayoutDay={salaryPayoutDay}
+              staffTaskColor={staffTaskColor}
+              scheduleConfigRaw={scheduleConfigRaw}
+              canEditFinance={canEditFinanceSettings}
+              canEditSchedule={canEditSchoolSettings}
+              saving={saving}
+              onSave={handleSaveSchedule}
+            />
           </TabPanel>
 
           {/* Настройки аккаунта */}
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-              Настройки аккаунта
-            </Typography>
-
-            <Grid container spacing={3}>
+          <TabPanel value={tabValue} index={TAB.account}>
+            <Grid container spacing={2}>
               {/* Подтверждение email */}
               <Grid item xs={12}>
-                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Email sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Подтверждение email
-                    </Typography>
-                  </Box>
+                <Paper elevation={0} sx={sectionPaperSx}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 2 }}>
+                    Подтверждение email
+                  </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
                     {user?.email || 'Email не указан'}
                   </Typography>
@@ -856,13 +714,10 @@ const Settings: React.FC = () => {
 
               {/* Смена email */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Email sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Смена email
-                    </Typography>
-                  </Box>
+                <Paper elevation={0} sx={sectionPaperSx}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 2 }}>
+                    Смена email
+                  </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2, overflowWrap: 'anywhere' }}>
                     Текущий email: <strong>{user?.email}</strong>
                   </Typography>
@@ -878,13 +733,10 @@ const Settings: React.FC = () => {
 
               {/* Смена пароля */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Lock sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Смена пароля
-                    </Typography>
-                  </Box>
+                <Paper elevation={0} sx={sectionPaperSx}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 2 }}>
+                    Смена пароля
+                  </Typography>
                   <PasswordField
                     fullWidth
                     label="Текущий пароль"
@@ -910,32 +762,20 @@ const Settings: React.FC = () => {
                     variant="contained"
                     onClick={handleChangePassword}
                     disabled={saving || !currentPassword || !newPassword || !confirmPassword}
-                    sx={{ mt: 1, width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
+                    sx={{ mt: 1, width: { xs: '100%', sm: 'auto' }, ...btnPrimarySx }}
                   >
                     {saving ? 'Сохранение...' : 'Изменить пароль'}
                   </Button>
                 </Paper>
               </Grid>
 
-              <Grid item xs={12} md={6}>
-                <Email2faSettingsToggle />
-              </Grid>
-
-              <Grid item xs={12}>
-                <ActiveSessionsPanel onLogoutEverywhere={logout} />
-              </Grid>
             </Grid>
           </TabPanel>
 
           {/* Настройки уведомлений */}
-          {showNotificationsTab && (
-            <TabPanel value={tabValue} index={notificationsTabIndex}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-                Настройки уведомлений
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Браузерные уведомления о чатах и расписание доставки
-              </Typography>
+          <TabPanel value={tabValue} index={TAB.notifications}>
+            {showNotificationsTab ? (
+              <>
               <NotificationSettingsPanel
                 actor="school"
                 showSchedule={user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'TRAINER'}
@@ -944,23 +784,14 @@ const Settings: React.FC = () => {
 
               {user?.role === 'TRAINER' && (
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <Typography variant="h6" gutterBottom sx={{ mt: 4, mb: 2 }}>
-                    Уведомления о тренировках
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Дайджест тренировок (отдельно от чатов)
-                  </Typography>
-                  <Grid container spacing={3}>
+                  <Grid container spacing={2}>
                     <Grid item xs={12}>
-                      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Notifications sx={{ mr: 1, color: 'primary.main' }} />
-                          <Typography variant="subtitle1" fontWeight="medium">
-                            Уведомления о всех тренировках
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          Получайте ежедневное уведомление о всех тренировках на выбранное время
+                      <Paper elevation={0} sx={sectionPaperSx}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 1 }}>
+                          Уведомления о всех тренировках
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: colors.textHint, mb: 2 }}>
+                          Ежедневный дайджест тренировок
                         </Typography>
                         <FormControlLabel
                           control={
@@ -1008,7 +839,7 @@ const Settings: React.FC = () => {
                       </Paper>
                     </Grid>
                     <Grid item xs={12}>
-                      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+                      <Paper elevation={0} sx={sectionPaperSx}>
                         <FormControlLabel
                           control={
                             <Switch
@@ -1045,7 +876,7 @@ const Settings: React.FC = () => {
                         startIcon={<Save />}
                         onClick={handleSaveNotificationSettings}
                         disabled={saving || loadingNotifications}
-                        sx={{ width: { xs: '100%', sm: 'auto' }, textTransform: 'none' }}
+                        sx={{ width: { xs: '100%', sm: 'auto' }, ...btnPrimarySx }}
                       >
                         {saving ? 'Сохранение...' : 'Сохранить настройки тренировок'}
                       </Button>
@@ -1053,27 +884,27 @@ const Settings: React.FC = () => {
                   </Grid>
                 </LocalizationProvider>
               )}
-            </TabPanel>
-          )}
+              </>
+            ) : (
+              <Paper elevation={0} sx={sectionPaperSx}>
+                <Typography sx={{ color: colors.textHint }}>
+                  Уведомления доступны владельцу, администратору и тренеру.
+                </Typography>
+              </Paper>
+            )}
+          </TabPanel>
 
           {/* Настройки интерфейса */}
-          <TabPanel value={tabValue} index={interfaceTabIndex}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-              Настройки интерфейса
-            </Typography>
-
-            <Grid container spacing={3}>
+          <TabPanel value={tabValue} index={TAB.interface}>
+            <Grid container spacing={2}>
               {/* Настройка вкладок */}
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <ViewList sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      Отображаемые вкладки
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Выберите, какие разделы отображать в боковом меню
+                <Paper elevation={0} sx={sectionPaperSx}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 1 }}>
+                    Отображаемые вкладки
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: colors.textHint, mb: 2 }}>
+                    Какие разделы показывать в меню
                   </Typography>
                   <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
                     {Object.keys(tabLabels).map((tabKey) => (
@@ -1097,15 +928,12 @@ const Settings: React.FC = () => {
               {/* Повторное прохождение обучения */}
               {user && ['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER'].includes(user.role) && (
                 <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: { xs: 2, sm: 3 } }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <School sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="subtitle1" fontWeight="medium">
-                        Интерактивное обучение
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Пройдите обучение еще раз, чтобы освежить знания о системе
+                  <Paper elevation={0} sx={sectionPaperSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.text, mb: 1 }}>
+                      Интерактивное обучение
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: colors.textHint, mb: 2 }}>
+                      Пройдите обучение ещё раз
                     </Typography>
                     <Button
                       variant="outlined"
@@ -1113,17 +941,202 @@ const Settings: React.FC = () => {
                       onClick={handleRestartOnboarding}
                       disabled={restartingOnboarding}
                       fullWidth
-                      sx={{ textTransform: 'none' }}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: `${radii.button}px`,
+                        borderColor: colors.primary,
+                        color: colors.primary,
+                        fontWeight: 600,
+                      }}
                     >
                       {restartingOnboarding ? 'Запуск обучения...' : 'Повторить обучение'}
                     </Button>
                   </Paper>
                 </Grid>
               )}
+
+              {canEditFinanceSettings && (
+                <Grid item xs={12} md={6}>
+                  <Paper elevation={0} sx={sectionPaperSx}>
+                    <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700, color: colors.text }}>
+                      Членский взнос
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Дата сброса (ММ-ДД)"
+                      value={membershipFeeResetDate}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])?$/.test(value)) {
+                          setMembershipFeeResetDate(value);
+                        }
+                      }}
+                      placeholder="12-01"
+                      helperText="По умолчанию: 1 декабря"
+                      sx={{ mt: 1 }}
+                    />
+                  </Paper>
+                </Grid>
+              )}
+
+              {canEditFinanceSettings && (
+                <Grid item xs={12} md={6}>
+                  <Paper elevation={0} sx={sectionPaperSx}>
+                    <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700, color: colors.text }}>
+                      Чаты
+                    </Typography>
+                    <FormControl fullWidth sx={{ mt: 1, mb: 2 }}>
+                      <InputLabel id="chat-edit-limit-label">Лимит редактирования</InputLabel>
+                      <Select
+                        labelId="chat-edit-limit-label"
+                        label="Лимит редактирования"
+                        value={chatMessageEditLimitMinutes}
+                        onChange={(e) => setChatMessageEditLimitMinutes(Number(e.target.value))}
+                      >
+                        <MenuItem value={5}>5 минут</MenuItem>
+                        <MenuItem value={15}>15 минут</MenuItem>
+                        <MenuItem value={30}>30 минут</MenuItem>
+                        <MenuItem value={60}>1 час</MenuItem>
+                        <MenuItem value={180}>3 часа</MenuItem>
+                        <MenuItem value={1440}>24 часа</MenuItem>
+                        <MenuItem value={0}>Без ограничения</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel id="chat-delete-limit-label">Лимит удаления</InputLabel>
+                      <Select
+                        labelId="chat-delete-limit-label"
+                        label="Лимит удаления"
+                        value={chatMessageDeleteLimitMinutes}
+                        onChange={(e) => setChatMessageDeleteLimitMinutes(Number(e.target.value))}
+                      >
+                        <MenuItem value={5}>5 минут</MenuItem>
+                        <MenuItem value={15}>15 минут</MenuItem>
+                        <MenuItem value={30}>30 минут</MenuItem>
+                        <MenuItem value={60}>1 час</MenuItem>
+                        <MenuItem value={180}>3 часа</MenuItem>
+                        <MenuItem value={1440}>24 часа</MenuItem>
+                        <MenuItem value={0}>Без ограничения</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Paper>
+                </Grid>
+              )}
+
+              {canEditSchoolSettings && (
+                <Grid item xs={12} md={6}>
+                  <Paper elevation={0} sx={sectionPaperSx}>
+                    <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 700, color: colors.text }}>
+                      Личный кабинет клиента
+                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                        py: 1,
+                        borderBottom: `1px solid ${colors.divider}`,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: colors.text }}>
+                          Клиенты могут видеть всех тренеров
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: colors.textHint }}>
+                          {clientCanViewAllTrainers
+                            ? 'Видят всех тренеров школы'
+                            : 'Только тренер из своей группы'}
+                        </Typography>
+                      </Box>
+                      <Switch
+                        checked={clientCanViewAllTrainers}
+                        onChange={(e) => setClientCanViewAllTrainers(e.target.checked)}
+                        color="primary"
+                      />
+                    </Box>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                        py: 1,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: colors.text }}>
+                          Клиенты могут видеть все филиалы
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: colors.textHint }}>
+                          {clientCanViewAllBranches
+                            ? 'Видят все филиалы школы'
+                            : 'Только филиал из своей группы'}
+                        </Typography>
+                      </Box>
+                      <Switch
+                        checked={clientCanViewAllBranches}
+                        onChange={(e) => setClientCanViewAllBranches(e.target.checked)}
+                        color="primary"
+                      />
+                    </Box>
+                  </Paper>
+                </Grid>
+              )}
+
+              {(canEditFinanceSettings || canEditSchoolSettings) && (
+                <Grid item xs={12}>
+                  <Button
+                    variant="contained"
+                    startIcon={<Save />}
+                    onClick={handleSaveSettings}
+                    disabled={saving}
+                    sx={{ ...btnPrimarySx }}
+                  >
+                    {saving ? 'Сохранение...' : 'Сохранить'}
+                  </Button>
+                </Grid>
+              )}
             </Grid>
           </TabPanel>
-        </CardContent>
-      </Card>
+
+          <TabPanel value={tabValue} index={TAB.branches}>
+            <Paper elevation={0} sx={sectionPaperSx}>
+              <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Филиалы</Typography>
+              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+                Раздел в подготовке. Управление филиалами доступно в меню «Филиалы и группы».
+              </Typography>
+            </Paper>
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={TAB.roles}>
+            <Paper elevation={0} sx={sectionPaperSx}>
+              <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Роли и права</Typography>
+              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+                Раздел в подготовке.
+              </Typography>
+            </Paper>
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={TAB.integrations}>
+            <Paper elevation={0} sx={sectionPaperSx}>
+              <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Интеграции</Typography>
+              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+                Раздел в подготовке.
+              </Typography>
+            </Paper>
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={TAB.security}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Email2faSettingsToggle />
+              </Grid>
+              <Grid item xs={12}>
+                <ActiveSessionsPanel onLogoutEverywhere={logout} />
+              </Grid>
+            </Grid>
+          </TabPanel>
 
       {/* Диалог смены email */}
       <Dialog

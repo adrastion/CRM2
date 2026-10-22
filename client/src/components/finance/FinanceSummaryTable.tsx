@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import DesignIcon from '../common/DesignIcon';
-import { colors, typography } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 
 export type FinanceSummarySortKey = 'name' | 'period' | 'count' | 'accrued' | 'paid' | 'remaining';
 
@@ -152,9 +152,10 @@ const FinanceSummaryTable: React.FC<FinanceSummaryTableProps> = ({
           <Box
             key={row.id}
             sx={{
-              bgcolor: colors.divider,
-              borderRadius: '16px',
-              border: `1px solid ${colors.textMuted}`,
+              bgcolor: colors.surface,
+              borderRadius: `${radii.panel}px`,
+              boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+              border: `1px solid ${colors.divider}`,
               p: 1.5,
               display: 'flex',
               flexDirection: 'column',

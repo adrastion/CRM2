@@ -95,15 +95,22 @@ export function deriveSecondaryMeta(data: AthleteCardData) {
 }
 
 export function buildCalendarEvents(data: AthleteCardData): AthleteCalendarEvent[] {
-  const trainings: AthleteCalendarEvent[] = (data.calendar?.trainings || []).map((t: any) => ({
-    id: t.id,
-    title: t.title || t.group?.name || 'Тренировка',
-    startTime: t.startTime,
-    endTime: t.endTime,
-    type: 'training' as const,
-    groupName: t.group?.name || null,
-    location: t.branch?.name || t.hall?.name || null,
-  }));
+  const trainings: AthleteCalendarEvent[] = (data.calendar?.trainings || []).map((t: any) => {
+    const trainerUser = t.trainer?.user || t.group?.trainer?.user || t.trainer;
+    const trainerName = trainerUser
+      ? [trainerUser.lastName, trainerUser.firstName, trainerUser.middleName].filter(Boolean).join(' ')
+      : t.trainerName || null;
+    return {
+      id: t.id,
+      title: t.title || t.group?.name || 'Тренировка',
+      startTime: t.startTime,
+      endTime: t.endTime,
+      type: 'training' as const,
+      groupName: t.group?.name || null,
+      location: t.branch?.name || t.hall?.name || null,
+      trainerName: trainerName || null,
+    };
+  });
   const competitions: AthleteCalendarEvent[] = (data.calendar?.competitions || []).map((c: any) => ({
     id: c.id,
     name: c.name,

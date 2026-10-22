@@ -1,13 +1,21 @@
-import React from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
-import { DeleteOutline } from '@mui/icons-material';
-import DesignIcon from '../common/DesignIcon';
+import React, { useState } from 'react';
+import { Box, Chip, IconButton, Menu, MenuItem, Typography } from '@mui/material';
+import {
+  MoreVert,
+  PeopleOutline,
+  FitnessCenterOutlined,
+  ApartmentOutlined,
+  ShoppingCartOutlined,
+  CampaignOutlined,
+  CreditCardOutlined,
+  CardGiftcardOutlined,
+  AccountBalanceOutlined,
+  PaymentsOutlined,
+  SwapHorizOutlined,
+} from '@mui/icons-material';
 import { FinanceOperation } from '../../types';
-import { colors, typography } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 import ClientNameLink from '../ClientNameLink';
-
-const ROW_CELL_MUTED = 'rgba(139, 140, 143, 0.56)';
-const INCOME_COLOR = colors.success;
 
 export type FinanceOpSortKey = 'title' | 'typeCode' | 'amount' | 'occurredAt';
 
@@ -25,7 +33,62 @@ interface FinanceOperationsTableProps {
 }
 
 const COLS =
-  'minmax(200px, 1.5fr) minmax(140px, 1fr) minmax(110px, 0.7fr) minmax(160px, 1fr) 56px';
+  '48px minmax(200px, 1.6fr) minmax(130px, 0.9fr) minmax(110px, 0.7fr) minmax(150px, 1fr) 48px';
+
+const EXPENSE_COLOR = '#F93C65';
+const INCOME_COLOR = colors.success;
+const NEUTRAL_AMOUNT = '#8B93A7';
+
+type Visual = { bg: string; color: string; Icon: React.ElementType };
+
+const visualForType = (typeCode: string, direction: string): Visual => {
+  const c = (typeCode || '').toLowerCase();
+  if (/salary|bonus|зарплат|преми/.test(c)) {
+    return { bg: '#FFF1E8', color: '#F08A4B', Icon: FitnessCenterOutlined };
+  }
+  if (/rent|аренд/.test(c)) {
+    return { bg: '#EEF2FF', color: '#3B4C7A', Icon: ApartmentOutlined };
+  }
+  if (/purchase|покуп/.test(c)) {
+    return { bg: '#FFF4F0', color: '#E85D8E', Icon: ShoppingCartOutlined };
+  }
+  if (/ad|advert|реклам/.test(c)) {
+    return { bg: '#F3EEFF', color: '#7C5CFC', Icon: CampaignOutlined };
+  }
+  if (/membership_issue|выдач/.test(c)) {
+    return { bg: '#EAF0FF', color: '#2F6BFF', Icon: CardGiftcardOutlined };
+  }
+  if (/membership|abon|абонемент|payment|оплат/.test(c)) {
+    return { bg: '#E8F8F2', color: '#00B69B', Icon: CreditCardOutlined };
+  }
+  if (/adjust|коррект/.test(c)) {
+    return { bg: '#F5F6FA', color: '#5D6B86', Icon: SwapHorizOutlined };
+  }
+  if (/bank|перевод/.test(c)) {
+    return { bg: '#EAF0FF', color: '#2F6BFF', Icon: AccountBalanceOutlined };
+  }
+  if (direction === 'income') {
+    return { bg: '#E8F8F2', color: '#00B69B', Icon: PeopleOutline };
+  }
+  if (direction === 'expense') {
+    return { bg: '#FFF1E8', color: '#F08A4B', Icon: PaymentsOutlined };
+  }
+  return { bg: '#EAF0FF', color: '#2F6BFF', Icon: PaymentsOutlined };
+};
+
+const directionChip = (op: FinanceOperation) => {
+  const amount = Number(op.amount) || 0;
+  if (op.direction === 'income') {
+    return { label: 'Поступление', bg: '#E8F8F2', color: '#00B69B' };
+  }
+  if (op.direction === 'expense') {
+    return { label: 'Расход', bg: '#FFE8EE', color: EXPENSE_COLOR };
+  }
+  if (amount === 0 || /membership_issue|выдач/.test((op.typeCode || '').toLowerCase())) {
+    return { label: 'Операция', bg: '#EAF0FF', color: '#2F6BFF' };
+  }
+  return { label: op.typeName || 'Операция', bg: '#F5F6FA', color: '#5D6B86' };
+};
 
 const SortHeader: React.FC<{
   label: string;
@@ -39,7 +102,7 @@ const SortHeader: React.FC<{
     sx={{
       display: 'flex',
       alignItems: 'center',
-      gap: 1,
+      gap: 0.75,
       border: 'none',
       background: 'none',
       cursor: 'pointer',
@@ -47,17 +110,21 @@ const SortHeader: React.FC<{
       color: colors.text,
     }}
   >
-    <DesignIcon category="ui" name="sort" size={18} sx={{ color: active ? colors.primary : colors.textHint, opacity: 0.85 }} />
-    <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
+    <Typography
+      sx={{
+        fontSize: 11,
+        fontWeight: 800,
+        color: active ? colors.primary : '#8B93A7',
+        letterSpacing: '0.01em',
+      }}
+    >
       {label}
     </Typography>
   </Box>
 );
 
 /**
- * Таблица операций по макету Figma 243:1295:
- * сегментированные строки, чередующиеся фоны колонок.
- * На xs — карточки; на sm+ — горизонтальный скролл таблицы.
+ * Таблица операций — макет «Финансы - Все операции».
  */
 const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
   operations,
@@ -71,6 +138,9 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
   onOpenClient,
   deletingId,
 }) => {
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [menuOp, setMenuOp] = useState<FinanceOperation | null>(null);
+
   if (operations.length === 0) {
     return (
       <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -81,8 +151,15 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
     );
   }
 
-  const toggle = (key: FinanceOpSortKey) => {
-    onSort(key);
+  const openMenu = (e: React.MouseEvent<HTMLElement>, op: FinanceOperation) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+    setMenuOp(op);
+  };
+
+  const closeMenu = () => {
+    setMenuAnchor(null);
+    setMenuOp(null);
   };
 
   const renderTitle = (op: FinanceOperation) =>
@@ -93,232 +170,171 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
         name={op.title}
         onOpen={onOpenClient}
         sx={{
-          fontSize: typography.label,
-          fontWeight: 500,
-          color: colors.text,
+          fontSize: 13,
+          fontWeight: 700,
+          color: '#1B2438',
           '&:hover': { color: colors.primary },
         }}
       />
     ) : (
-      <Typography
-        component="span"
-        sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}
-      >
+      <Typography component="span" sx={{ fontSize: 13, fontWeight: 700, color: '#1B2438' }}>
         {op.title}
       </Typography>
     );
 
-  const deleteBtn = (op: FinanceOperation) =>
-    onDelete ? (
-      <IconButton
-        size="small"
-        aria-label="Отменить операцию"
-        title="Отменить операцию"
-        disabled={deletingId === op.id}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(op);
+  const amountColor = (op: FinanceOperation) => {
+    if (op.direction === 'income') return INCOME_COLOR;
+    if (op.direction === 'expense') return EXPENSE_COLOR;
+    if (Number(op.amount) === 0) return NEUTRAL_AMOUNT;
+    return colors.text;
+  };
+
+  const rowCard = (op: FinanceOperation, index: number) => {
+    const visual = visualForType(op.typeCode, String(op.direction));
+    const Icon = visual.Icon;
+    const chip = directionChip(op);
+    const dt = formatDateTime(op.occurredAt);
+    const [datePart, timePart] = dt.split(' ');
+
+    return (
+      <Box
+        key={op.id}
+        onClick={onRowClick ? () => onRowClick(op) : undefined}
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: COLS,
+          gap: 0,
+          alignItems: 'center',
+          bgcolor: index % 2 === 0 ? '#fff' : '#FAFBFD',
+          borderRadius: '16px',
+          border: '1px solid #EEF1F6',
+          px: 1.25,
+          py: 1.15,
+          cursor: onRowClick ? 'pointer' : 'default',
+          '&:hover': onRowClick ? { borderColor: '#D7E2FF', boxShadow: '0 4px 14px rgba(47,107,255,0.08)' } : undefined,
         }}
-        sx={{ color: colors.textMuted, '&:hover': { color: '#c62828' } }}
       >
-        <DeleteOutline fontSize="small" />
-      </IconButton>
-    ) : null;
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: '10px',
+            bgcolor: visual.bg,
+            color: visual.color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon sx={{ fontSize: 18 }} />
+        </Box>
+        <Box sx={{ minWidth: 0, pr: 1 }}>
+          {renderTitle(op)}
+          {(op.typeName || op.notes) && (
+            <Typography
+              sx={{
+                mt: 0.25,
+                fontSize: 11,
+                color: '#8B93A7',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {op.typeName || String(op.notes || '').replace(/\[[^\]]+\]/g, '').trim()}
+            </Typography>
+          )}
+        </Box>
+        <Box>
+          <Chip
+            size="small"
+            label={chip.label}
+            sx={{
+              height: 24,
+              fontWeight: 700,
+              fontSize: 11,
+              bgcolor: chip.bg,
+              color: chip.color,
+              borderRadius: '8px',
+            }}
+          />
+        </Box>
+        <Typography sx={{ fontSize: 13, fontWeight: 800, color: amountColor(op) }}>
+          {formatMoney(op.amount, true, op.direction)}
+        </Typography>
+        <Box>
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#1B2438' }}>{datePart}</Typography>
+          {timePart && (
+            <Typography sx={{ fontSize: 11, color: '#8B93A7' }}>{timePart}</Typography>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <IconButton
+            size="small"
+            aria-label="Действия"
+            onClick={(e) => openMenu(e, op)}
+            sx={{ color: '#8B93A7' }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
+        </Box>
+      </Box>
+    );
+  };
 
   return (
     <>
-      {/* Mobile card list */}
-      <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.5 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, px: 0.5, mb: 0.5 }}>
-          <SortHeader label="Название" active={sortBy === 'title'} onClick={() => toggle('title')} />
-          <SortHeader label="Сумма" active={sortBy === 'amount'} onClick={() => toggle('amount')} />
-          <SortHeader label="Дата" active={sortBy === 'occurredAt'} onClick={() => toggle('occurredAt')} />
-        </Box>
-        {operations.map((op) => {
-          const isIncome = op.direction === 'income';
-          return (
-            <Box
-              key={op.id}
-              onClick={onRowClick ? () => onRowClick(op) : undefined}
-              sx={{
-                bgcolor: colors.divider,
-                borderRadius: '16px',
-                border: `1px solid ${colors.textMuted}`,
-                p: 1.5,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 0.75,
-                minWidth: 0,
-                cursor: onRowClick ? 'pointer' : 'default',
-                '&:hover': onRowClick ? { borderColor: colors.primary } : undefined,
-              }}
-            >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start' }}>
-                <Box sx={{ minWidth: 0, overflowWrap: 'anywhere', flex: 1 }}>{renderTitle(op)}</Box>
-                {deleteBtn(op)}
-              </Box>
-              <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                {op.typeName || op.typeCode}
-              </Typography>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography
-                  sx={{
-                    fontSize: typography.label,
-                    fontWeight: 600,
-                    color: isIncome ? INCOME_COLOR : colors.text,
-                  }}
-                >
-                  {formatMoney(op.amount, true, op.direction)}
-                </Typography>
-                <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                  {formatDateTime(op.occurredAt)}
-                </Typography>
-              </Box>
-            </Box>
-          );
-        })}
+      <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.25 }}>
+        {operations.map((op, i) => rowCard(op, i))}
       </Box>
 
-      {/* Desktop / tablet table with horizontal scroll */}
-      <Box sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <Box sx={{ minWidth: 780 }}>
+      <Box sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
+        <Box sx={{ minWidth: 820 }}>
           <Box
             sx={{
               display: 'grid',
               gridTemplateColumns: COLS,
               gap: 0,
-              px: 1,
-              py: 1.5,
-              mb: 1.5,
+              px: 1.25,
+              py: 1,
+              mb: 1,
             }}
           >
-            <SortHeader label="Наименование операции" active={sortBy === 'title'} onClick={() => toggle('title')} />
-            <SortHeader label="Тип операции" active={sortBy === 'typeCode'} onClick={() => toggle('typeCode')} />
-            <SortHeader label="Сумма" active={sortBy === 'amount'} onClick={() => toggle('amount')} />
-            <SortHeader label="Дата и время" active={sortBy === 'occurredAt'} onClick={() => toggle('occurredAt')} />
+            <Box />
+            <SortHeader label="Наименование операции" active={sortBy === 'title'} onClick={() => onSort('title')} />
+            <SortHeader label="Тип операции" active={sortBy === 'typeCode'} onClick={() => onSort('typeCode')} />
+            <SortHeader label="Сумма" active={sortBy === 'amount'} onClick={() => onSort('amount')} />
+            <SortHeader label="Дата и время" active={sortBy === 'occurredAt'} onClick={() => onSort('occurredAt')} />
             <Box />
           </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {operations.map((op, index) => {
-              const isEven = index % 2 === 0;
-              const col1Bg = isEven ? colors.divider : colors.divider;
-              const col2Bg = ROW_CELL_MUTED;
-              const col3Bg = isEven ? colors.divider : colors.divider;
-              const col4Bg = ROW_CELL_MUTED;
-              const isIncome = op.direction === 'income';
-              const isLast = index === operations.length - 1;
-
-              return (
-                <Box
-                  key={op.id}
-                  onClick={onRowClick ? () => onRowClick(op) : undefined}
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: COLS,
-                    gap: 0,
-                    minHeight: 44,
-                    alignItems: 'stretch',
-                    cursor: onRowClick ? 'pointer' : 'default',
-                    '&:hover .fin-op-cell': onRowClick
-                      ? { filter: 'brightness(0.97)' }
-                      : undefined,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      bgcolor: col1Bg,
-                      borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
-                      borderTopLeftRadius: '16px',
-                      borderBottomLeftRadius: isLast ? '16px' : 0,
-                      px: 1.5,
-                      py: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      minWidth: 0,
-                    }}
-                  >
-                    {renderTitle(op)}
-                  </Box>
-                  <Box
-                    sx={{
-                      bgcolor: col2Bg,
-                      borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
-                      px: 1.5,
-                      py: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
-                      {op.typeName || op.typeCode}
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      bgcolor: col3Bg,
-                      borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
-                      px: 1.5,
-                      py: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Typography
-                      sx={{
-                        fontSize: typography.label,
-                        fontWeight: 600,
-                        color: isIncome ? INCOME_COLOR : colors.text,
-                      }}
-                    >
-                      {formatMoney(op.amount, true, op.direction)}
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      bgcolor: col4Bg,
-                      borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
-                      px: 1.5,
-                      py: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.text }}>
-                      {formatDateTime(op.occurredAt).split(' ')[0]}
-                    </Typography>
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.textMuted }}>
-                      {formatDateTime(op.occurredAt).split(' ')[1] || ''}
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      bgcolor: col4Bg,
-                      borderTop: `1px solid ${colors.textMuted}`,
-                      borderBottom: isLast ? `1px solid ${colors.textMuted}` : undefined,
-                      borderTopRightRadius: '16px',
-                      borderBottomRightRadius: isLast ? '16px' : 0,
-                      px: 0.5,
-                      py: 0.5,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {deleteBtn(op)}
-                  </Box>
-                </Box>
-              );
-            })}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {operations.map((op, i) => rowCard(op, i))}
           </Box>
         </Box>
       </Box>
+
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
+        <MenuItem
+          onClick={() => {
+            if (menuOp && onRowClick) onRowClick(menuOp);
+            closeMenu();
+          }}
+        >
+          Подробнее
+        </MenuItem>
+        {onDelete && (
+          <MenuItem
+            disabled={deletingId === menuOp?.id}
+            onClick={() => {
+              if (menuOp) onDelete(menuOp);
+              closeMenu();
+            }}
+            sx={{ color: EXPENSE_COLOR }}
+          >
+            Отменить операцию
+          </MenuItem>
+        )}
+      </Menu>
     </>
   );
 };

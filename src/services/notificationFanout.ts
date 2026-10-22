@@ -315,6 +315,80 @@ export async function listInbox(
   return { items, aggregates, unreadTotal };
 }
 
+const SALARY_PAYOUT_REMINDER_TYPE = 'salary_payout_reminder';
+
+/**
+ * Напоминание о выплате зарплат → inbox колокольчика (вместо верхнего баннера).
+ * OWNER/ADMIN: один раз за окно выплаты; сумма обновляется; прочитанное не всплывает снова.
+ */
+export async function syncSalaryPayoutReminderToInbox(opts: {
+  userId: string;
+  tenantId: string;
+  role?: string | null;
+}): Promise<void> {
+  const role = opts.role || '';
+  if (role !== 'OWNER' && role !== 'ADMIN') return;
+  if (!opts.tenantId || !opts.userId) return;
+
+  const { getPayoutReminder } = await import('./trainerSalaryService');
+  const reminder = await getPayoutReminder(opts.tenantId);
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth(), Math.max(1, reminder.payoutDay - 5));
+  windowStart.setHours(0, 0, 0, 0);
+
+  const existing = await prisma.inAppNotification.findFirst({
+    where: {
+      actorType: 'USER',
+      actorId: opts.userId,
+      type: SALARY_PAYOUT_REMINDER_TYPE,
+      createdAt: { gte: windowStart },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!reminder.show) {
+    return;
+  }
+
+  const amount = Number(reminder.totalBalance).toLocaleString('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+  });
+  const title =
+    reminder.daysLeft === 0 ? 'Сегодня день выплаты зарплат' : 'Скоро выплата зарплат';
+  const body =
+    reminder.daysLeft === 0
+      ? `До ${reminder.payoutDay}-го числа. К выплате: ${amount}.`
+      : `До выплаты зарплат осталось ${reminder.daysLeft} дн. К выплате: ${amount}.`;
+  const data = JSON.stringify({
+    url: '/finance',
+    payoutDay: reminder.payoutDay,
+    daysLeft: reminder.daysLeft,
+    totalBalance: reminder.totalBalance,
+  });
+
+  if (existing) {
+    await prisma.inAppNotification.update({
+      where: { id: existing.id },
+      data: { title, body, data, category: 'salary' },
+    });
+    return;
+  }
+
+  await prisma.inAppNotification.create({
+    data: {
+      tenantId: opts.tenantId,
+      actorType: 'USER',
+      actorId: opts.userId,
+      category: 'salary',
+      type: SALARY_PAYOUT_REMINDER_TYPE,
+      title,
+      body,
+      data,
+    },
+  });
+}
+
 /**
  * Только счётчик непрочитанных (inbox + override чатов), без списка items.
  * Используется колокольчиком multi-account и лёгкими unread-count эндпоинтами.

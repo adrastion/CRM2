@@ -3,6 +3,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -30,7 +31,17 @@ import {
   ListItem,
   ListItemText,
 } from '@mui/material';
-import { Add, Close, Tune } from '@mui/icons-material';
+import {
+  Add,
+  CalendarTodayOutlined,
+  Close,
+  FilterAltOutlined,
+  KeyboardArrowDown,
+  ListAltOutlined,
+  PaymentsOutlined,
+  PeopleAltOutlined,
+  Tune,
+} from '@mui/icons-material';
 import { DateTimePicker, DatePicker } from '@mui/x-date-pickers';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -44,10 +55,8 @@ import ClientNameLink from '../components/ClientNameLink';
 import TrainerNameLink from '../components/TrainerNameLink';
 import { useStaffEntityCards } from '../components/StaffEntityCardHost';
 import FinanceOperationsTable from '../components/finance/FinanceOperationsTable';
-import FinanceSummaryTable, {
-  FinanceSummaryRow,
-  FinanceSummarySortKey,
-} from '../components/finance/FinanceSummaryTable';
+import TrainerSalaryBoard from '../components/finance/TrainerSalaryBoard';
+import ClientPaymentsBoard from '../components/finance/ClientPaymentsBoard';
 import SchoolPaymentMethodsPanel from '../components/finance/SchoolPaymentMethodsPanel';
 import AddFinanceOperationDialog from '../components/finance/AddFinanceOperationDialog';
 import { colors, radii, typography } from '../theme/tokens';
@@ -73,6 +82,28 @@ const DATE_PRESETS = [
   { key: 'this_week', label: 'Эта неделя' },
   { key: 'this_month', label: 'Этот месяц' },
   { key: 'last_month', label: 'Прошлый месяц' },
+  { key: 'this_year', label: 'Этот год' },
+  { key: 'last_year', label: 'Прошлый год' },
+  { key: 'all', label: 'Весь период' },
+];
+
+/** Быстрые чипы типов в фильтрах (макет) → коды API. */
+const FILTER_TYPE_CHIPS: Array<{ label: string; codes: string[] }> = [
+  { label: 'Начисление', codes: ['salary_accrual', 'membership_charge'] },
+  { label: 'Оплата', codes: ['client_payment', 'membership'] },
+  { label: 'Аренда', codes: ['rent'] },
+  { label: 'Покупка', codes: ['purchase'] },
+  { label: 'Выдача абонемента', codes: ['membership_issue'] },
+  { label: 'Корректировка', codes: ['membership_charge_adjustment'] },
+  { label: 'Зарплата', codes: ['salary', 'bonus', 'salary_accrual'] },
+  { label: 'Прочее', codes: ['other', 'advertising'] },
+];
+
+const FILTER_STATUS_CHIPS = [
+  { key: '', label: 'Все' },
+  { key: 'posted', label: 'Проведено' },
+  { key: 'pending', label: 'Ожидает' },
+  { key: 'cancelled', label: 'Отменено' },
 ];
 
 const formatClientOptionLabel = (
@@ -143,22 +174,35 @@ interface OpFilters {
   datePreset?: string;
   dateFrom: Date | null;
   dateTo: Date | null;
-  search: string;
+  clientId: string;
+  trainerId: string;
   amountFrom: string;
   amountTo: string;
   typeCodes: string[];
+  category: string;
+  status: string;
+  onlyWithDocuments: boolean;
+  onlyRecurring: boolean;
+  withComments: boolean;
   groupIds: string[];
   branchIds: string[];
 }
 
 const emptyOpFilters = (): OpFilters => ({
-  datePreset: undefined,
+  // «Всё время» — иначе старые операции пропадают за пределами текущего месяца
+  datePreset: 'all',
   dateFrom: null,
   dateTo: null,
-  search: '',
+  clientId: '',
+  trainerId: '',
   amountFrom: '',
   amountTo: '',
   typeCodes: [],
+  category: '',
+  status: '',
+  onlyWithDocuments: false,
+  onlyRecurring: false,
+  withComments: false,
   groupIds: [],
   branchIds: [],
 });
@@ -215,6 +259,7 @@ const Finance: React.FC = () => {
   const { openClient, openTrainer, dialogs: entityCardDialogs } = useStaffEntityCards({
     branches,
     trainers,
+    sourceLabel: 'Финансы',
   });
 
   const [opFilters, setOpFilters] = useState<OpFilters>(emptyOpFilters());
@@ -256,10 +301,6 @@ const Finance: React.FC = () => {
 
   const [sortBy, setSortBy] = useState<SortKey>('occurredAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [salarySortBy, setSalarySortBy] = useState<FinanceSummarySortKey>('name');
-  const [salarySortDir, setSalarySortDir] = useState<'asc' | 'desc'>('asc');
-  const [membershipSortBy, setMembershipSortBy] = useState<FinanceSummarySortKey>('period');
-  const [membershipSortDir, setMembershipSortDir] = useState<'asc' | 'desc'>('desc');
 
   const [addOpen, setAddOpen] = useState(false);
   const [payoutOpen, setPayoutOpen] = useState(false);
@@ -288,51 +329,42 @@ const Finance: React.FC = () => {
 
   const activeFilterChips = useMemo(() => {
     const chips: string[] = [];
-    if (appliedOpFilters.datePreset) {
-      chips.push(DATE_PRESETS.find((p) => p.key === appliedOpFilters.datePreset)?.label || appliedOpFilters.datePreset);
+    if (appliedOpFilters.datePreset && appliedOpFilters.datePreset !== 'all') {
+      chips.push(
+        DATE_PRESETS.find((p) => p.key === appliedOpFilters.datePreset)?.label ||
+          appliedOpFilters.datePreset
+      );
     }
-    if (appliedOpFilters.search) chips.push(appliedOpFilters.search);
+    if (appliedOpFilters.clientId) {
+      const c = clients.find((x) => x.id === appliedOpFilters.clientId);
+      if (c) chips.push(`${c.lastName} ${c.firstName}`.trim());
+    }
+    if (appliedOpFilters.trainerId) {
+      const t = trainers.find((x) => x.id === appliedOpFilters.trainerId);
+      if (t?.user) chips.push(`${t.user.lastName} ${t.user.firstName}`.trim());
+    }
     if (appliedOpFilters.amountFrom || appliedOpFilters.amountTo) {
       chips.push(`${appliedOpFilters.amountFrom || '0'} ₽ - ${appliedOpFilters.amountTo || '∞'} ₽`);
     }
-    appliedOpFilters.typeCodes.forEach((code) => {
-      chips.push(types.find((t) => t.code === code)?.name || code);
+    FILTER_TYPE_CHIPS.forEach((chip) => {
+      if (
+        chip.codes.length &&
+        chip.codes.every((code) => appliedOpFilters.typeCodes.includes(code)) &&
+        chip.codes.some((code) => appliedOpFilters.typeCodes.includes(code))
+      ) {
+        const hit = chip.codes.some((c) => appliedOpFilters.typeCodes.includes(c));
+        if (hit && !chips.includes(chip.label)) chips.push(chip.label);
+      }
     });
-    return chips;
-  }, [appliedOpFilters, types]);
-
-  const salaryFilterChips = useMemo(() => {
-    const chips: string[] = [];
-    if (salaryTrainerId) {
-      const t = trainers.find((tr) => tr.id === salaryTrainerId);
-      chips.push(t?.user ? `${t.user.lastName} ${t.user.firstName}` : salaryTrainerId);
-    }
-    if (salaryDateFrom || salaryDateTo) {
-      const from = salaryDateFrom ? format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru }) : '…';
-      const to = salaryDateTo ? format(salaryDateTo, 'dd.MM.yyyy', { locale: ru }) : '…';
-      chips.push(`${from} — ${to}`);
-    }
-    chips.push(salaryTrainingsMode === 'conducted' ? 'Проведённые' : 'Все тренировки');
-    if (salaryAmountFrom || salaryAmountTo) {
-      chips.push(`${salaryAmountFrom || '0'} ₽ - ${salaryAmountTo || '∞'} ₽`);
+    appliedOpFilters.typeCodes.forEach((code) => {
+      const known = FILTER_TYPE_CHIPS.some((c) => c.codes.includes(code));
+      if (!known) chips.push(types.find((t) => t.code === code)?.name || code);
+    });
+    if (appliedOpFilters.status) {
+      chips.push(FILTER_STATUS_CHIPS.find((s) => s.key === appliedOpFilters.status)?.label || appliedOpFilters.status);
     }
     return chips;
-  }, [salaryTrainerId, salaryDateFrom, salaryDateTo, salaryTrainingsMode, salaryAmountFrom, salaryAmountTo, trainers]);
-
-  const membershipFilterChips = useMemo(() => {
-    const chips: string[] = [];
-    if (memClientId) {
-      const c = clients.find((cl) => cl.id === memClientId);
-      chips.push(c ? `${c.lastName} ${c.firstName}` : memClientId);
-    }
-    if (memDate) chips.push(format(memDate, 'dd.MM.yyyy', { locale: ru }));
-    if (memBranchId) chips.push(branches.find((b) => b.id === memBranchId)?.name || memBranchId);
-    memGroupIds.forEach((gid) => chips.push(groups.find((g) => g.id === gid)?.name || gid));
-    if (memAmountFrom || memAmountTo) {
-      chips.push(`${memAmountFrom || '0'} ₽ - ${memAmountTo || '∞'} ₽`);
-    }
-    return chips;
-  }, [memClientId, memDate, memBranchId, memGroupIds, memAmountFrom, memAmountTo, clients, branches, groups]);
+  }, [appliedOpFilters, types, clients, trainers]);
 
   const loadRefs = useCallback(async () => {
     if (refsLoadedRef.current) return;
@@ -356,18 +388,53 @@ const Finance: React.FC = () => {
       sortDir,
       limit: 200,
     };
-    if (appliedOpFilters.datePreset) params.datePreset = appliedOpFilters.datePreset;
+    if (appliedOpFilters.datePreset && appliedOpFilters.datePreset !== 'all') {
+      params.datePreset = appliedOpFilters.datePreset;
+    }
     if (appliedOpFilters.dateFrom) params.dateFrom = appliedOpFilters.dateFrom.toISOString();
     if (appliedOpFilters.dateTo) params.dateTo = appliedOpFilters.dateTo.toISOString();
-    if (appliedOpFilters.search) params.search = appliedOpFilters.search;
     if (appliedOpFilters.amountFrom) params.amountFrom = appliedOpFilters.amountFrom;
     if (appliedOpFilters.amountTo) params.amountTo = appliedOpFilters.amountTo;
     if (appliedOpFilters.typeCodes.length) params.typeCodes = appliedOpFilters.typeCodes.join(',');
     if (appliedOpFilters.groupIds.length) params.groupIds = appliedOpFilters.groupIds.join(',');
     if (appliedOpFilters.branchIds.length) params.branchIds = appliedOpFilters.branchIds.join(',');
+    if (appliedOpFilters.clientId) params.clientIds = appliedOpFilters.clientId;
+    if (appliedOpFilters.trainerId) params.trainerIds = appliedOpFilters.trainerId;
 
     const data = await withRetry(() => apiService.getFinanceOperations(params));
-    setOperations(data.items || []);
+    let items = data.items || [];
+
+    // Клиентские доп. фильтры (метаданные в notes / UI-only)
+    if (appliedOpFilters.onlyWithDocuments) {
+      items = items.filter((op: any) => String(op.notes || '').includes('[документ:'));
+    }
+    if (appliedOpFilters.onlyRecurring) {
+      items = items.filter((op: any) => String(op.notes || '').includes('[регулярно:'));
+    }
+    if (appliedOpFilters.withComments) {
+      items = items.filter((op: any) => {
+        const n = String(op.notes || '').trim();
+        return n && !n.startsWith('[');
+      });
+    }
+    if (appliedOpFilters.status === 'pending') {
+      items = items.filter((op: any) => String(op.notes || '').includes('[статус:pending]'));
+    } else if (appliedOpFilters.status === 'cancelled') {
+      items = items.filter((op: any) => String(op.notes || '').includes('[статус:cancelled]'));
+    } else if (appliedOpFilters.status === 'posted') {
+      items = items.filter(
+        (op: any) =>
+          !String(op.notes || '').includes('[статус:pending]') &&
+          !String(op.notes || '').includes('[статус:cancelled]')
+      );
+    }
+    if (appliedOpFilters.category) {
+      items = items.filter((op: any) =>
+        String(op.notes || '').includes(`[категория:${appliedOpFilters.category}]`)
+      );
+    }
+
+    setOperations(items);
   }, [appliedOpFilters, sortBy, sortDir]);
 
   const loadSalary = useCallback(async () => {
@@ -645,170 +712,26 @@ const Finance: React.FC = () => {
     }
   };
 
-  const handleSummarySort = (
-    key: FinanceSummarySortKey,
-    currentKey: FinanceSummarySortKey,
-    setKey: (k: FinanceSummarySortKey) => void,
-    setDir: React.Dispatch<React.SetStateAction<'asc' | 'desc'>>
-  ) => {
-    if (currentKey === key) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else {
-      setKey(key);
-      setDir(key === 'name' ? 'asc' : 'desc');
-    }
+  const openReceive = (row: FinanceMembershipRow) => {
+    setSelectedMembership(row);
+    setReceiveAmount('');
+    setReceiveBaseline('');
+    setChangePackId('');
+    setReceiveOpen(true);
+    void apiService
+      .getMemberships({ limit: 200 })
+      .then((res) =>
+        setCatalogForChange((res.data || []).filter((m: any) => m.isActive !== false && m.category !== 'GROUP'))
+      )
+      .catch(() => setCatalogForChange([]));
   };
-
-  const sortSummaryRows = (
-    rows: FinanceSummaryRow[],
-    key: FinanceSummarySortKey,
-    dir: 'asc' | 'desc'
-  ): FinanceSummaryRow[] => {
-    const mul = dir === 'asc' ? 1 : -1;
-    const periodSortValue = (period: string, id: string): string => {
-      if (/^\d{4}-\d{2}$/.test(period)) return period;
-      const labeled = period.match(/^(\d{2})\.(\d{4})$/);
-      if (labeled) return `${labeled[2]}-${labeled[1]}`;
-      // id = clientId:periodKey, periodKey может быть YYYY-MM или pack:…
-      const fromId = id.includes(':') ? id.split(':').slice(1).join(':') : '';
-      if (/^\d{4}-\d{2}$/.test(fromId) || fromId.startsWith('pack:')) return fromId;
-      return period;
-    };
-    return [...rows].sort((a, b) => {
-      const pick = (row: FinanceSummaryRow): string | number => {
-        switch (key) {
-          case 'name':
-            return typeof row.name === 'string' ? row.name : row.id;
-          case 'period':
-            return periodSortValue(row.period, row.id);
-          case 'count':
-            return typeof row.count === 'number' ? row.count : 0;
-          case 'accrued':
-            return row.accrued;
-          case 'paid':
-            return row.paid;
-          case 'remaining':
-            return row.remaining;
-          default:
-            return row.name as string;
-        }
-      };
-      const av = pick(a);
-      const bv = pick(b);
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
-      return String(av).localeCompare(String(bv), 'ru') * mul;
-    });
-  };
-
-  const salaryTableRows: FinanceSummaryRow[] = useMemo(
-    () =>
-      salaryRows.map((row) => ({
-        id: row.trainerId,
-        name: (
-          <TrainerNameLink
-            trainerId={row.trainerId}
-            name={row.trainerName}
-            onOpen={openTrainer}
-          />
-        ),
-        period:
-          salaryDateFrom && salaryDateTo
-            ? `${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })} — ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
-            : salaryDateFrom
-              ? `с ${format(salaryDateFrom, 'dd.MM.yyyy', { locale: ru })}`
-              : salaryDateTo
-                ? `по ${format(salaryDateTo, 'dd.MM.yyyy', { locale: ru })}`
-                : `${format(new Date(row.periodStart), 'dd.MM.yyyy', { locale: ru })} — ${format(new Date(row.periodEnd), 'dd.MM.yyyy', { locale: ru })}`,
-        count: row.trainingsCount,
-        accrued: row.accrued,
-        paid: row.paid,
-        remaining: row.remaining,
-        onPaidClick: () => {
-          setSelectedSalary(row);
-          setPayoutAmount('');
-          setPayoutBaseline('');
-          setPayoutOpen(true);
-        },
-      })),
-    [salaryRows, salaryDateFrom, salaryDateTo, openTrainer]
-  );
-
-  const membershipTableRows: FinanceSummaryRow[] = useMemo(
-    () =>
-      membershipRows.map((row) => ({
-        id: `${row.clientId}:${row.periodKey}`,
-        name: (
-          <ClientNameLink
-            clientId={row.clientId}
-            name={row.clientName}
-            onOpen={openClient}
-          />
-        ),
-        period: row.periodLabel || row.periodKey || '—',
-        count: '—',
-        accrued: row.membershipPrice,
-        paid: row.paidAmount,
-        remaining: row.remaining,
-        onAccruedClick: row.interactive
-          ? () => {
-              void openAccrualCorrectDialog(row);
-            }
-          : undefined,
-        onPaidClick: row.interactive
-          ? () => {
-          setSelectedMembership(row);
-          setReceiveAmount('');
-              setReceiveBaseline('');
-              setChangePackId('');
-          setReceiveOpen(true);
-              void apiService
-                .getMemberships({ limit: 200 })
-                .then((res) =>
-                  setCatalogForChange(
-                    (res.data || []).filter((m: any) => m.isActive !== false && m.category !== 'GROUP')
-                  )
-                )
-                .catch(() => setCatalogForChange([]));
-            }
-          : undefined,
-      })),
-    [membershipRows, openClient]
-  );
-
-  const sortedSalaryRows = useMemo(
-    () => sortSummaryRows(salaryTableRows, salarySortBy, salarySortDir),
-    [salaryTableRows, salarySortBy, salarySortDir]
-  );
-
-  const sortedMembershipRows = useMemo(
-    () => sortSummaryRows(membershipTableRows, membershipSortBy, membershipSortDir),
-    [membershipTableRows, membershipSortBy, membershipSortDir]
-  );
-
-  const tabSx = (active: boolean) => ({
-    textTransform: 'none' as const,
-    fontSize: typography.label,
-    fontWeight: active ? 600 : 500,
-    minHeight: 40,
-    flex: { xs: '1 1 auto', md: '0 1 auto' },
-    minWidth: { md: 160 },
-    borderRadius: '12px 12px 0 0',
-    mx: 0,
-    px: 2,
-    color: colors.text,
-    bgcolor: active ? colors.card : colors.divider,
-    alignSelf: 'flex-end',
-    '&.Mui-selected': {
-      color: colors.text,
-      bgcolor: colors.card,
-    },
-  });
 
   const filterChipSx = {
     bgcolor: colors.primary,
     color: colors.white,
     fontWeight: 600,
     fontSize: typography.hint,
-    borderRadius: '12px',
+    borderRadius: `${radii.button}px`,
     height: 28,
     '& .MuiChip-deleteIcon': {
       color: colors.white,
@@ -822,16 +745,37 @@ const Finance: React.FC = () => {
   };
 
   const filterSectionTitleSx = {
-    fontWeight: 600,
-    fontSize: typography.panelTitle,
+    fontWeight: 700,
+    fontSize: 15,
     color: colors.text,
     mb: 1,
   };
 
   const filterSelectSx = {
-    borderRadius: '12px',
+    borderRadius: `${radii.button}px`,
     fontSize: typography.field,
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: colors.primarySoft },
+  };
+
+  const filterPillSx = (selected: boolean) => ({
+    fontWeight: 600,
+    fontSize: 12.5,
+    borderRadius: '12px',
+    height: 32,
+    bgcolor: selected ? colors.primary : colors.surface,
+    color: selected ? colors.white : colors.textMuted,
+    border: selected ? 'none' : `1px solid ${colors.divider}`,
+    '&:hover': {
+      bgcolor: selected ? colors.primaryDark : 'rgba(47, 107, 255, 0.08)',
+    },
+  });
+
+  const filterFieldSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '12px',
+      bgcolor: colors.card,
+      fontSize: 13,
+    },
   };
 
 
@@ -852,130 +796,207 @@ const Finance: React.FC = () => {
   const renderFinanceToolbar = (
     onOpenFilters: () => void,
     chips: string[],
-    onClearFilters: () => void
+    onClearFilters: () => void,
+    foundCount: number
   ) => (
-    <Stack
-      direction={{ xs: 'column', sm: 'row' }}
-      spacing={1.5}
-      sx={{ mb: 1.5, flexWrap: 'wrap' }}
-      alignItems={{ xs: 'stretch', sm: 'center' }}
-      useFlexGap
-    >
-      <Button
-        variant="contained"
-        size="small"
-        startIcon={<Add sx={{ fontSize: 18 }} />}
-        onClick={openAddDialog}
-        sx={{
-          bgcolor: colors.primary,
-          borderRadius: '12px',
-          px: 2,
-          py: 0.75,
-          textTransform: 'none',
-          fontSize: typography.button,
-          fontWeight: 600,
-          boxShadow: 'none',
-          width: { xs: '100%', sm: 'auto' },
-          '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
-        }}
+    <Box sx={{ mb: 1.75 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.25}
+        sx={{ mb: chips.length ? 1.25 : 0, flexWrap: 'wrap' }}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        useFlexGap
       >
-        Добавить операцию
-      </Button>
-      {canDeleteOperations && (
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<Add />}
+          onClick={openAddDialog}
+          sx={{
+            bgcolor: colors.primary,
+            borderRadius: '12px',
+            px: 2,
+            py: 0.9,
+            textTransform: 'none',
+            fontSize: typography.button,
+            fontWeight: 700,
+            boxShadow: 'none',
+            width: { xs: '100%', sm: 'auto' },
+            '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+          }}
+        >
+          Добавить операцию
+        </Button>
+        {canDeleteOperations && (
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            onClick={() => setPurgeOpen(true)}
+            sx={{
+              borderRadius: '12px',
+              px: 2,
+              py: 0.9,
+              textTransform: 'none',
+              fontSize: typography.button,
+              fontWeight: 600,
+              width: { xs: '100%', sm: 'auto' },
+            }}
+          >
+            Очистить старые записи
+          </Button>
+        )}
         <Button
           variant="outlined"
           size="small"
-          color="error"
-          onClick={() => setPurgeOpen(true)}
+          onClick={onOpenFilters}
+          startIcon={<Tune sx={{ fontSize: 18 }} />}
           sx={{
             borderRadius: '12px',
             px: 2,
-            py: 0.75,
+            py: 0.9,
             textTransform: 'none',
             fontSize: typography.button,
             fontWeight: 600,
+            borderColor: '#E6EAF2',
+            color: '#1B2438',
+            bgcolor: '#F7F8FB',
             width: { xs: '100%', sm: 'auto' },
+            '&:hover': { borderColor: colors.primarySoft, bgcolor: '#EEF2F8' },
           }}
         >
-          Очистить старые записи
+          Все фильтры
+          {chips.length > 0 ? ` • ${chips.length}` : ''}
         </Button>
-      )}
-      <Button
-        variant="contained"
-        size="small"
-        onClick={onOpenFilters}
-        sx={{
-          bgcolor: colors.primarySoft,
-          color: colors.text,
-          borderRadius: '12px',
-          px: 2,
-          py: 0.75,
-          textTransform: 'none',
-          fontSize: typography.button,
-          fontWeight: 600,
-          boxShadow: 'none',
-          width: { xs: '100%', sm: 'auto' },
-          '&:hover': { bgcolor: colors.primarySoft, filter: 'brightness(0.97)' },
-        }}
-        startIcon={<Tune sx={{ fontSize: 18, color: colors.text }} />}
-      >
-        Все фильтры
-        {chips.length > 0 ? ` • ${chips.length}` : ''}
-      </Button>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ width: { xs: '100%', sm: 'auto' } }}>
-        {chips.map((chip) => (
-          <Chip
-            key={chip}
-            label={chip}
-            onDelete={onClearFilters}
-            sx={filterChipSx}
-            deleteIcon={<Close sx={{ fontSize: 12 }} />}
-          />
-        ))}
       </Stack>
-    </Stack>
+
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 1,
+          justifyContent: 'space-between',
+        }}
+      >
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+          {chips.map((chip) => (
+            <Chip
+              key={chip}
+              label={chip}
+              onDelete={onClearFilters}
+              sx={filterChipSx}
+              deleteIcon={<Close sx={{ fontSize: 12 }} />}
+            />
+          ))}
+          {chips.length > 0 && (
+            <Button
+              size="small"
+              onClick={onClearFilters}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: 12.5,
+                color: colors.primary,
+                minWidth: 0,
+                px: 0.5,
+                '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
+              }}
+            >
+              Сбросить фильтры
+            </Button>
+          )}
+        </Stack>
+        <Typography sx={{ fontSize: 13, color: '#8B93A7', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          Найдено операций: {foundCount}
+        </Typography>
+      </Box>
+    </Box>
   );
+
+  const financeTabs = (
+    <Tabs
+      value={tab}
+      onChange={(_, v) => setTab(v)}
+      variant="scrollable"
+      scrollButtons="auto"
+      allowScrollButtonsMobile
+      sx={{ mb: 1.5 }}
+    >
+      <Tab value="operations" icon={<ListAltOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Все операции" />
+      <Tab value="salary" icon={<PaymentsOutlined sx={{ fontSize: 18 }} />} iconPosition="start" label="Зарплата тренеров" />
+      <Tab
+        value="memberships"
+        icon={<PeopleAltOutlined sx={{ fontSize: 18 }} />}
+        iconPosition="start"
+        label="Операции клиентов"
+      />
+    </Tabs>
+  );
+
+  const todayLabel = `Сегодня, ${format(new Date(), 'd MMMM yyyy', { locale: ru })}`;
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
       <Box data-onboarding="finance-page">
-        <Typography
-          component="h1"
+        <Box
           sx={{
-            fontWeight: 600,
-            fontSize: typography.pageTitle,
-            color: colors.text,
             mb: { xs: 1.5, md: 2 },
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'flex-start' },
+            gap: 1.5,
+            flexDirection: { xs: 'column', sm: 'row' },
           }}
         >
-          Финансы
-        </Typography>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              component="h1"
+              sx={{
+                fontWeight: 800,
+                fontSize: { xs: 22, md: 26 },
+                color: '#1B2438',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.2,
+              }}
+            >
+              Финансы
+            </Typography>
+            <Typography sx={{ fontSize: 13, color: '#8B93A7', mt: 0.75, maxWidth: 640, lineHeight: 1.45 }}>
+              Управляйте доходами и расходами спортивного центра. Контролируйте все операции в одном месте.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            startIcon={<CalendarTodayOutlined sx={{ fontSize: 18 }} />}
+            endIcon={<KeyboardArrowDown sx={{ fontSize: 18 }} />}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: 13,
+              borderRadius: '12px',
+              borderColor: '#E6EAF2',
+              color: '#1B2438',
+              bgcolor: '#fff',
+              px: 1.75,
+              py: 1,
+              whiteSpace: 'nowrap',
+              alignSelf: { xs: 'flex-start', sm: 'center' },
+              boxShadow: '0 2px 8px rgba(27, 36, 56, 0.04)',
+              '&:hover': { borderColor: colors.primarySoft, bgcolor: '#F7F8FB' },
+            }}
+          >
+            {todayLabel}
+          </Button>
+        </Box>
 
-        <SchoolPaymentMethodsPanel user={user} groups={groups} />
-
-        <Tabs
-          value={tab}
-          onChange={(_, v) => setTab(v)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{
-            mb: 0,
-            minHeight: 48,
-            alignItems: 'flex-end',
-            '& .MuiTabs-indicator': { display: 'none' },
-            '& .MuiTabs-flexContainer': { gap: 0.5, flexWrap: { xs: 'nowrap', md: 'wrap' }, alignItems: 'flex-end' },
-          }}
-        >
-          <Tab value="operations" label="Все операции" sx={tabSx(tab === 'operations')} />
-          <Tab value="salary" label="Зарплата тренеров" sx={tabSx(tab === 'salary')} />
-          <Tab value="memberships" label="Операции клиентов" sx={tabSx(tab === 'memberships')} />
-        </Tabs>
+        <SchoolPaymentMethodsPanel user={user} groups={groups} variant="banner" />
+        {financeTabs}
 
         <Box
           sx={{
             bgcolor: colors.card,
-            borderRadius: `0 ${radii.panel * 2}px ${radii.panel * 2}px ${radii.panel * 2}px`,
+            borderRadius: `${radii.panel}px`,
             p: { xs: 1.5, md: 2 },
             boxShadow: '0 2px 8px rgba(32, 34, 36, 0.04)',
           }}
@@ -1005,7 +1026,8 @@ const Finance: React.FC = () => {
                 const next = emptyOpFilters();
                 setAppliedOpFilters(next);
                 setOpFilters(next);
-              }
+              },
+              operations.length
             )}
 
             {loading ? (
@@ -1030,262 +1052,320 @@ const Finance: React.FC = () => {
         )}
 
         {tab === 'salary' && (
-          <>
-            {renderFinanceToolbar(
-              () => {
-                setDraftSalaryTrainerId(salaryTrainerId);
-                setDraftSalaryDateFrom(salaryDateFrom);
-                setDraftSalaryDateTo(salaryDateTo);
-                setDraftSalaryAmountFrom(salaryAmountFrom);
-                setDraftSalaryAmountTo(salaryAmountTo);
-                setDraftSalaryTrainingsMode(salaryTrainingsMode);
-                setSalaryFiltersOpen(true);
-              },
-              salaryFilterChips,
-              () => {
-                const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-                const today = new Date();
-                setSalaryTrainerId('');
-                setSalaryDateFrom(monthStart);
-                setSalaryDateTo(today);
-                setSalaryAmountFrom('');
-                setSalaryAmountTo('');
-                setSalaryTrainingsMode('all');
-              }
-            )}
-
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress sx={{ color: colors.primary }} />
-              </Box>
-            ) : (
-              <FinanceSummaryTable
-                nameColumnLabel="Тренер"
-                countColumnLabel={
-                  salaryTrainingsMode === 'conducted' ? 'Проведённые' : 'Все занятия'
-                }
-                remainingColumnLabel="Баланс"
-                rows={sortedSalaryRows}
-                sortBy={salarySortBy}
-                onSort={(key) => handleSummarySort(key, salarySortBy, setSalarySortBy, setSalarySortDir)}
-                formatMoney={(v) => formatMoney(v)}
-                emptyMessage="Нет данных по зарплатам"
-              />
-            )}
-          </>
+          <TrainerSalaryBoard
+            rows={salaryRows}
+            trainers={trainers}
+            branches={branches}
+            loading={loading}
+            dateFrom={salaryDateFrom}
+            dateTo={salaryDateTo}
+            onDateFrom={setSalaryDateFrom}
+            onDateTo={setSalaryDateTo}
+            trainingsMode={salaryTrainingsMode}
+            onTrainingsMode={setSalaryTrainingsMode}
+            onPay={(row) => {
+              setSelectedSalary(row);
+              setPayoutAmount('');
+              setPayoutBaseline('');
+              setPayoutOpen(true);
+            }}
+            onOpenTrainer={openTrainer}
+            onReset={() => {
+              const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+              const today = new Date();
+              setSalaryTrainerId('');
+              setSalaryDateFrom(monthStart);
+              setSalaryDateTo(today);
+              setSalaryAmountFrom('');
+              setSalaryAmountTo('');
+              setSalaryTrainingsMode('all');
+            }}
+            formatMoney={(v) => formatMoney(v)}
+          />
         )}
 
         {tab === 'memberships' && (
-          <>
-            {renderFinanceToolbar(
-              () => {
-                setDraftMemClientId(memClientId);
-                setDraftMemBranchId(memBranchId);
-                setDraftMemGroupIds(memGroupIds);
-                setDraftMemDate(memDate);
-                setDraftMemAmountFrom(memAmountFrom);
-                setDraftMemAmountTo(memAmountTo);
-                setMembershipFiltersOpen(true);
-              },
-              membershipFilterChips,
-              () => {
-                setMemClientId('');
-                setMemBranchId('');
-                setMemGroupIds([]);
-                setMemDate(new Date());
-                setMemAmountFrom('');
-                setMemAmountTo('');
-              }
-            )}
-
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress sx={{ color: colors.primary }} />
-              </Box>
-            ) : (
-              <FinanceSummaryTable
-                nameColumnLabel="Клиент"
-                paidColumnLabel="Оплачено"
-                remainingColumnLabel="Баланс"
-                rows={sortedMembershipRows}
-                sortBy={membershipSortBy}
-                onSort={(key) =>
-                  handleSummarySort(key, membershipSortBy, setMembershipSortBy, setMembershipSortDir)
-                }
-                formatMoney={(v) => formatMoney(v)}
-                emptyMessage="Нет данных по операциям клиентов"
-              />
-            )}
-          </>
+          <ClientPaymentsBoard
+            rows={membershipRows}
+            clients={clients}
+            groups={groups}
+            branches={branches}
+            loading={loading}
+            onOpenClient={openClient}
+            onReceive={openReceive}
+            onMonthChange={(month) => setMemDate(month)}
+            formatMoney={(v) => formatMoney(v)}
+          />
         )}
 
         </Box>
 
         {/* Filters drawer — Все операции */}
-        <Drawer anchor="right" open={filtersOpen} onClose={() => setFiltersOpen(false)} PaperProps={{ sx: { width: { xs: '100%', sm: 480 }, p: 3 } }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="h6" fontWeight={700}>
-              Фильтры
-            </Typography>
-            <IconButton onClick={() => setFiltersOpen(false)}>
+        <Drawer
+          anchor="right"
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          PaperProps={{
+            sx: {
+              width: { xs: '100%', sm: 420 },
+              bgcolor: '#fff',
+              borderRadius: { xs: 0, sm: '16px 0 0 16px' },
+              display: 'flex',
+              flexDirection: 'column',
+            },
+          }}
+        >
+          <Box sx={{ px: 2.5, pt: 2.25, pb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 18, color: '#1B2438' }}>Фильтры</Typography>
+            <IconButton onClick={() => setFiltersOpen(false)} sx={{ color: '#8B93A7' }}>
               <Close />
             </IconButton>
-          </Stack>
+          </Box>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По дате</Typography>
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-            {DATE_PRESETS.map((p) => (
-              <Chip
-                key={p.key}
-                label={p.label}
-                clickable
-                color={opFilters.datePreset === p.key ? 'primary' : 'default'}
-                onClick={() => setOpFilters((f) => ({ ...f, datePreset: p.key, dateFrom: null, dateTo: null }))}
+          <Box sx={{ px: 2.5, pb: 2, flex: 1, overflow: 'auto' }}>
+            <Typography sx={{ ...filterSectionTitleSx, mb: 1 }}>Быстрые периоды</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2.5 }} useFlexGap>
+              {DATE_PRESETS.map((p) => (
+                <Chip
+                  key={p.key}
+                  label={p.label}
+                  clickable
+                  onClick={() =>
+                    setOpFilters((f) => ({
+                      ...f,
+                      datePreset: p.key === 'all' ? 'all' : p.key,
+                      dateFrom: null,
+                      dateTo: null,
+                    }))
+                  }
+                  sx={filterPillSx(opFilters.datePreset === p.key || (!opFilters.datePreset && p.key === 'all'))}
+                />
+              ))}
+            </Stack>
+
+            <Typography sx={filterSectionTitleSx}>Период</Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
+              <DatePicker
+                label="Дата начала"
+                value={opFilters.dateFrom}
+                onChange={(v) => setOpFilters((f) => ({ ...f, dateFrom: v, datePreset: undefined }))}
+                format="dd.MM.yyyy"
+                slotProps={{ textField: { size: 'small', fullWidth: true, sx: filterFieldSx } }}
               />
-            ))}
-          </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
-            <DatePicker
-              label="Дата начала"
-              value={opFilters.dateFrom}
-              onChange={(v) => setOpFilters((f) => ({ ...f, dateFrom: v, datePreset: undefined }))}
-              slotProps={{ textField: { size: 'small', fullWidth: true } }}
-            />
-            <DatePicker
-              label="Дата окончания"
-              value={opFilters.dateTo}
-              onChange={(v) => setOpFilters((f) => ({ ...f, dateTo: v, datePreset: undefined }))}
-              slotProps={{ textField: { size: 'small', fullWidth: true } }}
-            />
-          </Stack>
+              <DatePicker
+                label="Дата окончания"
+                value={opFilters.dateTo}
+                onChange={(v) => setOpFilters((f) => ({ ...f, dateTo: v, datePreset: undefined }))}
+                format="dd.MM.yyyy"
+                slotProps={{ textField: { size: 'small', fullWidth: true, sx: filterFieldSx } }}
+              />
+            </Stack>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По имени</Typography>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Поиск по ФИО клиента, тренера, названию операции"
-            value={opFilters.search}
-            onChange={(e) => setOpFilters((f) => ({ ...f, search: e.target.value }))}
-            sx={{ mb: 3 }}
-          />
+            <Typography sx={filterSectionTitleSx}>По клиенту / сотруднику</Typography>
+            <Box sx={{ mb: 1.25 }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>Клиент</Typography>
+              <Autocomplete
+                size="small"
+                options={clients}
+                value={clients.find((c) => c.id === opFilters.clientId) || null}
+                onChange={(_e, v) => setOpFilters((f) => ({ ...f, clientId: v?.id || '' }))}
+                getOptionLabel={(c) => formatClientOptionLabel(c, { includeBalance: false })}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Поиск по ФИО, телефону..." sx={filterFieldSx} />
+                )}
+              />
+            </Box>
+            <Box sx={{ mb: 2.5 }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>
+                Сотрудник (тренер/администратор)
+              </Typography>
+              <Autocomplete
+                size="small"
+                options={trainers}
+                value={trainers.find((t) => t.id === opFilters.trainerId) || null}
+                onChange={(_e, v) => setOpFilters((f) => ({ ...f, trainerId: v?.id || '' }))}
+                getOptionLabel={(t) => formatTrainerOptionLabel(t)}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Поиск по сотрудникам..." sx={filterFieldSx} />
+                )}
+              />
+            </Box>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По сумме</Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
-            <TextField
-              size="small"
-              fullWidth
-              label="От"
-              value={opFilters.amountFrom}
-              onChange={(e) => setOpFilters((f) => ({ ...f, amountFrom: e.target.value }))}
-              InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
-            />
-            <TextField
-              size="small"
-              fullWidth
-              label="До"
-              value={opFilters.amountTo}
-              onChange={(e) => setOpFilters((f) => ({ ...f, amountTo: e.target.value }))}
-              InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
-            />
-          </Stack>
+            <Typography sx={filterSectionTitleSx}>По типу операции</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2.5 }} useFlexGap>
+              <Chip
+                label="Все"
+                clickable
+                onClick={() => setOpFilters((f) => ({ ...f, typeCodes: [] }))}
+                sx={filterPillSx(opFilters.typeCodes.length === 0)}
+              />
+              {FILTER_TYPE_CHIPS.map((chip) => {
+                const selected = chip.codes.some((c) => opFilters.typeCodes.includes(c));
+                return (
+                  <Chip
+                    key={chip.label}
+                    label={chip.label}
+                    clickable
+                    onClick={() =>
+                      setOpFilters((f) => {
+                        if (selected) {
+                          return {
+                            ...f,
+                            typeCodes: f.typeCodes.filter((c) => !chip.codes.includes(c)),
+                          };
+                        }
+                        return {
+                          ...f,
+                          typeCodes: Array.from(new Set([...f.typeCodes, ...chip.codes])),
+                        };
+                      })
+                    }
+                    sx={filterPillSx(selected)}
+                  />
+                );
+              })}
+            </Stack>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По типу операции</Typography>
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
-            {types.map((t) => {
-              const selected = opFilters.typeCodes.includes(t.code);
-              return (
+            <Typography sx={filterSectionTitleSx}>По категории</Typography>
+            <FormControl fullWidth size="small" sx={{ mb: 2.5 }}>
+              <Select
+                value={opFilters.category}
+                displayEmpty
+                onChange={(e) => setOpFilters((f) => ({ ...f, category: e.target.value }))}
+                sx={{ ...filterSelectSx, fontWeight: 650 }}
+                renderValue={(v) =>
+                  v ? v : <span style={{ color: '#8B93A7' }}>Выберите категорию</span>
+                }
+              >
+                <MenuItem value="">Все категории</MenuItem>
+                {['Зарплата', 'Аренда', 'Абонементы', 'Покупки', 'Прочее'].map((c) => (
+                  <MenuItem key={c} value={c}>
+                    {c}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Typography sx={filterSectionTitleSx}>По сумме</Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
+              <TextField
+                size="small"
+                fullWidth
+                label="От"
+                value={opFilters.amountFrom}
+                onChange={(e) => setOpFilters((f) => ({ ...f, amountFrom: e.target.value }))}
+                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
+                sx={filterFieldSx}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="До"
+                value={opFilters.amountTo}
+                onChange={(e) => setOpFilters((f) => ({ ...f, amountTo: e.target.value }))}
+                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
+                sx={filterFieldSx}
+              />
+            </Stack>
+
+            <Typography sx={filterSectionTitleSx}>Статус</Typography>
+            <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2.5 }} useFlexGap>
+              {FILTER_STATUS_CHIPS.map((s) => (
                 <Chip
-                  key={t.id}
-                  label={t.name}
+                  key={s.key || 'all'}
+                  label={s.label}
                   clickable
-                  color={selected ? 'primary' : 'default'}
-                  onClick={() =>
-                    setOpFilters((f) => ({
-                      ...f,
-                      typeCodes: selected
-                        ? f.typeCodes.filter((c) => c !== t.code)
-                        : [...f.typeCodes, t.code],
-                    }))
-                  }
+                  onClick={() => setOpFilters((f) => ({ ...f, status: s.key }))}
+                  sx={filterPillSx(opFilters.status === s.key)}
                 />
-              );
-            })}
-          </Stack>
+              ))}
+            </Stack>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По группе</Typography>
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
-            {groups.map((g) => {
-              const selected = opFilters.groupIds.includes(g.id);
-              return (
-                <Chip
-                  key={g.id}
-                  label={g.name}
-                  clickable
-                  color={selected ? 'primary' : 'default'}
-                  onClick={() =>
-                    setOpFilters((f) => ({
-                      ...f,
-                      groupIds: selected ? f.groupIds.filter((id) => id !== g.id) : [...f.groupIds, g.id],
-                    }))
-                  }
-                />
-              );
-            })}
-          </Stack>
+            <Typography sx={filterSectionTitleSx}>Дополнительно</Typography>
+            <Stack sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={opFilters.onlyWithDocuments}
+                    onChange={(e) =>
+                      setOpFilters((f) => ({ ...f, onlyWithDocuments: e.target.checked }))
+                    }
+                    sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
+                  />
+                }
+                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>Только с документами</Typography>}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={opFilters.onlyRecurring}
+                    onChange={(e) =>
+                      setOpFilters((f) => ({ ...f, onlyRecurring: e.target.checked }))
+                    }
+                    sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
+                  />
+                }
+                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>Только регулярные</Typography>}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={opFilters.withComments}
+                    onChange={(e) =>
+                      setOpFilters((f) => ({ ...f, withComments: e.target.checked }))
+                    }
+                    sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
+                  />
+                }
+                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>С комментарием</Typography>}
+              />
+            </Stack>
+          </Box>
 
-          <Typography sx={{ mb: 1, fontWeight: 600 }}>По филиалу</Typography>
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 4 }}>
-            <Chip
-              label="Все филиалы"
-              clickable
-              color={opFilters.branchIds.length === 0 ? 'primary' : 'default'}
-              onClick={() => setOpFilters((f) => ({ ...f, branchIds: [] }))}
-            />
-            {branches.map((b) => {
-              const selected = opFilters.branchIds.includes(b.id);
-              return (
-                <Chip
-                  key={b.id}
-                  label={b.name}
-                  clickable
-                  color={selected ? 'primary' : 'default'}
-                  onClick={() =>
-                    setOpFilters((f) => ({
-                      ...f,
-                      branchIds: selected ? f.branchIds.filter((id) => id !== b.id) : [...f.branchIds, b.id],
-                    }))
-                  }
-                />
-              );
-            })}
-          </Stack>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.75,
+              borderTop: '1px solid #EEF1F6',
+              display: 'flex',
+              gap: 1,
+            }}
+          >
             <Button
-              fullWidth
-              variant="outlined"
-              sx={{ textTransform: 'none' }}
               onClick={() => {
                 const empty = emptyOpFilters();
                 setOpFilters(empty);
                 setAppliedOpFilters(empty);
-                setFiltersOpen(false);
+              }}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 750,
+                color: colors.primary,
+                flex: 1,
               }}
             >
-              Сбросить фильтры
+              Сбросить
             </Button>
             <Button
-              fullWidth
               variant="contained"
-              sx={{ textTransform: 'none', bgcolor: colors.primary }}
+              startIcon={<FilterAltOutlined />}
               onClick={() => {
                 setAppliedOpFilters(opFilters);
                 setFiltersOpen(false);
               }}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 750,
+                bgcolor: colors.primary,
+                borderRadius: `${radii.button}px`,
+                boxShadow: 'none',
+                flex: 1.4,
+                '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+              }}
             >
-              Применить
+              Применить фильтры
             </Button>
-          </Stack>
+          </Box>
         </Drawer>
 
         {/* Filters drawer — Зарплата тренеров */}
@@ -1293,17 +1373,28 @@ const Finance: React.FC = () => {
           anchor="right"
           open={salaryFiltersOpen}
           onClose={() => setSalaryFiltersOpen(false)}
-          PaperProps={{ sx: { width: { xs: '100%', sm: 520 }, p: 3 } }}
+          PaperProps={{
+            sx: {
+              width: { xs: '100%', sm: 420 },
+              bgcolor: '#fff',
+              borderRadius: { xs: 0, sm: '16px 0 0 16px' },
+              display: 'flex',
+              flexDirection: 'column',
+              p: 0,
+            },
+          }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: typography.panelTitle }}>Фильтры</Typography>
-            <IconButton onClick={() => setSalaryFiltersOpen(false)}>
+          <Box sx={{ px: 2.5, pt: 2.25, pb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 18, color: '#1B2438' }}>Фильтры</Typography>
+            <IconButton onClick={() => setSalaryFiltersOpen(false)} sx={{ color: '#8B93A7' }}>
               <Close />
             </IconButton>
-          </Stack>
+          </Box>
 
+          <Box sx={{ px: 2.5, pb: 2, flex: 1, overflow: 'auto' }}>
           <Typography sx={filterSectionTitleSx}>Выбрать тренера</Typography>
           <Autocomplete
+            size="small"
             options={trainers}
             value={trainers.find((t) => t.id === draftSalaryTrainerId) || null}
             onChange={(_, value) => setDraftSalaryTrainerId(value?.id || '')}
@@ -1318,35 +1409,39 @@ const Finance: React.FC = () => {
               <TextField
                 {...params}
                 placeholder="Начните вводить ФИО"
-                sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={{ mb: 2.5, ...filterFieldSx }}
               />
             )}
           />
 
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2.5 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <DatePicker
                 value={draftSalaryDateFrom}
                 onChange={setDraftSalaryDateFrom}
+                format="dd.MM.yyyy"
                 slotProps={{
                   textField: {
+                    size: 'small',
                     fullWidth: true,
-                    sx: { '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
+                    sx: filterFieldSx,
                   },
                 }}
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <DatePicker
                 value={draftSalaryDateTo}
                 onChange={setDraftSalaryDateTo}
+                format="dd.MM.yyyy"
                 slotProps={{
                   textField: {
+                    size: 'small',
                     fullWidth: true,
-                    sx: { '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
+                    sx: filterFieldSx,
                   },
                 }}
               />
@@ -1358,82 +1453,105 @@ const Finance: React.FC = () => {
             row
             value={draftSalaryTrainingsMode}
             onChange={(e) => setDraftSalaryTrainingsMode(e.target.value as 'all' | 'conducted')}
-            sx={{ mb: 3 }}
+            sx={{ mb: 2.5 }}
           >
-            <FormControlLabel value="all" control={<Radio />} label="Все" />
-            <FormControlLabel value="conducted" control={<Radio />} label="Проведённые" />
+            <FormControlLabel value="all" control={<Radio size="small" />} label="Все" />
+            <FormControlLabel value="conducted" control={<Radio size="small" />} label="Проведённые" />
           </RadioGroup>
 
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 4 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <TextField
+                size="small"
                 fullWidth
                 value={draftSalaryAmountFrom}
                 onChange={(e) => setDraftSalaryAmountFrom(e.target.value)}
                 placeholder="0 ₽"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={filterFieldSx}
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <TextField
+                size="small"
                 fullWidth
                 value={draftSalaryAmountTo}
                 onChange={(e) => setDraftSalaryAmountTo(e.target.value)}
                 placeholder="999 ₽"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={filterFieldSx}
               />
             </Box>
           </Stack>
+          </Box>
 
-          <Button
-            fullWidth
-            variant="contained"
+          <Box
             sx={{
-              textTransform: 'none',
-              borderRadius: '19px',
-              py: 1.5,
-              bgcolor: colors.danger,
-              '&:hover': { bgcolor: colors.danger, filter: 'brightness(0.95)' },
-            }}
-            onClick={() => {
-              const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-              const today = new Date();
-              setDraftSalaryTrainerId('');
-              setDraftSalaryDateFrom(monthStart);
-              setDraftSalaryDateTo(today);
-              setDraftSalaryAmountFrom('');
-              setDraftSalaryAmountTo('');
-              setDraftSalaryTrainingsMode('all');
-              setSalaryTrainerId('');
-              setSalaryDateFrom(monthStart);
-              setSalaryDateTo(today);
-              setSalaryAmountFrom('');
-              setSalaryAmountTo('');
-              setSalaryTrainingsMode('all');
-              setSalaryFiltersOpen(false);
+              px: 2.5,
+              py: 1.75,
+              borderTop: '1px solid #EEF1F6',
+              display: 'flex',
+              gap: 1.25,
+              bgcolor: '#FAFBFD',
             }}
           >
-            Сбросить фильтры
-          </Button>
-          <Button
-            fullWidth
-            variant="contained"
-            sx={{ textTransform: 'none', borderRadius: '12px', py: 1, mt: 2, bgcolor: colors.primary }}
-            onClick={() => {
-              setSalaryTrainerId(draftSalaryTrainerId);
-              setSalaryDateFrom(draftSalaryDateFrom);
-              setSalaryDateTo(draftSalaryDateTo);
-              setSalaryAmountFrom(draftSalaryAmountFrom);
-              setSalaryAmountTo(draftSalaryAmountTo);
-              setSalaryTrainingsMode(draftSalaryTrainingsMode);
-              setSalaryFiltersOpen(false);
-            }}
-          >
-            Применить
-          </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              sx={{
+                textTransform: 'none',
+                borderRadius: '12px',
+                py: 1.1,
+                borderColor: colors.primarySoft,
+                color: colors.primary,
+                fontWeight: 700,
+              }}
+              onClick={() => {
+                const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+                const today = new Date();
+                setDraftSalaryTrainerId('');
+                setDraftSalaryDateFrom(monthStart);
+                setDraftSalaryDateTo(today);
+                setDraftSalaryAmountFrom('');
+                setDraftSalaryAmountTo('');
+                setDraftSalaryTrainingsMode('all');
+                setSalaryTrainerId('');
+                setSalaryDateFrom(monthStart);
+                setSalaryDateTo(today);
+                setSalaryAmountFrom('');
+                setSalaryAmountTo('');
+                setSalaryTrainingsMode('all');
+                setSalaryFiltersOpen(false);
+              }}
+            >
+              Сбросить
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{
+                textTransform: 'none',
+                borderRadius: '12px',
+                py: 1.1,
+                bgcolor: colors.primary,
+                fontWeight: 700,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+              }}
+              onClick={() => {
+                setSalaryTrainerId(draftSalaryTrainerId);
+                setSalaryDateFrom(draftSalaryDateFrom);
+                setSalaryDateTo(draftSalaryDateTo);
+                setSalaryAmountFrom(draftSalaryAmountFrom);
+                setSalaryAmountTo(draftSalaryAmountTo);
+                setSalaryTrainingsMode(draftSalaryTrainingsMode);
+                setSalaryFiltersOpen(false);
+              }}
+            >
+              Применить
+            </Button>
+          </Box>
         </Drawer>
 
         {/* Filters drawer — Операции клиентов */}
@@ -1441,17 +1559,28 @@ const Finance: React.FC = () => {
           anchor="right"
           open={membershipFiltersOpen}
           onClose={() => setMembershipFiltersOpen(false)}
-          PaperProps={{ sx: { width: { xs: '100%', sm: 560 }, p: 3 } }}
+          PaperProps={{
+            sx: {
+              width: { xs: '100%', sm: 420 },
+              bgcolor: '#fff',
+              borderRadius: { xs: 0, sm: '16px 0 0 16px' },
+              display: 'flex',
+              flexDirection: 'column',
+              p: 0,
+            },
+          }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: typography.panelTitle }}>Фильтры</Typography>
-            <IconButton onClick={() => setMembershipFiltersOpen(false)}>
+          <Box sx={{ px: 2.5, pt: 2.25, pb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 18, color: '#1B2438' }}>Фильтры</Typography>
+            <IconButton onClick={() => setMembershipFiltersOpen(false)} sx={{ color: '#8B93A7' }}>
               <Close />
             </IconButton>
-          </Stack>
+          </Box>
 
+          <Box sx={{ px: 2.5, pb: 2, flex: 1, overflow: 'auto' }}>
           <Typography sx={filterSectionTitleSx}>Выбрать клиента</Typography>
           <Autocomplete
+            size="small"
             options={clients}
             value={clients.find((c) => c.id === draftMemClientId) || null}
             onChange={(_, value) => setDraftMemClientId(value?.id || '')}
@@ -1468,7 +1597,7 @@ const Finance: React.FC = () => {
               <TextField
                 {...params}
                 placeholder="Начните вводить ФИО"
-                sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={{ mb: 2.5, ...filterFieldSx }}
               />
             )}
           />
@@ -1477,10 +1606,12 @@ const Finance: React.FC = () => {
           <DatePicker
             value={draftMemDate}
             onChange={setDraftMemDate}
+            format="dd.MM.yyyy"
             slotProps={{
               textField: {
+                size: 'small',
                 fullWidth: true,
-                sx: { mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '19px' } },
+                sx: { mb: 2.5, ...filterFieldSx },
               },
             }}
           />
@@ -1490,23 +1621,17 @@ const Finance: React.FC = () => {
             label="Все филиалы"
             clickable
             onClick={() => setDraftMemBranchId('')}
-            sx={{
-              mb: 1.5,
-              bgcolor: !draftMemBranchId ? colors.primarySoft : colors.divider,
-              color: colors.primary,
-              fontWeight: 600,
-              borderRadius: '19px',
-              px: 1,
-            }}
+            sx={{ mb: 1.5, ...filterPillSx(!draftMemBranchId) }}
           />
           <TextField
+            size="small"
             fullWidth
             placeholder="Поиск по филиалам"
             value={memBranchSearch}
             onChange={(e) => setMemBranchSearch(e.target.value)}
-            sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+            sx={{ mb: 1.5, ...filterFieldSx }}
           />
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
+          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2.5 }} useFlexGap>
             {branches
               .filter((b) => !memBranchSearch || b.name.toLowerCase().includes(memBranchSearch.toLowerCase()))
               .map((b) => (
@@ -1515,18 +1640,13 @@ const Finance: React.FC = () => {
                   label={b.name}
                   clickable
                   onClick={() => setDraftMemBranchId(b.id)}
-                  sx={{
-                    bgcolor: draftMemBranchId === b.id ? colors.primarySoft : colors.divider,
-                    color: colors.primary,
-                    fontWeight: 600,
-                    borderRadius: '19px',
-                  }}
+                  sx={filterPillSx(draftMemBranchId === b.id)}
                 />
               ))}
           </Stack>
 
           <Typography sx={filterSectionTitleSx}>По группе</Typography>
-          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
+          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2.5 }} useFlexGap>
             {groups.map((g) => {
               const selected = draftMemGroupIds.includes(g.id);
               return (
@@ -1539,85 +1659,103 @@ const Finance: React.FC = () => {
                       selected ? prev.filter((id) => id !== g.id) : [...prev, g.id]
                     )
                   }
-                  sx={{
-                    bgcolor: selected ? colors.primarySoft : colors.divider,
-                    color: colors.primary,
-                    fontWeight: 600,
-                    borderRadius: '19px',
-                  }}
+                  sx={filterPillSx(selected)}
                 />
               );
             })}
           </Stack>
 
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 4 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <TextField
+                size="small"
                 fullWidth
                 value={draftMemAmountFrom}
                 onChange={(e) => setDraftMemAmountFrom(e.target.value)}
                 placeholder="0 ₽"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={filterFieldSx}
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 14, mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <TextField
+                size="small"
                 fullWidth
                 value={draftMemAmountTo}
                 onChange={(e) => setDraftMemAmountTo(e.target.value)}
                 placeholder="999 ₽"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '19px' } }}
+                sx={filterFieldSx}
               />
             </Box>
           </Stack>
+          </Box>
 
-          <Button
-            fullWidth
-            variant="contained"
+          <Box
             sx={{
-              textTransform: 'none',
-              borderRadius: '19px',
-              py: 1.5,
-              bgcolor: colors.danger,
-              '&:hover': { bgcolor: colors.danger, filter: 'brightness(0.95)' },
-            }}
-            onClick={() => {
-              setDraftMemClientId('');
-              setDraftMemBranchId('');
-              setDraftMemGroupIds([]);
-              setDraftMemDate(new Date());
-              setDraftMemAmountFrom('');
-              setDraftMemAmountTo('');
-              setMemClientId('');
-              setMemBranchId('');
-              setMemGroupIds([]);
-              setMemDate(new Date());
-              setMemAmountFrom('');
-              setMemAmountTo('');
-              setMembershipFiltersOpen(false);
+              px: 2.5,
+              py: 1.75,
+              borderTop: '1px solid #EEF1F6',
+              display: 'flex',
+              gap: 1.25,
+              bgcolor: '#FAFBFD',
             }}
           >
-            Сбросить фильтры
-          </Button>
-          <Button
-            fullWidth
-            variant="contained"
-            sx={{ textTransform: 'none', borderRadius: '12px', py: 1, mt: 2, bgcolor: colors.primary }}
-            onClick={() => {
-              setMemClientId(draftMemClientId);
-              setMemBranchId(draftMemBranchId);
-              setMemGroupIds(draftMemGroupIds);
-              setMemDate(draftMemDate);
-              setMemAmountFrom(draftMemAmountFrom);
-              setMemAmountTo(draftMemAmountTo);
-              setMembershipFiltersOpen(false);
-            }}
-          >
-            Применить
-          </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              sx={{
+                textTransform: 'none',
+                borderRadius: '12px',
+                py: 1.1,
+                borderColor: colors.primarySoft,
+                color: colors.primary,
+                fontWeight: 700,
+              }}
+              onClick={() => {
+                setDraftMemClientId('');
+                setDraftMemBranchId('');
+                setDraftMemGroupIds([]);
+                setDraftMemDate(new Date());
+                setDraftMemAmountFrom('');
+                setDraftMemAmountTo('');
+                setMemClientId('');
+                setMemBranchId('');
+                setMemGroupIds([]);
+                setMemDate(new Date());
+                setMemAmountFrom('');
+                setMemAmountTo('');
+                setMembershipFiltersOpen(false);
+              }}
+            >
+              Сбросить
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{
+                textTransform: 'none',
+                borderRadius: '12px',
+                py: 1.1,
+                bgcolor: colors.primary,
+                fontWeight: 700,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+              }}
+              onClick={() => {
+                setMemClientId(draftMemClientId);
+                setMemBranchId(draftMemBranchId);
+                setMemGroupIds(draftMemGroupIds);
+                setMemDate(draftMemDate);
+                setMemAmountFrom(draftMemAmountFrom);
+                setMemAmountTo(draftMemAmountTo);
+                setMembershipFiltersOpen(false);
+              }}
+            >
+              Применить
+            </Button>
+          </Box>
         </Drawer>
 
         <AddFinanceOperationDialog

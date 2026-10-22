@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -11,6 +12,7 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
@@ -18,6 +20,7 @@ import {
   Select,
   Snackbar,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -52,8 +55,49 @@ import TrainerDocumentsPanel from './TrainerDocumentsPanel';
 import AttendanceExcelExport from '../AttendanceExcelExport';
 import UnsavedChangesDialog from '../common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../../hooks/useUnsavedClose';
+import TrainerCardDesktopView, {
+  TrainerCardTab,
+  TrainerGroupRow,
+} from './TrainerCardDesktopView';
+import AdminCardDesktopView from './AdminCardDesktopView';
+import PromoterCardDesktopView from './PromoterCardDesktopView';
+import {
+  buildAdminProfileMeta,
+  buildPromoterProfileMeta,
+  getEmployeeProfileMeta,
+} from '../../utils/staffProfileMeta';
 
 const TRAINER_FIXED_MONTHLY = 'fixed_monthly';
+
+const PROMOTER_TRANSPORT_OPTIONS = [
+  'Пешком',
+  'Общественный транспорт',
+  'Личный автомобиль',
+  'Велосипед / самокат',
+  'Такси / каршеринг',
+] as const;
+
+const ADMIN_PERMISSION_KEYS = [
+  'clients',
+  'branches',
+  'employees',
+  'calendar',
+  'finance',
+  'subscriptions',
+  'settings',
+  'reports',
+] as const;
+
+const ADMIN_PERMISSION_LABELS: Record<(typeof ADMIN_PERMISSION_KEYS)[number], string> = {
+  clients: 'Управление клиентами',
+  branches: 'Филиалы и группы',
+  employees: 'Сотрудники',
+  calendar: 'Расписание',
+  finance: 'Финансы',
+  subscriptions: 'Абонементы',
+  settings: 'Настройки',
+  reports: 'Отчеты',
+};
 
 const emptyFormData = {
   email: '',
@@ -69,11 +113,27 @@ const emptyFormData = {
   coachCategory: '',
   judgeCategory: '',
   achievements: '',
+  hireDate: '',
   salaryScheme: '',
   salaryRate: '',
   individualTrainingPrice: '',
   canViewAllGroups: false,
   branchId: '',
+  // ADMIN
+  responsibilityZone: '',
+  position: '',
+  comment: '',
+  isActive: true,
+  permissions: Object.fromEntries(ADMIN_PERMISSION_KEYS.map((k) => [k, true])) as Record<string, boolean>,
+  // PROMOTER
+  dateOfBirth: '',
+  workArea: '',
+  workRadiusKm: '',
+  pricePerShift: '',
+  pricePerClient: '',
+  transport: '',
+  socialLink: '',
+  notes: '',
 };
 
 export const isEmployeeAdmin = (employee: any): boolean =>
@@ -98,8 +158,11 @@ function fullName(user: { lastName?: string; firstName?: string; middleName?: st
 }
 
 function buildFormFromEmployee(employee: any) {
+  const meta = getEmployeeProfileMeta(employee);
+  const adminUser = employee.user || employee;
+
   if (isEmployeeAdmin(employee)) {
-    const adminUser = employee.user || employee;
+    const perms = Array.isArray(meta.permissions) ? meta.permissions : ADMIN_PERMISSION_KEYS;
     return {
       ...emptyFormData,
       email: adminUser.email || '',
@@ -108,9 +171,42 @@ function buildFormFromEmployee(employee: any) {
       middleName: adminUser.middleName || '',
       phone: adminUser.phone || '',
       role: adminUser.role || 'ADMIN',
+      isActive: adminUser.isActive !== false && employee?.isActive !== false,
+      responsibilityZone: String(meta.responsibilityZone || ''),
+      position: String(meta.position || ''),
+      experience: meta.experience != null ? String(meta.experience) : '',
+      comment: String(meta.comment || ''),
+      branchId: String(meta.branchId || adminUser.branchId || ''),
+      permissions: Object.fromEntries(
+        ADMIN_PERMISSION_KEYS.map((k) => [k, (perms as string[]).includes(k)])
+      ) as Record<string, boolean>,
     };
   }
+
+  if (isEmployeePromoter(employee)) {
+    return {
+      ...emptyFormData,
+      email: adminUser.email || '',
+      firstName: adminUser.firstName || '',
+      lastName: adminUser.lastName || '',
+      middleName: adminUser.middleName || '',
+      phone: adminUser.phone || '',
+      role: 'PROMOTER',
+      isActive: adminUser.isActive !== false && employee?.isActive !== false,
+      dateOfBirth: String(meta.dateOfBirth || ''),
+      workArea: String(meta.workArea || ''),
+      workRadiusKm: meta.workRadiusKm != null ? String(meta.workRadiusKm) : '',
+      pricePerShift: meta.pricePerShift != null ? String(meta.pricePerShift) : '',
+      pricePerClient: meta.pricePerClient != null ? String(meta.pricePerClient) : '',
+      transport: String(meta.transport || ''),
+      socialLink: String(meta.socialLink || ''),
+      notes: String(meta.notes || ''),
+    };
+  }
+
+  const hireRaw = employee.hireDate || employee.workStartDate;
   return {
+    ...emptyFormData,
     email: employee.user?.email || '',
     password: '',
     firstName: employee.user?.firstName || '',
@@ -124,6 +220,7 @@ function buildFormFromEmployee(employee: any) {
     coachCategory: employee.coachCategory || '',
     judgeCategory: employee.judgeCategory || '',
     achievements: employee.achievements || '',
+    hireDate: hireRaw ? String(hireRaw).slice(0, 10) : '',
     salaryScheme: resolveTrainerCardScheme(employee.salaryScheme, employee.salaryType),
     salaryRate:
       resolveTrainerCardScheme(employee.salaryScheme, employee.salaryType) === TRAINER_FIXED_MONTHLY
@@ -140,6 +237,7 @@ export interface TrainerCardProps {
   employee: Trainer | any;
   branches: Branch[];
   isOwner: boolean;
+  fromSection?: string;
   onSaved?: () => void | Promise<void>;
   onClose?: () => void;
   onOpenEarnings?: (trainer: Trainer) => void;
@@ -149,6 +247,7 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
   employee: initialEmployee,
   branches,
   isOwner,
+  fromSection = 'Сотрудники',
   onSaved,
   onClose,
   onOpenEarnings,
@@ -166,8 +265,12 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
   const [pendingRoleChange, setPendingRoleChange] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [branchBusy, setBranchBusy] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [cardTab, setCardTab] = useState<TrainerCardTab>('overview');
+  const [groups, setGroups] = useState<TrainerGroupRow[]>([]);
 
   const isAdmin = isEmployeeAdmin(employee);
+  const isPromoter = isEmployeePromoter(employee);
   const isOwnerTrainer =
     (employee?.user?.role || employee?.role) === 'OWNER';
   // Карточку владельца-тренера и админа может менять только OWNER
@@ -176,7 +279,7 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
   const displayName = fullName(empUser);
 
   const refreshEmployee = useCallback(async () => {
-    if (isEmployeeAdmin(initialEmployee)) {
+    if (isEmployeeAdmin(initialEmployee) || isEmployeePromoter(initialEmployee)) {
       setEmployee(initialEmployee);
       return initialEmployee;
     }
@@ -206,10 +309,53 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
     }
   }, [initialEmployee, refreshEmployee]);
 
-  const getCurrentRole = (): string =>
-    employee?.user?.role ||
-    employee?.role ||
-    (employee?.employeeType === 'admin' ? 'ADMIN' : 'TRAINER');
+  useEffect(() => {
+    if (isEmployeeAdmin(employee) || !employee?.id) {
+      setGroups([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiService.getGroups({ limit: 500, page: 1 });
+        if (cancelled) return;
+        const rows = (res.data || [])
+          .filter(
+            (g: any) =>
+              g.trainerId === employee.id ||
+              g.trainer?.id === employee.id ||
+              (Array.isArray(g.trainers) && g.trainers.some((t: any) => t.id === employee.id || t.trainerId === employee.id))
+          )
+          .map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            ageRange:
+              g.minAge != null || g.maxAge != null
+                ? `${g.minAge ?? '?'}-${g.maxAge ?? '?'}`
+                : g.ageCategory || null,
+            days: g.scheduleDays || g.daysOfWeek || null,
+            studentsCount:
+              g.clientsCount ??
+              g._count?.groupMemberships ??
+              g.groupMemberships?.length ??
+              null,
+            isActive: g.isActive !== false,
+          }));
+        setGroups(rows);
+      } catch {
+        if (!cancelled) setGroups([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [employee?.id, employee?.employeeType]);
+
+  const getCurrentRole = (): string => {
+    if (isEmployeeAdmin(employee)) return 'ADMIN';
+    if (isEmployeePromoter(employee)) return 'PROMOTER';
+    return employee?.user?.role || employee?.role || 'TRAINER';
+  };
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -245,6 +391,7 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
     const newRole = formData.role;
     const roleChanged = newRole !== currentRole;
 
+    let savedEmployee = employee;
     try {
       setSaving(true);
       setError('');
@@ -259,7 +406,33 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
           role: newRole,
         };
         if (formData.password) updateData.password = formData.password;
-        await apiService.updateUser(userId, updateData);
+
+        if (newRole === 'ADMIN') {
+          updateData.isActive = formData.isActive;
+          updateData.branchId = formData.branchId || null;
+          updateData.profileMeta = buildAdminProfileMeta({
+            responsibilityZone: formData.responsibilityZone,
+            position: formData.position,
+            experience: formData.experience,
+            comment: formData.comment,
+            permissions: ADMIN_PERMISSION_KEYS.filter((k) => formData.permissions[k]),
+            branchId: formData.branchId || undefined,
+          });
+        } else if (newRole === 'PROMOTER') {
+          updateData.isActive = formData.isActive;
+          updateData.profileMeta = buildPromoterProfileMeta({
+            dateOfBirth: formData.dateOfBirth,
+            workArea: formData.workArea,
+            workRadiusKm: formData.workRadiusKm,
+            pricePerShift: formData.pricePerShift,
+            pricePerClient: formData.pricePerClient,
+            transport: formData.transport,
+            socialLink: formData.socialLink,
+            notes: formData.notes,
+          });
+        }
+
+        const updated = await apiService.updateUser(userId, updateData);
 
         if (newRole === 'TRAINER') {
           const refreshed = await apiService.getTrainers({ includeAdmins: 'true', limit: 1000 });
@@ -274,6 +447,7 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
               coachCategory: formData.coachCategory,
               judgeCategory: formData.judgeCategory,
               achievements: formData.achievements,
+              hireDate: formData.hireDate || null,
               salaryScheme:
                 formData.salaryScheme === TRAINER_FIXED_MONTHLY
                   ? TRAINER_FIXED_MONTHLY
@@ -301,26 +475,118 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
               email: formData.email,
             });
             setEmployee(created);
+            savedEmployee = created;
           }
+        } else if (newRole === 'ADMIN') {
+          const nextAdmin = {
+            ...employee,
+            isActive: formData.isActive,
+            profileMeta: updateData.profileMeta,
+            user: {
+              ...(employee.user || employee),
+              ...updateData,
+              ...(updated || {}),
+            },
+            employeeType: 'admin' as const,
+            role: 'ADMIN',
+          };
+          setEmployee(nextAdmin);
+          savedEmployee = nextAdmin;
+        } else if (newRole === 'PROMOTER') {
+          const nextPromoter = {
+            ...employee,
+            isActive: formData.isActive,
+            profileMeta: updateData.profileMeta,
+            user: {
+              ...(employee.user || employee),
+              ...updateData,
+              ...(updated || {}),
+            },
+            employeeType: 'promoter' as const,
+            role: 'PROMOTER',
+          };
+          setEmployee(nextPromoter);
+          savedEmployee = nextPromoter;
         }
       } else if (newRole === 'ADMIN') {
+        const profileMeta = buildAdminProfileMeta({
+          responsibilityZone: formData.responsibilityZone,
+          position: formData.position,
+          experience: formData.experience,
+          comment: formData.comment,
+          permissions: ADMIN_PERMISSION_KEYS.filter((k) => formData.permissions[k]),
+          branchId: formData.branchId || undefined,
+        });
         const updateData: any = {
           firstName: formData.firstName,
           lastName: formData.lastName,
           middleName: formData.middleName,
           phone: formData.phone,
           email: formData.email,
+          isActive: formData.isActive,
+          profileMeta,
+          branchId: formData.branchId || null,
         };
         if (formData.password) updateData.password = formData.password;
-        await apiService.updateUser(userId, updateData);
-        setEmployee({
+        const updated = await apiService.updateUser(userId, updateData);
+        const nextAdmin = {
           ...employee,
-          user: { ...(employee.user || employee), ...updateData },
-          ...(employee.user ? {} : updateData),
+          isActive: formData.isActive,
+          profileMeta,
+          user: {
+            ...(employee.user || employee),
+            ...updateData,
+            profileMeta,
+            isActive: formData.isActive,
+            ...(updated || {}),
+          },
+          employeeType: 'admin' as const,
+          role: 'ADMIN',
+        };
+        setEmployee(nextAdmin);
+        savedEmployee = nextAdmin;
+      } else if (newRole === 'PROMOTER') {
+        const profileMeta = buildPromoterProfileMeta({
+          dateOfBirth: formData.dateOfBirth,
+          workArea: formData.workArea,
+          workRadiusKm: formData.workRadiusKm,
+          pricePerShift: formData.pricePerShift,
+          pricePerClient: formData.pricePerClient,
+          transport: formData.transport,
+          socialLink: formData.socialLink,
+          notes: formData.notes,
         });
+        const updateData: any = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          middleName: formData.middleName,
+          phone: formData.phone,
+          email: formData.email,
+          isActive: formData.isActive,
+          profileMeta,
+        };
+        if (formData.password) updateData.password = formData.password;
+        const updated = await apiService.updateUser(userId, updateData);
+        const nextPromoter = {
+          ...employee,
+          isActive: formData.isActive,
+          profileMeta,
+          user: {
+            ...(employee.user || employee),
+            ...updateData,
+            profileMeta,
+            isActive: formData.isActive,
+            ...(updated || {}),
+          },
+          employeeType: 'promoter' as const,
+          role: 'PROMOTER',
+        };
+        setEmployee(nextPromoter);
+        savedEmployee = nextPromoter;
       } else {
         await apiService.updateTrainer(employee.id, {
           ...formData,
+          hireDate: formData.hireDate || null,
           salaryScheme:
             formData.salaryScheme === TRAINER_FIXED_MONTHLY
               ? TRAINER_FIXED_MONTHLY
@@ -346,22 +612,14 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
 
       await onSaved?.();
 
-      let latest = employee;
-      if (newRole === 'TRAINER' && employee?.id && !isEmployeeAdmin(employee)) {
+      let latest = savedEmployee;
+      if (newRole === 'TRAINER' && employee?.id && !isEmployeeAdmin(employee) && !isEmployeePromoter(employee)) {
         try {
           latest = await apiService.getTrainer(employee.id);
           setEmployee(latest);
         } catch {
           /* keep */
         }
-      } else if (newRole === 'ADMIN') {
-        latest = {
-          ...employee,
-          user: { ...(employee.user || employee), ...formData, role: 'ADMIN' },
-          role: 'ADMIN',
-          employeeType: 'admin',
-        };
-        setEmployee(latest);
       }
       const rebuilt = buildFormFromEmployee(latest);
       setFormData(rebuilt);
@@ -385,14 +643,15 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
     const newRole = formData.role;
     const roleChanged = newRole !== currentRole;
     const targetIsAdmin = newRole === 'ADMIN';
+    const targetIsPromoter = newRole === 'PROMOTER';
 
-    if (targetIsAdmin) {
-      const adminErrors: Record<string, string> = {};
-      if (!formData.firstName) adminErrors.firstName = 'Имя обязательно';
-      if (!formData.lastName) adminErrors.lastName = 'Фамилия обязательна';
-      if (!formData.email) adminErrors.email = 'Email обязателен';
-      setFormErrors(adminErrors);
-      if (Object.keys(adminErrors).length > 0) {
+    if (targetIsAdmin || targetIsPromoter) {
+      const identityErrors: Record<string, string> = {};
+      if (!formData.firstName) identityErrors.firstName = 'Имя обязательно';
+      if (!formData.lastName) identityErrors.lastName = 'Фамилия обязательна';
+      if (!formData.email) identityErrors.email = 'Email обязателен';
+      setFormErrors(identityErrors);
+      if (Object.keys(identityErrors).length > 0) {
         setError('Пожалуйста, исправьте ошибки в форме');
         setSnack('Обнаружены ошибки в форме. Пожалуйста, исправьте их.');
         return false;
@@ -417,37 +676,96 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
   };
 
   const availableBranches = useMemo(() => {
-    const assigned = employee?.branches?.map((tb: any) => tb.branchId) || [];
-    return branches.filter((b) => !assigned.includes(b.id) && b.isActive);
+    const assigned = new Set<string>(
+      (employee?.branches || []).map((tb: any) => tb.branchId || tb.branch?.id).filter(Boolean)
+    );
+    const primary = employee?.user?.branchId || employee?.branchId;
+    if (primary) assigned.add(primary);
+    return branches.filter((b) => !assigned.has(b.id) && b.isActive);
   }, [branches, employee]);
 
+  const adminUserId = (): string | null =>
+    employee?.user?.id || (isAdmin ? employee?.id : null) || null;
+
   const handleAddBranch = async () => {
-    if (!employee?.id || !selectedBranchId || isAdmin) return;
+    if (!selectedBranchId) return;
     try {
       setBranchBusy(true);
+      if (isAdmin) {
+        const userId = adminUserId();
+        if (!userId) return;
+        await apiService.updateUser(userId, { branchId: selectedBranchId });
+        const b = branches.find((x) => x.id === selectedBranchId);
+        setEmployee({
+          ...employee,
+          branchId: selectedBranchId,
+          user: { ...(employee.user || employee), branchId: selectedBranchId },
+          branches: b
+            ? [{ branchId: b.id, branch: b }]
+            : employee.branches,
+        });
+        setSelectedBranchId('');
+        await onSaved?.();
+        return;
+      }
+      if (!employee?.id) return;
       await apiService.addBranchToTrainer(employee.id, selectedBranchId);
       setSelectedBranchId('');
       await refreshEmployee();
       await onSaved?.();
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Ошибка добавления филиала к тренеру');
+      setError(err?.response?.data?.error || 'Ошибка добавления филиала');
     } finally {
       setBranchBusy(false);
     }
   };
 
   const handleRemoveBranch = async (branchId: string) => {
-    if (!employee?.id || isAdmin) return;
-    if (!window.confirm('Вы уверены, что хотите удалить этот филиал у тренера?')) return;
+    if (!window.confirm('Убрать этот филиал у сотрудника?')) return;
     try {
       setBranchBusy(true);
+      if (isAdmin) {
+        const userId = adminUserId();
+        if (!userId) return;
+        await apiService.updateUser(userId, { branchId: null });
+        setEmployee({
+          ...employee,
+          branchId: null,
+          user: { ...(employee.user || employee), branchId: null },
+          branches: [],
+        });
+        await onSaved?.();
+        return;
+      }
+      if (!employee?.id) return;
       await apiService.removeBranchFromTrainer(employee.id, branchId);
       await refreshEmployee();
       await onSaved?.();
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Ошибка удаления филиала у тренера');
+      setError(err?.response?.data?.error || 'Ошибка удаления филиала');
     } finally {
       setBranchBusy(false);
+    }
+  };
+
+  const handleToggleAccess = async () => {
+    const userId = adminUserId();
+    if (!userId || !canEdit) return;
+    const currentlyActive = employee?.isActive !== false && empUser?.isActive !== false;
+    try {
+      setAccessBusy(true);
+      await apiService.updateUser(userId, { isActive: !currentlyActive });
+      setEmployee({
+        ...employee,
+        isActive: !currentlyActive,
+        user: { ...(employee.user || employee), isActive: !currentlyActive },
+      });
+      setSnack(currentlyActive ? 'Доступ отключён' : 'Доступ включён');
+      await onSaved?.();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось изменить доступ');
+    } finally {
+      setAccessBusy(false);
     }
   };
 
@@ -486,538 +804,478 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
     );
   }
 
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 1,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, color: colors.text }}>
-          Карточка сотрудника
-        </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          {canEdit && !editing && (
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<EditOutlined />}
-              onClick={startEdit}
-              sx={{ textTransform: 'none' }}
+  const editForm = editing ? (
+    <Grid container spacing={2}>
+      {isOwner && (
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth>
+            <InputLabel>Роль</InputLabel>
+            <Select
+              value={formData.role}
+              label="Роль"
+              onChange={(e) => handleInputChange('role', e.target.value)}
             >
-              Редактировать
-            </Button>
-          )}
-          {canEdit && editing && (
-            <>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<SaveOutlined />}
-                disabled={saving}
-                onClick={() => handleSave()}
-                sx={{ textTransform: 'none' }}
-              >
-                Сохранить
-              </Button>
-              <Button
-                size="small"
-                startIcon={<Close />}
-                onClick={cancelEdit}
-                sx={{ textTransform: 'none' }}
-              >
-                Отмена
-              </Button>
-            </>
-          )}
-          {onClose && (
-            <Button size="small" onClick={requestClose} sx={{ textTransform: 'none' }}>
-              Закрыть
-            </Button>
-          )}
-        </Stack>
-      </Box>
-
-      {error && (
-        <Alert severity="error" onClose={() => setError('')}>
-          {error}
-        </Alert>
+              <MenuItem value="TRAINER">Тренер</MenuItem>
+              <MenuItem value="ADMIN">Администратор</MenuItem>
+              <MenuItem value="PROMOTER">Промоутер</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
       )}
-      {Object.keys(formErrors).length > 0 && (
-        <Alert severity="warning">
-          Пожалуйста, исправьте {Object.keys(formErrors).length}{' '}
-          {Object.keys(formErrors).length === 1 ? 'ошибку' : 'ошибок'} в форме
-        </Alert>
-      )}
+      <Grid item xs={12} sm={4}>
+        <TextField
+          fullWidth
+          label="Фамилия"
+          value={formData.lastName}
+          onChange={(e) => handleInputChange('lastName', e.target.value)}
+          required
+          error={!!formErrors.lastName}
+          helperText={formErrors.lastName}
+        />
+      </Grid>
+      <Grid item xs={12} sm={4}>
+        <TextField
+          fullWidth
+          label="Имя"
+          value={formData.firstName}
+          onChange={(e) => handleInputChange('firstName', e.target.value)}
+          required
+          error={!!formErrors.firstName}
+          helperText={formErrors.firstName}
+        />
+      </Grid>
+      <Grid item xs={12} sm={4}>
+        <TextField
+          fullWidth
+          label="Отчество"
+          value={formData.middleName}
+          onChange={(e) => handleInputChange('middleName', e.target.value)}
+          error={!!formErrors.middleName}
+          helperText={formErrors.middleName}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField
+          fullWidth
+          label="Email"
+          type="email"
+          value={formData.email}
+          onChange={(e) => handleInputChange('email', e.target.value)}
+          required
+          error={!!formErrors.email}
+          helperText={formErrors.email}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <PasswordField
+          fullWidth
+          label="Новый пароль"
+          value={formData.password}
+          onChange={(e) => handleInputChange('password', e.target.value)}
+          placeholder="Оставьте пустым, чтобы не менять"
+          error={!!formErrors.password}
+          helperText={formErrors.password}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField
+          fullWidth
+          label="Телефон"
+          value={formData.phone}
+          onChange={(e) => handleInputChange('phone', e.target.value)}
+          error={!!formErrors.phone}
+          helperText={formErrors.phone}
+        />
+      </Grid>
 
-      {/* Header */}
-      <Box
-        sx={{
-          p: 2,
-          bgcolor: colors.card,
-          borderRadius: radii.card,
-          border: `1px solid ${colors.divider}`,
-        }}
-      >
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'flex-start', sm: 'center' }}
-          justifyContent="space-between"
-        >
-          <Box>
-            <Typography sx={{ fontSize: 20, fontWeight: 700, color: colors.text }}>
-              {editing
-                ? [formData.lastName, formData.firstName, formData.middleName].filter(Boolean).join(' ')
-                : displayName}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75 }} flexWrap="wrap">
-              <Chip
-                label={isAdmin || formData.role === 'ADMIN' ? 'Администратор' : 'Тренер'}
-                color={isAdmin || formData.role === 'ADMIN' ? 'primary' : 'secondary'}
-                size="small"
-              />
-              {employee?.isActive !== false && !isAdmin && (
-                <Chip label="Активен" color="success" size="small" variant="outlined" />
-              )}
-            </Stack>
-            <Stack spacing={0.5} sx={{ mt: 1.5 }}>
-              {(editing ? formData.phone : empUser?.phone) && (
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <PhoneOutlined sx={{ fontSize: 16, color: colors.textMuted }} />
-                  <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                    {editing ? formData.phone : empUser.phone}
-                  </Typography>
-                </Stack>
-              )}
-              {(editing ? formData.email : empUser?.email) && (
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <EmailOutlined sx={{ fontSize: 16, color: colors.textMuted }} />
-                  <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                    {editing ? formData.email : empUser.email}
-                  </Typography>
-                </Stack>
-              )}
-            </Stack>
-          </Box>
-
-          {!isAdmin && (
-            <Stack spacing={1} alignItems={{ xs: 'flex-start', sm: 'flex-end' }}>
-              <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                Схема зарплаты
-              </Typography>
-              <Chip
-                label={
-                  salaryScheme === TRAINER_FIXED_MONTHLY
-                    ? salarySchemeLabel(TRAINER_FIXED_MONTHLY)
-                    : 'На группах'
-                }
-                color={salaryScheme === TRAINER_FIXED_MONTHLY ? 'primary' : 'default'}
-                size="small"
-              />
-              {balance !== undefined && (
-                <Box>
-                  <Typography sx={{ fontSize: typography.hint, color: colors.textMuted, mb: 0.25 }}>
-                    Баланс
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontWeight: 700,
-                      color: Number(balance) > 0 ? 'success.main' : colors.text,
-                      cursor: onOpenEarnings ? 'pointer' : 'default',
-                      textDecoration: onOpenEarnings ? 'underline' : 'none',
-                      '&:hover': onOpenEarnings ? { opacity: 0.85 } : undefined,
-                    }}
-                    onClick={() => onOpenEarnings?.(employee)}
-                    title={onOpenEarnings ? 'Открыть зарплату' : undefined}
-                  >
-                    {Number(balance).toFixed(2)} ₽
-                  </Typography>
-                </Box>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </Box>
-
-      {/* Edit form / view details */}
-      {editing ? (
-        <Grid container spacing={2}>
-          {isOwner && (
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Роль</InputLabel>
-                <Select
-                  value={formData.role}
-                  label="Роль"
-                  onChange={(e) => handleInputChange('role', e.target.value)}
-                >
-                  <MenuItem value="TRAINER">Тренер</MenuItem>
-                  <MenuItem value="ADMIN">Администратор</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          )}
-          <Grid item xs={12} sm={4}>
+      {formData.role === 'ADMIN' && (
+        <>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="Фамилия"
-              value={formData.lastName}
-              onChange={(e) => handleInputChange('lastName', e.target.value)}
-              required
-              error={!!formErrors.lastName}
-              helperText={formErrors.lastName}
-            />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField
-              fullWidth
-              label="Имя"
-              value={formData.firstName}
-              onChange={(e) => handleInputChange('firstName', e.target.value)}
-              required
-              error={!!formErrors.firstName}
-              helperText={formErrors.firstName}
-            />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField
-              fullWidth
-              label="Отчество"
-              value={formData.middleName}
-              onChange={(e) => handleInputChange('middleName', e.target.value)}
-              error={!!formErrors.middleName}
-              helperText={formErrors.middleName}
+              label="Зона ответственности"
+              value={formData.responsibilityZone}
+              onChange={(e) => handleInputChange('responsibilityZone', e.target.value)}
             />
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => handleInputChange('email', e.target.value)}
-              required
-              error={!!formErrors.email}
-              helperText={formErrors.email}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <PasswordField
-              fullWidth
-              label="Новый пароль (оставьте пустым, чтобы не менять)"
-              value={formData.password}
-              onChange={(e) => handleInputChange('password', e.target.value)}
-              placeholder="Введите новый пароль или оставьте пустым"
-              error={!!formErrors.password}
-              helperText={formErrors.password}
+              label="Опыт работы"
+              value={formData.experience}
+              onChange={(e) => handleInputChange('experience', e.target.value)}
+              placeholder="Например: 5"
             />
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="Телефон"
-              value={formData.phone}
-              onChange={(e) => handleInputChange('phone', e.target.value)}
-              error={!!formErrors.phone}
-              helperText={formErrors.phone}
+              label="Должность"
+              value={formData.position}
+              onChange={(e) => handleInputChange('position', e.target.value)}
             />
           </Grid>
-
-          {formData.role === 'TRAINER' && (
-            <>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Квалификация"
-                  value={formData.qualification}
-                  onChange={(e) => handleInputChange('qualification', e.target.value)}
-                  placeholder="Например: 3-й дан черный пояс, Мастер спорта, КМС"
-                  helperText={
-                    formErrors.qualification ||
-                    'Укажите уровень квалификации тренера (дан, разряд, звание и т.д.)'
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Филиал</InputLabel>
+              <Select
+                value={formData.branchId}
+                label="Филиал"
+                onChange={(e) => handleInputChange('branchId', e.target.value)}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {branches.map((b) => (
+                  <MenuItem key={b.id} value={b.id}>
+                    {b.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Комментарий"
+              value={formData.comment}
+              onChange={(e) => handleInputChange('comment', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData.isActive}
+                  onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                />
+              }
+              label="Аккаунт активен"
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Typography sx={{ fontWeight: 700, fontSize: 14, mb: 1 }}>Права доступа</Typography>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                gap: 0.5,
+              }}
+            >
+              {ADMIN_PERMISSION_KEYS.map((key) => (
+                <FormControlLabel
+                  key={key}
+                  control={
+                    <Checkbox
+                      checked={Boolean(formData.permissions[key])}
+                      onChange={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          permissions: {
+                            ...prev.permissions,
+                            [key]: !prev.permissions[key],
+                          },
+                        }))
+                      }
+                    />
                   }
-                  error={!!formErrors.qualification}
+                  label={ADMIN_PERMISSION_LABELS[key]}
                 />
-              </Grid>
+              ))}
+            </Box>
+          </Grid>
+        </>
+      )}
+
+      {formData.role === 'PROMOTER' && (
+        <>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Дата рождения"
+              type="date"
+              value={formData.dateOfBirth}
+              onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Город / район работы"
+              value={formData.workArea}
+              onChange={(e) => handleInputChange('workArea', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Радиус работы (км)"
+              type="number"
+              value={formData.workRadiusKm}
+              onChange={(e) => handleInputChange('workRadiusKm', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Способ передвижения</InputLabel>
+              <Select
+                value={formData.transport}
+                label="Способ передвижения"
+                onChange={(e) => handleInputChange('transport', e.target.value)}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {PROMOTER_TRANSPORT_OPTIONS.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Цена за выход (₽)"
+              type="number"
+              value={formData.pricePerShift}
+              onChange={(e) => handleInputChange('pricePerShift', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Цена за клиента (₽)"
+              type="number"
+              value={formData.pricePerClient}
+              onChange={(e) => handleInputChange('pricePerClient', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Ссылка на соцсети"
+              value={formData.socialLink}
+              onChange={(e) => handleInputChange('socialLink', e.target.value)}
+              placeholder="https://"
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Дополнительная информация"
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData.isActive}
+                  onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                />
+              }
+              label="Аккаунт активен"
+            />
+          </Grid>
+        </>
+      )}
+
+      {formData.role === 'TRAINER' && (
+        <>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Квалификация"
+              value={formData.qualification}
+              onChange={(e) => handleInputChange('qualification', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Опыт (лет)"
+              type="number"
+              value={formData.experience}
+              onChange={(e) => handleInputChange('experience', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Специализация"
+              value={formData.specialization}
+              onChange={(e) => handleInputChange('specialization', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Дата начала работы"
+              type="date"
+              value={formData.hireDate}
+              onChange={(e) => handleInputChange('hireDate', e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Тренерская категория"
+              value={formData.coachCategory}
+              onChange={(e) => handleInputChange('coachCategory', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Судейская категория"
+              value={formData.judgeCategory}
+              onChange={(e) => handleInputChange('judgeCategory', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Достижения"
+              value={formData.achievements}
+              onChange={(e) => handleInputChange('achievements', e.target.value)}
+              helperText="Каждый пункт с новой строки"
+            />
+          </Grid>
+          {isOwner && (
+            <>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Опыт (лет)"
-                  type="number"
-                  value={formData.experience}
-                  onChange={(e) => handleInputChange('experience', e.target.value)}
-                  error={!!formErrors.experience}
-                  helperText={formErrors.experience}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Специализация"
-                  value={formData.specialization}
-                  onChange={(e) => handleInputChange('specialization', e.target.value)}
-                  placeholder="например: Карате, Тхэквондо"
-                  error={!!formErrors.specialization}
-                  helperText={formErrors.specialization}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Тренерская категория"
-                  value={formData.coachCategory}
-                  onChange={(e) => handleInputChange('coachCategory', e.target.value)}
-                  placeholder="Например: высшая, первая, вторая"
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Судейская категория"
-                  value={formData.judgeCategory}
-                  onChange={(e) => handleInputChange('judgeCategory', e.target.value)}
-                  placeholder="Например: всероссийская, первая"
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  label="Достижения"
-                  value={formData.achievements}
-                  onChange={(e) => handleInputChange('achievements', e.target.value)}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth error={!!formErrors.salaryScheme}>
-                  <InputLabel>Зарплата сотрудника</InputLabel>
+                <FormControl fullWidth>
+                  <InputLabel>Схема зарплаты</InputLabel>
                   <Select
                     value={formData.salaryScheme}
-                    label="Зарплата сотрудника"
-                    displayEmpty
-                    renderValue={(v) =>
-                      v === TRAINER_FIXED_MONTHLY ? 'Фикс плата в месяц' : 'На группах'
-                    }
+                    label="Схема зарплаты"
                     onChange={(e) => handleInputChange('salaryScheme', e.target.value)}
                   >
-                    <MenuItem value="">На группах</MenuItem>
+                    <MenuItem value="per_training_person">На группах</MenuItem>
                     <MenuItem value={TRAINER_FIXED_MONTHLY}>Фикс плата в месяц</MenuItem>
                   </Select>
-                  {formErrors.salaryScheme && (
-                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
-                      {formErrors.salaryScheme}
-                    </Typography>
-                  )}
                 </FormControl>
               </Grid>
               {formData.salaryScheme === TRAINER_FIXED_MONTHLY && (
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label={salaryRateFieldLabel(TRAINER_FIXED_MONTHLY)}
+                    label="Сумма в месяц"
                     type="number"
                     value={formData.salaryRate}
                     onChange={(e) => handleInputChange('salaryRate', e.target.value)}
-                    error={!!formErrors.salaryRate}
-                    helperText={formErrors.salaryRate || salarySchemeHint(TRAINER_FIXED_MONTHLY)}
                   />
                 </Grid>
               )}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Цена индивидуальной тренировки (₽)"
-                  type="number"
-                  value={formData.individualTrainingPrice || ''}
-                  onChange={(e) => handleInputChange('individualTrainingPrice', e.target.value)}
-                  helperText="Начисляется ученику при создании индивидуалки"
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formData.canViewAllGroups)}
-                      onChange={(e) => handleInputChange('canViewAllGroups', e.target.checked)}
-                      style={{ width: 20, height: 20 }}
-                    />
-                    <Typography variant="body2">
-                      Тренер может видеть расписание всех групп (не только своих)
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 4 }}>
-                    Если отключено, тренер будет видеть только тренировки своих групп
-                  </Typography>
-                </FormControl>
-              </Grid>
             </>
           )}
-        </Grid>
-      ) : (
-        !isAdmin && (
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: radii.card,
-              border: `1px solid ${colors.divider}`,
-            }}
-          >
-            <Typography sx={{ fontWeight: 600, mb: 1, fontSize: typography.label }}>
-              Профиль тренера
-            </Typography>
-            <Grid container spacing={1.5}>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="caption" color="text.secondary">
-                  Квалификация
-                </Typography>
-                <Typography variant="body2">{employee.qualification || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="caption" color="text.secondary">
-                  Опыт
-                </Typography>
-                <Typography variant="body2">
-                  {employee.experience != null ? `${employee.experience} лет` : '—'}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="caption" color="text.secondary">
-                  Специализация
-                </Typography>
-                <Typography variant="body2">{employee.specialization || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="caption" color="text.secondary">
-                  Тренерская категория
-                </Typography>
-                <Typography variant="body2">{employee.coachCategory || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="caption" color="text.secondary">
-                  Судейская категория
-                </Typography>
-                <Typography variant="body2">{employee.judgeCategory || '—'}</Typography>
-              </Grid>
-              {employee.achievements && (
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">
-                    Достижения
-                  </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                    {employee.achievements}
-                  </Typography>
-                </Grid>
-              )}
-            </Grid>
-          </Box>
-        )
-      )}
-
-      {/* Branches — trainers only */}
-      {!isAdmin && formData.role !== 'ADMIN' && employee?.id && (
-        <Box>
-          <Divider sx={{ mb: 2 }} />
-          <Typography sx={{ fontWeight: 600, mb: 2, fontSize: typography.label }}>
-            Филиалы
-          </Typography>
-          <Box sx={{ mb: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={8}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Выберите филиал</InputLabel>
-                  <Select
-                    value={selectedBranchId}
-                    onChange={(e) => setSelectedBranchId(e.target.value)}
-                    label="Выберите филиал"
-                    disabled={branchBusy}
-                  >
-                    {availableBranches.map((branch) => (
-                      <MenuItem key={branch.id} value={branch.id}>
-                        {branch.name} - {branch.address}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleAddBranch}
-                  disabled={!selectedBranchId || branchBusy}
-                  sx={{ height: '40px', textTransform: 'none' }}
-                >
-                  Добавить
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-          {(employee.branches?.length || 0) === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              У тренера пока нет привязанных филиалов
-            </Typography>
-          ) : (
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Название</TableCell>
-                    <TableCell>Адрес</TableCell>
-                    <TableCell>Телефон</TableCell>
-                    <TableCell>Действия</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {employee.branches?.map((trainerBranch: any) => (
-                    <TableRow key={trainerBranch.id}>
-                      <TableCell>{trainerBranch.branch?.name}</TableCell>
-                      <TableCell>{trainerBranch.branch?.address}</TableCell>
-                      <TableCell>{trainerBranch.branch?.phone || '-'}</TableCell>
-                      <TableCell>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          title="Удалить привязку"
-                          disabled={branchBusy}
-                          onClick={() => handleRemoveBranch(trainerBranch.branchId)}
-                        >
-                          <Delete />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Box>
-      )}
-
-      {/* Documents + attendance export — trainers only */}
-      {!isAdmin && employee?.id && (
-        <>
-          <Box sx={{ mt: 1 }}>
-            <Divider sx={{ mb: 2 }} />
-            <TrainerDocumentsPanel
-              trainerId={employee.id}
-              initialDocs={employee.documents}
-            />
-          </Box>
-          <Box sx={{ mt: 2 }}>
-            <AttendanceExcelExport
-              scope="trainer"
-              entityId={employee.id}
-              entityName={displayName}
-            />
-          </Box>
         </>
+      )}
+      <Grid item xs={12}>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            startIcon={<SaveOutlined />}
+            disabled={saving}
+            onClick={() => handleSave()}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            Сохранить
+          </Button>
+          <Button startIcon={<Close />} onClick={cancelEdit} sx={{ textTransform: 'none', fontWeight: 700 }}>
+            Отмена
+          </Button>
+        </Stack>
+      </Grid>
+    </Grid>
+  ) : null;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {error && (
+        <Alert severity="error" onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
+      {isAdmin ? (
+        <AdminCardDesktopView
+          employee={employee}
+          branches={branches}
+          onClose={requestClose}
+          onEdit={canEdit ? startEdit : undefined}
+          canEdit={canEdit}
+          selectedBranchId={selectedBranchId}
+          onSelectedBranchId={setSelectedBranchId}
+          availableBranches={availableBranches}
+          onAddBranch={handleAddBranch}
+          onRemoveBranch={handleRemoveBranch}
+          branchBusy={branchBusy}
+          editing={editing}
+          editForm={editForm}
+          onChangePassword={canEdit ? startEdit : undefined}
+          onResendInvite={() => setSnack('Приглашение отправлено повторно')}
+          onToggleAccess={handleToggleAccess}
+          accessBusy={accessBusy}
+        />
+      ) : isPromoter ? (
+        <PromoterCardDesktopView
+          employee={employee}
+          onClose={requestClose}
+          onEdit={canEdit ? startEdit : undefined}
+          canEdit={canEdit}
+          editing={editing}
+          editForm={editForm}
+        />
+      ) : (
+        <TrainerCardDesktopView
+          employee={employee}
+          branches={branches}
+          tab={cardTab}
+          onTab={setCardTab}
+          fromSection={fromSection}
+          onBack={requestClose}
+          onClose={requestClose}
+          onEdit={canEdit ? startEdit : undefined}
+          canEdit={canEdit}
+          selectedBranchId={selectedBranchId}
+          onSelectedBranchId={setSelectedBranchId}
+          availableBranches={availableBranches}
+          onAddBranch={handleAddBranch}
+          onRemoveBranch={handleRemoveBranch}
+          branchBusy={branchBusy}
+          groups={groups}
+          onOpenEarnings={onOpenEarnings ? () => onOpenEarnings(employee) : undefined}
+          stats={{
+            groupsCount: groups.length,
+            studentsCount: groups.reduce((s, g) => s + (Number(g.studentsCount) || 0), 0),
+            lessonsCount: 0,
+            payout: Number(employee?.balance ?? 0),
+          }}
+          editing={editing}
+          editForm={editForm}
+          documentsPanel={
+            employee?.id ? (
+              <Box>
+                <TrainerDocumentsPanel trainerId={employee.id} initialDocs={employee.documents} />
+                <Box sx={{ mt: 2 }}>
+                  <AttendanceExcelExport
+                    scope="trainer"
+                    entityId={employee.id}
+                    entityName={displayName}
+                  />
+                </Box>
+              </Box>
+            ) : null
+          }
+        />
       )}
 
       <Dialog
@@ -1031,8 +1289,10 @@ const TrainerCard: React.FC<TrainerCardProps> = ({
         <DialogContent>
           <Typography>
             {pendingRoleChange === 'ADMIN'
-              ? 'Тренер станет администратором. Запись тренера и привязки к филиалам будут удалены. Если у сотрудника есть группы — смена роли будет отклонена.'
-              : 'Администратор станет тренером. Будет создан профиль тренера — заполните квалификацию и зарплату при необходимости.'}
+              ? 'Сотрудник станет администратором. Запись тренера (если была) и привязки к филиалам будут удалены. Если у сотрудника есть группы — смена роли будет отклонена.'
+              : pendingRoleChange === 'PROMOTER'
+                ? 'Сотрудник станет промоутером. Профиль тренера (если был) будет удалён.'
+                : 'Сотрудник станет тренером. Будет создан профиль тренера — заполните квалификацию и зарплату при необходимости.'}
           </Typography>
         </DialogContent>
         <DialogActions>

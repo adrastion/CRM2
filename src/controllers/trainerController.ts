@@ -139,7 +139,12 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
             include: {
               branch: true
             }
-          }
+          },
+          _count: {
+            select: {
+              groups: { where: { isActive: true } },
+            },
+          },
         },
         skip,
         take: Number(limit),
@@ -212,7 +217,13 @@ export const getTrainers = async (req: AuthenticatedRequest, res: Response) => {
       myTrainerId = me?.id || null;
     }
     const sanitizeTrainer = (t: (typeof trainers)[number]) => {
-      const base = { ...t, employeeType: 'trainer' as const };
+      const groupsCount = Number((t as any)._count?.groups ?? 0);
+      const base = {
+        ...t,
+        employeeType: 'trainer' as const,
+        groupsCount,
+        workloadPct: Math.min(100, Math.round(groupsCount * 22 + (t.experience ? Math.min(20, Number(t.experience) * 2) : 0))),
+      };
       if (isPrivileged || t.id === myTrainerId) return base;
       const {
         balance: _b,
@@ -390,6 +401,32 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
+    const grantAccess =
+      req.body.grantAccess === undefined
+        ? true
+        : req.body.grantAccess === true || req.body.grantAccess === 'true';
+    const trainerActive =
+      req.body.isActive === undefined
+        ? true
+        : req.body.isActive === true || req.body.isActive === 'true';
+
+    let resolvedBranchId: string | null = null;
+    if (branchId) {
+      if (seniorBranchIds.length > 0) {
+        resolvedBranchId = String(branchId);
+      } else {
+        const b = await prisma.branch.findFirst({
+          where: { id: String(branchId), tenantId: req.tenant.id, isActive: true },
+          select: { id: true },
+        });
+        if (!b) {
+          res.status(400).json({ success: false, error: 'Филиал не найден' });
+          return;
+        }
+        resolvedBranchId = b.id;
+      }
+    }
+
     const user = await prisma.user.create({
       data: {
         email: normalizedEmail,
@@ -399,6 +436,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         middleName,
         phone,
         role: 'TRAINER',
+        isActive: grantAccess,
         tenantId: req.tenant.id
       }
     });
@@ -417,6 +455,7 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
         salaryAmount: salary.salaryAmount,
         salaryScheme: salary.salaryScheme,
         salaryRate: salary.salaryRate,
+        isActive: trainerActive,
         individualTrainingPrice:
           req.body.individualTrainingPrice !== undefined &&
           req.body.individualTrainingPrice !== null &&
@@ -427,21 +466,16 @@ export const createTrainer = async (req: AuthenticatedRequest, res: Response) =>
           seniorBranchIds.length > 0
             ? false
             : canViewAllGroups === true || canViewAllGroups === 'true',
-        tenantId: req.tenant.id
+        tenantId: req.tenant.id,
+        ...(resolvedBranchId
+          ? { branches: { create: [{ branchId: resolvedBranchId }] } }
+          : {}),
       },
       include: {
-        user: true
+        user: true,
+        branches: { include: { branch: true } },
       }
     });
-
-    if (seniorBranchIds.length > 0 && branchId) {
-      await prisma.trainerBranch.create({
-        data: {
-          trainerId: trainer.id,
-          branchId,
-        },
-      });
-    }
 
     res.status(201).json({
       success: true,
@@ -487,7 +521,7 @@ export const createSelfAsTrainer = async (req: AuthenticatedRequest, res: Respon
     const existing = await prisma.trainer.findFirst({
       where: { userId: req.user.id, tenantId: req.tenant.id },
     });
-    if (existing) {
+    if (existing && existing.isActive !== false) {
       res.status(400).json({
         success: false,
         error: 'У вас уже есть профиль тренера',
@@ -504,38 +538,107 @@ export const createSelfAsTrainer = async (req: AuthenticatedRequest, res: Respon
       judgeCategory,
       achievements,
       canViewAllGroups,
+      firstName,
+      lastName,
+      middleName,
+      phone,
+      email,
+      branchId,
     } = req.body;
     const salary = parseSalaryFields(req.body);
 
-    const trainer = await prisma.trainer.create({
-      data: {
-        userId: req.user.id,
-        qualification,
-        experience: experience ? parseInt(experience, 10) : undefined,
-        specialization,
-        coachCategory: coachCategory != null ? String(coachCategory).trim() || null : null,
-        judgeCategory: judgeCategory != null ? String(judgeCategory).trim() || null : null,
-        achievements: achievements != null ? String(achievements).trim() || null : null,
-        salaryType: salary.salaryType,
-        salaryAmount: salary.salaryAmount,
-        salaryScheme: salary.salaryScheme,
-        salaryRate: salary.salaryRate,
-        individualTrainingPrice:
-          req.body.individualTrainingPrice !== undefined &&
-          req.body.individualTrainingPrice !== null &&
-          req.body.individualTrainingPrice !== ''
-            ? parseFloat(String(req.body.individualTrainingPrice))
-            : null,
-        canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
-        tenantId: req.tenant.id,
-      },
-      include: { user: true },
-    });
+    const userPatch: Record<string, unknown> = {};
+    if (firstName != null && String(firstName).trim()) userPatch.firstName = String(firstName).trim();
+    if (lastName != null && String(lastName).trim()) userPatch.lastName = String(lastName).trim();
+    if (middleName !== undefined) {
+      userPatch.middleName = middleName ? String(middleName).trim() : null;
+    }
+    if (phone !== undefined) userPatch.phone = phone ? String(phone).trim() : null;
+    if (email != null && String(email).trim()) {
+      userPatch.email = String(email).trim().toLowerCase();
+    }
+    if (Object.keys(userPatch).length) {
+      await prisma.user.update({ where: { id: req.user.id }, data: userPatch });
+    }
+
+    let resolvedBranchId: string | null = null;
+    if (branchId) {
+      const branch = await prisma.branch.findFirst({
+        where: { id: String(branchId), tenantId: req.tenant.id, isActive: true },
+        select: { id: true },
+      });
+      if (!branch) {
+        res.status(400).json({ success: false, error: 'Филиал не найден' });
+        return;
+      }
+      resolvedBranchId = branch.id;
+    }
+
+    const trainerFields = {
+      qualification,
+      experience: experience ? parseInt(experience, 10) : undefined,
+      specialization,
+      coachCategory: coachCategory != null ? String(coachCategory).trim() || null : null,
+      judgeCategory: judgeCategory != null ? String(judgeCategory).trim() || null : null,
+      achievements: achievements != null ? String(achievements).trim() || null : null,
+      salaryType: salary.salaryType,
+      salaryAmount: salary.salaryAmount,
+      salaryScheme: salary.salaryScheme,
+      salaryRate: salary.salaryRate,
+      individualTrainingPrice:
+        req.body.individualTrainingPrice !== undefined &&
+        req.body.individualTrainingPrice !== null &&
+        req.body.individualTrainingPrice !== ''
+          ? parseFloat(String(req.body.individualTrainingPrice))
+          : null,
+      canViewAllGroups: canViewAllGroups === true || canViewAllGroups === 'true',
+      isActive: true,
+    };
+
+    // Soft-deleted профиль — реактивируем вместо создания дубликата (userId unique)
+    let trainer;
+    if (existing && existing.isActive === false) {
+      if (resolvedBranchId) {
+        await prisma.trainerBranch.upsert({
+          where: {
+            trainerId_branchId: {
+              trainerId: existing.id,
+              branchId: resolvedBranchId,
+            },
+          },
+          create: { trainerId: existing.id, branchId: resolvedBranchId },
+          update: {},
+        });
+      }
+      trainer = await prisma.trainer.update({
+        where: { id: existing.id },
+        data: trainerFields,
+        include: {
+          user: true,
+          branches: { include: { branch: true } },
+        },
+      });
+    } else {
+      trainer = await prisma.trainer.create({
+        data: {
+          userId: req.user.id,
+          ...trainerFields,
+          tenantId: req.tenant.id,
+          ...(resolvedBranchId
+            ? { branches: { create: [{ branchId: resolvedBranchId }] } }
+            : {}),
+        },
+        include: {
+          user: true,
+          branches: { include: { branch: true } },
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
       data: trainer,
-      message: 'Профиль тренера создан',
+      message: existing ? 'Профиль тренера восстановлен' : 'Профиль тренера создан',
     });
   } catch (error: any) {
     console.error('Create self as trainer error:', error);
@@ -569,6 +672,7 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
       coachCategory,
       judgeCategory,
       achievements,
+      hireDate,
       canViewAllGroups,
     } = req.body;
 
@@ -667,6 +771,14 @@ export const updateTrainer = async (req: AuthenticatedRequest, res: Response) =>
     }
     if (achievements !== undefined) {
       trainerUpdateData.achievements = String(achievements || '').trim() || null;
+    }
+    if (hireDate !== undefined) {
+      if (hireDate === null || hireDate === '') {
+        trainerUpdateData.hireDate = null;
+      } else {
+        const d = new Date(String(hireDate));
+        trainerUpdateData.hireDate = Number.isNaN(d.getTime()) ? null : d;
+      }
     }
 
     if (!isSelfOnly) {

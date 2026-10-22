@@ -2,7 +2,12 @@ import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
-import { listInbox, markInboxRead, fanoutNotification } from '../services/notificationFanout';
+import {
+  listInbox,
+  markInboxRead,
+  fanoutNotification,
+  syncSalaryPayoutReminderToInbox,
+} from '../services/notificationFanout';
 import {
   getUnreadTotalForActor,
   resolveClientActor,
@@ -22,6 +27,13 @@ export const getSchoolNotifications = asyncHandler(
       return;
     }
     const tenantId = req.tenant?.id || req.user.tenantId;
+    if (tenantId) {
+      await syncSalaryPayoutReminderToInbox({
+        userId: req.user.id,
+        tenantId,
+        role: req.user.role,
+      });
+    }
     const actor = await resolveStaffActor(req.user.id, tenantId);
     const chatUnread = await getUnreadTotalForActor(actor);
     const data = await listInbox('USER', req.user.id, {
@@ -38,6 +50,13 @@ export const getSchoolNotificationsUnreadCount = asyncHandler(
       return;
     }
     const tenantId = req.tenant?.id || req.user.tenantId;
+    if (tenantId) {
+      await syncSalaryPayoutReminderToInbox({
+        userId: req.user.id,
+        tenantId,
+        role: req.user.role,
+      });
+    }
     const unreadTotal = await getSchoolUserUnreadTotal(req.user.id, tenantId);
     res.json({ success: true, data: { unreadTotal } });
   }

@@ -25,10 +25,38 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add, Delete, Edit, ExpandMore, FitnessCenter } from '@mui/icons-material';
+import { Add, Delete, DescriptionOutlined, Edit, ExpandMore } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import { colors, radii } from '../theme/tokens';
+import CyclesBoard from '../components/trainingPlan/CyclesBoard';
+import CreateCycleWizardDialog from '../components/trainingPlan/CreateCycleWizardDialog';
+import CreateExerciseDialog from '../components/trainingPlan/CreateExerciseDialog';
+import ExerciseCatalog from '../components/trainingPlan/ExerciseCatalog';
+
+const PASTEL_CARD = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'] as const;
+
+const btnPrimary = {
+  textTransform: 'none' as const,
+  borderRadius: `${radii.button}px`,
+  bgcolor: colors.primary,
+  fontWeight: 600,
+  boxShadow: 'none',
+  '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+};
+
+const btnGhost = {
+  textTransform: 'none' as const,
+  borderRadius: `${radii.button}px`,
+  fontWeight: 600,
+  color: colors.textMuted,
+};
+
+const dialogPaper = {
+  borderRadius: { xs: 0, sm: `${radii.panel}px` },
+  bgcolor: colors.surface,
+};
 
 type Media = {
   id: string;
@@ -42,6 +70,16 @@ type Exercise = {
   id: string;
   title: string;
   description: string;
+  category?: string | null;
+  exerciseType?: string | null;
+  sets?: number | null;
+  reps?: number | null;
+  restSec?: number | null;
+  difficulty?: string | null;
+  inventory?: string | null;
+  tempo?: string | null;
+  videoUrl?: string | null;
+  tags?: string | null;
   media: Media[];
 };
 
@@ -65,15 +103,25 @@ type Template = {
 type GroupOpt = {
   id: string;
   name: string;
-  branch?: { name: string } | null;
+  branchId?: string;
+  trainerId?: string;
+  ageMin?: number | null;
+  ageMax?: number | null;
+  branch?: { id?: string; name: string } | null;
+  trainer?: { id: string; user?: { firstName?: string; lastName?: string } | null } | null;
   color?: string | null;
 };
 
 type Cycle = {
   id: string;
   title: string | null;
+  description?: string | null;
+  frequency?: string | null;
+  quantity?: number | null;
   dateFrom: string;
   dateTo: string;
+  updatedAt?: string;
+  createdBy?: { id: string; firstName: string; lastName: string } | null;
   groups: Array<{ groupId: string; group: { id: string; name: string; color?: string | null } }>;
   _count?: { sessionPlans: number };
 };
@@ -140,8 +188,9 @@ const MediaThumb: React.FC<{ mediaId: string; kind: string; mimeType: string }> 
         sx={{
           width: 160,
           height: 100,
-          bgcolor: 'action.hover',
-          borderRadius: 1,
+          bgcolor: colors.surface,
+          borderRadius: radii.panel,
+          border: `1px solid ${colors.divider}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -159,7 +208,7 @@ const MediaThumb: React.FC<{ mediaId: string; kind: string; mimeType: string }> 
       <video
         src={url}
         controls
-        style={{ maxWidth: 280, maxHeight: 180, borderRadius: 8, display: 'block' }}
+        style={{ maxWidth: 280, maxHeight: 180, borderRadius: 16, display: 'block', border: `1px solid ${colors.divider}` }}
       />
     );
   }
@@ -168,7 +217,7 @@ const MediaThumb: React.FC<{ mediaId: string; kind: string; mimeType: string }> 
     <img
       src={url}
       alt=""
-      style={{ maxWidth: 280, maxHeight: 180, objectFit: 'contain', borderRadius: 8, display: 'block' }}
+      style={{ maxWidth: 280, maxHeight: 180, objectFit: 'contain', borderRadius: 16, display: 'block', border: `1px solid ${colors.divider}` }}
     />
   );
 };
@@ -182,8 +231,6 @@ const TrainingPlan: React.FC = () => {
   const [exerciseQ, setExerciseQ] = useState('');
   const [exerciseDialog, setExerciseDialog] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
-  const [exTitle, setExTitle] = useState('');
-  const [exDesc, setExDesc] = useState('');
   const [expandedEx, setExpandedEx] = useState<string | false>(false);
 
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -206,12 +253,6 @@ const TrainingPlan: React.FC = () => {
   const [groups, setGroups] = useState<GroupOpt[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0);
-  const [cycleTitle, setCycleTitle] = useState('');
-  const [cycleGroups, setCycleGroups] = useState<GroupOpt[]>([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [preview, setPreview] = useState<Preview | null>(null);
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [cycleDetail, setCycleDetail] = useState<(Cycle & { preview: Preview }) | null>(null);
 
@@ -257,6 +298,11 @@ const TrainingPlan: React.FC = () => {
   }, [refreshAll]);
 
   useEffect(() => {
+    if (tab !== 1 || activeCycleId || cycles.length === 0) return;
+    void openCycle(cycles[0].id);
+  }, [tab, cycles, activeCycleId]);
+
+  useEffect(() => {
     const t = setTimeout(() => {
       loadExercises(exerciseQ.trim() || undefined).catch(() => undefined);
     }, 300);
@@ -265,34 +311,12 @@ const TrainingPlan: React.FC = () => {
 
   const openNewExercise = () => {
     setEditingExercise(null);
-    setExTitle('');
-    setExDesc('');
     setExerciseDialog(true);
   };
 
   const openEditExercise = (ex: Exercise) => {
     setEditingExercise(ex);
-    setExTitle(ex.title);
-    setExDesc(ex.description || '');
     setExerciseDialog(true);
-  };
-
-  const saveExercise = async () => {
-    try {
-      if (!exTitle.trim()) return;
-      if (editingExercise) {
-        await apiService.updateExercise(editingExercise.id, {
-          title: exTitle.trim(),
-          description: exDesc,
-        });
-      } else {
-        await apiService.createExercise({ title: exTitle.trim(), description: exDesc });
-      }
-      setExerciseDialog(false);
-      await loadExercises(exerciseQ.trim() || undefined);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось сохранить упражнение');
-    }
   };
 
   const removeExercise = async (id: string) => {
@@ -313,6 +337,45 @@ const TrainingPlan: React.FC = () => {
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Ошибка загрузки файла');
     }
+  };
+
+  const duplicateExercise = async (ex: Exercise) => {
+    try {
+      await apiService.createExercise({
+        title: `${ex.title} (копия)`,
+        description: ex.description,
+        category: ex.category || 'Другое',
+        exerciseType: ex.exerciseType || null,
+        sets: ex.sets ?? null,
+        reps: ex.reps ?? null,
+        restSec: ex.restSec ?? null,
+        difficulty: ex.difficulty || '',
+        inventory: ex.inventory || '',
+        tempo: ex.tempo || null,
+        videoUrl: ex.videoUrl || null,
+        tags: ex.tags || null,
+      });
+      await loadExercises(exerciseQ.trim() || undefined);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось дублировать упражнение');
+    }
+  };
+
+  const addExerciseToTemplate = (ex: Exercise) => {
+    setEditingTpl(null);
+    setTplTitle(ex.title);
+    setTplKind('WORKOUT');
+    setTplItems([
+      {
+        key: newKey(),
+        exerciseId: ex.id,
+        durationSec: '',
+        sets: ex.sets != null ? String(ex.sets) : '',
+        reps: ex.reps != null ? String(ex.reps) : '',
+        notes: '',
+      },
+    ]);
+    setTplDialog(true);
   };
 
   const removeMedia = async (exerciseId: string, mediaId: string) => {
@@ -388,45 +451,7 @@ const TrainingPlan: React.FC = () => {
     }
   };
 
-  const openWizard = () => {
-    setWizardStep(0);
-    setCycleTitle('');
-    setCycleGroups([]);
-    setDateFrom('');
-    setDateTo('');
-    setPreview(null);
-    setWizardOpen(true);
-  };
-
-  const runPreview = async () => {
-    try {
-      const data = await apiService.previewTrainingCycleDraft({
-        dateFrom,
-        dateTo,
-        groupIds: cycleGroups.map((g) => g.id),
-      });
-      setPreview(data);
-      setWizardStep(2);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось посчитать статистику');
-    }
-  };
-
-  const createCycle = async () => {
-    try {
-      const created = await apiService.createTrainingCycle({
-        title: cycleTitle.trim() || null,
-        dateFrom,
-        dateTo,
-        groupIds: cycleGroups.map((g) => g.id),
-      });
-      setWizardOpen(false);
-      await loadCycles();
-      await openCycle(created.id);
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось создать цикл');
-    }
-  };
+  const openWizard = () => setWizardOpen(true);
 
   const openCycle = async (id: string) => {
     try {
@@ -636,21 +661,47 @@ const TrainingPlan: React.FC = () => {
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
-        alignItems={{ xs: 'stretch', sm: 'center' }}
+        alignItems={{ xs: 'stretch', sm: 'flex-start' }}
         spacing={1.5}
         sx={{ mb: 2 }}
       >
         <Box>
-          <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FitnessCenter /> Тренировочный план
+          <Typography sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 800, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+            Тренировочный план
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Каталог упражнений, шаблоны разминки/тренировки и циклы по существующим занятиям
+          <Typography sx={{ fontSize: 13.5, color: '#6B7280', mt: 0.6, maxWidth: 640 }}>
+            {tab === 0
+              ? 'Каталог упражнений, шаблонов разминки/тренировки и циклы по существующим занятиям.'
+              : 'Собирайте циклы тренировок для конкретных групп из готовых упражнений и шаблонов.'}
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={() => setTemplatesOpen(true)}>
-          Шаблоны
-        </Button>
+        <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+          <Button
+            variant="outlined"
+            startIcon={<DescriptionOutlined />}
+            onClick={() => setTemplatesOpen(true)}
+            sx={{
+              textTransform: 'none',
+              borderRadius: '12px',
+              borderColor: '#C9D7FF',
+              color: colors.primary,
+              fontWeight: 700,
+              bgcolor: '#fff',
+              px: 1.75,
+              height: 40,
+            }}
+          >
+            Шаблоны
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={tab === 0 ? openNewExercise : openWizard}
+            sx={{ ...btnPrimary, borderRadius: '12px', px: 2, height: 40 }}
+          >
+            {tab === 0 ? 'Упражнение' : 'Цикл'}
+          </Button>
+        </Stack>
       </Stack>
 
       {error && (
@@ -659,263 +710,68 @@ const TrainingPlan: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Упражнения" />
-        <Tab label="Циклы" />
-      </Tabs>
-
       {tab === 0 && (
-        <Box>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
-            <TextField
-              size="small"
-              fullWidth
-              placeholder="Поиск упражнений…"
-              value={exerciseQ}
-              onChange={(e) => setExerciseQ(e.target.value)}
-            />
-            <Button variant="contained" startIcon={<Add />} onClick={openNewExercise} sx={{ whiteSpace: 'nowrap' }}>
-              Упражнение
-            </Button>
-          </Stack>
-
-          {loading && exercises.length === 0 ? (
-            <Typography color="text.secondary">Загрузка…</Typography>
-          ) : exercises.length === 0 ? (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography color="text.secondary">Каталог пуст — добавьте первое упражнение</Typography>
-            </Paper>
-          ) : (
-            exercises.map((ex) => (
-              <Accordion
-                key={ex.id}
-                expanded={expandedEx === ex.id}
-                onChange={(_, exp) => setExpandedEx(exp ? ex.id : false)}
-                disableGutters
-                sx={{ mb: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, '&:before': { display: 'none' } }}
-              >
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', pr: 1 }}>
-                    <Typography fontWeight={600} sx={{ flex: 1 }}>
-                      {ex.title}
-                    </Typography>
-                    {ex.media?.length > 0 && (
-                      <Chip size="small" label={`${ex.media.length} медиа`} />
-                    )}
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditExercise(ex);
-                      }}
-                    >
-                      <Edit fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeExercise(ex.id);
-                      }}
-                    >
-                      <Delete fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {ex.description && (
-                    <Typography variant="body2" sx={{ mb: 1.5, whiteSpace: 'pre-wrap' }}>
-                      {ex.description}
-                    </Typography>
-                  )}
-                  <Stack direction="row" flexWrap="wrap" gap={1.5} sx={{ mb: 1.5 }}>
-                    {(ex.media || []).map((m) => (
-                      <Box key={m.id} sx={{ position: 'relative' }}>
-                        <MediaThumb mediaId={m.id} kind={m.kind} mimeType={m.mimeType} />
-                        <IconButton
-                          size="small"
-                          color="error"
-                          sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper' }}
-                          onClick={() => removeMedia(ex.id, m.id)}
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
-                  </Stack>
-                  <Button component="label" size="small" variant="outlined">
-                    Загрузить фото/видео
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"
-                      onChange={(e) => onUploadMedia(ex.id, e.target.files?.[0] || null)}
-                    />
-                  </Button>
-                </AccordionDetails>
-              </Accordion>
-            ))
-          )}
-        </Box>
+        <ExerciseCatalog
+          exercises={exercises}
+          templates={templates}
+          loading={loading}
+          query={exerciseQ}
+          onQuery={setExerciseQ}
+          onCreate={openNewExercise}
+          onEdit={(ex) => {
+            const full = exercises.find((e) => e.id === ex.id) || ({ ...ex, media: ex.media || [] } as Exercise);
+            openEditExercise(full);
+          }}
+          onDuplicate={(ex) => {
+            const full = exercises.find((e) => e.id === ex.id) || ({ ...ex, media: ex.media || [] } as Exercise);
+            void duplicateExercise(full);
+          }}
+          onAddToTemplate={(ex) => {
+            const full = exercises.find((e) => e.id === ex.id) || ({ ...ex, media: ex.media || [] } as Exercise);
+            addExerciseToTemplate(full);
+          }}
+          onUpload={(id, file) => void onUploadMedia(id, file)}
+          onSwitchCycles={() => setTab(1)}
+        />
       )}
 
       {tab === 1 && (
-        <Box>
-          {!cycleDetail ? (
-            <>
-              <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Циклы
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={openWizard}>
-                  Новый цикл
-                </Button>
-              </Stack>
-              {cycles.length === 0 ? (
-                <Paper sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography color="text.secondary">
-                    Нет циклов. Создайте цикл по группам и диапазону дат — план привяжется к уже
-                    существующим тренировкам.
-                  </Typography>
-                </Paper>
-              ) : (
-                <Stack spacing={1}>
-                  {cycles.map((c) => (
-                    <Paper
-                      key={c.id}
-                      sx={{
-                        p: 1.5,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 1,
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        '&:hover': { bgcolor: 'action.hover' },
-                      }}
-                      onClick={() => openCycle(c.id)}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 180 }}>
-                        <Typography fontWeight={600}>
-                          {c.title || 'Цикл без названия'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {format(new Date(c.dateFrom), 'd MMM yyyy', { locale: ru })} —{' '}
-                          {format(new Date(c.dateTo), 'd MMM yyyy', { locale: ru })}
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" flexWrap="wrap" gap={0.5}>
-                        {c.groups?.map((g) => (
-                          <Chip key={g.groupId} size="small" label={g.group.name} />
-                        ))}
-                      </Stack>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`Планов: ${c._count?.sessionPlans ?? 0}`}
-                      />
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeCycle(c.id);
-                        }}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Paper>
-                  ))}
-                </Stack>
-              )}
-            </>
-          ) : (
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-                <Button size="small" onClick={() => setCycleDetail(null)}>
-                  ← К списку
-                </Button>
-                <Typography variant="h6" sx={{ flex: 1 }}>
-                  {cycleDetail.title || 'Цикл'}
-                </Typography>
-              </Stack>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Тренировок в периоде: <strong>{cycleDetail.preview?.total ?? 0}</strong>
-                {cycleDetail.preview?.byMonth &&
-                  Object.keys(cycleDetail.preview.byMonth).length > 0 && (
-                    <>
-                      {' '}
-                      · по месяцам:{' '}
-                      {Object.entries(cycleDetail.preview.byMonth)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join(', ')}
-                    </>
-                  )}
-              </Alert>
-              <Stack spacing={1}>
-                {(cycleDetail.preview?.trainings || []).map((t) => (
-                  <Paper
-                    key={t.id}
-                    sx={{
-                      p: 1.5,
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 1,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Box sx={{ flex: 1, minWidth: 200 }}>
-                      <Typography fontWeight={600}>{t.title}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {format(new Date(t.startTime), 'EEEE, d MMMM yyyy, HH:mm', { locale: ru })}
-                        {t.group ? ` · ${t.group.name}` : ''}
-                      </Typography>
-                    </Box>
-                    <Chip
-                      size="small"
-                      color={t.hasPlan ? 'success' : 'default'}
-                      label={t.hasPlan ? 'План есть' : 'План не задан'}
-                    />
-                    <Button size="small" variant="outlined" onClick={() => openSessionEditor(t)}>
-                      Редактировать план
-                    </Button>
-                  </Paper>
-                ))}
-              </Stack>
-            </Box>
-          )}
-        </Box>
+        <CyclesBoard
+          cycles={cycles}
+          groups={groups}
+          exercises={exercises}
+          templatesCount={templates.length}
+          recentTemplates={templates.filter((t) => {
+            const updated = (t as { updatedAt?: string }).updatedAt;
+            return updated ? Date.now() - new Date(updated).getTime() < 7 * 24 * 3600 * 1000 : false;
+          }).length}
+          selectedId={activeCycleId}
+          detail={cycleDetail}
+          onSelect={(id) => void openCycle(id)}
+          onCreate={openWizard}
+          onDelete={(id) => void removeCycle(id)}
+          onOpenExercise={openNewExercise}
+          onSwitchExercises={() => setTab(0)}
+          onChanged={() => {
+            if (activeCycleId) void openCycle(activeCycleId);
+            void loadCycles();
+          }}
+        />
       )}
 
-      {/* Exercise dialog */}
-      <Dialog open={exerciseDialog} onClose={() => setExerciseDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingExercise ? 'Редактировать упражнение' : 'Новое упражнение'}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Название"
-              fullWidth
-              required
-              value={exTitle}
-              onChange={(e) => setExTitle(e.target.value)}
-            />
-            <TextField
-              label="Описание"
-              fullWidth
-              multiline
-              minRows={3}
-              value={exDesc}
-              onChange={(e) => setExDesc(e.target.value)}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setExerciseDialog(false)}>Отмена</Button>
-          <Button variant="contained" onClick={saveExercise} disabled={!exTitle.trim()}>
-            Сохранить
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateExerciseDialog
+        open={exerciseDialog}
+        editing={editingExercise}
+        onClose={() => {
+          setExerciseDialog(false);
+          setEditingExercise(null);
+        }}
+        onError={(msg) => setError(msg)}
+        onSaved={async () => {
+          await loadExercises(exerciseQ.trim() || undefined);
+          await loadTemplates();
+        }}
+      />
 
       {/* Templates list */}
       <Dialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} maxWidth="md" fullWidth>
@@ -1077,111 +933,17 @@ const TrainingPlan: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Cycle wizard */}
-      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Новый цикл · шаг {wizardStep + 1} из 3</DialogTitle>
-        <DialogContent>
-          {wizardStep === 0 && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Название (необязательно)"
-                fullWidth
-                value={cycleTitle}
-                onChange={(e) => setCycleTitle(e.target.value)}
-              />
-              <Autocomplete
-                multiple
-                options={groups}
-                getOptionLabel={(g) =>
-                  g.branch?.name ? `${g.name} (${g.branch.name})` : g.name
-                }
-                value={cycleGroups}
-                onChange={(_, v) => setCycleGroups(v)}
-                renderInput={(params) => <TextField {...params} label="Группы" />}
-              />
-            </Stack>
-          )}
-          {wizardStep === 1 && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="С даты"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              <TextField
-                label="По дату"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </Stack>
-          )}
-          {wizardStep === 2 && preview && (
-            <Box sx={{ mt: 1 }}>
-              <Typography sx={{ mb: 1 }}>
-                Найдено тренировок: <strong>{preview.total}</strong>
-              </Typography>
-              {Object.keys(preview.byWeek || {}).length > 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  По неделям:{' '}
-                  {Object.entries(preview.byWeek)
-                    .slice(0, 8)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join('; ')}
-                  {Object.keys(preview.byWeek).length > 8 ? '…' : ''}
-                </Typography>
-              )}
-              {Object.keys(preview.byMonth || {}).length > 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  По месяцам:{' '}
-                  {Object.entries(preview.byMonth)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join(', ')}
-                </Typography>
-              )}
-              {preview.total === 0 && (
-                <Alert severity="warning" sx={{ mt: 2 }}>
-                  В выбранном диапазоне нет тренировок выбранных групп. Цикл всё равно можно создать.
-                </Alert>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWizardOpen(false)}>Отмена</Button>
-          {wizardStep > 0 && (
-            <Button onClick={() => setWizardStep((s) => s - 1)}>Назад</Button>
-          )}
-          {wizardStep === 0 && (
-            <Button
-              variant="contained"
-              disabled={cycleGroups.length === 0}
-              onClick={() => setWizardStep(1)}
-            >
-              Далее
-            </Button>
-          )}
-          {wizardStep === 1 && (
-            <Button
-              variant="contained"
-              disabled={!dateFrom || !dateTo}
-              onClick={runPreview}
-            >
-              Статистика
-            </Button>
-          )}
-          {wizardStep === 2 && (
-            <Button variant="contained" onClick={createCycle}>
-              Создать цикл
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+      <CreateCycleWizardDialog
+        open={wizardOpen}
+        groups={groups}
+        onClose={() => setWizardOpen(false)}
+        onError={(msg) => setError(msg)}
+        onCreated={async (cycleId) => {
+          setWizardOpen(false);
+          await loadCycles();
+          await openCycle(cycleId);
+        }}
+      />
 
       {/* Session plan editor */}
       <Dialog open={sessionOpen} onClose={() => setSessionOpen(false)} maxWidth="md" fullWidth>

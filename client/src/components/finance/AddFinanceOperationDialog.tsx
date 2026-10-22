@@ -1,32 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  Autocomplete,
   Box,
   Button,
   CircularProgress,
   Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
-  FormControlLabel,
+  IconButton,
   InputAdornment,
-  InputLabel,
   MenuItem,
-  Radio,
-  RadioGroup,
   Select,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import {
+  CalendarMonthOutlined,
+  CheckCircleOutline,
+  Close,
+  InfoOutlined,
+  PaymentsOutlined,
+} from '@mui/icons-material';
 import { DatePicker, DateTimePicker } from '@mui/x-date-pickers';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../../services/api';
 import { Client, FinanceDirection, Trainer } from '../../types';
-import { colors, typography } from '../../theme/tokens';
+import { colors } from '../../theme/tokens';
 import UnsavedChangesDialog from '../common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../../hooks/useUnsavedClose';
 
@@ -35,6 +36,9 @@ const ADD_OP_SYSTEM_TYPES: Array<{ code: string; name: string }> = [
   { code: 'membership_issue', name: 'Выдача абонемента' },
   { code: 'salary', name: 'Зарплата' },
   { code: 'bonus', name: 'Премия' },
+  { code: 'purchase', name: 'Покупка' },
+  { code: 'advertising', name: 'Реклама' },
+  { code: 'other', name: 'Прочее' },
 ];
 
 const CUSTOM_TYPE_VALUE = '__custom__';
@@ -64,6 +68,11 @@ const formatMoney = (value: number) => {
   return value < 0 ? `−${abs} ₽` : `${abs} ₽`;
 };
 
+const trainerLabel = (t: Trainer) =>
+  t.user
+    ? `${t.user.lastName || ''} ${t.user.firstName || ''} ${t.user.middleName || ''}`.trim()
+    : `Тренер #${t.id}`;
+
 export type AddFinanceSuccessPayload = {
   message: string;
   refresh?: Array<'operations' | 'salary' | 'memberships' | 'types'>;
@@ -75,6 +84,56 @@ interface Props {
   onSuccess?: (payload: AddFinanceSuccessPayload) => void;
 }
 
+const fieldSx = {
+  '& .MuiOutlinedInput-root': {
+    borderRadius: '10px',
+    bgcolor: '#fff',
+    '& fieldset': { borderColor: '#E5E9F2' },
+    '&:hover fieldset': { borderColor: '#C9D7FF' },
+    '&.Mui-focused fieldset': { borderColor: colors.primary },
+  },
+};
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#1B2438', mb: 0.65 }}>
+      {children}
+      {required && (
+        <Box component="span" sx={{ color: '#EF4444', ml: 0.35 }}>
+          *
+        </Box>
+      )}
+    </Typography>
+  );
+}
+
+function SectionHead({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, mt: 0.5 }}>
+      <Box
+        sx={{
+          width: 28,
+          height: 28,
+          borderRadius: '8px',
+          bgcolor: '#EEF4FF',
+          color: colors.primary,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </Box>
+      <Typography sx={{ fontWeight: 800, fontSize: 14, color: '#1B2438' }}>{title}</Typography>
+    </Stack>
+  );
+}
+
+/**
+ * Диалог создания финансовой операции.
+ * Стиль — по макету; функционал — как до UI-редизайна (без статуса и notes-метаданных).
+ */
 const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }) => {
   const [formDirection, setFormDirection] = useState<FinanceDirection>('expense');
   const [formTypeCode, setFormTypeCode] = useState('rent');
@@ -234,6 +293,9 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
     if (formTypeCode === 'rent') {
       return Boolean(formTitle.trim() && formAmount && Number(formAmount) > 0);
     }
+    if (formTypeCode === 'purchase' || formTypeCode === 'advertising' || formTypeCode === 'other') {
+      return Boolean(formTitle.trim() && formAmount && Number(formAmount) > 0);
+    }
     if (formTypeCode === 'membership_issue') {
       return Boolean(formClientId && formMembershipId && formMembershipStartDate);
     }
@@ -273,6 +335,7 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
     }
     setSavingAdd(true);
     setError(null);
+    const notes = formNotes.trim() || undefined;
     try {
       if (formTypeCode === 'membership_issue') {
         await apiService.createClientMembership({
@@ -295,7 +358,7 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
           amount: Number(formAmount),
           periodLabel: formTitle.trim() || undefined,
           occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
+          notes,
         });
         discard();
         onSuccess?.({
@@ -316,7 +379,7 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
           title: formTitle.trim() || `Премия — ${name}`,
           amount: Number(formAmount),
           occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
+          notes,
           trainerId: formTrainerId,
         });
         discard();
@@ -324,14 +387,19 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
         return true;
       }
 
-      if (formTypeCode === 'rent') {
+      if (
+        formTypeCode === 'rent' ||
+        formTypeCode === 'purchase' ||
+        formTypeCode === 'advertising' ||
+        formTypeCode === 'other'
+      ) {
         await apiService.createFinanceOperation({
           direction: 'expense',
-          typeCode: 'rent',
+          typeCode: formTypeCode,
           title: formTitle.trim(),
           amount: Number(formAmount),
           occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
+          notes,
         });
         discard();
         onSuccess?.({ message: 'Операция сохранена', refresh: ['operations'] });
@@ -362,7 +430,7 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
           title,
           amount: Number(formAmount),
           occurredAt: formOccurredAt?.toISOString(),
-          notes: formNotes || undefined,
+          notes,
           trainerId: customSubject === 'trainer' ? formTrainerId : undefined,
           clientId: customSubject === 'client' ? formClientId : undefined,
           allocation: customAllocation,
@@ -392,6 +460,27 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
     onSave: handleSaveOperation,
   });
 
+  const onTypeChange = (code: string) => {
+    setFormTypeCode(code);
+    setFormTrainerId('');
+    setFormClientId('');
+    setFormMembershipId('');
+    setFormTitle('');
+    setFormAmount('');
+    if (code !== CUSTOM_TYPE_VALUE) setNewTypeName('');
+  };
+
+  const needsTrainer = formTypeCode === 'salary' || formTypeCode === 'bonus';
+  const showTitle =
+    formTypeCode !== 'membership_issue' &&
+    (formTypeCode === 'rent' ||
+      formTypeCode === 'purchase' ||
+      formTypeCode === 'advertising' ||
+      formTypeCode === 'other' ||
+      formTypeCode === 'salary' ||
+      formTypeCode === 'bonus' ||
+      isCustomType);
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
       <Dialog
@@ -401,37 +490,72 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
             addUnsaved.requestClose(reason);
           }
         }}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            boxShadow: '0 24px 64px rgba(27, 36, 56, 0.2)',
+            overflow: 'hidden',
+            maxWidth: 720,
+          },
+        }}
       >
-        <DialogTitle>Добавить операцию</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {error && (
-              <Alert severity="error" onClose={() => setError(null)}>
-                {error}
-              </Alert>
-            )}
-            {refsLoading && (
-              <Box display="flex" justifyContent="center">
-                <CircularProgress size={28} />
-              </Box>
-            )}
-            <FormControl fullWidth>
-              <InputLabel>Тип операции</InputLabel>
+        <Box sx={{ px: 2.75, pt: 2.25, pb: 1.25, position: 'relative' }}>
+          <IconButton
+            onClick={() => !savingAdd && discard()}
+            sx={{ position: 'absolute', top: 14, right: 14, color: '#8B93A7' }}
+          >
+            <Close />
+          </IconButton>
+          <Stack direction="row" spacing={1.25} alignItems="flex-start" sx={{ pr: 4 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '12px',
+                bgcolor: '#EEF4FF',
+                color: colors.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <PaymentsOutlined />
+            </Box>
+            <Box>
+              <Typography sx={{ fontWeight: 800, fontSize: 20, color: '#1B2438' }}>
+                Добавить финансовую операцию
+              </Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#8B93A7', mt: 0.35 }}>
+                Введите информацию о финансовой операции. Она будет отображена в отчётах.
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+
+        <Box sx={{ px: 2.75, pb: 1, maxHeight: '70vh', overflow: 'auto' }}>
+          {error && (
+            <Typography sx={{ color: '#DC2626', fontWeight: 650, fontSize: 13, mb: 1.5 }}>
+              {error}
+            </Typography>
+          )}
+          {refsLoading && (
+            <Box display="flex" justifyContent="center" py={2}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
+
+          <SectionHead icon={<InfoOutlined sx={{ fontSize: 18 }} />} title="Основная информация" />
+
+          <Box sx={{ mb: 1.25 }}>
+            <FieldLabel required>Тип операции</FieldLabel>
+            <FormControl fullWidth size="small">
               <Select
-                label="Тип операции"
                 value={formTypeCode}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setFormTypeCode(v);
-                  setFormTrainerId('');
-                  setFormClientId('');
-                  setFormMembershipId('');
-                  setFormTitle('');
-                  setFormAmount('');
-                  if (v !== CUSTOM_TYPE_VALUE) setNewTypeName('');
-                }}
+                onChange={(e) => onTypeChange(e.target.value)}
+                sx={{ borderRadius: '10px', fontWeight: 650 }}
               >
                 {ADD_OP_SYSTEM_TYPES.map((t) => (
                   <MenuItem key={t.code} value={t.code}>
@@ -441,95 +565,76 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
                 <MenuItem value={CUSTOM_TYPE_VALUE}>Добавить тип…</MenuItem>
               </Select>
             </FormControl>
+          </Box>
 
-            {isCustomType && (
-              <>
+          {isCustomType && (
+            <Box sx={{ mb: 1.25, display: 'grid', gap: 1.25 }}>
+              <Box>
+                <FieldLabel required>Название типа</FieldLabel>
                 <TextField
-                  label="Название типа"
+                  size="small"
                   fullWidth
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
                   placeholder="Например: Компенсация"
+                  sx={fieldSx}
                 />
-                <FormControl>
-                  <Typography sx={{ mb: 0.5 }}>Субъект</Typography>
-                  <RadioGroup
-                    row
-                    value={customSubject}
-                    onChange={(e) => setCustomSubject(e.target.value as CustomSubject)}
-                  >
-                    <FormControlLabel value="trainer" control={<Radio />} label="Тренер" />
-                    <FormControlLabel value="client" control={<Radio />} label="Клиент" />
-                  </RadioGroup>
-                </FormControl>
-                {customSubject === 'trainer' ? (
-                  <FormControl fullWidth>
-                    <InputLabel>Тренер</InputLabel>
-                    <Select
-                      label="Тренер"
-                      value={formTrainerId}
-                      onChange={(e) => setFormTrainerId(e.target.value)}
-                    >
-                      {trainers.map((t) => (
-                        <MenuItem key={t.id} value={t.id}>
-                          {t.user?.lastName} {t.user?.firstName}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                ) : (
-                  <FormControl fullWidth>
-                    <InputLabel>Клиент</InputLabel>
-                    <Select
-                      label="Клиент"
-                      value={formClientId}
-                      onChange={(e) => setFormClientId(e.target.value)}
-                    >
-                      {clients.map((c) => (
-                        <MenuItem key={c.id} value={c.id}>
-                          {formatClientOptionLabel(c)}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-                <FormControl fullWidth>
-                  <InputLabel>Куда начислять</InputLabel>
-                  <Select
-                    label="Куда начислять"
-                    value={customAllocation}
-                    onChange={(e) => setCustomAllocation(e.target.value as CustomAllocation)}
-                  >
-                    {customSubject === 'trainer'
-                      ? [
-                          <MenuItem key="accrued" value="accrued">
-                            Начислено
-                          </MenuItem>,
-                          <MenuItem key="paid" value="paid">
-                            Выплачено
-                          </MenuItem>,
-                        ]
-                      : [
-                          <MenuItem key="debit" value="debit">
-                            Списать с баланса
-                          </MenuItem>,
-                          <MenuItem key="credit" value="credit">
-                            Пополнить баланс
-                          </MenuItem>,
-                        ]}
-                  </Select>
-                </FormControl>
-              </>
-            )}
+              </Box>
+              <FormControl fullWidth size="small">
+                <FieldLabel>Субъект</FieldLabel>
+                <Select
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value as CustomSubject)}
+                  sx={{ borderRadius: '10px', fontWeight: 650 }}
+                >
+                  <MenuItem value="trainer">Тренер</MenuItem>
+                  <MenuItem value="client">Клиент</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <FieldLabel>Куда начислять</FieldLabel>
+                <Select
+                  value={customAllocation}
+                  onChange={(e) => setCustomAllocation(e.target.value as CustomAllocation)}
+                  sx={{ borderRadius: '10px', fontWeight: 650 }}
+                >
+                  {customSubject === 'trainer'
+                    ? [
+                        <MenuItem key="accrued" value="accrued">
+                          Начислено
+                        </MenuItem>,
+                        <MenuItem key="paid" value="paid">
+                          Выплачено
+                        </MenuItem>,
+                      ]
+                    : [
+                        <MenuItem key="debit" value="debit">
+                          Списать с баланса
+                        </MenuItem>,
+                        <MenuItem key="credit" value="credit">
+                          Пополнить баланс
+                        </MenuItem>,
+                      ]}
+                </Select>
+              </FormControl>
+            </Box>
+          )}
 
-            {formTypeCode === 'membership_issue' && (
-              <>
-                <FormControl fullWidth>
-                  <InputLabel>Клиент</InputLabel>
+          {formTypeCode === 'membership_issue' ? (
+            <Box sx={{ mb: 1.25, display: 'grid', gap: 1.25 }}>
+              <Box>
+                <FieldLabel required>Клиент</FieldLabel>
+                <FormControl fullWidth size="small">
                   <Select
-                    label="Клиент"
                     value={formClientId}
+                    displayEmpty
                     onChange={(e) => setFormClientId(e.target.value)}
+                    sx={{ borderRadius: '10px', fontWeight: 650 }}
+                    renderValue={(v) => {
+                      if (!v) return <span style={{ color: '#8B93A7' }}>Выберите клиента</span>;
+                      const c = clients.find((x) => x.id === v);
+                      return c ? formatClientOptionLabel(c) : v;
+                    }}
                   >
                     {clients.map((c) => (
                       <MenuItem key={c.id} value={c.id}>
@@ -538,13 +643,23 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Абонемент</InputLabel>
+              </Box>
+              <Box>
+                <FieldLabel required>Абонемент</FieldLabel>
+                <FormControl fullWidth size="small">
                   <Select
-                    label="Абонемент"
                     value={formMembershipId}
-                    onChange={(e) => setFormMembershipId(e.target.value)}
+                    displayEmpty
                     disabled={membershipCatalogLoading}
+                    onChange={(e) => setFormMembershipId(e.target.value)}
+                    sx={{ borderRadius: '10px', fontWeight: 650 }}
+                    renderValue={(v) => {
+                      if (!v) return <span style={{ color: '#8B93A7' }}>Выберите абонемент</span>;
+                      const m = membershipCatalog.find((x) => x.id === v);
+                      return m
+                        ? `${m.name}${m.price != null ? ` — ${Number(m.price).toLocaleString('ru-RU')} ₽` : ''}`
+                        : v;
+                    }}
                   >
                     {membershipCatalog.map((m) => (
                       <MenuItem key={m.id} value={m.id}>
@@ -554,102 +669,210 @@ const AddFinanceOperationDialog: React.FC<Props> = ({ open, onClose, onSuccess }
                     ))}
                   </Select>
                 </FormControl>
+              </Box>
+              <Box>
+                <FieldLabel required>С какого числа действует</FieldLabel>
                 <DatePicker
-                  label="С какого числа действует абонемент"
                   value={formMembershipStartDate}
                   onChange={setFormMembershipStartDate}
-                  slotProps={{ textField: { fullWidth: true, required: true } }}
+                  format="dd.MM.yyyy"
+                  slotProps={{ textField: { size: 'small', fullWidth: true, sx: fieldSx } }}
                 />
-                {membershipCatalogLoading && (
-                  <Box display="flex" justifyContent="center">
-                    <CircularProgress size={24} />
-                  </Box>
-                )}
-              </>
-            )}
+              </Box>
+              {formMembershipId && (
+                <Typography sx={{ fontSize: 13, fontWeight: 650, color: '#8B93A7' }}>
+                  Сумма с тарифа: {formatMoney(Number(formAmount) || 0)}
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <>
+              {(needsTrainer || (isCustomType && customSubject === 'trainer')) && (
+                <Box sx={{ mb: 1.25 }}>
+                  <FieldLabel required>Тренер</FieldLabel>
+                  <Autocomplete
+                    size="small"
+                    options={trainers}
+                    value={trainers.find((t) => t.id === formTrainerId) || null}
+                    onChange={(_e, v) => setFormTrainerId(v?.id || '')}
+                    getOptionLabel={(t) => trainerLabel(t)}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder="Поиск тренера…" sx={fieldSx} />
+                    )}
+                  />
+                </Box>
+              )}
 
-            {(formTypeCode === 'salary' || formTypeCode === 'bonus') && (
-              <FormControl fullWidth>
-                <InputLabel>Тренер</InputLabel>
-                <Select
-                  label="Тренер"
-                  value={formTrainerId}
-                  onChange={(e) => setFormTrainerId(e.target.value)}
-                >
-                  {trainers.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>
-                      {t.user?.lastName} {t.user?.firstName}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
+              {isCustomType && customSubject === 'client' && (
+                <Box sx={{ mb: 1.25 }}>
+                  <FieldLabel required>Клиент</FieldLabel>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={formClientId}
+                      displayEmpty
+                      onChange={(e) => setFormClientId(e.target.value)}
+                      sx={{ borderRadius: '10px', fontWeight: 650 }}
+                      renderValue={(v) => {
+                        if (!v) return <span style={{ color: '#8B93A7' }}>Выберите клиента</span>;
+                        const c = clients.find((x) => x.id === v);
+                        return c ? formatClientOptionLabel(c) : v;
+                      }}
+                    >
+                      {clients.map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          {formatClientOptionLabel(c)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
 
-            {formTypeCode !== 'membership_issue' && (
-              <TextField
-                label="Наименование операции"
-                fullWidth
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-                required={formTypeCode === 'rent'}
-              />
-            )}
+              {showTitle && (
+                <Box sx={{ mb: 1.25 }}>
+                  <FieldLabel
+                    required={
+                      formTypeCode === 'rent' ||
+                      formTypeCode === 'purchase' ||
+                      formTypeCode === 'advertising' ||
+                      formTypeCode === 'other'
+                    }
+                  >
+                    Наименование операции
+                  </FieldLabel>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    placeholder={
+                      formTypeCode === 'salary'
+                        ? 'Период / подпись выплаты (необязательно)'
+                        : 'Например: Аренда зала за октябрь'
+                    }
+                    sx={fieldSx}
+                  />
+                </Box>
+              )}
 
-            {formTypeCode !== 'membership_issue' && (
-              <TextField
-                label="Сумма"
-                fullWidth
-                value={formAmount}
-                onChange={(e) => setFormAmount(e.target.value)}
-                InputProps={{ endAdornment: <InputAdornment position="end">₽</InputAdornment> }}
-                required
-              />
-            )}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1.25,
+                  mb: 1.25,
+                }}
+              >
+                <Box>
+                  <FieldLabel required>Сумма</FieldLabel>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(e.target.value)}
+                    placeholder="0"
+                    sx={fieldSx}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Typography sx={{ fontWeight: 800, color: colors.primary }}>₽</Typography>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <FieldLabel required>Дата и время</FieldLabel>
+                  <DateTimePicker
+                    value={formOccurredAt}
+                    onChange={setFormOccurredAt}
+                    format="dd.MM.yyyy HH:mm"
+                    ampm={false}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        fullWidth: true,
+                        sx: fieldSx,
+                        InputProps: {
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <CalendarMonthOutlined sx={{ fontSize: 18, color: colors.primary }} />
+                            </InputAdornment>
+                          ),
+                        },
+                      },
+                    }}
+                  />
+                </Box>
+              </Box>
 
-            {formTypeCode === 'membership_issue' && formMembershipId && (
-              <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
-                Сумма с тарифа: {formatMoney(Number(formAmount) || 0)}
-              </Typography>
-            )}
+              <Box sx={{ mb: 2 }}>
+                <FieldLabel>Комментарий</FieldLabel>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  placeholder="Необязательно"
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  sx={fieldSx}
+                />
+              </Box>
+            </>
+          )}
+        </Box>
 
-            {formTypeCode !== 'membership_issue' && (
-              <DateTimePicker
-                label="Дата и время"
-                value={formOccurredAt}
-                onChange={setFormOccurredAt}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
-            )}
-            <TextField
-              label="Комментарий"
-              fullWidth
-              multiline
-              minRows={2}
-              value={formNotes}
-              onChange={(e) => setFormNotes(e.target.value)}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={discard} sx={{ textTransform: 'none' }} disabled={savingAdd}>
+        <Box
+          sx={{
+            px: 2.75,
+            py: 1.75,
+            borderTop: '1px solid #EEF1F6',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 1.25,
+            bgcolor: '#FAFBFD',
+          }}
+        >
+          <Button
+            onClick={() => !savingAdd && discard()}
+            disabled={savingAdd}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#8B93A7' }}
+          >
             Отмена
           </Button>
           <Button
             variant="contained"
-            disabled={!canSaveAddOperation || savingAdd || refsLoading}
+            disabled={savingAdd || !canSaveAddOperation}
             onClick={() => void handleSaveOperation()}
-            sx={{ textTransform: 'none', bgcolor: colors.primary }}
+            startIcon={
+              savingAdd ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <CheckCircleOutline sx={{ fontSize: 18 }} />
+              )
+            }
+            sx={{
+              textTransform: 'none',
+              fontWeight: 800,
+              borderRadius: '10px',
+              px: 2.25,
+              bgcolor: colors.primary,
+              boxShadow: 'none',
+              '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+            }}
           >
-            {savingAdd ? 'Сохранение…' : 'Сохранить операцию'}
+            Сохранить операцию
           </Button>
-        </DialogActions>
+        </Box>
       </Dialog>
+
       <UnsavedChangesDialog
         open={addUnsaved.confirmOpen}
-        saving={addUnsaved.saving}
-        onSave={addUnsaved.save}
-        onDiscard={addUnsaved.discard}
         onStay={addUnsaved.stay}
+        onDiscard={addUnsaved.discard}
+        onSave={addUnsaved.save}
+        saving={savingAdd}
       />
     </LocalizationProvider>
   );

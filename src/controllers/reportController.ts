@@ -233,6 +233,33 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
       trainerMonthlyEarnings = Number(ledgerAgg._sum.amount || 0);
     }
 
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const twoWeeksAgo = new Date(now);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const pct = (cur: number, prev: number) => {
+      if (prev <= 0) return cur > 0 ? 100 : 0;
+      return Math.round(((cur - prev) / prev) * 100);
+    };
+    const [clientsNow, clientsPrev, payNow, payPrev] = await Promise.all([
+      prisma.client.count({ where: { tenantId, isActive: true, createdAt: { gte: weekAgo } } }),
+      prisma.client.count({
+        where: { tenantId, isActive: true, createdAt: { gte: twoWeeksAgo, lt: weekAgo } },
+      }),
+      prisma.payment.aggregate({
+        where: { tenantId, status: 'paid', paidAt: { gte: weekAgo } },
+        _sum: { amount: true },
+      }),
+      prisma.payment.aggregate({
+        where: { tenantId, status: 'paid', paidAt: { gte: twoWeeksAgo, lt: weekAgo } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const weekDeltas = {
+      clients: pct(clientsNow, clientsPrev),
+      revenue: pct(Number(payNow._sum.amount || 0), Number(payPrev._sum.amount || 0)),
+    };
+
     res.json({
       success: true,
       data: {
@@ -244,7 +271,8 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
         monthlyRevenue,
         attendanceRate,
         upcomingTrainings,
-        trainerMonthlyEarnings: trainer ? trainerMonthlyEarnings : undefined
+        trainerMonthlyEarnings: trainer ? trainerMonthlyEarnings : undefined,
+        weekDeltas,
       },
       message: 'Статистика панели успешно получена'
     });
@@ -596,6 +624,162 @@ export const getRecentActivity = async (req: AuthenticatedRequest, res: Response
     });
   }
 };
+
+/** KPI календаря: counts + delta за выбранный 7-дневный интервал vs предыдущие 7 дней. */
+export const getScheduleSummary = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      res.status(401).json({ success: false, error: 'Не авторизован' });
+      return;
+    }
+
+    const startRaw = req.query.startDate ? String(req.query.startDate) : undefined;
+    const endRaw = req.query.endDate ? String(req.query.endDate) : undefined;
+    const branchId = req.query.branchId ? String(req.query.branchId) : undefined;
+    const hallId = req.query.hallId ? String(req.query.hallId) : undefined;
+    const trainerId = req.query.trainerId ? String(req.query.trainerId) : undefined;
+    const groupId = req.query.groupId ? String(req.query.groupId) : undefined;
+
+    const now = new Date();
+    const rangeStart = startRaw ? new Date(startRaw) : startOfLocalDay(addDaysLocal(now, -6));
+    const rangeEnd = endRaw ? new Date(endRaw) : endOfLocalDay(now);
+    if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime())) {
+      res.status(400).json({ success: false, error: 'Некорректный интервал дат' });
+      return;
+    }
+
+    const ms = rangeEnd.getTime() - rangeStart.getTime();
+    const prevEnd = new Date(rangeStart.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - ms);
+
+    const trainingWhereBase: Record<string, unknown> = {
+      tenantId,
+      isCancelled: false,
+      ...(branchId ? { branchId } : {}),
+      ...(hallId ? { hallId } : {}),
+      ...(trainerId ? { trainerId } : {}),
+      ...(groupId ? { groupId } : {}),
+    };
+
+    const competitionWhereBase: Record<string, unknown> = {
+      tenantId,
+    };
+
+    const eventWhereBase: Record<string, unknown> = {
+      tenantId,
+      ...(branchId ? { branchId } : {}),
+    };
+
+    const taskWhereBase: Record<string, unknown> = {
+      tenantId,
+      status: { not: 'CANCELLED' },
+    };
+
+    // Trainer scope
+    if (req.user?.role === 'TRAINER') {
+      const trainer = await prisma.trainer.findFirst({
+        where: { userId: req.user.id, tenantId },
+      });
+      if (trainer && !trainer.canViewAllGroups) {
+        trainingWhereBase.trainerId = trainer.id;
+      }
+    }
+
+    const countInRange = async (kind: 'trainings' | 'competitions' | 'events' | 'tasks', from: Date, to: Date) => {
+      if (kind === 'trainings') {
+        return prisma.training.count({
+          where: {
+            ...trainingWhereBase,
+            startTime: { gte: from, lte: to },
+          },
+        });
+      }
+      if (kind === 'competitions') {
+        return prisma.competition.count({
+          where: {
+            ...competitionWhereBase,
+            startDate: { lte: to },
+            endDate: { gte: from },
+          },
+        });
+      }
+      if (kind === 'events') {
+        return prisma.schoolEvent.count({
+          where: {
+            ...eventWhereBase,
+            startTime: { gte: from, lte: to },
+          },
+        });
+      }
+      return prisma.staffTask.count({
+        where: {
+          ...taskWhereBase,
+          dueAt: { gte: from, lte: to },
+        },
+      });
+    };
+
+    const [
+      trainings,
+      competitions,
+      tasks,
+      events,
+      prevTrainings,
+      prevCompetitions,
+      prevTasks,
+      prevEvents,
+    ] = await Promise.all([
+      countInRange('trainings', rangeStart, rangeEnd),
+      countInRange('competitions', rangeStart, rangeEnd),
+      countInRange('tasks', rangeStart, rangeEnd),
+      countInRange('events', rangeStart, rangeEnd),
+      countInRange('trainings', prevStart, prevEnd),
+      countInRange('competitions', prevStart, prevEnd),
+      countInRange('tasks', prevStart, prevEnd),
+      countInRange('events', prevStart, prevEnd),
+    ]);
+
+    const delta = (cur: number, prev: number) => cur - prev;
+
+    res.json({
+      success: true,
+      data: {
+        range: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
+        previousRange: { start: prevStart.toISOString(), end: prevEnd.toISOString() },
+        trainings: { count: trainings, delta: delta(trainings, prevTrainings) },
+        competitions: { count: competitions, delta: delta(competitions, prevCompetitions) },
+        tasks: { count: tasks, delta: delta(tasks, prevTasks) },
+        events: { count: events, delta: delta(events, prevEvents) },
+      },
+      message: 'Сводка календаря получена',
+    });
+  } catch (error) {
+    console.error('Get schedule summary error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Не удалось получить сводку календаря',
+    });
+  }
+};
+
+function startOfLocalDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfLocalDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function addDaysLocal(d: Date, days: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
 
 export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Response) => {
   try {

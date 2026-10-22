@@ -4,20 +4,17 @@ import {
   Box,
   Button,
   Checkbox,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
-  FormControlLabel,
   InputLabel,
   Link,
   ListItemText,
   MenuItem,
   OutlinedInput,
   Select,
-  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -25,27 +22,45 @@ import { Add } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { Membership } from '../types';
-import { colors, typography } from '../theme/tokens';
+import { colors, radii } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
+import MembershipsDesktop from '../components/memberships/MembershipsDesktop';
+import AssignMembershipDialog from '../components/memberships/AssignMembershipDialog';
+import MembershipFormDialog, {
+  MembershipFormState,
+} from '../components/memberships/MembershipFormDialog';
 
-type FormState = {
-  name: string;
-  description: string;
-  price: string;
-  /** Пусто при создании, пока пользователь не выбрал категорию. */
-  category: '' | 'CLIENT' | 'GROUP';
-  type: 'visits' | 'monthly';
-  visits: string;
-  validityDays: string;
-  periodMonths: string;
-  paymentWindowStartDay: string;
-  paymentWindowEndDay: string;
-  recalcMode: 'PAY_ATTENDED' | 'MISS_THRESHOLD';
-  missThresholdPercent: string;
-  groupIds: string[];
-  isActive: boolean;
+const PASTEL_CARD = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'] as const;
+
+type StatusFilter = 'all' | 'active' | 'inactive';
+
+const membershipMetaLine = (m: Membership): string => {
+  const cat =
+    m.category === 'GROUP'
+      ? 'Групповой'
+      : m.category === 'PERSONAL'
+        ? 'Персональный'
+        : 'Клиентский';
+  if (m.category === 'GROUP') {
+    return `Ежемесячно · ${cat}`;
+  }
+  if (m.periodType === 'CALENDAR_PERIOD') {
+    return `${m.periodMonths || 1} мес. · ${cat}`;
+  }
+  const days = m.validityDays || m.duration;
+  if (days) return `${days} дн. · ${cat}`;
+  if (m.visits != null) return `${m.visits} зан. · ${cat}`;
+  return cat;
 };
+
+const membershipVisitsLabel = (m: Membership): string => {
+  if (m.category === 'GROUP') return '∞';
+  if (m.visits == null) return '∞';
+  return String(m.visits);
+};
+
+type FormState = MembershipFormState;
 
 const emptyForm = (): FormState => ({
   name: '',
@@ -67,6 +82,14 @@ const emptyForm = (): FormState => ({
 const Memberships: React.FC = () => {
   const [items, setItems] = useState<Membership[]>([]);
   const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    expiringSoon: 0,
+    assignedClients: 0,
+    deltas: {},
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -81,17 +104,34 @@ const Memberships: React.FC = () => {
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [mergeSourceIds, setMergeSourceIds] = useState<string[]>([]);
   const [merging, setMerging] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [assignMembership, setAssignMembership] = useState<Membership | null>(null);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      const [res, gr] = await Promise.all([
+      const [res, gr, branchResponse, statsResponse] = await Promise.all([
         apiService.getMemberships({ limit: 200 }),
         apiService.getGroups({ limit: 500 }),
+        apiService.getBranches({ limit: 500 }),
+        apiService.getMembershipStats(),
       ]);
       setItems(res.data || []);
       setGroups((gr.data || []).map((g: any) => ({ id: g.id, name: g.name })));
+      setBranches(
+        (branchResponse.data || []).map((branch: any) => ({ id: branch.id, name: branch.name }))
+      );
+      setStats(
+        statsResponse || {
+          total: 0,
+          active: 0,
+          expiringSoon: 0,
+          assignedClients: 0,
+          deltas: {},
+        }
+      );
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось загрузить абонементы');
     } finally {
@@ -131,7 +171,8 @@ const Memberships: React.FC = () => {
       name: m.name || '',
       description: m.description || '',
       price: String(m.price ?? ''),
-      category: m.category === 'GROUP' ? 'GROUP' : 'CLIENT',
+      category:
+        m.category === 'GROUP' ? 'GROUP' : m.category === 'PERSONAL' ? 'PERSONAL' : 'CLIENT',
       type: m.type === 'monthly' ? 'monthly' : 'visits',
       visits: m.visits != null ? String(m.visits) : '',
       validityDays: m.validityDays != null ? String(m.validityDays) : m.duration != null ? String(m.duration) : '',
@@ -250,19 +291,53 @@ const Memberships: React.FC = () => {
     setPendingSave(null);
   };
 
-  const handleDelete = async () => {
-    if (!editing) return;
-    if (!window.confirm(`Удалить абонемент «${editing.name}»?`)) return;
+  const handleDelete = async (target?: Membership) => {
+    const membership = target || editing;
+    if (!membership) return;
+    if (!window.confirm(`Удалить абонемент «${membership.name}»?`)) return;
     setDeleting(true);
     setError('');
     try {
-      await apiService.deleteMembership(editing.id);
-      discardForm();
+      await apiService.deleteMembership(membership.id);
+      if (dialogOpen) discardForm();
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Не удалось удалить абонемент');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDuplicate = async (membership: Membership) => {
+    setError('');
+    try {
+      await apiService.duplicateMembership(membership.id);
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось скопировать абонемент');
+    }
+  };
+
+  const handleArchive = async (membership: Membership) => {
+    if (!window.confirm(`Переместить «${membership.name}» в архив?`)) return;
+    setError('');
+    try {
+      await apiService.archiveMembership(membership.id);
+      setMergeSourceIds((current) => current.filter((id) => id !== membership.id));
+      if (mergeTargetId === membership.id) setMergeTargetId('');
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось архивировать абонемент');
+    }
+  };
+
+  const handleRestore = async (membership: Membership) => {
+    setError('');
+    try {
+      await apiService.restoreMembership(membership.id);
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Не удалось восстановить абонемент');
     }
   };
 
@@ -304,18 +379,89 @@ const Memberships: React.FC = () => {
   const mergeSourceOptions = items.filter((m) => m.id !== mergeTargetId);
   const mergeTargetOptions = items.filter((m) => !mergeSourceIds.includes(m.id));
 
+  const filteredItems = items.filter((m) => {
+    if (statusFilter === 'active' && m.isActive === false) return false;
+    if (statusFilter === 'inactive' && m.isActive !== false) return false;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      m.name.toLowerCase().includes(q) ||
+      (m.description || '').toLowerCase().includes(q)
+    );
+  });
+
+  const statusTabSx = (active: boolean) => ({
+    textTransform: 'none' as const,
+    borderRadius: `${radii.pill}px`,
+    px: 1.75,
+    py: 0.6,
+    fontWeight: 600,
+    fontSize: 13,
+    minWidth: 0,
+    border: 'none',
+    cursor: 'pointer',
+    bgcolor: active ? colors.primary : colors.surface,
+    color: active ? colors.white : colors.textMuted,
+    boxShadow: active ? '0 2px 8px rgba(47, 107, 255, 0.25)' : 'none',
+    '&:hover': {
+      bgcolor: active ? colors.primaryDark : 'rgba(47, 107, 255, 0.08)',
+    },
+  });
+
   return (
     <Box data-onboarding="memberships-page">
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-        <Typography sx={{ fontSize: typography.pageTitle, fontWeight: 700, color: colors.text }}>
-          Абонементы
-        </Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
-          Создать
+      <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+        mb={2}
+        flexWrap="wrap"
+        gap={1.5}
+        flexDirection={{ xs: 'column', sm: 'row' }}
+      >
+        <Box>
+          <Typography
+            sx={{
+              fontSize: { xs: 22, md: 26 },
+              fontWeight: 800,
+              color: '#1B2438',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Абонементы
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: colors.textHint, mt: 0.25 }}>
+            Создание и назначение абонементов клиентам
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={openCreate}
+          sx={{
+            textTransform: 'none',
+            borderRadius: `${radii.button}px`,
+            bgcolor: colors.primary,
+            fontWeight: 600,
+            boxShadow: 'none',
+            width: { xs: '100%', sm: 'auto' },
+            '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+          }}
+        >
+          Новый абонемент
         </Button>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 2 }}>
+      <Alert
+        severity="info"
+        sx={{
+          mb: 2,
+          borderRadius: `${radii.panel}px`,
+          bgcolor: 'rgba(47, 107, 255, 0.06)',
+          border: `1px solid ${colors.primarySoft}`,
+        }}
+      >
         Если нужно принять оплату за разовую тренировку — не создавайте абонемент. Внесите платёж в{' '}
         <Link component={RouterLink} to="/finance">
           Финансах
@@ -328,24 +474,82 @@ const Memberships: React.FC = () => {
       </Alert>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: `${radii.panel}px` }} onClose={() => setError('')}>
           {error}
         </Alert>
       )}
+
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: 1.25,
+          mb: 2,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'inline-flex',
+            gap: 0.5,
+            p: 0.35,
+            bgcolor: colors.surface,
+            borderRadius: `${radii.pill}px`,
+            width: { xs: '100%', sm: 'auto' },
+          }}
+        >
+          {(
+            [
+              { id: 'all', label: 'Все' },
+              { id: 'active', label: 'Активные' },
+              { id: 'inactive', label: 'Неактивные' },
+            ] as const
+          ).map((tab) => (
+            <Box
+              key={tab.id}
+              component="button"
+              type="button"
+              onClick={() => setStatusFilter(tab.id)}
+              sx={{ ...statusTabSx(statusFilter === tab.id), flex: { xs: 1, sm: 'none' } }}
+            >
+              {tab.label}
+            </Box>
+          ))}
+        </Box>
+        <TextField
+          size="small"
+          placeholder="Поиск абонемента…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          sx={{
+            flex: '1 1 200px',
+            maxWidth: { sm: 360 },
+            '& .MuiOutlinedInput-root': {
+              borderRadius: `${radii.panel}px`,
+              bgcolor: colors.card,
+            },
+          }}
+        />
+      </Box>
 
       {items.length >= 2 && (
         <Box
           sx={{
             mb: 2,
             p: 2,
-            borderRadius: 2,
-            border: `1px solid ${colors.border}`,
+            borderRadius: `${radii.panel}px`,
+            border: `1px solid ${colors.divider}`,
+            bgcolor: colors.card,
+            boxShadow: '0 2px 10px rgba(32, 34, 36, 0.04)',
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
           }}
         >
-          <Typography fontWeight={600}>Объединить абонементы</Typography>
+          <Typography fontWeight={700} color={colors.text}>
+            Объединить абонементы
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             Клиенты и группы переносятся на целевой абонемент; исходные деактивируются.
           </Typography>
@@ -359,6 +563,7 @@ const Memberships: React.FC = () => {
                 setMergeTargetId(id);
                 setMergeSourceIds((prev) => prev.filter((s) => s !== id));
               }}
+              sx={{ borderRadius: `${radii.button}px` }}
             >
               {mergeTargetOptions.map((m) => (
                 <MenuItem key={m.id} value={m.id}>
@@ -396,6 +601,13 @@ const Memberships: React.FC = () => {
               variant="outlined"
               onClick={handleMerge}
               disabled={merging || !mergeTargetId || mergeSourceIds.length === 0}
+              sx={{
+                textTransform: 'none',
+                borderRadius: `${radii.button}px`,
+                borderColor: colors.primarySoft,
+                color: colors.primary,
+                fontWeight: 600,
+              }}
             >
               Объединить
             </Button>
@@ -405,252 +617,183 @@ const Memberships: React.FC = () => {
 
       {loading ? (
         <Typography color="text.secondary">Загрузка…</Typography>
-      ) : items.length === 0 ? (
-        <Typography color="text.secondary">Пока нет абонементов</Typography>
+      ) : filteredItems.length === 0 ? (
+        <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+          {items.length === 0 ? 'Пока нет абонементов' : 'Ничего не найдено'}
+        </Typography>
       ) : (
-        <Box display="flex" flexDirection="column" gap={1}>
-          {items.map((m) => (
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
+            gap: 1.5,
+          }}
+        >
+          {filteredItems.map((m, index) => (
             <Box
               key={m.id}
-              onClick={() => openEdit(m)}
               sx={{
                 p: 2,
-                borderRadius: 2,
-                border: `1px solid ${colors.border}`,
-                cursor: 'pointer',
-                '&:hover': { bgcolor: 'action.hover' },
+                borderRadius: `${radii.panel}px`,
+                bgcolor: { xs: PASTEL_CARD[index % PASTEL_CARD.length], md: colors.card },
+                border: { xs: 'none', md: `1px solid ${colors.divider}` },
+                boxShadow: '0 2px 12px rgba(32, 34, 36, 0.06)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+                minHeight: 180,
               }}
             >
-              <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
-                <Typography fontWeight={600}>{m.name}</Typography>
-                <Chip size="small" label={m.category === 'GROUP' ? 'Групповой' : 'Клиентский'} />
-                {!m.isActive && <Chip size="small" label="Выкл" />}
-                <Typography color="text.secondary" sx={{ ml: 'auto' }}>
-                  {Number(m.price).toLocaleString('ru-RU')} ₽
+              <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={1}>
+                <Typography sx={{ fontWeight: 800, fontSize: 16, color: colors.text, lineHeight: 1.25 }}>
+                  {m.name}
+                </Typography>
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    bgcolor: m.archivedAt
+                      ? colors.surface
+                      : m.isActive !== false
+                        ? 'rgba(0, 182, 155, 0.14)'
+                        : 'rgba(249,60,101,0.1)',
+                    color: m.archivedAt
+                      ? colors.textHint
+                      : m.isActive !== false
+                        ? colors.success
+                        : colors.danger,
+                    px: 1,
+                    py: 0.3,
+                    borderRadius: `${radii.button}px`,
+                    fontWeight: 700,
+                    fontSize: 11,
+                  }}
+                >
+                  {m.archivedAt ? 'Архив' : m.isActive !== false ? 'Активен' : 'Неактивен'}
+                </Box>
+              </Box>
+              <Typography sx={{ fontWeight: 800, fontSize: 22, color: colors.primary, lineHeight: 1.1 }}>
+                {Number(m.price).toLocaleString('ru-RU')} ₽
+              </Typography>
+              <Typography sx={{ fontSize: 13, color: colors.textMuted }}>
+                {membershipMetaLine(m)}
+              </Typography>
+              <Box display="flex" gap={2} flexWrap="wrap">
+                <Typography sx={{ fontSize: 12, color: colors.textHint }}>
+                  Групп:{' '}
+                  <Box component="span" sx={{ fontWeight: 700, color: colors.text }}>
+                    {m.membershipGroups?.length || 0}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: colors.textHint }}>
+                  Занятий:{' '}
+                  <Box component="span" sx={{ fontWeight: 700, color: colors.text }}>
+                    {membershipVisitsLabel(m)}
+                  </Box>
                 </Typography>
               </Box>
-              <Typography variant="body2" color="text.secondary">
-                {m.category === 'GROUP'
-                  ? `Окно оплаты: ${m.paymentWindowStartDay ?? 1}–${m.paymentWindowEndDay ?? 6} · групп: ${m.membershipGroups?.length || 0}`
-                  : m.periodType === 'CALENDAR_PERIOD'
-                    ? `Календарный период: ${m.periodMonths || 1} мес.`
-                    : m.visits != null
-                      ? `${m.visits} занятий` + (m.validityDays || m.duration ? ` / ${m.validityDays || m.duration} дн.` : '')
-                      : m.validityDays || m.duration
-                        ? `${m.validityDays || m.duration} дн.`
-                        : 'Без лимита'}
-              </Typography>
+              <Box display="flex" gap={1} mt="auto" flexWrap="wrap">
+                {m.category !== 'GROUP' && !m.archivedAt && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => setAssignMembership(m)}
+                    sx={{
+                      textTransform: 'none',
+                      borderRadius: `${radii.button}px`,
+                      bgcolor: colors.primary,
+                      fontWeight: 600,
+                      boxShadow: 'none',
+                      flex: 1,
+                      minWidth: 120,
+                      '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+                    }}
+                  >
+                    Назначить клиенту
+                  </Button>
+                )}
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => openEdit(m)}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: `${radii.button}px`,
+                    borderColor: colors.primarySoft,
+                    color: colors.primary,
+                    fontWeight: 600,
+                    bgcolor: colors.primarySoft,
+                    '&:hover': { borderColor: colors.primary, bgcolor: colors.primarySoft },
+                  }}
+                >
+                  Изменить
+                </Button>
+              </Box>
             </Box>
           ))}
         </Box>
       )}
+      </Box>
+
+      {error && (
+        <Alert
+          severity="error"
+          onClose={() => setError('')}
+          sx={{ display: { xs: 'none', md: 'flex' }, mb: 1, borderRadius: `${radii.panel}px` }}
+        >
+          {error}
+        </Alert>
+      )}
+
+      <MembershipsDesktop
+        items={items}
+        stats={stats}
+        branches={branches}
+        loading={loading}
+        mergeTargetId={mergeTargetId}
+        mergeSourceIds={mergeSourceIds}
+        merging={merging}
+        onMergeTargetChange={(id) => {
+          setMergeTargetId(id);
+          setMergeSourceIds((current) => current.filter((sourceId) => sourceId !== id));
+        }}
+        onMergeSourcesChange={setMergeSourceIds}
+        onMerge={handleMerge}
+        onCreate={openCreate}
+        onEdit={openEdit}
+        onAssign={setAssignMembership}
+        onDuplicate={handleDuplicate}
+        onArchive={handleArchive}
+        onRestore={handleRestore}
+        onDelete={handleDelete}
+      />
+
+      <MembershipFormDialog
+        open={dialogOpen}
+        editing={editing}
+        form={form}
+        setForm={setForm}
+        groups={groups}
+        error={error}
+        onClearError={() => setError('')}
+        saving={saving}
+        deleting={deleting}
+        onClose={() => unsaved.requestClose('closeButton')}
+        onSave={() => void handleSaveClick()}
+        onDelete={() => void handleDelete()}
+      />
 
       <Dialog
-        open={dialogOpen}
-        onClose={(_e, reason) => {
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') unsaved.requestClose(reason);
-          else discardForm();
-        }}
-        maxWidth="sm"
+        open={effectiveDialog}
+        onClose={() => setEffectiveDialog(false)}
+        maxWidth="xs"
         fullWidth
+        PaperProps={{
+          sx: { borderRadius: { xs: 0, sm: `${radii.panel}px` } },
+        }}
       >
-        <DialogTitle>{editing ? 'Редактировать абонемент' : 'Новый абонемент'}</DialogTitle>
-        <DialogContent
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            // Иначе floating label Select «Категория» уезжает под DialogTitle
-            pt: '20px !important',
-          }}
-        >
-          {error && (
-            <Alert severity="error" onClose={() => setError('')}>
-              {error}
-            </Alert>
-          )}
-          <FormControl fullWidth required>
-            <InputLabel id="membership-category-label" shrink>
-              Категория
-            </InputLabel>
-            <Select
-              labelId="membership-category-label"
-              label="Категория"
-              notched
-              value={form.category}
-              displayEmpty
-              renderValue={(selected) => {
-                if (!selected) return <em style={{ opacity: 0.6 }}>Выберите категорию</em>;
-                if (selected === 'CLIENT') return 'Клиентский (на человека)';
-                return 'Групповой (ежемесячная оплата группы)';
-              }}
-              onChange={(e) =>
-                setForm({ ...form, category: e.target.value as '' | 'CLIENT' | 'GROUP' })
-              }
-            >
-              <MenuItem value="CLIENT">Клиентский (на человека)</MenuItem>
-              <MenuItem value="GROUP">Групповой (ежемесячная оплата группы)</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            label="Название"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            fullWidth
-            required
-            disabled={!form.category}
-          />
-          <TextField
-            label="Цена"
-            type="number"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
-            fullWidth
-            required
-            disabled={!form.category}
-          />
-          <TextField
-            label="Описание"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            fullWidth
-            multiline
-            minRows={2}
-            disabled={!form.category}
-          />
-
-          {form.category === 'CLIENT' ? (
-            <>
-              <TextField
-                label="Кол-во занятий"
-                type="number"
-                value={form.visits}
-                onChange={(e) => setForm({ ...form, visits: e.target.value })}
-                fullWidth
-                helperText="Необязательно — можно оставить без лимита"
-              />
-              <TextField
-                label="Срок действия, дней"
-                type="number"
-                value={form.validityDays}
-                onChange={(e) => setForm({ ...form, validityDays: e.target.value })}
-                fullWidth
-                helperText="Необязательно — например 12 занятий и/или 45 дней"
-              />
-              <TextField
-                label="Календарных месяцев"
-                type="number"
-                value={form.periodMonths}
-                onChange={(e) => setForm({ ...form, periodMonths: e.target.value })}
-                fullWidth
-                helperText="Необязательно — срок без учёта числа тренировок"
-              />
-            </>
-          ) : null}
-
-          {form.category === 'GROUP' ? (
-            <>
-              <Box display="flex" gap={2}>
-                <TextField
-                  label="Окно оплаты с (день)"
-                  type="number"
-                  value={form.paymentWindowStartDay}
-                  onChange={(e) => setForm({ ...form, paymentWindowStartDay: e.target.value })}
-                  fullWidth
-                  inputProps={{ min: 1, max: 28 }}
-                />
-                <TextField
-                  label="по (день)"
-                  type="number"
-                  value={form.paymentWindowEndDay}
-                  onChange={(e) => setForm({ ...form, paymentWindowEndDay: e.target.value })}
-                  fullWidth
-                  inputProps={{ min: 1, max: 28 }}
-                />
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                С дня после окончания окна ученикам уходит уведомление о неоплате.
-              </Typography>
-              <FormControl fullWidth>
-                <InputLabel id="membership-recalc-label">Перерасчёт пропусков</InputLabel>
-                <Select
-                  labelId="membership-recalc-label"
-                  label="Перерасчёт пропусков"
-                  value={form.recalcMode}
-                  onChange={(e) => setForm({ ...form, recalcMode: e.target.value as FormState['recalcMode'] })}
-                >
-                  <MenuItem value="PAY_ATTENDED">Платят только за посещённые</MenuItem>
-                  <MenuItem value="MISS_THRESHOLD">Перерасчёт при пропуске N% занятий</MenuItem>
-                </Select>
-              </FormControl>
-              {form.recalcMode === 'MISS_THRESHOLD' && (
-                <TextField
-                  label="Порог пропуска %"
-                  type="number"
-                  value={form.missThresholdPercent}
-                  onChange={(e) => setForm({ ...form, missThresholdPercent: e.target.value })}
-                  fullWidth
-                />
-              )}
-              <FormControl fullWidth>
-                <InputLabel id="membership-groups-label">Группы</InputLabel>
-                <Select
-                  labelId="membership-groups-label"
-                  multiple
-                  label="Группы"
-                  value={form.groupIds}
-                  onChange={(e) => setForm({ ...form, groupIds: e.target.value as string[] })}
-                  input={<OutlinedInput label="Группы" />}
-                  renderValue={(selected) =>
-                    groups
-                      .filter((g) => selected.includes(g.id))
-                      .map((g) => g.name)
-                      .join(', ')
-                  }
-                >
-                  {groups.map((g) => (
-                    <MenuItem key={g.id} value={g.id}>
-                      <Checkbox checked={form.groupIds.includes(g.id)} />
-                      <ListItemText primary={g.name} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </>
-          ) : null}
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.isActive}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                disabled={!form.category}
-              />
-            }
-            label="Активен"
-          />
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: editing ? 'space-between' : 'flex-end' }}>
-          {editing && (
-            <Button color="error" onClick={handleDelete} disabled={saving || deleting}>
-              Удалить
-            </Button>
-          )}
-          <Box display="flex" gap={1}>
-            <Button onClick={() => unsaved.requestClose('closeButton')}>Отмена</Button>
-            <Button
-              variant="contained"
-              onClick={handleSaveClick}
-              disabled={saving || deleting || !form.category}
-            >
-              Сохранить
-            </Button>
-          </Box>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={effectiveDialog} onClose={() => setEffectiveDialog(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>С какой даты действует абонемент?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: colors.text }}>
+          С какой даты действует абонемент?
+        </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Укажите дату старта начислений для привязанных групп (если забыли выдать абонемент раньше).
@@ -671,6 +814,13 @@ const Memberships: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <AssignMembershipDialog
+        membership={assignMembership}
+        open={Boolean(assignMembership)}
+        onClose={() => setAssignMembership(null)}
+        onAssigned={load}
+      />
 
       <UnsavedChangesDialog
         open={unsaved.confirmOpen}

@@ -3,7 +3,8 @@ import { authenticate, requireOwnerAdminOrTrainer } from '../middleware/auth';
 import {
   getDashboardStats,
   getRecentActivity,
-  getUpcomingTrainings
+  getUpcomingTrainings,
+  getScheduleSummary,
 } from '../controllers/reportController';
 
 const router = Router();
@@ -15,6 +16,7 @@ router.use(authenticate);
 router.get('/dashboard', getDashboardStats);
 router.get('/dashboard/activity', getRecentActivity);
 router.get('/dashboard/upcoming-trainings', getUpcomingTrainings);
+router.get('/schedule-summary', requireOwnerAdminOrTrainer, getScheduleSummary);
 
 router.get('/revenue', requireOwnerAdminOrTrainer, (req, res) => {
   res.json({

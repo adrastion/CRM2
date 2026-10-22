@@ -372,15 +372,20 @@ export class SubscriptionService {
    * Получение текущей подписки тенанта
    * Проверяет и применяет отложенные изменения тарифа
    */
-  static async getSubscription(tenantId: string) {
+  static async getSubscription(tenantId: string, options?: { includePayments?: boolean }) {
+    const includePayments = options?.includePayments !== false;
     let subscription = await prisma.subscription.findUnique({
       where: { tenantId },
-      include: {
-        payments: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
-      },
+      ...(includePayments
+        ? {
+            include: {
+              payments: {
+                orderBy: { createdAt: 'desc' as const },
+                take: 10,
+              },
+            },
+          }
+        : {}),
     });
 
     if (!subscription) {
@@ -995,7 +1000,7 @@ export class SubscriptionService {
    * Получение лимитов для тенанта
    */
   static async getLimits(tenantId: string): Promise<PlanLimits> {
-    const subscription = await this.getSubscription(tenantId);
+    const subscription = await this.getSubscription(tenantId, { includePayments: false });
     return PlanCatalogService.getLimits(subscription.planType);
   }
 
@@ -1003,7 +1008,8 @@ export class SubscriptionService {
    * Получение информации о тарифе и использовании ресурсов
    */
   static async getPlanUsage(tenantId: string) {
-    const subscription = await this.getSubscription(tenantId);
+    // Платежи для модалки «Мой тариф» не нужны — не тянем связанную таблицу.
+    const subscription = await this.getSubscription(tenantId, { includePayments: false });
     const plan = await PlanCatalogService.findByCode(subscription.planType);
     const limits = plan
       ? plan.limits

@@ -13,10 +13,12 @@ interface PanelProps {
   minHeight?: number | string;
   /** Нижний колонтитул панели. */
   footer?: React.ReactNode;
+  /** Плотная desktop-компоновка для информационных списков. */
+  compact?: boolean;
 }
 
 /** Белая карточка дашборда с заголовком — базовый блок макета. */
-const Panel: React.FC<PanelProps> = ({ title, action, children, flush, minHeight, footer }) => (
+const Panel: React.FC<PanelProps> = ({ title, action, children, flush, minHeight, footer, compact }) => (
   <Box
     sx={{
       bgcolor: colors.card,
@@ -36,16 +38,20 @@ const Panel: React.FC<PanelProps> = ({ title, action, children, flush, minHeight
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 2,
-          px: { xs: 2, md: 2.5 },
-          pt: { xs: 2, md: 2 },
-          pb: title ? 1 : 0,
+          px: { xs: 2, md: compact ? 1.5 : 2.5 },
+          pt: { xs: 2, md: compact ? 1.25 : 2 },
+          pb: title ? (compact ? 0.6 : 1) : 0,
         }}
       >
         {title && (
           <Typography
             component="h2"
             sx={{
-              fontSize: typography.panelTitle,
+              fontSize: {
+                xs: typography.panelTitle.xs,
+                sm: typography.panelTitle.sm,
+                md: compact ? 12 : typography.panelTitle.md,
+              },
               fontWeight: 700,
               color: colors.text,
               lineHeight: 1.2,
@@ -62,15 +68,19 @@ const Panel: React.FC<PanelProps> = ({ title, action, children, flush, minHeight
       sx={{
         flex: 1,
         minHeight: 0,
-        px: flush ? 0 : { xs: 2, md: 2.5 },
-        pt: title ? 1 : { xs: 2, md: 2 },
-        pb: flush ? 0 : { xs: 2, md: 2.5 },
+        px: flush ? 0 : { xs: 2, md: compact ? 1.5 : 2.5 },
+        pt: title ? (compact ? 0.6 : 1) : { xs: 2, md: compact ? 1.25 : 2 },
+        pb: flush ? 0 : { xs: 2, md: compact ? 1.5 : 2.5 },
       }}
     >
       {children}
     </Box>
 
-    {footer && <Box sx={{ px: { xs: 2, md: 2.5 }, pb: { xs: 2, md: 2.5 } }}>{footer}</Box>}
+    {footer && (
+      <Box sx={{ px: { xs: 2, md: compact ? 1.5 : 2.5 }, pb: { xs: 2, md: compact ? 1.5 : 2.5 } }}>
+        {footer}
+      </Box>
+    )}
   </Box>
 );
 

@@ -9,13 +9,14 @@ export interface TrainerNameLinkProps {
   variant?: 'link' | 'inherit' | 'body1' | 'body2';
   sx?: LinkProps['sx'];
   stopPropagation?: boolean;
-  /** Открыть карточку на месте (без перехода на /trainers). */
+  /** Открыть карточку на месте (навигация на /trainers). */
   onOpen?: (trainerId: string) => void;
+  /** Раздел-источник для крошек / from= */
+  fromSection?: string;
 }
 
 /**
- * Кликабельное имя тренера — по умолчанию deep link `/trainers?trainerId=…`,
- * либо `onOpen` для карточки на текущей странице.
+ * Кликабельное имя тренера — deep link `/trainers?trainerId=…&from=…`
  */
 const TrainerNameLink: React.FC<TrainerNameLinkProps> = ({
   trainerId,
@@ -24,6 +25,7 @@ const TrainerNameLink: React.FC<TrainerNameLinkProps> = ({
   sx,
   stopPropagation = true,
   onOpen,
+  fromSection,
 }) => {
   const navigate = useNavigate();
   const displayName = name || '—';
@@ -37,7 +39,9 @@ const TrainerNameLink: React.FC<TrainerNameLinkProps> = ({
       onOpen(trainerId);
       return;
     }
-    navigate(`/trainers?trainerId=${encodeURIComponent(trainerId)}`);
+    const qs = new URLSearchParams({ trainerId });
+    if (fromSection) qs.set('from', fromSection);
+    navigate(`/trainers?${qs.toString()}`);
   };
 
   const linkVariant = variant === 'link' ? 'body2' : variant;

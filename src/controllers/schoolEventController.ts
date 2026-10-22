@@ -2,7 +2,15 @@ import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../types';
 
-const EVENT_TYPES = ['parent_meeting', 'other'] as const;
+/** parent_meeting | attestation | activity | open_day | other (+ legacy competition) */
+const EVENT_TYPES = [
+  'parent_meeting',
+  'attestation',
+  'activity',
+  'open_day',
+  'other',
+  'competition',
+] as const;
 
 function parseDate(value: unknown): Date | null {
   if (!value) return null;

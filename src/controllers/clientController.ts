@@ -314,6 +314,41 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     clientIds
   );
 
+  const groupIds = [
+    ...new Set(
+      clients.flatMap((c) =>
+        (c.groupMemberships || []).map((gm: any) => gm.groupId || gm.group?.id).filter(Boolean)
+      )
+    ),
+  ] as string[];
+
+  const now = new Date();
+  const upcomingTrainings =
+    groupIds.length > 0
+      ? await prisma.training.findMany({
+          where: {
+            tenantId,
+            groupId: { in: groupIds },
+            startTime: { gte: now },
+            isCancelled: false,
+          },
+          orderBy: { startTime: 'asc' },
+          take: Math.min(groupIds.length * 3, 300),
+          select: {
+            id: true,
+            groupId: true,
+            startTime: true,
+            endTime: true,
+            title: true,
+          },
+        })
+      : [];
+
+  const nextByGroup = new Map<string, (typeof upcomingTrainings)[0]>();
+  for (const t of upcomingTrainings) {
+    if (t.groupId && !nextByGroup.has(t.groupId)) nextByGroup.set(t.groupId, t);
+  }
+
   const clientsWithDebt = clients.map((client) => {
     // Find overdue payments for this client
     const overduePayments = paymentsByClient[client.id] || [];
@@ -336,6 +371,23 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       ? financeBalances.get(client.id)!
       : walletBalance;
 
+    const activeGms = (client.groupMemberships || []).filter((gm: any) => gm.isActive);
+    let nextTraining: {
+      id: string;
+      startTime: Date;
+      endTime: Date | null;
+      title: string | null;
+      groupId: string | null;
+    } | null = null;
+    for (const gm of activeGms) {
+      const gid = gm.groupId || gm.group?.id;
+      const cand = gid ? nextByGroup.get(gid) : undefined;
+      if (!cand) continue;
+      if (!nextTraining || cand.startTime < nextTraining.startTime) {
+        nextTraining = cand as any;
+      }
+    }
+
     return {
       ...sanitizeClientCertificateFields(clientSafe as any),
       // Decimal → number; значение = remaining из membershipSummary
@@ -346,6 +398,9 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       debt: totalDebt,
       overduePaymentsCount: overduePayments.length,
       activeMembership: pickActiveMembershipSummary(client.clientMemberships || []),
+      nextTraining,
+      isVip: Boolean((client.achievements || []).length >= 1),
+      source: (client as any).createdByUserId ? 'promoter' : 'manual',
     };
   });
 

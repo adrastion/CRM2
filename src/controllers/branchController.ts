@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../lib/prisma';
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types';
@@ -6,6 +8,103 @@ import {
   getSeniorBranchIds,
   isOwnerOrAdminRole,
 } from '../utils/branchAccess';
+import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
+
+const BRANCH_ICONS = new Set(['building', 'home', 'store', 'flag', 'trophy']);
+
+function parseOptionalFloat(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeTrainingTypes(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === '') return null;
+  if (Array.isArray(v)) return JSON.stringify(v.map(String).filter(Boolean));
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!t) return null;
+    try {
+      const parsed = JSON.parse(t);
+      if (Array.isArray(parsed)) return JSON.stringify(parsed.map(String).filter(Boolean));
+    } catch {
+      /* plain string list */
+    }
+    return JSON.stringify(
+      t
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+  }
+  return null;
+}
+
+/** data:image/...;base64,... → uploads/branch-photos/<tenant>/<file> */
+function saveBranchPhotoBase64(tenantId: string, dataUrl: string): string | null {
+  const m = /^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i.exec(dataUrl);
+  if (!m) return null;
+  const ext = m[1].toLowerCase().includes('png')
+    ? 'png'
+    : m[1].toLowerCase().includes('webp')
+      ? 'webp'
+      : 'jpg';
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > 5 * 1024 * 1024) return null;
+  const dir = ensureUploadDir('branch-photos', tenantId);
+  const filename = uniqueUploadFilename(`branch.${ext}`);
+  fs.writeFileSync(path.join(dir, filename), buf);
+  return `/uploads/branch-photos/${tenantId}/${filename}`;
+}
+
+function pickBranchExtraFields(
+  body: Record<string, unknown>,
+  tenantId: string,
+  opts?: { allowIsActive?: boolean }
+) {
+  const data: Record<string, unknown> = {};
+  if (body.shortName !== undefined) {
+    data.shortName = body.shortName ? String(body.shortName).trim() : null;
+  }
+  if (body.description !== undefined) {
+    const d = body.description != null ? String(body.description).trim() : '';
+    data.description = d ? d.slice(0, 500) : null;
+  }
+  if (body.workingHours !== undefined) {
+    data.workingHours = body.workingHours ? String(body.workingHours).trim() : null;
+  }
+  if (body.specialization !== undefined) {
+    data.specialization = body.specialization ? String(body.specialization).trim() : null;
+  }
+  const types = normalizeTrainingTypes(body.trainingTypes);
+  if (types !== undefined) data.trainingTypes = types;
+  if (body.color !== undefined) {
+    data.color = body.color ? String(body.color).trim() : null;
+  }
+  if (body.icon !== undefined) {
+    const icon = body.icon ? String(body.icon).trim().toLowerCase() : '';
+    data.icon = icon && BRANCH_ICONS.has(icon) ? icon : null;
+  }
+  const lat = parseOptionalFloat(body.mapLat);
+  if (lat !== undefined) data.mapLat = lat;
+  const lng = parseOptionalFloat(body.mapLng);
+  if (lng !== undefined) data.mapLng = lng;
+
+  if (typeof body.photoBase64 === 'string' && body.photoBase64.startsWith('data:image')) {
+    const url = saveBranchPhotoBase64(tenantId, body.photoBase64);
+    if (url) data.photoUrl = url;
+  } else if (body.photoUrl !== undefined) {
+    data.photoUrl = body.photoUrl ? String(body.photoUrl).trim() : null;
+  }
+
+  if (opts?.allowIsActive && body.isActive !== undefined) {
+    data.isActive = Boolean(body.isActive);
+  }
+
+  return data;
+}
 
 const branchInclude = {
   seniorTrainer: {
@@ -168,15 +267,17 @@ export const createBranch = async (req: AuthenticatedRequest, res: Response) => 
       return;
     }
 
+    const tenantId = req.tenant!.id;
+    const extra = pickBranchExtraFields(req.body, tenantId, { allowIsActive: true });
     const branch = await prisma.branch.create({
       data: {
-        name: req.body.name,
-        address: req.body.address,
-        phone: req.body.phone,
-        email: req.body.email,
-        description: req.body.description,
-        tenantId: req.tenant!.id,
+        name: String(req.body.name || '').trim(),
+        address: String(req.body.address || '').trim(),
+        phone: req.body.phone ? String(req.body.phone).trim() : null,
+        email: req.body.email ? String(req.body.email).trim().toLowerCase() : null,
+        tenantId,
         ...(seniorTrainerId !== undefined ? { seniorTrainerId } : {}),
+        ...extra,
       },
       include: branchInclude,
     });
@@ -232,12 +333,10 @@ export const updateBranch = async (req: AuthenticatedRequest, res: Response) => 
       address: req.body.address,
       phone: req.body.phone,
       email: req.body.email,
-      description: req.body.description,
+      ...pickBranchExtraFields(req.body, req.tenant!.id, {
+        allowIsActive: Boolean(isOwnerAdmin),
+      }),
     };
-
-    if (isOwnerAdmin && req.body.isActive !== undefined) {
-      data.isActive = req.body.isActive;
-    }
 
     if (isOwnerAdmin && req.body.seniorTrainerId !== undefined) {
       try {

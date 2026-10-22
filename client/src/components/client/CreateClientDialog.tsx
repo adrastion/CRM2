@@ -38,6 +38,7 @@ import { Client } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { isPromoter as roleIsPromoter } from '../../utils/roles';
 import PlanLimitAlert from '../common/PlanLimitAlert';
+import { colors, radii } from '../../theme/tokens';
 
 const EMPTY_CLIENT_FORM: ClientFormData = {
   firstName: '',
@@ -376,9 +377,24 @@ const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, 
   maxWidth="md" 
   fullWidth
   disableEscapeKeyDown={hasFormErrors(formErrors)}
+  PaperProps={{
+    sx: {
+      borderRadius: { xs: 0, sm: `${radii.panel}px` },
+      bgcolor: colors.surface,
+    },
+  }}
 >
-  <DialogTitle>Добавить нового клиента</DialogTitle>
-  <DialogContent>
+  <DialogTitle
+    sx={{
+      fontWeight: 700,
+      fontSize: { xs: 18, md: 20 },
+      color: colors.text,
+      pb: 1,
+    }}
+  >
+    Добавить нового клиента
+  </DialogTitle>
+  <DialogContent sx={{ bgcolor: colors.card, mx: { xs: 0, sm: 2 }, mb: 0, borderRadius: `${radii.panel}px`, pt: 2 }}>
     {error && (
       <PlanLimitAlert sx={{ mb: 2 }} onClose={() => setError('')}>
         {error}
@@ -1128,7 +1144,7 @@ const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, 
     </Grid>
     )}
   </DialogContent>
-  <DialogActions>
+  <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
     <Button 
       onClick={(e) => {
         e.preventDefault();
@@ -1139,6 +1155,7 @@ const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, 
         }
       }}
       type="button"
+      sx={{ textTransform: 'none', fontWeight: 600, color: colors.textMuted, borderRadius: `${radii.button}px` }}
     >
       Отмена
     </Button>
@@ -1176,6 +1193,15 @@ const CreateClientDialog: React.FC<CreateClientDialogProps> = ({ open, onClose, 
       }} 
       variant="contained"
       type="button"
+      sx={{
+        textTransform: 'none',
+        fontWeight: 600,
+        borderRadius: `${radii.button}px`,
+        bgcolor: colors.primary,
+        boxShadow: 'none',
+        px: 2.5,
+        '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+      }}
     >
       Создать клиента
     </Button>

@@ -9,7 +9,6 @@ import DashboardShell, {
   GlobalSearchResults,
   GlobalSearchResultItem,
 } from '../dashboard/DashboardShell';
-import SalaryPayoutBanner from '../SalaryPayoutBanner';
 import { CreateFlowsProvider } from '../../contexts/CreateFlowsContext';
 import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwitcher';
 import { NavIconName } from '../../assets/icons/registry';
@@ -238,9 +237,22 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     setSearchValue('');
     setSearchResults(null);
     if (item.type === 'client') {
-      navigate(`/clients?clientId=${encodeURIComponent(item.id)}`);
+      const path = location.pathname;
+      const from =
+        path.includes('/finance')
+          ? 'Финансы'
+          : path.includes('/schedule')
+            ? 'Календарный план'
+            : path.includes('/groups') || path.includes('/branches')
+              ? 'Филиалы и группы'
+              : path.includes('/trainers') || path.includes('/staff')
+                ? 'Сотрудники'
+                : 'Клиенты';
+      const qs = new URLSearchParams({ clientId: item.id, from });
+      navigate(`/clients?${qs.toString()}`);
     } else if (item.type === 'trainer') {
-      navigate(`/trainers?trainerId=${encodeURIComponent(item.id)}`);
+      const qs = new URLSearchParams({ trainerId: item.id, from: 'Поиск' });
+      navigate(`/trainers?${qs.toString()}`);
     } else {
       navigate(`/groups?groupId=${encodeURIComponent(item.id)}`);
     }
@@ -480,7 +492,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
 
   return (
     <Box>
-      {!isPlatformShell && <SalaryPayoutBanner />}
       <CreateFlowsProvider>
         <DashboardShell
           pageTitle={resolvedPageTitle}

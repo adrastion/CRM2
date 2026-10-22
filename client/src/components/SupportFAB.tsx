@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Fab,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -137,13 +136,21 @@ const SupportFAB: React.FC = () => {
     };
   }, [open, step, selectedId]);
 
-  const handleOpenMenu = () => {
+  const handleOpenMenu = useCallback(() => {
     setError('');
     setStep('menu');
     setChannel(null);
     setOpen(true);
     loadTickets();
-  };
+  }, [loadTickets]);
+
+  // Сайдбар «Нужна помощь?» вместо плавающей кнопки у сотрудников школы
+  useEffect(() => {
+    if (hidden || showClientSupportFab) return;
+    const onOpen = () => handleOpenMenu();
+    window.addEventListener('crm:open-support', onOpen);
+    return () => window.removeEventListener('crm:open-support', onOpen);
+  }, [hidden, showClientSupportFab, handleOpenMenu]);
 
   const startNew = (ch: Channel) => {
     setChannel(ch);
@@ -231,14 +238,6 @@ const SupportFAB: React.FC = () => {
 
   return (
     <>
-      <Fab
-        color="primary"
-        aria-label="Поддержка и дизайн"
-        onClick={handleOpenMenu}
-        sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: (t) => t.zIndex.drawer + 2 }}
-      >
-        <SupportAgent />
-      </Fab>
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {step === 'menu' && 'Поддержка и дизайн'}

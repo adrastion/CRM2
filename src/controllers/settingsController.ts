@@ -70,6 +70,7 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     chatMessageEditLimitMinutes,
     chatMessageDeleteLimitMinutes,
     staffTaskColor,
+    scheduleConfig,
   } = req.body;
 
   if (!tenantId) {
@@ -81,11 +82,13 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
   }
 
   const isOwner = user?.role === 'OWNER';
+  const isOwnerOrAdmin = isOwner || user?.role === 'ADMIN';
   const wantsFinanceSettings =
     salaryPayoutDay !== undefined || membershipFeeResetDate !== undefined;
   const wantsChatEditLimit = chatMessageEditLimitMinutes !== undefined;
   const wantsChatDeleteLimit = chatMessageDeleteLimitMinutes !== undefined;
   const wantsStaffTaskColor = staffTaskColor !== undefined;
+  const wantsScheduleConfig = scheduleConfig !== undefined;
 
   if (
     (wantsFinanceSettings || wantsChatEditLimit || wantsChatDeleteLimit || wantsStaffTaskColor) &&
@@ -96,6 +99,52 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       error: 'Только владелец может менять день выплаты зарплаты, дату сброса членских взносов, лимиты сообщений и цвет задач'
     });
     return;
+  }
+
+  if (wantsScheduleConfig && !isOwnerOrAdmin) {
+    res.status(403).json({
+      success: false,
+      error: 'Только владелец или администратор может менять настройки расписания'
+    });
+    return;
+  }
+
+  let parsedScheduleConfig: object | undefined;
+  if (wantsScheduleConfig) {
+    if (scheduleConfig === null) {
+      parsedScheduleConfig = undefined;
+    } else if (typeof scheduleConfig !== 'object' || Array.isArray(scheduleConfig)) {
+      res.status(400).json({
+        success: false,
+        error: 'scheduleConfig должен быть объектом'
+      });
+      return;
+    } else {
+      parsedScheduleConfig = scheduleConfig;
+      // Синхронизация цвета задач из scheduleConfig → staffTaskColor (для OWNER)
+      const taskColor = (scheduleConfig as any)?.eventColors?.task;
+      if (
+        isOwner &&
+        typeof taskColor === 'string' &&
+        /^#[0-9A-Fa-f]{6}$/.test(taskColor) &&
+        staffTaskColor === undefined
+      ) {
+        // will apply via staffTaskColor below
+      }
+    }
+  }
+
+  // Если OWNER прислал scheduleConfig с цветом задачи — подтянуть staffTaskColor
+  let syncedTaskColorFromConfig: string | undefined;
+  if (
+    isOwner &&
+    wantsScheduleConfig &&
+    scheduleConfig &&
+    typeof (scheduleConfig as any)?.eventColors?.task === 'string' &&
+    /^#[0-9A-Fa-f]{6}$/.test((scheduleConfig as any).eventColors.task) &&
+    staffTaskColor === undefined
+  ) {
+    syncedTaskColorFromConfig = String((scheduleConfig as any).eventColors.task).toUpperCase();
   }
 
   let parsedStaffTaskColor: string | undefined;
@@ -112,6 +161,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
     } else {
       parsedStaffTaskColor = raw.toUpperCase();
     }
+  } else if (syncedTaskColorFromConfig) {
+    parsedStaffTaskColor = syncedTaskColorFromConfig;
   }
 
   // Валидация
@@ -188,6 +239,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       chatMessageDeleteLimitMinutes:
         parsedChatDeleteLimit !== undefined ? parsedChatDeleteLimit : undefined,
       staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : undefined,
+      scheduleConfig:
+        parsedScheduleConfig !== undefined ? (parsedScheduleConfig as any) : undefined,
     },
     create: {
       tenantId,
@@ -200,6 +253,8 @@ export const updateSettings = asyncHandler(async (req: AuthenticatedRequest, res
       chatMessageDeleteLimitMinutes:
         parsedChatDeleteLimit !== undefined ? parsedChatDeleteLimit : 15,
       staffTaskColor: parsedStaffTaskColor !== undefined ? parsedStaffTaskColor : '#6A1B9A',
+      scheduleConfig:
+        parsedScheduleConfig !== undefined ? (parsedScheduleConfig as any) : undefined,
     }
   });
 

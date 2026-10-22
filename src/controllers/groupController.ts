@@ -284,8 +284,34 @@ export const createGroup = async (req: AuthenticatedRequest, res: Response) => {
       groupData.salaryRate = Number.isFinite(rate) ? rate : null;
     }
 
-    // Удаляем поле createPaymentsImmediately, так как оно используется только на фронтенде
+    // Удаляем поля только для фронтенда / не из модели Group
     delete groupData.createPaymentsImmediately;
+    delete groupData.selectedClientIds;
+    delete groupData.members;
+
+    if (groupData.description != null) {
+      groupData.description = String(groupData.description).slice(0, 500);
+    }
+    if (groupData.ageCategory !== undefined) {
+      groupData.ageCategory = groupData.ageCategory
+        ? String(groupData.ageCategory).trim()
+        : null;
+    }
+    if (groupData.skillLevel !== undefined) {
+      groupData.skillLevel = groupData.skillLevel ? String(groupData.skillLevel).trim() : null;
+    }
+    if (groupData.groupType !== undefined) {
+      groupData.groupType = groupData.groupType ? String(groupData.groupType).trim() : null;
+    }
+    if (groupData.stream !== undefined) {
+      groupData.stream = groupData.stream ? String(groupData.stream).trim() : null;
+    }
+    if (groupData.onlineBooking !== undefined) {
+      groupData.onlineBooking = Boolean(groupData.onlineBooking);
+    }
+    if (groupData.isActive !== undefined) {
+      groupData.isActive = Boolean(groupData.isActive);
+    }
 
     const group = await prisma.group.create({
       data: groupData,

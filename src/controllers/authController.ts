@@ -17,6 +17,42 @@ import { prisma } from '../lib/prisma';
 /** Без проверки списка TLD — иначе Joi отклоняет служебные адреса (*.local и т.п.). */
 const loginEmail = Joi.string().email({ tlds: { allow: false } }).required();
 
+/** Собирает JSON profileMeta для ADMIN / PROMOTER из полей create/update. */
+function buildStaffProfileMetaFromBody(
+  role: string,
+  body: Record<string, unknown>
+): string | null {
+  if (body.profileMeta != null) {
+    if (typeof body.profileMeta === 'string') {
+      return body.profileMeta.trim() || null;
+    }
+    if (typeof body.profileMeta === 'object') {
+      return JSON.stringify(body.profileMeta);
+    }
+  }
+
+  const meta: Record<string, unknown> = {};
+  if (role === 'ADMIN' || !role) {
+    if (body.responsibilityZone != null) meta.responsibilityZone = body.responsibilityZone;
+    if (body.position != null) meta.position = body.position;
+    if (body.experience != null) meta.experience = body.experience;
+    if (body.comment != null) meta.comment = body.comment;
+    if (Array.isArray(body.permissions)) meta.permissions = body.permissions;
+  }
+  if (role === 'PROMOTER' || !role) {
+    if (body.dateOfBirth != null) meta.dateOfBirth = body.dateOfBirth;
+    if (body.workArea != null) meta.workArea = body.workArea;
+    if (body.workRadiusKm != null) meta.workRadiusKm = body.workRadiusKm;
+    if (body.pricePerShift != null) meta.pricePerShift = body.pricePerShift;
+    if (body.pricePerClient != null) meta.pricePerClient = body.pricePerClient;
+    if (body.transport != null) meta.transport = body.transport;
+    if (body.socialLink != null) meta.socialLink = body.socialLink;
+    if (body.notes != null) meta.notes = body.notes;
+  }
+  if (body.branchId != null && body.branchId !== '') meta.branchId = body.branchId;
+  return Object.keys(meta).length ? JSON.stringify(meta) : null;
+}
+
 // Validation schemas
 const registerSchema = Joi.object({
   tenantName: Joi.string().min(2).max(100).required(),
@@ -51,8 +87,26 @@ const createUserSchema = Joi.object({
   lastName: Joi.string().min(2).max(50).required(),
   middleName: Joi.string().max(50).allow('', null).optional(),
   phone: phoneSchema,
-  role: Joi.string().valid('ADMIN', 'TRAINER', 'PROMOTER').required()
-});
+  role: Joi.string().valid('ADMIN', 'TRAINER', 'PROMOTER').required(),
+  isActive: Joi.boolean().optional(),
+  branchId: Joi.string().allow('', null).optional(),
+  permissions: Joi.array().items(Joi.string()).optional(),
+  profileMeta: Joi.alternatives().try(Joi.string().allow('', null), Joi.object()).optional(),
+  // ADMIN extras (folded into profileMeta in controller)
+  responsibilityZone: Joi.string().allow('', null).optional(),
+  position: Joi.string().allow('', null).optional(),
+  experience: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+  comment: Joi.string().allow('', null).optional(),
+  // PROMOTER extras
+  dateOfBirth: Joi.string().allow('', null).optional(),
+  workArea: Joi.string().allow('', null).optional(),
+  workRadiusKm: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+  pricePerShift: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+  pricePerClient: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+  transport: Joi.string().allow('', null).optional(),
+  socialLink: Joi.string().allow('', null).optional(),
+  notes: Joi.string().allow('', null).optional(),
+}).unknown(true);
 
 const changePasswordSchema = Joi.object({
   currentPassword: Joi.string().required(),
@@ -212,13 +266,22 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
     return;
   }
 
+  const body = req.body as Record<string, unknown>;
+  const profileMeta = buildStaffProfileMetaFromBody(role, body);
   const userData = {
-    ...req.body,
+    email: body.email,
+    password: body.password,
+    firstName: body.firstName,
+    lastName: body.lastName,
+    middleName: body.middleName,
+    phone: body.phone,
+    isActive: body.isActive,
     role,
-    tenantId: req.tenantId
+    tenantId: req.tenantId,
+    profileMeta,
   };
 
-  const result = await AuthService.createUser(userData);
+  const result = await AuthService.createUser(userData as any);
   
   res.status(201).json({
     success: true,
@@ -293,11 +356,14 @@ export const updateUserById = asyncHandler(async (req: AuthenticatedRequest, res
   }
 
   const { id } = req.params;
-  const updateData = {
-    ...req.body,
-  };
-  delete (updateData as any).tenantId;
-  const result = await AuthService.updateUserById(id, updateData, req.tenantId!);
+  const body = { ...(req.body as Record<string, unknown>) };
+  delete body.tenantId;
+  const roleHint = String(body.role || '');
+  const profileMeta = buildStaffProfileMetaFromBody(roleHint, body);
+  if (profileMeta) {
+    body.profileMeta = profileMeta;
+  }
+  const result = await AuthService.updateUserById(id, body as any, req.tenantId!);
   
   res.json({
     success: true,

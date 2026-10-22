@@ -21,7 +21,6 @@ import {
   Chip,
   List,
   ListItem,
-  ListItemText,
   IconButton,
   Table,
   TableBody,
@@ -52,7 +51,6 @@ import {
   Add, 
   CalendarToday,
   AccessTime,
-  Group as GroupIcon,
   Edit,
   People,
   Delete,
@@ -75,8 +73,28 @@ import ClientNameLink from '../components/ClientNameLink';
 import TrainerNameLink from '../components/TrainerNameLink';
 import { useStaffEntityCards } from '../components/StaffEntityCardHost';
 import CompetitionsPanel from '../components/competitions/CompetitionsPanel';
-import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall, Parent } from '../types';
+import ScheduleDesktop, {
+  getScheduleRange,
+  getSummaryRange,
+} from '../components/schedule/ScheduleDesktop';
+import { CalendarItem, CalendarViewMode, ScheduleSummaryCounts } from '../components/schedule/calendarTypes';
+import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { colors, radii } from '../theme/tokens';
+import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
+import CreateTrainingFlowDialogs from '../components/schedule/CreateTrainingFlowDialogs';
+import CreateSchoolEventDialog, {
+  schoolEventTypeLabel,
+} from '../components/schedule/CreateSchoolEventDialog';
+
+/** Цвета полоски события по типу (макет календарного плана). */
+const EVENT_BAR = {
+  group: '#00B69B',
+  individual: '#F93C65',
+  event: '#2F6BFF',
+  competition: '#ED6C02',
+  task: '#6A1B9A',
+} as const;
 
 interface DaySchedule {
   dayOfWeek: number;
@@ -181,10 +199,10 @@ const Schedule: React.FC = () => {
   const { openClient, openTrainer, dialogs: entityCardDialogs } = useStaffEntityCards({
     branches,
     trainers,
+    sourceLabel: 'Календарный план',
   });
   const [loading, setLoading] = useState(true);
   const [trainingTypeDialog, setTrainingTypeDialog] = useState(false); // Диалог выбора типа тренировки
-  const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [attendanceDialog, setAttendanceDialog] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -197,29 +215,11 @@ const Schedule: React.FC = () => {
   const [eventDialog, setEventDialog] = useState(false);
   const [eventDetailDialog, setEventDetailDialog] = useState(false);
   const [selectedSchoolEvent, setSelectedSchoolEvent] = useState<any | null>(null);
-  const [eventFormData, setEventFormData] = useState({
-    title: '',
-    description: '',
-    type: 'parent_meeting' as 'parent_meeting' | 'other',
-    date: new Date() as Date | null,
-    startTime: null as Date | null,
-    endTime: null as Date | null,
-    location: '',
-    branchId: '',
-    groupIds: [] as string[],
-    participantIds: [] as string[],
-    parentIds: [] as string[],
-    trainerIds: [] as string[],
-  });
-  const [eventSaving, setEventSaving] = useState(false);
+  const [createEventInitialDate, setCreateEventInitialDate] = useState<Date | null>(null);
   const [createMenuAnchor, setCreateMenuAnchor] = useState<null | HTMLElement>(null);
   const [scheduleTaskDialog, setScheduleTaskDialog] = useState(false);
-  const [scheduleTaskTitle, setScheduleTaskTitle] = useState('');
-  const [scheduleTaskBody, setScheduleTaskBody] = useState('');
-  const [scheduleTaskDueAt, setScheduleTaskDueAt] = useState('');
-  const [scheduleTaskAssignees, setScheduleTaskAssignees] = useState<any[]>([]);
+  const [scheduleTaskDefaultDue, setScheduleTaskDefaultDue] = useState<Date | null>(null);
   const [scheduleStaffUsers, setScheduleStaffUsers] = useState<any[]>([]);
-  const [scheduleTaskSaving, setScheduleTaskSaving] = useState(false);
   const [createClientDialog, setCreateClientDialog] = useState(false);
   const [addClientDialog, setAddClientDialog] = useState(false); // Диалог добавления существующего клиента
   const [selectedClientsToAdd, setSelectedClientsToAdd] = useState<Client[]>([]); // Выбранные клиенты для добавления
@@ -236,53 +236,55 @@ const Schedule: React.FC = () => {
   const [clientFormErrors, setClientFormErrors] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedDayForTraining, setSelectedDayForTraining] = useState<Date | null>(null);
-  const [viewMode, setViewMode] = useState<'day' | 'week'>('week');
+  const [viewMode, setViewMode] = useState<CalendarViewMode>('week');
+  const [mobileCalOpen, setMobileCalOpen] = useState(false);
   const [filterBranchId, setFilterBranchId] = useState<string>('');
   const [filterHallId, setFilterHallId] = useState<string>('');
   const [filterTrainerId, setFilterTrainerId] = useState<string>('');
+  const [filterGroupId, setFilterGroupId] = useState<string>('');
+  const [scheduleSummary, setScheduleSummary] = useState<ScheduleSummaryCounts | null>(null);
+  const [selectedCalendarItem, setSelectedCalendarItem] = useState<CalendarItem | null>(null);
+  const [desktopStaffUsers, setDesktopStaffUsers] = useState<
+    Array<{ id: string; firstName: string; lastName: string }>
+  >([]);
 
   useEffect(() => {
     if (isMobile) {
       setViewMode('day');
+      setSelectedCalendarItem(null);
     }
   }, [isMobile]);
   const [defaultTrainingDuration, setDefaultTrainingDuration] = useState<number>(60); // Длительность тренировки в минутах по умолчанию
   const [isSubmitting, setIsSubmitting] = useState(false); // Защита от двойного нажатия при создании тренировки
   const [isUpdating, setIsUpdating] = useState(false); // Индикатор обновления тренировки
   const [formData, setFormData] = useState<TrainingFormData>(createEmptyTrainingForm);
-  const [createFormBaseline, setCreateFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
   const [editFormBaseline, setEditFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      const { from, to } = getScheduleRange(selectedDate, viewMode);
       const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes, eventsRes] = await Promise.all([
-        apiService.getTrainings({ limit: 1000, page: 1 }),
+        apiService.getTrainings({
+          limit: 1000,
+          page: 1,
+          startDate: from.toISOString(),
+          endDate: to.toISOString(),
+        }),
         apiService.getGroups({ limit: 1000, page: 1 }),
         apiService.getTrainers({ limit: 1000, page: 1 }),
         apiService.getBranches({ limit: 1000, page: 1 }),
         apiService.getClients({ limit: 1000, page: 1 }),
-        apiService.getSchoolEvents().catch(() => []),
+        apiService
+          .getSchoolEvents({ startDate: from.toISOString(), endDate: to.toISOString() })
+          .catch(() => []),
       ]);
-      
-      // Логируем для отладки
-      const individualTrainings = trainingsRes.data.filter((t: Training) => !t.groupId);
-      console.log('Total trainings loaded:', trainingsRes.data.length);
-      console.log('Individual trainings:', individualTrainings.length);
-      if (individualTrainings.length > 0) {
-        console.log('Individual training examples:', individualTrainings.slice(0, 3).map((t: Training) => ({
-          id: t.id,
-          title: t.title,
-          startTime: t.startTime,
-          groupId: t.groupId
-        })));
-      }
       
       setTrainings(trainingsRes.data);
       setGroups(groupsRes.data);
       setTrainers(trainersRes.data);
       setBranches(branchesRes.data);
-      setClients(clientsRes.data || []); // Сохраняем клиентов
+      setClients(clientsRes.data || []);
       setSchoolEvents(eventsRes || []);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -300,38 +302,80 @@ const Schedule: React.FC = () => {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
         
-        // Автоматически удаляем дубликаты тренировок при загрузке
         try {
           const duplicateResult = await apiService.removeDuplicateTrainings();
           if (duplicateResult?.removedCount > 0) {
             console.log(`Автоматически удалено ${duplicateResult.removedCount} дублирующихся тренировок`);
           }
         } catch (duplicateError) {
-          // Игнорируем ошибки удаления дубликатов, продолжаем загрузку
           console.warn('Не удалось проверить дубликаты тренировок:', duplicateError);
         }
         
         if (!isMounted || abortController.signal.aborted) return;
         
-        const [trainingsRes, competitionsRes, groupsRes, trainersRes, branchesRes, hallsRes, settingsRes, clientsRes, eventsRes, tasksRes] = await Promise.all([
-          apiService.getTrainings({ limit: 1000, page: 1 }, abortController.signal),
-          apiService.getCompetitions({ limit: 1000, page: 1 }, abortController.signal), // Загружаем до 1000 соревнований
-          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal), // Загружаем все группы
+        const { from, to } = getScheduleRange(selectedDate, viewMode);
+        const summaryRange = getSummaryRange(selectedDate);
+
+        const [
+          trainingsRes,
+          competitionsRes,
+          groupsRes,
+          trainersRes,
+          branchesRes,
+          hallsRes,
+          settingsRes,
+          clientsRes,
+          eventsRes,
+          tasksRes,
+          summaryRes,
+          staffUsersRes,
+        ] = await Promise.all([
+          apiService.getTrainings(
+            {
+              limit: 1000,
+              page: 1,
+              startDate: from.toISOString(),
+              endDate: to.toISOString(),
+            },
+            abortController.signal
+          ),
+          apiService.getCompetitions(
+            {
+              limit: 1000,
+              page: 1,
+              startDate: from.toISOString(),
+              endDate: to.toISOString(),
+            },
+            abortController.signal
+          ),
+          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getTrainers({ limit: 1000, page: 1 }, abortController.signal),
           apiService.getBranches({ limit: 1000, page: 1 }, abortController.signal),
-          apiService.getHalls({ limit: 1000, page: 1 }, abortController.signal).catch(() => ({ data: [], pagination: {} })),
-          apiService.getSettings().catch(() => null), // Загружаем настройки, игнорируем ошибки если нет настроек
-          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })), // Загружаем клиентов для индивидуальных тренировок
-          apiService.getSchoolEvents(undefined, abortController.signal).catch(() => []),
-          (() => {
-            const from = startOfWeek(selectedDate, { weekStartsOn: 1 });
-            from.setHours(0, 0, 0, 0);
-            const to = endOfWeek(selectedDate, { weekStartsOn: 1 });
-            to.setHours(23, 59, 59, 999);
-            return apiService
-              .listStaffTasks({ from: from.toISOString(), to: to.toISOString() })
-              .catch(() => []);
-          })(),
+          apiService
+            .getHalls({ limit: 1000, page: 1 }, abortController.signal)
+            .catch(() => ({ data: [], pagination: {} })),
+          apiService.getSettings().catch(() => null),
+          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })),
+          apiService
+            .getSchoolEvents(
+              { startDate: from.toISOString(), endDate: to.toISOString() },
+              abortController.signal
+            )
+            .catch(() => []),
+          apiService
+            .listStaffTasks({ from: from.toISOString(), to: to.toISOString() })
+            .catch(() => []),
+          apiService
+            .getScheduleSummary({
+              startDate: summaryRange.from.toISOString(),
+              endDate: summaryRange.to.toISOString(),
+              ...(filterBranchId ? { branchId: filterBranchId } : {}),
+              ...(filterHallId ? { hallId: filterHallId } : {}),
+              ...(filterTrainerId ? { trainerId: filterTrainerId } : {}),
+              ...(filterGroupId ? { groupId: filterGroupId } : {}),
+            })
+            .catch(() => null),
+          apiService.listStaffWorkspaceUsers().catch(() => []),
         ]);
         
         if (!isMounted || abortController.signal.aborted) return;
@@ -344,8 +388,24 @@ const Schedule: React.FC = () => {
         setClients(clientsRes?.data || []);
         setSchoolEvents(eventsRes || []);
         setStaffTasks(Array.isArray(tasksRes) ? tasksRes : []);
-        
-        // Устанавливаем длительность тренировки по умолчанию из настроек
+        if (summaryRes) {
+          setScheduleSummary({
+            trainings: summaryRes.trainings,
+            competitions: summaryRes.competitions,
+            tasks: summaryRes.tasks,
+            events: summaryRes.events,
+          });
+        }
+        setDesktopStaffUsers(
+          Array.isArray(staffUsersRes)
+            ? staffUsersRes.map((u: any) => ({
+                id: u.id,
+                firstName: u.firstName,
+                lastName: u.lastName,
+              }))
+            : []
+        );
+
         if (settingsRes?.data?.defaultTrainingDuration) {
           setDefaultTrainingDuration(settingsRes.data.defaultTrainingDuration);
         }
@@ -353,7 +413,6 @@ const Schedule: React.FC = () => {
           setStaffTaskColor(settingsRes.data.staffTaskColor);
         }
       } catch (error: any) {
-        // Ignore cancelled requests
         if (error?.code === 'ERR_CANCELED' || error?.message === 'canceled' || abortController.signal.aborted) {
           return;
         }
@@ -372,510 +431,12 @@ const Schedule: React.FC = () => {
       isMounted = false;
       abortController.abort();
     };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadTasksForRange = async () => {
-      try {
-        const from = startOfWeek(selectedDate, { weekStartsOn: 1 });
-        from.setHours(0, 0, 0, 0);
-        const to = endOfWeek(selectedDate, { weekStartsOn: 1 });
-        to.setHours(23, 59, 59, 999);
-        const tasks = await apiService.listStaffTasks({
-          from: from.toISOString(),
-          to: to.toISOString(),
-        });
-        if (!cancelled) setStaffTasks(Array.isArray(tasks) ? tasks : []);
-      } catch {
-        if (!cancelled) setStaffTasks([]);
-      }
-    };
-    void loadTasksForRange();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDate]);
-
-  const handleCreateTraining = async (): Promise<boolean> => {
-    // Защита от двойного нажатия
-    if (isSubmitting) return false;
-    
-    try {
-      setIsSubmitting(true);
-      
-      // Проверка обязательных полей
-      if (!formData.title || !formData.title.trim()) {
-        alert('Пожалуйста, укажите название тренировки');
-        return false;
-      }
-      // Для групповой тренировки группа обязательна, для индивидуальной - клиенты
-      if (formData.trainingType === 'group') {
-      if (!formData.groupId) {
-        alert('Пожалуйста, выберите группу');
-        return false;
-        }
-      } else {
-        // Индивидуальная тренировка
-        if (!formData.selectedClientIds || formData.selectedClientIds.length === 0) {
-          alert('Пожалуйста, выберите хотя бы одного клиента');
-          return false;
-        }
-      }
-      if (!formData.trainerId) {
-        alert('Пожалуйста, выберите тренера');
-        return false;
-      }
-      if (!formData.branchId) {
-        alert('Пожалуйста, выберите филиал');
-        return false;
-      }
-
-      // Для нерегулярных тренировок проверяем дату и время
-      if (!formData.isRecurring) {
-      if (!formData.startTime || !formData.endTime || !formData.date) {
-        alert('Пожалуйста, выберите дату, время начала и окончания');
-        return false;
-      }
-      }
-
-      if (formData.isRecurring) {
-        if (formData.recurrenceMode === 'days') {
-          if (formData.daySchedules.length === 0) {
-            alert('Пожалуйста, добавьте хотя бы один день недели с расписанием');
-        return false;
-      }
-          // Проверяем, что для всех дней задано время
-          for (const daySchedule of formData.daySchedules) {
-            if (!daySchedule.startTime || !daySchedule.endTime) {
-              alert(`Пожалуйста, укажите время для всех выбранных дней недели`);
-              return false;
-            }
-          }
-          if (!formData.recurrenceStartDate || !formData.recurrenceEndDate) {
-            alert('Пожалуйста, выберите дату начала и окончания регулярных тренировок');
-            return false;
-          }
-          if (formData.recurrenceEndDate < formData.recurrenceStartDate) {
-            alert('Дата окончания не может быть раньше даты начала');
-            return false;
-          }
-        } else if (formData.recurrenceMode === 'dates') {
-          if (formData.dateSchedules.length === 0) {
-            alert('Пожалуйста, добавьте хотя бы одну дату с расписанием');
-            return false;
-          }
-          // Проверяем, что для всех дат задано время
-          for (const dateSchedule of formData.dateSchedules) {
-            if (!dateSchedule.startTime || !dateSchedule.endTime) {
-              alert(`Пожалуйста, укажите время для всех выбранных дат`);
-              return false;
-            }
-          }
-        }
-      }
-
-      // Базовые данные для тренировки
-      // Всегда отправляем оригинального тренера в trainerId, контроллер сам определит, кто будет проводить
-      const trainingData: any = {
-        title: formData.title,
-        description: formData.description,
-        trainerId: formData.trainerId, // Оригинальный тренер
-        branchId: formData.branchId,
-        hallId: formData.hallId || undefined,
-        isRecurring: formData.isRecurring,
-        recurrence: formData.recurrence,
-        daysOfWeek: formData.daysOfWeek,
-        substituteTrainerId: formData.substituteTrainerId || undefined,
-        originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
-      };
-      
-      // Для групповой тренировки добавляем groupId, для индивидуальной - явно null
-      if (formData.trainingType === 'group') {
-        trainingData.groupId = formData.groupId;
-      } else {
-        trainingData.groupId = null; // Явно устанавливаем null для индивидуальных тренировок
-        const priceNum = formData.price ? parseFloat(formData.price) : NaN;
-        if (Number.isFinite(priceNum) && priceNum >= 0) {
-          trainingData.price = priceNum;
-        }
-      }
-
-      if (formData.isRecurring) {
-        const trainings = [];
-        
-        if (formData.recurrenceMode === 'days') {
-          // Create trainings by days of week
-          const startDate = new Date(formData.recurrenceStartDate!);
-          startDate.setHours(0, 0, 0, 0); // Сбрасываем время до начала дня
-          
-          const endDate = new Date(formData.recurrenceEndDate!);
-          endDate.setHours(23, 59, 59, 999); // Устанавливаем время до конца дня
-          
-          // Iterate through each day in the date range
-          const currentDate = new Date(startDate);
-          currentDate.setHours(0, 0, 0, 0);
-          
-          // Создаем массив для отслеживания созданных тренировок (для отладки)
-          let createdCount = 0;
-          
-          while (currentDate <= endDate) {
-            const dayOfWeek = currentDate.getDay();
-            
-            // Find schedule for this day of week
-            const daySchedule = formData.daySchedules.find(ds => ds.dayOfWeek === dayOfWeek);
-            if (daySchedule && daySchedule.startTime && daySchedule.endTime) {
-              const trainingDate = new Date(currentDate);
-              trainingDate.setHours(0, 0, 0, 0); // Сбрасываем время для даты тренировки
-            
-            const recurringStartTime = new Date(trainingDate);
-              recurringStartTime.setHours(daySchedule.startTime.getHours(), daySchedule.startTime.getMinutes(), 0, 0);
-            
-            const recurringEndTime = new Date(trainingDate);
-              recurringEndTime.setHours(daySchedule.endTime.getHours(), daySchedule.endTime.getMinutes(), 0, 0);
-
-            trainings.push({
-              ...trainingData,
-              startTime: recurringStartTime.toISOString(),
-              endTime: recurringEndTime.toISOString()
-            });
-              createdCount++;
-            }
-            
-            // Move to next day
-            currentDate.setDate(currentDate.getDate() + 1);
-          }
-          
-          console.log(`Создано тренировок: ${createdCount} из диапазона ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`);
-        } else if (formData.recurrenceMode === 'dates') {
-          // Create trainings by specific dates
-          for (const dateSchedule of formData.dateSchedules) {
-            if (dateSchedule.startTime && dateSchedule.endTime) {
-              const trainingDate = new Date(dateSchedule.date);
-              
-              const recurringStartTime = new Date(trainingDate);
-              recurringStartTime.setHours(dateSchedule.startTime.getHours(), dateSchedule.startTime.getMinutes());
-              
-              const recurringEndTime = new Date(trainingDate);
-              recurringEndTime.setHours(dateSchedule.endTime.getHours(), dateSchedule.endTime.getMinutes());
-
-              trainings.push({
-                ...trainingData,
-                startTime: recurringStartTime.toISOString(),
-                endTime: recurringEndTime.toISOString()
-              });
-            }
-          }
-        }
-        
-        // Create all recurring trainings
-        // Используем batch создание для быстрого создания множества тренировок
-        if (trainings.length > 1) {
-          try {
-            const batchResult = await apiService.createTrainingsBatch(trainings);
-            if (batchResult.failedCount > 0) {
-              const errorMessages = batchResult.failed.map((ft: any) => ft.error).join('; ');
-              alert(`Создано тренировок: ${batchResult.createdCount}. Ошибок: ${batchResult.failedCount}. ${errorMessages}`);
-            } else {
-              alert(`Успешно создано ${batchResult.createdCount} тренировок`);
-            }
-            
-            // Для индивидуальных тренировок создаем записи посещаемости для всех созданных тренировок
-            if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && batchResult.created) {
-              try {
-                console.log('Creating attendances for batch individual trainings:', {
-                  trainingsCount: batchResult.created.length,
-                  selectedClientIds: formData.selectedClientIds
-                });
-                // Создаем посещаемость для каждой созданной тренировки
-                for (const createdTraining of batchResult.created) {
-                  if (createdTraining?.id) {
-                    try {
-                      // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      
-                      const attendances = formData.selectedClientIds.map(clientId => ({
-                        clientId,
-                        status: 'PRESENT',
-                        notes: '',
-                        shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
-                      }));
-                      
-                      await apiService.bulkUpdateAttendance(createdTraining.id, attendances);
-                      console.log(`Attendances created for training ${createdTraining.id}`);
-                      
-                      // Небольшая задержка между запросами
-                      await new Promise(resolve => setTimeout(resolve, 200));
-                    } catch (attendanceError: any) {
-                      console.error(`Error creating attendances for training ${createdTraining.id}:`, attendanceError);
-                      console.error('Error details:', attendanceError.response?.data);
-                    }
-                  }
-                }
-                console.log('All attendances created for batch trainings');
-                // Обновляем данные после создания посещаемости
-                await fetchData();
-                // Обновляем данные посещаемости для созданных тренировок
-                if (batchResult.created && batchResult.created.length > 0) {
-                  for (const createdTraining of batchResult.created) {
-                    if (createdTraining?.id) {
-                      try {
-                        // Небольшая задержка для обеспечения, что данные посещаемости уже созданы
-                        await new Promise(resolve => setTimeout(resolve, 300));
-                        const response = await apiService.getAttendancesByTraining(createdTraining.id);
-                        console.log(`Refreshed attendance data for training ${createdTraining.id}:`, response);
-                        // Если диалог посещаемости открыт для этой тренировки, обновляем данные
-                        if (selectedTraining && selectedTraining.id === createdTraining.id) {
-                          setAttendanceData(response.clients || []);
-                        }
-                      } catch (err) {
-                        console.error(`Error refreshing attendance data for training ${createdTraining.id}:`, err);
-                      }
-                    }
-                  }
-                }
-              } catch (attendanceError: any) {
-                console.error('Error creating attendances for recurring individual trainings:', attendanceError);
-                console.error('Error details:', attendanceError.response?.data);
-                alert('Тренировки созданы, но не удалось добавить клиентов в посещаемость для некоторых тренировок');
-                await fetchData();
-              }
-            } else {
-              // Обновляем данные после создания регулярных тренировок (если не индивидуальные)
-              await fetchData();
-            }
-          } catch (batchErr: any) {
-            console.error('Error creating trainings batch:', batchErr);
-            // Если batch не удался, пробуем создавать по одной с задержками
-            const createdTrainings = [];
-            const failedTrainings = [];
-            for (let i = 0; i < trainings.length; i++) {
-              const training = trainings[i];
-              try {
-                const createdTraining = await apiService.createTraining(training);
-                createdTrainings.push({ training, createdTraining });
-                
-                // Для индивидуальных тренировок создаем записи посещаемости
-                const trainingIdForFallback = createdTraining?.id || createdTraining?.data?.id;
-                if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingIdForFallback) {
-                  try {
-                    // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    const attendances = formData.selectedClientIds.map(clientId => ({
-                      clientId,
-                      status: 'PRESENT',
-                      notes: '',
-                      shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
-                    }));
-                    await apiService.bulkUpdateAttendance(trainingIdForFallback, attendances);
-                  } catch (attendanceError) {
-                    console.error('Error creating attendances for individual training:', attendanceError);
-                  }
-                }
-                
-                // Увеличиваем задержку между запросами (500ms), чтобы избежать 429 ошибки
-                if (i < trainings.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              } catch (err: any) {
-                console.error('Error creating training:', err);
-                failedTrainings.push({
-                  training,
-                  error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
-                });
-              }
-            }
-            
-            if (failedTrainings.length > 0) {
-              const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
-              alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
-            } else {
-              alert(`Успешно создано ${createdTrainings.length} тренировок`);
-            }
-            // Обновляем данные после создания тренировок
-            await fetchData();
-          }
-        } else if (trainings.length === 1) {
-          // Для одной тренировки используем обычный метод
-          try {
-            const createdTraining = await apiService.createTraining(trainings[0]);
-            alert('Тренировка успешно создана');
-            
-            // Для индивидуальных тренировок создаем записи посещаемости
-            const trainingIdForRecurring = createdTraining?.id || createdTraining?.data?.id;
-            if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingIdForRecurring) {
-              try {
-                // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const attendances = formData.selectedClientIds.map(clientId => ({
-                  clientId,
-                  status: 'PRESENT',
-                  notes: '',
-                  shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
-                }));
-                console.log('Creating attendances for individual training (recurring single):', {
-                  trainingId: trainingIdForRecurring,
-                  attendances: attendances
-                });
-                await apiService.bulkUpdateAttendance(trainingIdForRecurring, attendances);
-                console.log('Attendances created successfully for recurring training');
-                await fetchData();
-              } catch (attendanceError: any) {
-                console.error('Error creating attendances for individual training:', attendanceError);
-                console.error('Error details:', attendanceError.response?.data);
-                alert('Тренировка создана, но не удалось добавить клиентов в посещаемость: ' + (attendanceError.response?.data?.error || attendanceError.message));
-                await fetchData();
-              }
-            } else {
-              await fetchData();
-            }
-          } catch (err: any) {
-            const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
-            alert(`Ошибка создания тренировки: ${errorMessage}`);
-            throw err;
-          }
-        }
-      } else {
-        // Create single training
-        if (!formData.date || !formData.startTime || !formData.endTime) {
-          alert('Пожалуйста, выберите дату, время начала и окончания');
-          return false;
-        }
-
-        const baseDate = formData.date;
-        const startTime = new Date(baseDate);
-        startTime.setHours(formData.startTime.getHours(), formData.startTime.getMinutes());
-        
-        const endTime = new Date(baseDate);
-        endTime.setHours(formData.endTime.getHours(), formData.endTime.getMinutes());
-
-        const trainingToCreate = {
-          ...trainingData,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString()
-        };
-        
-        console.log('Creating training with data:', JSON.stringify(trainingToCreate, null, 2));
-        console.log('Training type:', formData.trainingType);
-        console.log('Selected client IDs:', formData.selectedClientIds);
-        
-        const createdTraining = await apiService.createTraining(trainingToCreate);
-        console.log('Training created:', createdTraining);
-        console.log('Training ID:', createdTraining?.id);
-        console.log('Training data structure:', {
-          hasId: !!createdTraining?.id,
-          hasData: !!createdTraining?.data,
-          hasDataId: !!createdTraining?.data?.id
-        });
-        
-        // Для индивидуальной тренировки создаем записи посещаемости для выбранных клиентов
-        const trainingId = createdTraining?.id || createdTraining?.data?.id;
-        if (formData.trainingType === 'individual' && formData.selectedClientIds.length > 0 && trainingId) {
-          console.log('Creating attendances for individual training. Training ID:', trainingId);
-          try {
-            // Небольшая задержка для обеспечения, что тренировка полностью создана в БД
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const attendances = formData.selectedClientIds.map(clientId => ({
-              clientId,
-              status: 'PRESENT',
-              notes: '',
-              shouldCharge: false // Для PRESENT статуса shouldCharge должен быть false
-            }));
-            console.log('Creating attendances for individual training:', {
-              trainingId: trainingId,
-              attendances: attendances
-            });
-            console.log('Calling bulkUpdateAttendance with:', {
-              trainingId: trainingId,
-              attendances: attendances
-            });
-            
-            const attendanceResult = await apiService.bulkUpdateAttendance(trainingId, attendances);
-            console.log('Attendances created successfully:', attendanceResult);
-            console.log('Attendance result type:', typeof attendanceResult);
-            console.log('Attendance result is array:', Array.isArray(attendanceResult));
-            console.log('Attendance result length:', Array.isArray(attendanceResult) ? attendanceResult.length : 'not an array');
-            console.log('Attendance result keys:', attendanceResult ? Object.keys(attendanceResult) : 'null');
-            
-            // Проверяем, что записи действительно созданы
-            if (Array.isArray(attendanceResult) && attendanceResult.length > 0) {
-              console.log('Successfully created', attendanceResult.length, 'attendance records');
-              attendanceResult.forEach((att: any, index: number) => {
-                console.log(`Attendance ${index + 1}:`, {
-                  id: att.id,
-                  clientId: att.clientId,
-                  trainingId: att.trainingId,
-                  status: att.status,
-                  client: att.client ? `${att.client.lastName} ${att.client.firstName}` : 'no client data'
-                });
-              });
-            } else {
-              console.warn('WARNING: No attendance records were created or result is not an array!');
-              console.warn('Result:', attendanceResult);
-            }
-            
-            // Дополнительная задержка перед обновлением данных
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Обновляем данные после создания посещаемости
-            await fetchData();
-            
-            // Обновляем данные посещаемости для созданной тренировки
-            try {
-              console.log('Fetching attendance data for training:', trainingId);
-              const response = await apiService.getAttendancesByTraining(trainingId);
-              console.log('Refreshed attendance data:', response);
-              console.log('Clients in response:', response.clients?.length || 0);
-              console.log('Full response:', JSON.stringify(response, null, 2));
-              
-              // Всегда обновляем данные посещаемости, если диалог открыт для этой тренировки
-              if (selectedTraining && selectedTraining.id === trainingId) {
-                console.log('Updating attendance data in dialog');
-                setAttendanceData(response.clients || []);
-              } else {
-                console.log('Dialog not open for this training. selectedTraining:', selectedTraining?.id, 'trainingId:', trainingId);
-              }
-            } catch (err) {
-              console.error('Error refreshing attendance data:', err);
-            }
-          } catch (attendanceError: any) {
-            console.error('Error creating attendances for individual training:', attendanceError);
-            console.error('Error details:', attendanceError.response?.data);
-            alert('Тренировка создана, но не удалось добавить клиентов в посещаемость: ' + (attendanceError.response?.data?.error || attendanceError.message));
-            await fetchData();
-          }
-        } else {
-          await fetchData();
-        }
-      }
-
-      await fetchData();
-      setOpenDialog(false);
-      resetForm();
-      return true;
-    } catch (error: any) {
-      console.error('Error creating training:', error);
-      const errorMessage = error?.response?.data?.error || error?.message || 'Не удалось создать тренировку';
-      const errorDetails = error?.response?.data?.data;
-      if (errorDetails && Array.isArray(errorDetails)) {
-        const details = errorDetails.map((e: any) => `${e.field}: ${e.message}`).join('\n');
-        alert(`Ошибка создания тренировки:\n${details}`);
-      } else {
-        alert(errorMessage);
-      }
-      return false;
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial + range/filter-driven reload
+  }, [selectedDate, viewMode, filterBranchId, filterHallId, filterTrainerId, filterGroupId]);
 
   const resetForm = () => {
     const empty = createEmptyTrainingForm();
     setFormData(empty);
-    setCreateFormBaseline(empty);
     setEditFormBaseline(empty);
     setEditingTraining(null);
   };
@@ -1517,26 +1078,8 @@ const Schedule: React.FC = () => {
   };
 
   const openCreateEventDialog = (day?: Date | null) => {
-    const base = day || selectedDate || new Date();
-    const start = new Date(base);
-    start.setHours(18, 0, 0, 0);
-    const end = new Date(base);
-    end.setHours(19, 0, 0, 0);
     setSelectedSchoolEvent(null);
-    setEventFormData({
-      title: '',
-      description: '',
-      type: 'parent_meeting',
-      date: base,
-      startTime: start,
-      endTime: end,
-      location: '',
-      branchId: '',
-      groupIds: [],
-      participantIds: [],
-      parentIds: [],
-      trainerIds: [],
-    });
+    setCreateEventInitialDate(day || selectedDate || new Date());
     setEventDialog(true);
   };
 
@@ -1544,96 +1087,21 @@ const Schedule: React.FC = () => {
   useEffect(() => {
     if (searchParams.get('create') !== '1') return;
 
-    if (!openDialog && !trainingTypeDialog) {
+    if (!trainingTypeDialog) {
       setSelectedDayForTraining(null);
-      setFormData((prev) => ({ ...prev, date: new Date() }));
       setTrainingTypeDialog(true);
     }
 
     const next = new URLSearchParams(searchParams);
     next.delete('create');
     setSearchParams(next, { replace: true });
-  }, [searchParams, openDialog, trainingTypeDialog, setSearchParams]);
+  }, [searchParams, trainingTypeDialog, setSearchParams]);
 
   const openEditEventDialog = (event: any) => {
-    const start = new Date(event.startTime);
-    const end = new Date(event.endTime);
     setSelectedSchoolEvent(event);
-    const groupIdsFromEvent =
-      event.groups?.map((g: any) => g.groupId || g.group?.id).filter(Boolean) ||
-      (event.groupId ? [event.groupId] : []);
-    setEventFormData({
-      title: event.title || '',
-      description: event.description || '',
-      type: event.type === 'parent_meeting' ? 'parent_meeting' : 'other',
-      date: start,
-      startTime: start,
-      endTime: end,
-      location: event.location || '',
-      branchId: event.branchId || '',
-      groupIds: groupIdsFromEvent,
-      participantIds: event.participants?.map((p: any) => p.clientId) || [],
-      parentIds: event.parents?.map((p: any) => p.parentId) || [],
-      trainerIds: event.trainers?.map((t: any) => t.trainerId) || [],
-    });
+    setCreateEventInitialDate(null);
     setEventDetailDialog(false);
     setEventDialog(true);
-  };
-
-  const combineEventDateTime = (date: Date | null, time: Date | null) => {
-    if (!date || !time) return null;
-    const result = new Date(date);
-    result.setHours(time.getHours(), time.getMinutes(), 0, 0);
-    return result;
-  };
-
-  const handleSaveSchoolEvent = async () => {
-    const startTime = combineEventDateTime(eventFormData.date, eventFormData.startTime);
-    const endTime = combineEventDateTime(eventFormData.date, eventFormData.endTime);
-    if (!eventFormData.title.trim()) {
-      alert('Укажите название события');
-      return;
-    }
-    if (!startTime || !endTime) {
-      alert('Укажите дату и время');
-      return;
-    }
-    if (endTime <= startTime) {
-      alert('Время окончания должно быть позже начала');
-      return;
-    }
-
-    try {
-      setEventSaving(true);
-      const payload = {
-        title: eventFormData.title.trim(),
-        description: eventFormData.description.trim() || null,
-        type: eventFormData.type,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        location: eventFormData.location.trim() || null,
-        branchId: eventFormData.branchId || null,
-        groupIds: eventFormData.groupIds,
-        participantIds:
-          eventFormData.type === 'other' ? eventFormData.participantIds : [],
-        parentIds: eventFormData.type === 'other' ? eventFormData.parentIds : [],
-        trainerIds: eventFormData.type === 'other' ? eventFormData.trainerIds : [],
-      };
-      if (selectedSchoolEvent?.id) {
-        await apiService.updateSchoolEvent(selectedSchoolEvent.id, payload);
-      } else {
-        await apiService.createSchoolEvent(payload);
-      }
-      setEventDialog(false);
-      setSelectedSchoolEvent(null);
-      const events = await apiService.getSchoolEvents().catch(() => []);
-      setSchoolEvents(events || []);
-    } catch (err: any) {
-      console.error('Error saving school event:', err);
-      alert(err.response?.data?.error || 'Не удалось сохранить событие');
-    } finally {
-      setEventSaving(false);
-    }
   };
 
   const handleDeleteSchoolEvent = async () => {
@@ -1650,16 +1118,6 @@ const Schedule: React.FC = () => {
     }
   };
 
-  const schoolEventTypeLabel = (type: string) =>
-    type === 'parent_meeting' ? 'Родительское собрание' : 'Мероприятие';
-
-  const eventParentsOptions: Array<Parent & { clientLabel?: string }> = clients.flatMap((client) =>
-    (client.parents || []).map((parent) => ({
-      ...parent,
-      clientLabel: `${client.lastName} ${client.firstName}`.trim(),
-    }))
-  );
-
   const getTrainingsForDate = (date: Date) => {
     let filtered = trainings.filter(training => 
       !training.isCancelled && isSameDay(new Date(training.startTime), date)
@@ -1674,6 +1132,9 @@ const Schedule: React.FC = () => {
     }
     if (filterTrainerId) {
       filtered = filtered.filter(t => t.trainerId === filterTrainerId);
+    }
+    if (filterGroupId) {
+      filtered = filtered.filter(t => t.groupId === filterGroupId);
     }
     
     return filtered;
@@ -1702,8 +1163,158 @@ const Schedule: React.FC = () => {
     if (filterTrainerId) {
       filtered = filtered.filter(t => t.trainerId === filterTrainerId);
     }
+    if (filterGroupId) {
+      filtered = filtered.filter(t => t.groupId === filterGroupId);
+    }
     
     return filtered;
+  };
+
+  const handleDesktopEditItem = (item: CalendarItem) => {
+    if (item.type === 'training') {
+      void handleEditTraining(item.source as Training);
+    } else if (item.type === 'event') {
+      setSelectedSchoolEvent(item.source);
+      setEventDetailDialog(true);
+    } else if (item.type === 'competition') {
+      setSelectedCompetition(item.source as Competition);
+      setCompetitionDialog(true);
+    } else if (item.type === 'task') {
+      window.location.href = '/staff-workspace';
+    }
+  };
+
+  const handleDesktopCopyItem = async (item: CalendarItem) => {
+    try {
+      if (item.type === 'training') {
+        const t = item.source as Training;
+        const start = new Date(t.startTime);
+        const end = new Date(t.endTime);
+        start.setDate(start.getDate() + 7);
+        end.setDate(end.getDate() + 7);
+        await apiService.createTraining({
+          title: t.title,
+          description: t.description,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          branchId: t.branchId,
+          hallId: t.hallId || undefined,
+          groupId: t.groupId || undefined,
+          trainerId: t.trainerId,
+          isRecurring: false,
+          price: t.price,
+          trainerEarningType: t.trainerEarningType,
+          trainerEarningValue: t.trainerEarningValue,
+        });
+        setSnackbarMessage('Тренировка скопирована на следующую неделю');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+        await fetchData();
+      } else if (item.type === 'event') {
+        const e = item.source as any;
+        const start = new Date(e.startTime);
+        const end = new Date(e.endTime);
+        start.setDate(start.getDate() + 7);
+        end.setDate(end.getDate() + 7);
+        await apiService.createSchoolEvent({
+          title: e.title,
+          description: e.description,
+          type: e.type || 'other',
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          location: e.location,
+          branchId: e.branchId || undefined,
+        });
+        setSnackbarMessage('Событие скопировано');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+        await fetchData();
+      } else if (item.type === 'task') {
+        const t = item.source as any;
+        const due = t.dueAt ? new Date(t.dueAt) : new Date();
+        due.setDate(due.getDate() + 7);
+        const assigneeIds = (t.assignees || [])
+          .map((a: any) => a.userId || a.user?.id)
+          .filter(Boolean);
+        if (assigneeIds.length === 0 && desktopStaffUsers[0]) {
+          assigneeIds.push(desktopStaffUsers[0].id);
+        }
+        if (assigneeIds.length === 0) {
+          alert('Нет исполнителей для копии задачи');
+          return;
+        }
+        await apiService.createStaffTask({
+          title: t.title,
+          body: t.body || '',
+          dueAt: due.toISOString(),
+          assigneeIds,
+        });
+        setSnackbarMessage('Задача скопирована');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Не удалось скопировать');
+    }
+  };
+
+  const handleDesktopDeleteItem = async (item: CalendarItem) => {
+    if (item.type === 'training') {
+      await handleDeleteTraining(item.source as Training);
+      setSelectedCalendarItem(null);
+      return;
+    }
+    if (item.type === 'event') {
+      if (!window.confirm('Удалить событие?')) return;
+      try {
+        await apiService.deleteSchoolEvent(item.source.id);
+        setSelectedCalendarItem(null);
+        await fetchData();
+      } catch (e) {
+        console.error(e);
+        alert('Не удалось удалить событие');
+      }
+      return;
+    }
+    if (item.type === 'competition') {
+      if (!window.confirm('Удалить соревнование?')) return;
+      try {
+        await apiService.deleteCompetition(item.source.id);
+        setSelectedCalendarItem(null);
+        await fetchData();
+      } catch (e) {
+        console.error(e);
+        alert('Не удалось удалить соревнование');
+      }
+      return;
+    }
+    if (item.type === 'task') {
+      if (!window.confirm('Удалить задачу?')) return;
+      try {
+        await apiService.deleteStaffTask(item.source.id);
+        setSelectedCalendarItem(null);
+        await fetchData();
+      } catch (e) {
+        console.error(e);
+        alert('Не удалось удалить задачу');
+      }
+    }
+  };
+
+  const openDesktopCreateTask = async () => {
+    const base = selectedDate || new Date();
+    const due = new Date(base);
+    due.setHours(18, 0, 0, 0);
+    setScheduleTaskDefaultDue(due);
+    try {
+      const users = await apiService.listStaffWorkspaceUsers();
+      setScheduleStaffUsers(users || []);
+    } catch {
+      setScheduleStaffUsers([]);
+    }
+    setScheduleTaskDialog(true);
   };
 
   // Генерация временных слотов (с 8:00 до 22:00)
@@ -2004,25 +1615,13 @@ const Schedule: React.FC = () => {
 
   const weekDays = getWeekDays();
 
-  const discardCreateTraining = React.useCallback(() => {
-    setOpenDialog(false);
-    resetForm();
-  }, []);
-
   const discardEditTraining = React.useCallback(() => {
     if (isUpdating) return;
     setEditDialog(false);
     resetForm();
   }, [isUpdating]);
 
-  const createDirty = openDialog && isDirtyValue(formData, createFormBaseline);
   const editDirty = editDialog && isDirtyValue(formData, editFormBaseline);
-
-  const createUnsaved = useUnsavedClose({
-    isDirty: Boolean(createDirty),
-    onDiscard: discardCreateTraining,
-    onSave: async () => handleCreateTraining(),
-  });
 
   const editUnsaved = useUnsavedClose({
     isDirty: Boolean(editDirty),
@@ -2044,35 +1643,106 @@ const Schedule: React.FC = () => {
       adapterLocale={ru}
     >
       <Box data-onboarding="schedule-page">
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, mb: 1, flexWrap: 'wrap', gap: 1 }}>
-          <Typography variant="h6" component="h1" sx={{ fontWeight: 700, fontSize: { xs: 18, md: 20 } }}>
-            Календарный план
+        {!isMobile ? (
+          <ScheduleDesktop
+            selectedDate={selectedDate}
+            viewMode={viewMode}
+            sectionTab={sectionTab}
+            layers={{
+              trainings: showTrainings,
+              competitions: showCompetitions,
+              tasks: showTasks,
+              events: showEvents,
+            }}
+            filters={{
+              branchId: filterBranchId,
+              hallId: filterHallId,
+              trainerId: filterTrainerId,
+              groupId: filterGroupId,
+            }}
+            summary={scheduleSummary}
+            trainings={trainings}
+            competitions={competitions}
+            events={schoolEvents}
+            tasks={staffTasks}
+            branches={branches}
+            halls={halls}
+            trainers={trainers}
+            groups={groups}
+            staffTaskColor={staffTaskColor}
+            selectedItem={selectedCalendarItem}
+            staffUsers={desktopStaffUsers}
+            createMenuAnchor={createMenuAnchor}
+            onCreateMenuOpen={setCreateMenuAnchor}
+            onCreateMenuClose={() => setCreateMenuAnchor(null)}
+            onCreateTraining={() => {
+              setSelectedDayForTraining(null);
+              setFormData({ ...formData, date: selectedDate || new Date() });
+              setTrainingTypeDialog(true);
+            }}
+            onCreateEvent={() => openCreateEventDialog(selectedDate)}
+            onCreateTask={() => void openDesktopCreateTask()}
+            onSectionTabChange={setSectionTab}
+            onViewModeChange={setViewMode}
+            onSelectedDateChange={setSelectedDate}
+            onLayersChange={(next) => {
+              setShowTrainings(next.trainings);
+              setShowCompetitions(next.competitions);
+              setShowTasks(next.tasks);
+              setShowEvents(next.events);
+            }}
+            onFiltersChange={(next) => {
+              setFilterBranchId(next.branchId);
+              setFilterHallId(next.hallId);
+              setFilterTrainerId(next.trainerId);
+              setFilterGroupId(next.groupId);
+            }}
+            onSelectItem={setSelectedCalendarItem}
+            onEditItem={handleDesktopEditItem}
+            onCopyItem={(item) => void handleDesktopCopyItem(item)}
+            onDeleteItem={(item) => void handleDesktopDeleteItem(item)}
+            onRefresh={() => void fetchData()}
+            competitionsPanel={<CompetitionsPanel embedded />}
+          />
+        ) : (
+        <>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'row', sm: 'row' }, justifyContent: 'space-between', alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+          <Typography
+            variant="h6"
+            component="h1"
+            sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.02em' }}
+          >
+            Календарь
           </Typography>
           {sectionTab === 'schedule' && (
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Add />}
-              data-onboarding="schedule-create-button"
-              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
-              onClick={(e) => setCreateMenuAnchor(e.currentTarget)}
-            >
-              Создать
-            </Button>
+          <Stack direction="row" spacing={1} sx={{ width: { xs: 'auto', sm: 'auto' } }}>
+              <IconButton
+                data-onboarding="schedule-create-button"
+                aria-label="Создать"
+                onClick={(e) => setCreateMenuAnchor(e.currentTarget)}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  bgcolor: colors.primary,
+                  color: colors.white,
+                  '&:hover': { bgcolor: colors.primaryDark },
+                }}
+              >
+                <Add />
+              </IconButton>
             <Menu
               anchorEl={createMenuAnchor}
               open={Boolean(createMenuAnchor)}
               onClose={() => setCreateMenuAnchor(null)}
             >
               <MenuItem
-                onClick={() => {
+            onClick={() => {
                   setCreateMenuAnchor(null);
-                  setSelectedDayForTraining(null);
-                  setFormData({ ...formData, date: new Date() });
-                  setTrainingTypeDialog(true);
-                }}
-              >
+              setSelectedDayForTraining(null);
+              setFormData({ ...formData, date: new Date() });
+              setTrainingTypeDialog(true);
+            }}
+          >
                 Тренировка
               </MenuItem>
               <MenuItem
@@ -2084,25 +1754,9 @@ const Schedule: React.FC = () => {
                 Событие
               </MenuItem>
               <MenuItem
-                onClick={async () => {
+                onClick={() => {
                   setCreateMenuAnchor(null);
-                  setScheduleTaskTitle('');
-                  setScheduleTaskBody('');
-                  const base = selectedDate || new Date();
-                  const due = new Date(base);
-                  due.setHours(18, 0, 0, 0);
-                  const pad = (n: number) => String(n).padStart(2, '0');
-                  setScheduleTaskDueAt(
-                    `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`
-                  );
-                  setScheduleTaskAssignees([]);
-                  try {
-                    const users = await apiService.listStaffWorkspaceUsers();
-                    setScheduleStaffUsers(users || []);
-                  } catch {
-                    setScheduleStaffUsers([]);
-                  }
-                  setScheduleTaskDialog(true);
+                  void openDesktopCreateTask();
                 }}
               >
                 Задача
@@ -2112,28 +1766,6 @@ const Schedule: React.FC = () => {
           )}
         </Box>
 
-        <Tabs
-          value={sectionTab}
-          onChange={(_, v) => setSectionTab(v)}
-          variant={isNarrow ? 'fullWidth' : 'standard'}
-          sx={{
-            mb: 1,
-            minHeight: 40,
-            borderBottom: 1,
-            borderColor: 'divider',
-            '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: { xs: 13, md: 14 } },
-          }}
-        >
-          <Tab value="schedule" label="Расписание" icon={<CalendarToday sx={{ fontSize: 18 }} />} iconPosition="start" />
-          <Tab
-            value="competitions"
-            label="Соревнования"
-            icon={<EmojiEvents sx={{ fontSize: 18 }} />}
-            iconPosition="start"
-            data-onboarding="schedule-competitions-tab"
-          />
-        </Tabs>
-
         {sectionTab === 'competitions' ? (
           <CompetitionsPanel embedded />
         ) : (
@@ -2141,7 +1773,8 @@ const Schedule: React.FC = () => {
         {/* Filters and View Toggle */}
         <Box sx={{ display: 'flex', gap: 1.5, mb: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', width: { xs: '100%', md: 'auto' } }}>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+            <Box sx={{ display: 'flex', gap: 1, width: { xs: '100%', md: 'auto' }, alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: { xs: 0, sm: 140 }, flex: 1 }}>
               <InputLabel>Филиал</InputLabel>
             <Select
                 value={filterBranchId}
@@ -2156,7 +1789,42 @@ const Schedule: React.FC = () => {
                 ))}
             </Select>
             </FormControl>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+            {isMobile && (
+              <IconButton
+                aria-label="Выбрать дату"
+                onClick={() => setMobileCalOpen((v) => !v)}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  border: `1px solid ${colors.divider}`,
+                  borderRadius: `${radii.button}px`,
+                  color: colors.textMuted,
+                  bgcolor: colors.card,
+                }}
+              >
+                <CalendarToday fontSize="small" />
+              </IconButton>
+            )}
+            </Box>
+            {isMobile && mobileCalOpen && (
+              <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1, mb: 0.5 }}>
+                <DatePicker
+                  value={selectedDate}
+                  onChange={(value) => {
+                    if (value) setSelectedDate(value);
+                  }}
+                  slotProps={{ textField: { size: 'small', fullWidth: true } }}
+                />
+                <Button
+                  size="small"
+                  onClick={() => setSectionTab('competitions')}
+                  sx={{ textTransform: 'none', alignSelf: 'flex-start', color: colors.primary, fontWeight: 600 }}
+                >
+                  Соревнования
+                </Button>
+              </Box>
+            )}
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' }, display: { xs: 'none', md: 'inline-flex' } }}>
               <InputLabel>Зал</InputLabel>
             <Select
                 value={filterHallId}
@@ -2171,7 +1839,7 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' }, display: { xs: 'none', md: 'inline-flex' } }}>
               <InputLabel>Тренер</InputLabel>
             <Select
               value={filterTrainerId}
@@ -2188,7 +1856,7 @@ const Schedule: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ alignItems: 'center' }}>
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ alignItems: 'center', display: { xs: 'none', md: 'flex' } }}>
               <Chip
                 label="Тренировки"
                 size="small"
@@ -2231,7 +1899,32 @@ const Schedule: React.FC = () => {
               if (newMode !== null) setViewMode(newMode);
               }}
             aria-label="view mode"
-            sx={{ width: { xs: '100%', sm: 'auto' }, '& .MuiToggleButton-root': { flex: { xs: 1, sm: 'none' } } }}
+            sx={{
+              display: { xs: 'none', md: 'inline-flex' },
+              width: { xs: '100%', sm: 'auto' },
+              bgcolor: colors.surface,
+              borderRadius: `${radii.pill}px`,
+              p: 0.35,
+              gap: 0.25,
+              '& .MuiToggleButtonGroup-grouped': {
+                border: 0,
+                borderRadius: `${radii.pill}px !important`,
+                mx: 0,
+                px: 2,
+                py: 0.6,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: 13,
+                color: colors.textMuted,
+                flex: { xs: 1, sm: 'none' },
+                '&.Mui-selected': {
+                  bgcolor: colors.primary,
+                  color: colors.white,
+                  '&:hover': { bgcolor: colors.primaryDark },
+                },
+                '&:hover': { bgcolor: 'rgba(47, 107, 255, 0.08)' },
+              },
+            }}
           >
             <ToggleButton value="day" aria-label="day view">
               День
@@ -2247,33 +1940,105 @@ const Schedule: React.FC = () => {
           <IconButton
             onClick={() =>
               setSelectedDate(
-                viewMode === 'day' || isMobile
+                viewMode === 'day' && !isMobile
                   ? subDays(selectedDate, 1)
                   : new Date(selectedDate.getTime() - 7 * 24 * 60 * 60 * 1000)
               )
             }
             size="small"
+            sx={{ bgcolor: colors.surface, borderRadius: `${radii.button}px` }}
           >
             <ChevronLeft />
           </IconButton>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: { xs: 14, md: 16 }, textAlign: 'center' }}>
-            {viewMode === 'day' || isMobile
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: { xs: 16, md: 16 }, textAlign: 'center', color: colors.text, textTransform: 'capitalize' }}>
+            {isMobile
+              ? format(selectedDate, 'LLLL yyyy', { locale: ru })
+              : viewMode === 'day'
               ? format(selectedDate, 'd MMMM yyyy, EEE', { locale: ru })
               : `${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })} — ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMMM', { locale: ru })}`}
           </Typography>
           <IconButton
             onClick={() =>
               setSelectedDate(
-                viewMode === 'day' || isMobile
+                viewMode === 'day' && !isMobile
                   ? addDays(selectedDate, 1)
                   : new Date(selectedDate.getTime() + 7 * 24 * 60 * 60 * 1000)
               )
             }
             size="small"
+            sx={{ bgcolor: colors.surface, borderRadius: `${radii.button}px` }}
           >
             <ChevronRight />
           </IconButton>
         </Box>
+
+        {/* Горизонтальная полоска дней недели (мобильный / дневной вид) */}
+        {(isMobile || viewMode === 'day') && (
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 0.75,
+              mb: 1.5,
+              overflowX: 'auto',
+              pb: 0.5,
+              mx: { xs: -0.5, sm: 0 },
+              px: { xs: 0.5, sm: 0 },
+              WebkitOverflowScrolling: 'touch',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
+          >
+            {eachDayOfInterval({
+              start: startOfWeek(selectedDate, { weekStartsOn: 1 }),
+              end: endOfWeek(selectedDate, { weekStartsOn: 1 }),
+            }).map((d) => {
+              const selected = isSameDay(d, selectedDate);
+              const today = isSameDay(d, new Date());
+              return (
+                <Box
+                  key={d.toISOString()}
+                  component="button"
+                  type="button"
+                  onClick={() => setSelectedDate(d)}
+                  sx={{
+                    flex: '1 0 auto',
+                    minWidth: 40,
+                    py: 0.5,
+                    px: 0.25,
+                    border: 'none',
+                    cursor: 'pointer',
+                    bgcolor: 'transparent',
+                    color: colors.text,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0.5,
+                  }}
+                >
+                  <Typography sx={{ fontSize: 11, fontWeight: 500, color: colors.textHint, textTransform: 'capitalize', lineHeight: 1 }}>
+                    {format(d, 'EEEEEE', { locale: ru })}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: selected ? colors.primary : 'transparent',
+                      color: selected ? colors.white : colors.text,
+                      outline: today && !selected ? `1.5px solid ${colors.primarySoft}` : 'none',
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>
+                      {format(d, 'd')}
+                    </Typography>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
 
         {/* Calendar Grid - Week View (desktop) / Day list (mobile) */}
         {isMobile || viewMode === 'day' ? (
@@ -2286,161 +2051,277 @@ const Schedule: React.FC = () => {
             const dayEvents = showEvents ? getSchoolEventsForDate(day) : [];
             const dayTasks = showTasks ? getTasksForDate(day) : [];
             const isToday = isSameDay(day, new Date());
+            const scheduleCardSx = (barColor: string) => ({
+              p: 1.5,
+              pl: 1.75,
+              bgcolor: colors.card,
+              color: colors.text,
+              cursor: 'pointer',
+              borderRadius: `${radii.panel}px`,
+              boxShadow: '0 2px 10px rgba(32, 34, 36, 0.06)',
+              borderLeft: `4px solid ${barColor}`,
+              transition: 'box-shadow 0.15s ease',
+              '&:hover': { boxShadow: '0 4px 16px rgba(32, 34, 36, 0.1)' },
+            });
             return (
-              <Stack spacing={1.5}>
-                <Card variant="outlined" sx={{ bgcolor: isToday ? 'action.selected' : undefined }}>
-                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: (dayCompetitions.length || dayEvents.length || dayTasks.length) ? 1 : 0 }}>
-                      <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
+              <Stack spacing={1.25}>
+                <Box
+                  sx={{
+                    display: { xs: 'none', md: 'flex' },
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    px: 0.25,
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      textTransform: 'capitalize',
+                      fontSize: 15,
+                      color: isToday ? colors.primary : colors.text,
+                    }}
+                  >
                         {format(day, 'EEEE, d MMMM', { locale: ru })}
                       </Typography>
-                      <Stack direction="row" spacing={0.5}>
-                        <Button
-                          size="small"
-                          startIcon={<Add />}
-                          onClick={() => {
-                            setSelectedDayForTraining(day);
-                            setFormData({ ...formData, date: day });
-                            setTrainingTypeDialog(true);
-                          }}
-                        >
-                          Тренировка
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<Add />}
-                          onClick={() => openCreateEventDialog(day)}
-                        >
-                          Событие
-                        </Button>
-                      </Stack>
-                    </Box>
-                    {dayCompetitions.map((competition) => (
-                      <Chip
-                        key={competition.id}
-                        icon={<EmojiEvents sx={{ fontSize: 14 }} />}
-                        label={competition.name}
+                  <Stack direction="row" spacing={0.75}>
+                      <Button
                         size="small"
-                        color="warning"
-                        sx={{ mr: 0.5, mb: 0.5 }}
+                        startIcon={<Add />}
+                      variant="contained"
+                        onClick={() => {
+                          setSelectedDayForTraining(day);
+                          setFormData({ ...formData, date: day });
+                          setTrainingTypeDialog(true);
+                        }}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: `${radii.button}px`,
+                        bgcolor: colors.primary,
+                        boxShadow: 'none',
+                        fontWeight: 600,
+                        '&:hover': { bgcolor: colors.primaryDark, boxShadow: 'none' },
+                      }}
+                    >
+                      Тренировка
+                      </Button>
+                    <Button
+                      size="small"
+                      startIcon={<Add />}
+                      variant="outlined"
+                      onClick={() => openCreateEventDialog(day)}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: `${radii.button}px`,
+                        borderColor: colors.primarySoft,
+                        color: colors.primary,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Событие
+                    </Button>
+                  </Stack>
+                    </Box>
+
+                    {dayCompetitions.map((competition) => (
+                  <Paper
+                        key={competition.id}
+                    sx={scheduleCardSx(EVENT_BAR.competition)}
                         onClick={() => {
                           setSelectedCompetition(competition);
                           setCompetitionDialog(true);
                         }}
-                      />
-                    ))}
-                    {dayEvents.map((event) => (
-                      <Chip
-                        key={event.id}
-                        icon={<CalendarToday sx={{ fontSize: 14 }} />}
-                        label={event.title}
-                        size="small"
-                        color="info"
-                        sx={{ mr: 0.5, mb: 0.5 }}
-                        onClick={() => {
-                          setSelectedSchoolEvent(event);
-                          setEventDetailDialog(true);
-                        }}
-                      />
-                    ))}
-                    {dayTasks.map((task: any) => (
-                      <Chip
-                        key={task.id}
-                        icon={<TaskAlt sx={{ fontSize: 14, color: '#fff !important' }} />}
-                        label={task.title}
-                        size="small"
-                        component={RouterLink}
-                        to="/staff-workspace"
-                        clickable
-                        sx={{
-                          mr: 0.5,
-                          mb: 0.5,
-                          bgcolor: staffTaskColor,
-                          color: '#fff',
-                          opacity: task.status === 'DONE' ? 0.55 : 1,
-                          textDecoration: 'none',
-                          '&:hover': { bgcolor: staffTaskColor, opacity: task.status === 'DONE' ? 0.7 : 0.9 },
-                        }}
-                      />
-                    ))}
-                  </CardContent>
-                </Card>
-                {dayEvents.length > 0 && dayEvents.map((event) => (
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <EmojiEvents sx={{ fontSize: 18, color: EVENT_BAR.competition }} />
+                      <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{competition.name}</Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: colors.textHint }}>
+                      Соревнование
+                    </Typography>
+                  </Paper>
+                ))}
+
+                {dayTasks.map((task: any) => (
+                  <Paper
+                    key={task.id}
+                    component={RouterLink}
+                    to="/staff-workspace"
+                    sx={{
+                      ...scheduleCardSx(staffTaskColor || EVENT_BAR.task),
+                      textDecoration: 'none',
+                      opacity: task.status === 'DONE' ? 0.55 : 1,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <TaskAlt sx={{ fontSize: 18, color: staffTaskColor || EVENT_BAR.task }} />
+                      <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{task.title}</Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: colors.textHint }}>
+                      Задача
+                    </Typography>
+                  </Paper>
+                ))}
+
+                {dayEvents.map((event) => (
                   <Paper
                     key={`evt-${event.id}`}
-                    sx={{
-                      p: 1.5,
-                      bgcolor: '#E3F2FD',
-                      color: '#0D47A1',
-                      cursor: 'pointer',
-                    }}
+                    sx={scheduleCardSx(EVENT_BAR.event)}
                     onClick={() => {
                       setSelectedSchoolEvent(event);
                       setEventDetailDialog(true);
                     }}
                   >
-                    <Typography sx={{ fontWeight: 700 }}>{event.title}</Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                      {schoolEventTypeLabel(event.type)}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                      <AccessTime sx={{ fontSize: 14 }} />
-                      <Typography variant="body2">
-                        {format(new Date(event.startTime), 'HH:mm')} – {format(new Date(event.endTime), 'HH:mm')}
+                    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: colors.primary,
+                          minWidth: 52,
+                          pt: 0.15,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {format(new Date(event.startTime), 'HH:mm')}
                       </Typography>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{event.title}</Typography>
+                        <Typography variant="caption" sx={{ color: colors.textHint, display: 'block' }}>
+                          {schoolEventTypeLabel(event.type)} · {format(new Date(event.startTime), 'HH:mm')} – {format(new Date(event.endTime), 'HH:mm')}
+                        </Typography>
+                        {event.location && (
+                          <Typography variant="caption" sx={{ color: colors.textMuted }}>
+                            {event.location}
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
-                    {event.location && (
-                      <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                        {event.location}
-                      </Typography>
-                    )}
                   </Paper>
                 ))}
-                {dayTrainings.length === 0 ? (
-                  <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography color="text.secondary">Нет тренировок на этот день</Typography>
+
+                {dayTrainings.length === 0 &&
+                dayEvents.length === 0 &&
+                dayCompetitions.length === 0 &&
+                dayTasks.length === 0 ? (
+                  <Paper
+                    sx={{
+                      p: 3,
+                      textAlign: 'center',
+                      borderRadius: `${radii.panel}px`,
+                      bgcolor: colors.surface,
+                      boxShadow: 'none',
+                    }}
+                  >
+                    <Typography color="text.secondary">Нет занятий на этот день</Typography>
                   </Paper>
                 ) : (
                   dayTrainings.map((training) => {
                     const group = groups.find((g) => g.id === training.groupId);
                     const trainer = trainers.find((t) => t.id === training.trainerId);
                     const hall = halls.find((h) => h.id === training.hallId);
-                    const groupColor = group?.color || '#4880FF';
-                    const isLightColor = isColorLight(groupColor);
+                    const branch = branches.find((b) => b.id === training.branchId);
+                    const isIndividual = !training.groupId;
+                    const barColor = isIndividual
+                      ? EVENT_BAR.individual
+                      : group?.color || EVENT_BAR.group;
+                    const place = branch?.address || branch?.name || hall?.name;
+                    if (isMobile) {
+                    return (
+                        <Box key={training.id} sx={{ display: 'flex', gap: 1, alignItems: 'stretch' }}>
+                          <Typography
+                            sx={{
+                              width: 48,
+                              flexShrink: 0,
+                              pt: 1.25,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: colors.textHint,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {format(new Date(training.startTime), 'HH:mm')}
+                          </Typography>
+                      <Paper
+                            elevation={0}
+                            onClick={() => handleOpenAttendanceDialog(training)}
+                        sx={{
+                              flex: 1,
+                              p: 1.25,
+                          cursor: 'pointer',
+                              borderRadius: `${radii.panel}px`,
+                              bgcolor: `${barColor}22`,
+                              borderLeft: `4px solid ${barColor}`,
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 800, fontSize: 14, color: colors.text }}>
+                              {training.title || group?.name || (isIndividual ? 'Индивидуальная тренировка' : 'Тренировка')}
+                            </Typography>
+                            <Typography sx={{ fontSize: 12, color: colors.textMuted, mt: 0.25 }}>
+                            {format(new Date(training.startTime), 'HH:mm')} – {format(new Date(training.endTime), 'HH:mm')}
+                          </Typography>
+                            {trainer?.user && (
+                              <Typography sx={{ fontSize: 12, color: colors.textMuted }}>
+                                {trainer.user.lastName} {trainer.user.firstName?.[0] ? `${trainer.user.firstName[0]}.` : ''}
+                              </Typography>
+                            )}
+                            {place && (
+                              <Typography sx={{ fontSize: 12, color: colors.textHint }}>{place}</Typography>
+                            )}
+                          </Paper>
+                        </Box>
+                      );
+                    }
                     return (
                       <Paper
                         key={training.id}
-                        sx={{
-                          p: 1.5,
-                          bgcolor: groupColor,
-                          color: isLightColor ? '#000' : '#fff',
-                          cursor: 'pointer',
-                        }}
+                        sx={scheduleCardSx(barColor)}
                         onClick={() => handleOpenAttendanceDialog(training)}
                       >
-                        <Typography sx={{ fontWeight: 700 }}>{training.title || group?.name || 'Тренировка'}</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                          <AccessTime sx={{ fontSize: 14 }} />
-                          <Typography variant="body2">
-                            {format(new Date(training.startTime), 'HH:mm')} – {format(new Date(training.endTime), 'HH:mm')}
+                        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                          <Typography
+                            sx={{
+                              fontWeight: 700,
+                              fontSize: 13,
+                              color: barColor,
+                              minWidth: 52,
+                              pt: 0.15,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {format(new Date(training.startTime), 'HH:mm')}
                           </Typography>
-                        </Box>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
+                              {training.title || group?.name || (isIndividual ? 'Индивидуальная' : 'Тренировка')}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{ color: colors.textHint, display: 'block', mb: 0.25 }}
+                            >
+                              {isIndividual ? 'Индивидуальная' : 'Групповая'} ·{' '}
+                              {format(new Date(training.startTime), 'HH:mm')} –{' '}
+                              {format(new Date(training.endTime), 'HH:mm')}
+                            </Typography>
                         {trainer?.user && (
-                          <Typography variant="body2" sx={{ mt: 0.25, opacity: 0.9 }} component="div">
-                            <TrainerNameLink
-                              trainerId={trainer.id}
-                              name={`${trainer.user.lastName} ${trainer.user.firstName}`.trim()}
-                              variant="inherit"
-                              sx={{ color: 'inherit', fontWeight: 400, opacity: 0.95 }}
-                              onOpen={openTrainer}
-                            />
+                              <Typography variant="body2" sx={{ mt: 0.15, color: colors.textMuted }} component="div">
+                                <TrainerNameLink
+                                  trainerId={trainer.id}
+                                  name={`${trainer.user.lastName} ${trainer.user.firstName}`.trim()}
+                                  variant="inherit"
+                                  sx={{ color: 'inherit', fontWeight: 500, fontSize: 13 }}
+                                  onOpen={openTrainer}
+                                />
                           </Typography>
                         )}
                         {hall && (
-                          <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                              <Typography variant="caption" sx={{ color: colors.textHint }}>
                             Зал: {hall.name}
                           </Typography>
                         )}
+                          </Box>
+                        </Box>
                       </Paper>
                     );
                   })
@@ -2673,7 +2554,16 @@ const Schedule: React.FC = () => {
                             ? `${trainer.user.lastName} ${trainer.user.firstName.charAt(0)}.`
                             : 'Тренер';
                           const isSubstitute = !!training.substituteTrainerId;
-                          const availableSpots = group?.maxMembers ? group.maxMembers : (training.groupId ? '?' : 'Индивидуальная');
+                          const enrolled = training.occupancy?.enrolled;
+                          const capacity = training.occupancy?.capacity ?? group?.maxMembers ?? null;
+                          const occupancyLabel =
+                            training.groupId && capacity != null && enrolled != null
+                              ? `${enrolled} из ${capacity} мест`
+                              : training.groupId && capacity != null
+                                ? `${capacity} мест`
+                                : training.groupId
+                                  ? 'Группа'
+                                  : 'Индивидуальная';
                           
                           return (
                             <Paper
@@ -2727,7 +2617,7 @@ const Schedule: React.FC = () => {
                                 </Typography>
                               )}
                               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.65rem', mt: 0.25 }}>
-                                {training.groupId ? `Свободно ${availableSpots} мест` : 'Индивидуальная тренировка'}
+                                {occupancyLabel}
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.25 }}>
                                 <People sx={{ fontSize: 10 }} />
@@ -2780,760 +2670,24 @@ const Schedule: React.FC = () => {
             </Box>
           </Paper>
         ) : null}
-
-        {/* Training Type Selection Dialog */}
-        <Dialog open={trainingTypeDialog} onClose={() => setTrainingTypeDialog(false)} maxWidth="sm" fullWidth fullScreen={isNarrow}>
-          <DialogTitle>
-            Какое занятие вы хотите добавить?
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-              <Button
-                variant="outlined"
-                fullWidth
-                size="large"
-                onClick={() => {
-                  const next = { ...formData, trainingType: 'group' as const, groupId: '', selectedClientIds: [] as string[] };
-                  setFormData(next);
-                  setCreateFormBaseline(next);
-                  setTrainingTypeDialog(false);
-                  setOpenDialog(true);
-                }}
-                sx={{ py: 2 }}
-              >
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <GroupIcon sx={{ fontSize: 40 }} />
-                  <Typography variant="h6">Тренировка группы</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Создать тренировку для группы
-                  </Typography>
-                </Box>
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                size="large"
-                onClick={() => {
-                  const next = { ...formData, trainingType: 'individual' as const, groupId: '', selectedClientIds: [] as string[] };
-                  setFormData(next);
-                  setCreateFormBaseline(next);
-                  setTrainingTypeDialog(false);
-                  setOpenDialog(true);
-                }}
-                sx={{ py: 2 }}
-              >
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <Person sx={{ fontSize: 40 }} />
-                  <Typography variant="h6">Индивидуальная тренировка</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Создать разовую тренировку для выбранных клиентов
-                  </Typography>
-                </Box>
-              </Button>
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setTrainingTypeDialog(false)}>Отмена</Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Create Training Dialog */}
-        <Dialog
-          open={openDialog}
-          onClose={(_event, reason) => {
-            if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-              createUnsaved.requestClose(reason);
-            }
-          }}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>
-            Создать новую тренировку
-            {selectedDayForTraining && (
-              <Typography variant="subtitle2" color="text.secondary">
-                на {format(selectedDayForTraining, 'EEEE, d MMMM yyyy', { locale: ru })}
-              </Typography>
-            )}
-          </DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Название тренировки"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Описание"
-                  multiline
-                  rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </Grid>
-              
-              {/* Тип тренировки отображается как информационный блок (уже выбран в предыдущем диалоге) */}
-              <Grid item xs={12}>
-                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Тип тренировки
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
-                    {formData.trainingType === 'group' ? 'Тренировка для группы' : 'Индивидуальная тренировка (разовая)'}
-                  </Typography>
-                </Box>
-              </Grid>
-              
-              {/* Recurring Training Checkbox - moved to top */}
-              <Grid item xs={12}>
-                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'background.default' }}>
-                  <FormControl>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Checkbox
-                        checked={formData.isRecurring}
-                        onChange={(e) => {
-                          const isRecurring = e.target.checked;
-                          setFormData({ 
-                            ...formData, 
-                            isRecurring,
-                            // Сбрасываем расписания при переключении
-                            daySchedules: isRecurring ? formData.daySchedules : [],
-                            dateSchedules: isRecurring ? formData.dateSchedules : []
-                          });
-                        }}
-                      />
-                      <Typography variant="subtitle1" fontWeight="medium">
-                        Создать регулярную тренировку
-                      </Typography>
-                    </Box>
-                  </FormControl>
-                </Box>
-              </Grid>
-
-              {/* Показываем эти поля только если НЕ регулярная тренировка */}
-              {!formData.isRecurring && (
-                <>
-              <Grid item xs={12}>
-                <DatePicker
-                  label="Дата тренировки"
-                  value={formData.date}
-                  onChange={(newValue) => setFormData({ ...formData, date: newValue })}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true
-                    }
-                  }}
-                      views={['year', 'month', 'day']}
-                      openTo="day"
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TimePicker
-                  label="Время начала"
-                  value={formData.startTime}
-                  onChange={(newValue) => setFormData({ ...formData, startTime: newValue })}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true
-                    }
-                  }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TimePicker
-                  label="Время окончания"
-                  value={formData.endTime}
-                  onChange={(newValue) => setFormData({ ...formData, endTime: newValue })}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true
-                    }
-                  }}
-                />
-              </Grid>
-                </>
-              )}
-              
-              {/* Поле выбора группы - показывается только для групповой тренировки */}
-              {formData.trainingType === 'group' && (
-              <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                  <InputLabel>Группа</InputLabel>
-                  <Select
-                    value={formData.groupId}
-                    onChange={(e) => {
-                      const groupId = e.target.value;
-                      const group = groups.find((g) => g.id === groupId);
-                      setFormData({
-                        ...formData,
-                        groupId,
-                        trainerId: group?.trainerId || formData.trainerId,
-                        substituteTrainerId: '',
-                      });
-                    }}
-                  >
-                    {groups.map((group) => (
-                      <MenuItem key={group.id} value={group.id}>
-                        {group.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              )}
-              
-              {/* Выбор клиентов для индивидуальной тренировки */}
-              {formData.trainingType === 'individual' && (
-                <Grid item xs={12}>
-                  <Autocomplete
-                    multiple
-                    disableCloseOnSelect
-                    options={clients.filter(c => c.isActive)}
-                    getOptionLabel={(option) => {
-                      const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim();
-                      return fullName || `${option.firstName} ${option.lastName}`;
-                    }}
-                    value={clients.filter(c => formData.selectedClientIds.includes(c.id))}
-                    onChange={(event, newValue) => {
-                      setFormData({
-                        ...formData,
-                        selectedClientIds: newValue.map(client => client.id)
-                      });
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label="Клиенты"
-                        placeholder="Начните вводить ФИО, телефон или email..."
-                        required
-                      />
-                    )}
-                    renderOption={(props, option) => {
-                      const isSelected = formData.selectedClientIds.includes(option.id);
-                      return (
-                        <li {...props} key={option.id}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                            <Checkbox
-                              checked={isSelected}
-                              sx={{ mr: 1 }}
-                            />
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body1">
-                                {[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
-                              </Typography>
-                              {(option.phone || option.email) && (
-                                <Typography variant="body2" color="text.secondary">
-                                  {option.phone || option.email}
-                                </Typography>
-                              )}
-                            </Box>
-                          </Box>
-                        </li>
-                      );
-                    }}
-                    renderTags={(value, getTagProps) =>
-                      value.map((option, index) => (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={option.id}
-                          label={[option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').trim() || `${option.firstName} ${option.lastName}`}
-                        />
-                      ))
-                    }
-                    filterOptions={(options, { inputValue }) => {
-                      const query = inputValue.toLowerCase();
-                      return options.filter(option => {
-                        const fullName = [option.lastName, option.firstName, option.middleName].filter(Boolean).join(' ').toLowerCase();
-                        const phone = (option.phone || '').toLowerCase();
-                        const email = (option.email || '').toLowerCase();
-                        return fullName.includes(query) || phone.includes(query) || email.includes(query);
-                      });
-                    }}
-                  />
-                </Grid>
-              )}
-              
-              {/* Поля для индивидуальной тренировки: цена и заработок тренера */}
-              {formData.trainingType === 'individual' && (
-                <>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Цена тренировки (руб.)"
-                      type="number"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      inputProps={{ min: 0, step: 0.01 }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>Тип заработка тренера</InputLabel>
-                      <Select
-                        value={formData.trainerEarningType}
-                        onChange={(e) => setFormData({ ...formData, trainerEarningType: e.target.value as 'percentage' | 'amount' | '', trainerEarningValue: '' })}
-                      >
-                        <MenuItem value="">Не указано</MenuItem>
-                        <MenuItem value="percentage">Процент</MenuItem>
-                        <MenuItem value="amount">Фиксированная сумма</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  {formData.trainerEarningType && (
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label={formData.trainerEarningType === 'percentage' ? 'Процент (%)' : 'Сумма (руб.)'}
-                        type="number"
-                        value={formData.trainerEarningValue}
-                        onChange={(e) => setFormData({ ...formData, trainerEarningValue: e.target.value })}
-                        inputProps={{ min: 0, step: formData.trainerEarningType === 'percentage' ? 0.1 : 0.01 }}
-                      />
-                    </Grid>
+        </>
                   )}
                 </>
               )}
               
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Тренер</InputLabel>
-                  <Select
-                    value={formData.trainerId}
-                    onChange={async (e) => {
-                      const trainerId = e.target.value;
-                      setFormData({
-                        ...formData,
-                        trainerId,
-                        substituteTrainerId: '',
-                        competitionConflict: false,
-                        price:
-                          formData.trainingType === 'individual'
-                            ? String(
-                                (trainers.find((t) => t.id === trainerId) as any)?.individualTrainingPrice ??
-                                  formData.price ??
-                                  ''
-                              )
-                            : formData.price,
-                      });
-                      
-                      // Проверяем конфликты с соревнованиями, если указаны дата и время
-                      if (trainerId && formData.date && formData.startTime && formData.endTime) {
-                        const startDate = new Date(formData.date);
-                        startDate.setHours(formData.startTime.getHours(), formData.startTime.getMinutes());
-                        const endDate = new Date(formData.date);
-                        endDate.setHours(formData.endTime.getHours(), formData.endTime.getMinutes());
-                        
-                        try {
-                          // Проверяем конфликты через локальную проверку
-                          const trainerCompetitions = competitions.filter(comp => {
-                            const compStart = new Date(comp.startDate);
-                            const compEnd = new Date(comp.endDate);
-                            return comp.trainers?.some(ct => ct.trainerId === trainerId) &&
-                                   compStart <= endDate && compEnd >= startDate;
-                          });
-                          
-                          if (trainerCompetitions.length > 0) {
-                            setFormData(prev => ({ ...prev, competitionConflict: true }));
-                          }
-                        } catch (err) {
-                          console.error('Error checking competition conflicts:', err);
-                        }
-                      }
-                    }}
-                  >
-                    {trainers.map((trainer) => (
-                      <MenuItem key={trainer.id} value={trainer.id}>
-                        {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              {/* Поле для выбора замены тренера - показывается только для OWNER, ADMIN или тренера с canViewAllGroups */}
-              {(user?.role === 'OWNER' || user?.role === 'ADMIN' || (user?.role === 'TRAINER' && trainers.find(t => t.userId === user?.id)?.canViewAllGroups)) && formData.trainerId && (
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Замена тренера (необязательно)</InputLabel>
-                    <Select
-                      value={formData.substituteTrainerId}
-                      onChange={(e) => {
-                        const substituteTrainerId = e.target.value;
-                        setFormData({ 
-                          ...formData, 
-                          substituteTrainerId,
-                          originalTrainerId: substituteTrainerId ? formData.trainerId : '',
-                          competitionConflict: false
-                        });
-                      }}
-                    >
-                      <MenuItem value="">
-                        <em>Не выбрана</em>
-                      </MenuItem>
-                      {trainers.filter(t => t.id !== formData.trainerId).map((trainer) => (
-                        <MenuItem key={trainer.id} value={trainer.id}>
-                          {trainer.user ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim() : `Тренер #${trainer.id}`}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
-              {/* Предупреждение о конфликте с соревнованием */}
-              {formData.competitionConflict && !formData.substituteTrainerId && (
-                <Grid item xs={12}>
-                  <Alert severity="warning">
-                    У выбранного тренера есть соревнование в указанные даты. Пожалуйста, выберите замену тренера.
-                  </Alert>
-                </Grid>
-              )}
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Филиал</InputLabel>
-                  <Select
-                    value={formData.branchId}
-                    onChange={async (e) => {
-                      const branchId = e.target.value;
-                      setFormData({ ...formData, branchId, hallId: '' }); // Сбрасываем зал при смене филиала
-                      // Загружаем залы для выбранного филиала
-                      if (branchId) {
-                        try {
-                          const hallsRes = await apiService.getHalls({ branchId });
-                          setHalls(hallsRes.data);
-                        } catch (err) {
-                          console.error('Error fetching halls:', err);
-                          setHalls([]);
-                        }
-                      } else {
-                        setHalls([]);
-                      }
-                    }}
-                  >
-                    {branches.map((branch) => (
-                      <MenuItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Зал (необязательно)</InputLabel>
-                  <Select
-                    value={formData.hallId}
-                    onChange={(e) => setFormData({ ...formData, hallId: e.target.value })}
-                    disabled={!formData.branchId}
-                  >
-                    <MenuItem value="">
-                      <em>Не выбран</em>
-                    </MenuItem>
-                    {halls.filter(h => h.isActive).map((hall) => (
-                      <MenuItem key={hall.id} value={hall.id}>
-                        {hall.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              {/* Recurring Training Settings */}
-              {formData.isRecurring && (
-              <Grid item xs={12}>
-                  <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2, backgroundColor: 'rgba(25, 118, 210, 0.05)' }}>
-                    <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                    Настройки регулярных тренировок
-                  </Typography>
-                  
-                    <Grid container spacing={2} sx={{ mt: 1 }}>
-                      {/* Mode Selection */}
-                    <Grid item xs={12}>
-                      <FormControl>
-                          <RadioGroup
-                            row
-                            value={formData.recurrenceMode}
-                            onChange={(e) => {
-                              const mode = e.target.value as 'days' | 'dates';
-                              setFormData({ 
-                                ...formData, 
-                                recurrenceMode: mode,
-                                daySchedules: mode === 'days' ? formData.daySchedules : [],
-                                dateSchedules: mode === 'dates' ? formData.dateSchedules : []
-                              });
-                            }}
-                          >
-                            <FormControlLabel value="days" control={<Radio />} label="По дням недели" />
-                            <FormControlLabel value="dates" control={<Radio />} label="По конкретным датам" />
-                          </RadioGroup>
-                      </FormControl>
-                    </Grid>
-                    
-                      {/* Mode: Days of Week */}
-                      {formData.recurrenceMode === 'days' && (
-                        <>
-                          <Grid item xs={12} sm={6}>
-                            <DatePicker
-                              label="Дата начала регулярных тренировок"
-                              value={formData.recurrenceStartDate}
-                              onChange={(newValue) => setFormData({ ...formData, recurrenceStartDate: newValue })}
-                              slotProps={{
-                                textField: {
-                                  fullWidth: true
-                                }
-                              }}
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DatePicker
-                              label="Дата окончания регулярных тренировок"
-                              value={formData.recurrenceEndDate}
-                              onChange={(newValue) => setFormData({ ...formData, recurrenceEndDate: newValue })}
-                              slotProps={{
-                                textField: {
-                                  fullWidth: true
-                                }
-                              }}
-                            />
-                          </Grid>
-                          
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" gutterBottom>
-                              Добавьте дни недели с расписанием:
-                          </Typography>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {[
-                                { value: 0, label: 'Воскресенье' },
-                                { value: 1, label: 'Понедельник' },
-                                { value: 2, label: 'Вторник' },
-                                { value: 3, label: 'Среда' },
-                                { value: 4, label: 'Четверг' },
-                                { value: 5, label: 'Пятница' },
-                                { value: 6, label: 'Суббота' }
-                              ].map((day) => {
-                                const daySchedule = formData.daySchedules.find(ds => ds.dayOfWeek === day.value);
-                                const isSelected = !!daySchedule;
-                                
-                                return (
-                                  <Paper key={day.value} sx={{ p: 2, border: isSelected ? '2px solid' : '1px solid', borderColor: isSelected ? 'primary.main' : 'divider' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                                      <Checkbox
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            // Add day schedule
-                                            const defaultTime = formData.startTime || new Date();
-                                            defaultTime.setHours(10, 0);
-                                            const defaultEndTime = formData.endTime || new Date();
-                                            defaultEndTime.setHours(11, 0);
-                                            
-                                            setFormData({
-                                              ...formData,
-                                              daySchedules: [
-                                                ...formData.daySchedules,
-                                                {
-                                                  dayOfWeek: day.value,
-                                                  startTime: new Date(defaultTime),
-                                                  endTime: new Date(defaultEndTime)
-                                                }
-                                              ]
-                                            });
-                                          } else {
-                                            // Remove day schedule
-                                            setFormData({
-                                              ...formData,
-                                              daySchedules: formData.daySchedules.filter(ds => ds.dayOfWeek !== day.value)
-                                            });
-                                          }
-                                        }}
-                                      />
-                                      <Typography sx={{ minWidth: 120 }}>{day.label}</Typography>
-                                      {isSelected && daySchedule && (
-                                        <>
-                                          <TimePicker
-                                            label="Начало"
-                                            value={daySchedule.startTime}
-                                            onChange={(newValue) => {
-                                              const endTime = endFromStartPreservingDuration(
-                                                newValue,
-                                                daySchedule.startTime,
-                                                daySchedule.endTime
-                                              );
-                                              setFormData({
-                                                ...formData,
-                                                daySchedules: formData.daySchedules.map(ds =>
-                                                  ds.dayOfWeek === day.value
-                                                    ? { ...ds, startTime: newValue, endTime: endTime || ds.endTime }
-                                                    : ds
-                                                )
-                                              });
-                                            }}
-                                            slotProps={{
-                                              textField: {
-                                                size: 'small',
-                                                sx: { width: 140 }
-                                              }
-                                            }}
-                                          />
-                                          <TimePicker
-                                            label="Окончание"
-                                            value={daySchedule.endTime}
-                                            onChange={(newValue) => {
-                                              setFormData({
-                                                ...formData,
-                                                daySchedules: formData.daySchedules.map(ds =>
-                                                  ds.dayOfWeek === day.value
-                                                    ? { ...ds, endTime: newValue }
-                                                    : ds
-                                                )
-                                              });
-                                }}
-                                            slotProps={{
-                                              textField: {
-                                                size: 'small',
-                                                sx: { width: 140 }
-                                              }
-                                            }}
-                                          />
-                                        </>
-                                      )}
-                                    </Box>
-                                  </Paper>
-                                );
-                              })}
-                          </Box>
-                        </Grid>
-                        </>
-                      )}
-                        
-                      {/* Mode: Specific Dates */}
-                      {formData.recurrenceMode === 'dates' && (
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Добавьте конкретные даты с расписанием:
-                          </Typography>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {formData.dateSchedules.map((dateSchedule, index) => (
-                              <Paper key={index} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                                <Grid container spacing={2} alignItems="center">
-                                  <Grid item xs={12} sm={4}>
-                                    <DatePicker
-                                      label="Дата"
-                                      value={dateSchedule.date}
-                                      onChange={(newValue) => {
-                                        const newSchedules = [...formData.dateSchedules];
-                                        newSchedules[index].date = newValue || new Date();
-                                        setFormData({ ...formData, dateSchedules: newSchedules });
-                                      }}
-                                      slotProps={{
-                                        textField: {
-                                          fullWidth: true,
-                                          size: 'small'
-                                        }
-                                      }}
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={3}>
-                                    <TimePicker
-                                      label="Начало"
-                                      value={dateSchedule.startTime}
-                                      onChange={(newValue) => {
-                                        const endTime = endFromStartPreservingDuration(
-                                          newValue,
-                                          dateSchedule.startTime,
-                                          dateSchedule.endTime
-                                        );
-                                        const newSchedules = [...formData.dateSchedules];
-                                        newSchedules[index].startTime = newValue;
-                                        if (endTime) {
-                                          newSchedules[index].endTime = endTime;
-                                        }
-                                        setFormData({ ...formData, dateSchedules: newSchedules });
-                                      }}
-                                      slotProps={{
-                                        textField: {
-                                          fullWidth: true,
-                                          size: 'small'
-                                        }
-                                      }}
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={3}>
-                                    <TimePicker
-                                      label="Окончание"
-                                      value={dateSchedule.endTime}
-                                      onChange={(newValue) => {
-                                        const newSchedules = [...formData.dateSchedules];
-                                        newSchedules[index].endTime = newValue;
-                                        setFormData({ ...formData, dateSchedules: newSchedules });
-                                      }}
-                                      slotProps={{
-                                        textField: {
-                                          fullWidth: true,
-                                          size: 'small'
-                                        }
-                                      }}
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={2}>
-                                    <IconButton
-                                      color="error"
-                                      onClick={() => {
-                                        setFormData({
-                                          ...formData,
-                                          dateSchedules: formData.dateSchedules.filter((_, i) => i !== index)
-                                        });
-                                      }}
-                                    >
-                                      <Delete />
-                                    </IconButton>
-                        </Grid>
-                                </Grid>
-                              </Paper>
-                            ))}
-                            <Button
-                              variant="outlined"
-                              startIcon={<Add />}
-                              onClick={() => {
-                                const defaultTime = formData.startTime || new Date();
-                                defaultTime.setHours(10, 0);
-                                const defaultEndTime = formData.endTime || new Date();
-                                defaultEndTime.setHours(11, 0);
-                                
-                                setFormData({
-                                  ...formData,
-                                  dateSchedules: [
-                                    ...formData.dateSchedules,
-                                    {
-                                      date: new Date(),
-                                      startTime: new Date(defaultTime),
-                                      endTime: new Date(defaultEndTime)
-                                    }
-                                  ]
-                                });
-                              }}
-                            >
-                              Добавить дату
-                            </Button>
-                          </Box>
-                        </Grid>
-                    )}
-                  </Grid>
-                </Box>
-              </Grid>
-              )}
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={discardCreateTraining} disabled={isSubmitting}>Отмена</Button>
-            <Button onClick={handleCreateTraining} variant="contained" disabled={isSubmitting}>
-              {isSubmitting ? 'Создание...' : 'Создать тренировку'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+        <CreateTrainingFlowDialogs
+          open={trainingTypeDialog}
+          onClose={() => {
+            setTrainingTypeDialog(false);
+            setSelectedDayForTraining(null);
+          }}
+          initialDate={selectedDayForTraining || selectedDate || new Date()}
+          onSuccess={async () => {
+            setTrainingTypeDialog(false);
+            setSelectedDayForTraining(null);
+            await fetchData();
+          }}
+        />
 
         {/* Edit Training Dialog */}
         <Dialog
@@ -4816,264 +3970,23 @@ const Schedule: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-        </>
-        )}
 
-        <Dialog
+        <CreateSchoolEventDialog
           open={eventDialog}
-          onClose={() => setEventDialog(false)}
-          maxWidth={eventFormData.type === 'other' ? 'md' : 'sm'}
-          fullWidth
-        >
-          <DialogTitle>{selectedSchoolEvent ? 'Редактировать событие' : 'Добавить событие'}</DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 0.5 }}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Название"
-                  value={eventFormData.title}
-                  onChange={(e) => setEventFormData((prev) => ({ ...prev, title: e.target.value }))}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Тип</InputLabel>
-                  <Select
-                    value={eventFormData.type}
-                    label="Тип"
-                    onChange={(e) =>
-                      setEventFormData((prev) => ({
-                        ...prev,
-                        type: e.target.value as 'parent_meeting' | 'other',
-                      }))
-                    }
-                  >
-                    <MenuItem value="parent_meeting">Родительское собрание</MenuItem>
-                    <MenuItem value="other">Другое мероприятие</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <DatePicker
-                  label="Дата"
-                  value={eventFormData.date}
-                  onChange={(date) => setEventFormData((prev) => ({ ...prev, date }))}
-                  slotProps={{ textField: { fullWidth: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TimePicker
-                  label="Начало"
-                  value={eventFormData.startTime}
-                  onChange={(time) => setEventFormData((prev) => ({ ...prev, startTime: time }))}
-                  slotProps={{ textField: { fullWidth: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TimePicker
-                  label="Конец"
-                  value={eventFormData.endTime}
-                  onChange={(time) => setEventFormData((prev) => ({ ...prev, endTime: time }))}
-                  slotProps={{ textField: { fullWidth: true } }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Описание"
-                  multiline
-                  rows={2}
-                  value={eventFormData.description}
-                  onChange={(e) => setEventFormData((prev) => ({ ...prev, description: e.target.value }))}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Место"
-                  value={eventFormData.location}
-                  onChange={(e) => setEventFormData((prev) => ({ ...prev, location: e.target.value }))}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Филиал</InputLabel>
-                  <Select
-                    value={eventFormData.branchId}
-                    label="Филиал"
-                    onChange={(e) => setEventFormData((prev) => ({ ...prev, branchId: e.target.value }))}
-                  >
-                    <MenuItem value="">Не выбран</MenuItem>
-                    {branches.map((b) => (
-                      <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Группы</InputLabel>
-                  <Select
-                    multiple
-                    value={eventFormData.groupIds}
-                    label="Группы"
-                    onChange={(e) =>
-                      setEventFormData((prev) => ({
-                        ...prev,
-                        groupIds: e.target.value as string[],
-                      }))
-                    }
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((groupId) => {
-                          const group = groups.find((g) => g.id === groupId);
-                          return group ? (
-                            <Chip key={groupId} label={group.name} size="small" />
-                          ) : null;
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {groups.filter((g) => g.isActive).map((g) => (
-                      <MenuItem key={g.id} value={g.id}>
-                        <Checkbox checked={eventFormData.groupIds.indexOf(g.id) > -1} />
-                        <ListItemText primary={g.name} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {eventFormData.type === 'other' && (
-                <>
-                  <Grid item xs={12}>
-                    <FormControl fullWidth>
-                      <InputLabel>Тренеры</InputLabel>
-                      <Select
-                        multiple
-                        value={eventFormData.trainerIds}
-                        label="Тренеры"
-                        onChange={(e) =>
-                          setEventFormData((prev) => ({
-                            ...prev,
-                            trainerIds: e.target.value as string[],
-                          }))
-                        }
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((trainerId) => {
-                              const trainer = trainers.find((t) => t.id === trainerId);
-                              return trainer?.user ? (
-                                <Chip
-                                  key={trainerId}
-                                  label={`${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()}
-                                  size="small"
-                                />
-                              ) : null;
-                            })}
-                          </Box>
-                        )}
-                      >
-                        {trainers.map((trainer) => (
-                          <MenuItem key={trainer.id} value={trainer.id}>
-                            <Checkbox checked={eventFormData.trainerIds.indexOf(trainer.id) > -1} />
-                            <ListItemText
-                              primary={
-                                trainer.user
-                                  ? `${trainer.user.lastName} ${trainer.user.firstName} ${trainer.user.middleName || ''}`.trim()
-                                  : `Тренер #${trainer.id}`
-                              }
-                            />
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <FormControl fullWidth>
-                      <InputLabel>Клиенты</InputLabel>
-                      <Select
-                        multiple
-                        value={eventFormData.participantIds}
-                        label="Клиенты"
-                        onChange={(e) =>
-                          setEventFormData((prev) => ({
-                            ...prev,
-                            participantIds: e.target.value as string[],
-                          }))
-                        }
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.length} выбрано
-                          </Box>
-                        )}
-                      >
-                        {clients.filter((c) => c.isActive !== false).map((client) => (
-                          <MenuItem key={client.id} value={client.id}>
-                            <Checkbox checked={eventFormData.participantIds.indexOf(client.id) > -1} />
-                            <ListItemText
-                              primary={`${client.lastName} ${client.firstName} ${client.middleName || ''}`.trim()}
-                            />
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <FormControl fullWidth>
-                      <InputLabel>Родители</InputLabel>
-                      <Select
-                        multiple
-                        value={eventFormData.parentIds}
-                        label="Родители"
-                        onChange={(e) =>
-                          setEventFormData((prev) => ({
-                            ...prev,
-                            parentIds: e.target.value as string[],
-                          }))
-                        }
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.length} выбрано
-                          </Box>
-                        )}
-                      >
-                        {eventParentsOptions.map((parent) => (
-                          <MenuItem key={parent.id} value={parent.id}>
-                            <Checkbox checked={eventFormData.parentIds.indexOf(parent.id) > -1} />
-                            <ListItemText
-                              primary={parent.fullName}
-                              secondary={
-                                parent.clientLabel
-                                  ? `Ребёнок: ${parent.clientLabel}`
-                                  : parent.phone || undefined
-                              }
-                            />
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </>
-              )}
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setEventDialog(false)} sx={{ textTransform: 'none' }}>
-              Отмена
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleSaveSchoolEvent}
-              disabled={eventSaving}
-              sx={{ textTransform: 'none' }}
-            >
-              {eventSaving ? 'Сохранение…' : 'Сохранить'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          onClose={() => {
+            setEventDialog(false);
+            setSelectedSchoolEvent(null);
+          }}
+          event={selectedSchoolEvent}
+          initialDate={createEventInitialDate}
+          branches={branches}
+          groups={groups}
+          trainers={trainers}
+          onSuccess={async () => {
+            const events = await apiService.getSchoolEvents().catch(() => []);
+            setSchoolEvents(events || []);
+          }}
+        />
 
         <Dialog open={eventDetailDialog} onClose={() => setEventDetailDialog(false)} maxWidth="sm" fullWidth>
           <DialogTitle>{selectedSchoolEvent?.title || 'Событие'}</DialogTitle>
@@ -5164,88 +4077,16 @@ const Schedule: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-        <Dialog
+        <CreateStaffTaskDialog
           open={scheduleTaskDialog}
           onClose={() => setScheduleTaskDialog(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>Новая задача</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                fullWidth
-                label="Заголовок"
-                value={scheduleTaskTitle}
-                onChange={(e) => setScheduleTaskTitle(e.target.value)}
-                required
-              />
-              <TextField
-                fullWidth
-                label="Описание"
-                multiline
-                rows={3}
-                value={scheduleTaskBody}
-                onChange={(e) => setScheduleTaskBody(e.target.value)}
-              />
-              <TextField
-                fullWidth
-                label="Дедлайн"
-                type="datetime-local"
-                value={scheduleTaskDueAt}
-                onChange={(e) => setScheduleTaskDueAt(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-              <Autocomplete
-                multiple
-                options={scheduleStaffUsers}
-                getOptionLabel={(u: any) =>
-                  [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ') || u.email || u.id
-                }
-                value={scheduleTaskAssignees}
-                onChange={(_, v) => setScheduleTaskAssignees(v)}
-                renderInput={(params) => <TextField {...params} label="Исполнители" />}
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setScheduleTaskDialog(false)} sx={{ textTransform: 'none' }}>
-              Отмена
-            </Button>
-            <Button
-              variant="contained"
-              disabled={scheduleTaskSaving || !scheduleTaskTitle.trim() || scheduleTaskAssignees.length === 0}
-              sx={{ textTransform: 'none' }}
-              onClick={async () => {
-                try {
-                  setScheduleTaskSaving(true);
-                  await apiService.createStaffTask({
-                    title: scheduleTaskTitle.trim(),
-                    body: scheduleTaskBody.trim(),
-                    dueAt: scheduleTaskDueAt ? new Date(scheduleTaskDueAt).toISOString() : null,
-                    assigneeIds: scheduleTaskAssignees.map((u: any) => u.id),
-                    createChat: true,
-                  });
-                  setScheduleTaskDialog(false);
-                } catch (err: any) {
-                  alert(err?.response?.data?.error || 'Не удалось создать задачу');
-                } finally {
-                  setScheduleTaskSaving(false);
-                }
-              }}
-            >
-              {scheduleTaskSaving ? 'Сохранение…' : 'Создать'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        <UnsavedChangesDialog
-          open={createUnsaved.confirmOpen}
-          saving={createUnsaved.saving}
-          onSave={createUnsaved.save}
-          onDiscard={createUnsaved.discard}
-          onStay={createUnsaved.stay}
+          onSaved={async () => {
+            /* calendar refresh happens via existing loaders when needed */
+          }}
+          staffUsers={scheduleStaffUsers}
+          defaultDueAt={scheduleTaskDefaultDue}
         />
+
         <UnsavedChangesDialog
           open={editUnsaved.confirmOpen}
           saving={editUnsaved.saving}

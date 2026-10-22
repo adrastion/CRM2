@@ -1098,8 +1098,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 Нет доступных бесед
               </Typography>
             ) : (
-              filteredThreads.map((t) => {
+              filteredThreads.map((t, index) => {
                 const active = t.threadKey === selectedKey;
+                const pastel = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'][index % 5];
                 return (
                   <ListItemButton
                     key={t.threadKey}
@@ -1108,14 +1109,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                     sx={{
                       alignItems: 'flex-start',
                       gap: 1.25,
-                      py: 1.1,
+                      py: 1.15,
                       px: 1.5,
-                      borderLeft:
-                        t.type === 'STAFF_TASK' ? `3px solid ${colors.primary}` : '3px solid transparent',
-                      bgcolor: active ? chatTheme.listSelected : 'transparent',
-                      '&.Mui-selected': { bgcolor: chatTheme.listSelected },
-                      '&.Mui-selected:hover': { bgcolor: chatTheme.listSelected },
-                      '&:hover': { bgcolor: active ? chatTheme.listSelected : chatTheme.listHover },
+                      mx: 1,
+                      my: 0.5,
+                      borderRadius: `${radii.panel}px`,
+                      borderLeft: t.type === 'STAFF_TASK' ? `3px solid ${colors.primary}` : '3px solid transparent',
+                      bgcolor: active ? colors.primarySoft : pastel,
+                      '&.Mui-selected': { bgcolor: colors.primarySoft },
+                      '&.Mui-selected:hover': { bgcolor: colors.primarySoft },
+                      '&:hover': { bgcolor: active ? colors.primarySoft : colors.card },
                     }}
                   >
                     <Box sx={{ position: 'relative', mt: 0.25 }}>
@@ -1233,6 +1236,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 alignItems: 'center',
                 gap: 1,
                 minHeight: 64,
+                boxShadow: '0 1px 0 rgba(32, 34, 36, 0.04)',
               }}
             >
               <IconButton

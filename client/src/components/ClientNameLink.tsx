@@ -15,6 +15,8 @@ export interface ClientNameLinkProps {
   stopPropagation?: boolean;
   /** Открыть карточку на месте (без перехода на /clients). */
   onOpen?: (clientId: string) => void;
+  /** Раздел-источник для крошек при переходе на /clients?clientId=&from= */
+  fromSection?: string;
 }
 
 /**
@@ -29,6 +31,7 @@ const ClientNameLink: React.FC<ClientNameLinkProps> = ({
   sx,
   stopPropagation = true,
   onOpen,
+  fromSection,
 }) => {
   const navigate = useNavigate();
   const displayName = name || (client ? formatClientFullName(client) : '—');
@@ -42,7 +45,9 @@ const ClientNameLink: React.FC<ClientNameLinkProps> = ({
       onOpen(clientId);
       return;
     }
-    navigate(`/clients?clientId=${encodeURIComponent(clientId)}`);
+    const qs = new URLSearchParams({ clientId });
+    if (fromSection) qs.set('from', fromSection);
+    navigate(`/clients?${qs.toString()}`);
   };
 
   const linkVariant = variant === 'link' ? 'body2' : variant;

@@ -568,6 +568,11 @@ export interface Group {
   maxMembers?: number;
   ageMin?: number;
   ageMax?: number;
+  ageCategory?: string | null;
+  skillLevel?: string | null;
+  groupType?: string | null;
+  stream?: string | null;
+  onlineBooking?: boolean;
   color?: string; // Цвет для отображения в расписании (hex формат)
   trainingPrice?: number; // Стоимость одной тренировки в группе
   schedule?: GroupScheduleItem[]; // График тренировок по дням недели
@@ -623,11 +628,20 @@ export interface GroupMembership {
 export interface Branch {
   id: string;
   name: string;
+  shortName?: string | null;
   address: string;
   phone?: string;
   email?: string;
   description?: string;
   isActive: boolean;
+  photoUrl?: string | null;
+  workingHours?: string | null;
+  specialization?: string | null;
+  trainingTypes?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  mapLat?: number | null;
+  mapLng?: number | null;
   tenantId: string;
   seniorTrainerId?: string | null;
   seniorTrainer?: {
@@ -665,7 +679,8 @@ export interface Membership {
   type: string;
   isActive: boolean;
   tenantId: string;
-  category?: 'CLIENT' | 'GROUP' | string;
+  category?: 'CLIENT' | 'GROUP' | 'PERSONAL' | string;
+  archivedAt?: string | null;
   paymentWindowStartDay?: number | null;
   paymentWindowEndDay?: number | null;
   recalcMode?: string | null;
@@ -677,8 +692,17 @@ export interface Membership {
     id: string;
     groupId: string;
     effectiveFrom?: string;
-    group?: { id: string; name: string; branchId?: string };
+    group?: {
+      id: string;
+      name: string;
+      branchId?: string;
+      branch?: { id: string; name: string } | null;
+    };
   }>;
+  assignedClientsCount?: number;
+  activeAssignmentsCount?: number;
+  expiringSoonCount?: number;
+  _count?: { clientMemberships?: number };
 }
 
 // Payment Types
@@ -811,12 +835,14 @@ export interface Training {
   group?: Group;
   trainer?: Trainer;
   substituteTrainer?: Trainer; // Тренер-замена
+  /** Занято / вместимость группы (из API списка тренировок). */
+  occupancy?: { enrolled: number; capacity: number | null };
 }
 
 // Attendance Types
 export interface Attendance {
   id: string;
-  status: 'PRESENT' | 'ABSENT' | 'EXCUSED';
+  status: 'PRESENT' | 'ABSENT' | 'EXCUSED' | 'WAITING';
   notes?: string;
   shouldCharge?: boolean; // Списывать ли средства с клиента (для пропусков)
   clientId: string;
@@ -825,6 +851,34 @@ export interface Attendance {
   updatedAt?: string;
   client?: Client;
   training?: Training;
+}
+
+export interface CalendarNote {
+  id: string;
+  tenantId: string;
+  body: string;
+  trainingId?: string | null;
+  schoolEventId?: string | null;
+  competitionId?: string | null;
+  createdByUserId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+    role: string;
+  };
+}
+
+export interface ScheduleSummary {
+  range: { start: string; end: string };
+  previousRange: { start: string; end: string };
+  trainings: { count: number; delta: number };
+  competitions: { count: number; delta: number };
+  tasks: { count: number; delta: number };
+  events: { count: number; delta: number };
 }
 
 // Competition Types
@@ -926,6 +980,7 @@ export interface DashboardStats {
   attendanceRate: number;
   upcomingTrainings: number;
   trainerMonthlyEarnings?: number;
+  weekDeltas?: { clients: number; revenue: number };
 }
 
 // Form Types

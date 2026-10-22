@@ -525,9 +525,12 @@ export class AuthService {
     password: string;
     firstName: string;
     lastName: string;
+    middleName?: string | null;
     phone?: string;
     role: string;
     tenantId: string;
+    isActive?: boolean;
+    profileMeta?: string | Record<string, unknown> | null;
   }) {
     if (data.role !== 'ADMIN' && data.role !== 'TRAINER' && data.role !== 'PROMOTER') {
       throw new Error('Роль должна быть ADMIN, TRAINER или PROMOTER');
@@ -549,6 +552,14 @@ export class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
+    const isActive = data.isActive === undefined ? true : Boolean(data.isActive);
+    const profileMeta =
+      data.profileMeta == null
+        ? null
+        : typeof data.profileMeta === 'string'
+          ? data.profileMeta.trim() || null
+          : JSON.stringify(data.profileMeta);
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -556,8 +567,11 @@ export class AuthService {
         password: hashedPassword,
         firstName: data.firstName,
         lastName: data.lastName,
+        middleName: data.middleName ? String(data.middleName).trim() || null : null,
         phone: data.phone,
         role: data.role,
+        isActive,
+        profileMeta,
         tenantId: data.tenantId
       }
     });
@@ -582,7 +596,9 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      tenantId: user.tenantId
+      tenantId: user.tenantId,
+      isActive: user.isActive,
+      profileMeta: user.profileMeta,
     };
   }
 
@@ -728,7 +744,10 @@ export class AuthService {
         ? await getSeniorAccessMeta(user.id, user.tenantId)
         : { isSeniorTrainer: false, seniorBranchIds: [] as string[], trainerId: null as string | null };
 
-    const trainerId = user.trainer?.id ?? seniorMeta.trainerId ?? null;
+    // Soft-deleted trainer (isActive: false) не считается активным профилем
+    const activeTrainer =
+      user.trainer && user.trainer.isActive !== false ? user.trainer : null;
+    const trainerId = activeTrainer?.id ?? seniorMeta.trainerId ?? null;
 
     return {
       id: user.id,
@@ -749,7 +768,7 @@ export class AuthService {
         name: user.tenant.name,
         subdomain: user.tenant.subdomain
       },
-      trainer: user.trainer
+      trainer: activeTrainer
     };
   }
 
@@ -838,6 +857,10 @@ export class AuthService {
       password?: string;
       role?: string;
       tenantId?: string;
+      isActive?: boolean;
+      profileMeta?: string | Record<string, unknown> | null;
+      /** Основной филиал — хранится в profileMeta.branchId */
+      branchId?: string | null;
     },
     callerTenantId: string
   ) {
@@ -851,12 +874,17 @@ export class AuthService {
       throw new Error('Пользователь не найден');
     }
 
-    const updateData: any = {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      middleName: data.middleName,
-      phone: data.phone,
-    };
+    const updateData: any = {};
+    if (data.firstName !== undefined) updateData.firstName = data.firstName;
+    if (data.lastName !== undefined) updateData.lastName = data.lastName;
+    if (data.middleName !== undefined) updateData.middleName = data.middleName;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.isActive !== undefined) {
+      updateData.isActive = Boolean(data.isActive);
+      if (data.isActive === false) {
+        updateData.sessionVersion = { increment: 1 };
+      }
+    }
 
     if (data.email) {
       const normalizedEmail = data.email.toLowerCase().trim();
@@ -880,18 +908,48 @@ export class AuthService {
       updateData.sessionVersion = { increment: 1 };
     }
 
+    // profileMeta + optional branchId merge
+    if (data.profileMeta !== undefined || data.branchId !== undefined) {
+      let metaObj: Record<string, unknown> = {};
+      try {
+        const raw = currentUser.profileMeta;
+        if (raw) metaObj = JSON.parse(raw);
+      } catch {
+        metaObj = {};
+      }
+      if (data.profileMeta != null) {
+        if (typeof data.profileMeta === 'string') {
+          try {
+            metaObj = { ...metaObj, ...JSON.parse(data.profileMeta) };
+          } catch {
+            /* keep previous */
+          }
+        } else {
+          metaObj = { ...metaObj, ...data.profileMeta };
+        }
+      }
+      if (data.branchId !== undefined) {
+        if (data.branchId == null || data.branchId === '') {
+          delete metaObj.branchId;
+        } else {
+          metaObj.branchId = data.branchId;
+        }
+      }
+      updateData.profileMeta = Object.keys(metaObj).length ? JSON.stringify(metaObj) : null;
+    }
+
     // Handle role change
     if (data.role && data.role !== currentUser.role) {
-      if (data.role !== 'ADMIN' && data.role !== 'TRAINER') {
-        throw new HttpError(400, 'Роль может быть только ADMIN или TRAINER');
+      if (data.role !== 'ADMIN' && data.role !== 'TRAINER' && data.role !== 'PROMOTER') {
+        throw new HttpError(400, 'Роль может быть ADMIN, TRAINER или PROMOTER');
       }
 
       await assertStaffRoleWithinLimit(currentUser.tenantId, data.role);
 
       updateData.role = data.role;
 
-      // If changing from TRAINER to ADMIN, delete trainer record
-      if (currentUser.role === 'TRAINER' && data.role === 'ADMIN') {
+      // If changing from TRAINER to ADMIN/PROMOTER, delete trainer record
+      if (currentUser.role === 'TRAINER' && data.role !== 'TRAINER') {
         if (currentUser.trainer) {
           const groupCount = await prisma.group.count({
             where: { trainerId: currentUser.trainer.id }
@@ -899,7 +957,7 @@ export class AuthService {
           if (groupCount > 0) {
             throw new HttpError(
               400,
-              'Сначала переназначьте группы другому тренеру, затем смените роль на администратора'
+              'Сначала переназначьте группы другому тренеру, затем смените роль'
             );
           }
           await prisma.trainer.delete({
@@ -908,8 +966,8 @@ export class AuthService {
         }
       }
 
-      // If changing from ADMIN to TRAINER, create trainer record
-      if (currentUser.role === 'ADMIN' && data.role === 'TRAINER') {
+      // If changing to TRAINER, create trainer record
+      if (data.role === 'TRAINER' && currentUser.role !== 'TRAINER') {
         const tenantId = currentUser.tenantId;
         if (!currentUser.trainer) {
           await prisma.trainer.create({
@@ -932,7 +990,7 @@ export class AuthService {
       include: { trainer: true }
     });
 
-    if (data.password) {
+    if (data.password || data.isActive === false) {
       await revokeSessionsOnVersionBump('USER', userId);
     }
 
@@ -943,7 +1001,9 @@ export class AuthService {
       lastName: user.lastName,
       middleName: user.middleName,
       phone: user.phone,
-      role: user.role
+      role: user.role,
+      isActive: user.isActive,
+      profileMeta: user.profileMeta,
     };
   }
 }

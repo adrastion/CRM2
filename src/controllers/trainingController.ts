@@ -7,7 +7,17 @@ import { notifyTrainingScheduleChange } from '../services/notificationDomainHook
 
 export const getTrainings = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { page = 1, limit = 10, search, startDate, endDate } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      startDate,
+      endDate,
+      branchId,
+      hallId,
+      trainerId,
+      groupId,
+    } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = {
@@ -43,6 +53,11 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
       ];
     }
 
+    if (branchId) where.branchId = String(branchId);
+    if (hallId) where.hallId = String(hallId);
+    if (trainerId) where.trainerId = String(trainerId);
+    if (groupId) where.groupId = String(groupId);
+
     if (startDate && endDate) {
       where.startTime = {
         gte: new Date(startDate as string),
@@ -56,7 +71,15 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
         include: {
           branch: true,
           hall: true,
-          group: true,
+          group: {
+            include: {
+              _count: {
+                select: {
+                  memberships: { where: { isActive: true } },
+                },
+              },
+            },
+          },
           trainer: {
             include: {
               user: true
@@ -75,9 +98,29 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
       prisma.training.count({ where })
     ]);
 
+    const data = trainings.map((t) => {
+      const enrolledCount = t.group?._count?.memberships ?? 0;
+      const capacity = t.group?.maxMembers ?? null;
+      const { group, ...rest } = t;
+      const groupWithoutCount = group
+        ? (() => {
+            const { _count, ...g } = group;
+            return g;
+          })()
+        : group;
+      return {
+        ...rest,
+        group: groupWithoutCount,
+        occupancy: {
+          enrolled: enrolledCount,
+          capacity,
+        },
+      };
+    });
+
     res.json({
       success: true,
-      data: trainings,
+      data,
       pagination: {
         page: Number(page),
         limit: Number(limit),

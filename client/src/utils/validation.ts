@@ -206,14 +206,17 @@ export const validateBranchForm = (formData: any): Record<string, string> => {
   const addressError = validateRequired(formData.address, 'Адрес', 5);
   if (addressError) errors.address = addressError;
 
+  const phoneRequired = validateRequired(formData.phone, 'Телефон', 5);
+  if (phoneRequired) {
+    errors.phone = phoneRequired;
+  } else {
+    const phoneError = validatePhone(formData.phone);
+    if (phoneError) errors.phone = phoneError;
+  }
+
   if (formData.email) {
     const emailError = validateEmail(formData.email);
     if (emailError) errors.email = emailError;
-  }
-
-  if (formData.phone) {
-    const phoneError = validatePhone(formData.phone);
-    if (phoneError) errors.phone = phoneError;
   }
 
   return errors;
@@ -236,9 +239,18 @@ export const validateGroupForm = (formData: any): Record<string, string> => {
     errors.trainerId = 'Выберите тренера';
   }
 
-  if (formData.maxMembers) {
+  if (!formData.maxMembers) {
+    errors.maxMembers = 'Укажите максимум участников';
+  } else {
     const maxMembersError = validateNumber(formData.maxMembers, 'Максимальное количество участников', 1);
     if (maxMembersError) errors.maxMembers = maxMembersError;
+  }
+
+  if (!formData.ageMin && formData.ageMin !== 0) {
+    errors.ageMin = 'Укажите минимальный возраст';
+  }
+  if (!formData.ageMax && formData.ageMax !== 0) {
+    errors.ageMax = 'Укажите максимальный возраст';
   }
 
   if (formData.ageMin && formData.ageMax) {

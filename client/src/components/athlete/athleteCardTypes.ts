@@ -33,6 +33,7 @@ export interface AthleteCalendarEvent {
   type: 'training' | 'competition';
   groupName?: string | null;
   location?: string | null;
+  trainerName?: string | null;
 }
 
 export interface AthleteCardData extends Client {
@@ -61,6 +62,13 @@ export interface AthleteCardProps {
   compact?: boolean;
   /** Client: открыть карточку тренера. */
   onTrainerClick?: (trainerId: string) => void;
+  /**
+   * Раздел, из которого открыта карточка — в крошках:
+   * «Финансы / Иванов Иван», «Клиенты / …» и т.д.
+   */
+  fromSection?: string;
+  /** Клик по разделу в крошках (обычно закрыть карточку / вернуться). */
+  onFromSectionClick?: () => void;
 }
 
 export const ATHLETE_STATUS_LABELS: Record<string, string> = {

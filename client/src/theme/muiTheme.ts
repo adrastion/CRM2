@@ -127,18 +127,27 @@ export function createAppTheme(): Theme {
           root: {
             textTransform: 'none',
             fontFamily,
-            fontWeight: 600,
+            fontWeight: 700,
             fontSize: 14,
-            minHeight: 44,
+            minHeight: 42,
             paddingLeft: 12,
             paddingRight: 12,
+            color: '#8B93A7',
+            '&.Mui-selected': {
+              color: colors.primary,
+            },
           },
         },
       },
       MuiTabs: {
         styleOverrides: {
           root: {
-            minHeight: 44,
+            minHeight: 42,
+          },
+          indicator: {
+            height: 2,
+            borderRadius: 2,
+            backgroundColor: colors.primary,
           },
         },
       },

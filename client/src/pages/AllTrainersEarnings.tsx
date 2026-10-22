@@ -27,6 +27,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { salarySchemeLabel } from '../utils/salarySchemes';
+import { colors, radii } from '../theme/tokens';
 
 const AllTrainersEarnings: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -115,12 +116,29 @@ const AllTrainersEarnings: React.FC = () => {
             mb: 3,
           }}
         >
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', fontSize: { xs: 20, md: 24 } }}>
-            Заработок тренеров
-          </Typography>
+          <Box>
+            <Typography
+              variant="h5"
+              component="h1"
+              sx={{ fontWeight: 700, fontSize: { xs: 20, md: 22 }, color: colors.text, letterSpacing: '-0.02em' }}
+            >
+              Заработок тренеров
+            </Typography>
+            <Typography sx={{ fontSize: 13, color: colors.textHint, mt: 0.25 }}>
+              Выплаты и начисления за период
+            </Typography>
+          </Box>
         </Box>
 
-        <Card sx={{ mb: 3 }}>
+        <Card
+          elevation={0}
+          sx={{
+            mb: 3,
+            borderRadius: `${radii.panel}px`,
+            border: `1px solid ${colors.divider}`,
+            boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+          }}
+        >
           <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={4}>
@@ -128,7 +146,12 @@ const AllTrainersEarnings: React.FC = () => {
                   label="Дата начала"
                   value={startDate}
                   onChange={(newValue) => setStartDate(newValue)}
-                  slotProps={{ textField: { fullWidth: true } }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      sx: { '& .MuiOutlinedInput-root': { borderRadius: `${radii.button}px` } },
+                    },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -136,7 +159,12 @@ const AllTrainersEarnings: React.FC = () => {
                   label="Дата окончания"
                   value={endDate}
                   onChange={(newValue) => setEndDate(newValue)}
-                  slotProps={{ textField: { fullWidth: true } }}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      sx: { '& .MuiOutlinedInput-root': { borderRadius: `${radii.button}px` } },
+                    },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -148,7 +176,13 @@ const AllTrainersEarnings: React.FC = () => {
                     setStartDate(new Date(now.getFullYear(), now.getMonth(), 1));
                     setEndDate(now);
                   }}
-                  sx={{ textTransform: 'none' }}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: `${radii.button}px`,
+                    borderColor: colors.primarySoft,
+                    color: colors.primary,
+                    fontWeight: 600,
+                  }}
                 >
                   Текущий месяц
                 </Button>
@@ -159,33 +193,61 @@ const AllTrainersEarnings: React.FC = () => {
 
         {earnings && (
           <>
-            <Card sx={{ mb: 3 }}>
-              <CardContent sx={{ px: { xs: 1.5, sm: 2 } }}>
-                <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: 16, md: 20 } }}>
-                  Общая статистика
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                gap: 1.5,
+                mb: 3,
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: colors.card,
+                  borderRadius: `${radii.panel}px`,
+                  p: 2,
+                  boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+                  border: `1px solid ${colors.divider}`,
+                }}
+              >
+                <Typography sx={{ fontSize: 12, color: colors.textHint, fontWeight: 500 }}>
+                  Всего тренеров
                 </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Typography color="text.secondary">
-                      Всего тренеров: {earnings.trainers?.length || 0}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'success.main', fontSize: { xs: 18, md: 24 } }}>
-                      Общий заработок:{' '}
-                      {earnings.totalEarnings?.toLocaleString('ru-RU', {
-                        style: 'currency',
-                        currency: 'RUB',
-                      }) || '0 ₽'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
+                <Typography sx={{ fontSize: 28, fontWeight: 800, color: colors.text }}>
+                  {earnings.trainers?.length || 0}
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  bgcolor: colors.card,
+                  borderRadius: `${radii.panel}px`,
+                  p: 2,
+                  boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+                  border: `1px solid ${colors.divider}`,
+                }}
+              >
+                <Typography sx={{ fontSize: 12, color: colors.textHint, fontWeight: 500 }}>
+                  Общий заработок
+                </Typography>
+                <Typography sx={{ fontSize: 22, fontWeight: 800, color: colors.success }}>
+                  {earnings.totalEarnings?.toLocaleString('ru-RU', {
+                    style: 'currency',
+                    currency: 'RUB',
+                  }) || '0 ₽'}
+                </Typography>
+              </Box>
+            </Box>
 
-            <Card>
+            <Card
+              elevation={0}
+              sx={{
+                borderRadius: `${radii.panel}px`,
+                border: `1px solid ${colors.divider}`,
+                boxShadow: '0 2px 10px rgba(32, 34, 36, 0.05)',
+              }}
+            >
               <CardContent sx={{ px: { xs: 1.5, sm: 2 } }}>
-                <Typography variant="h6" gutterBottom sx={{ mb: 2, fontSize: { xs: 16, md: 20 } }}>
+                <Typography sx={{ mb: 2, fontSize: { xs: 16, md: 18 }, fontWeight: 700, color: colors.text }}>
                   Заработок по тренерам
                 </Typography>
                 <TableContainer

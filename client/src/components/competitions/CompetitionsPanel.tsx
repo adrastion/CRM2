@@ -99,7 +99,10 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
-  const { openClient, dialogs: entityCardDialogs } = useStaffEntityCards({ trainers });
+  const { openClient, dialogs: entityCardDialogs } = useStaffEntityCards({
+    trainers,
+    sourceLabel: 'Соревнования',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [openDialog, setOpenDialog] = useState(false);

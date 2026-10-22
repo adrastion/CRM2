@@ -699,7 +699,7 @@ const AppContent: React.FC = () => {
           path="/staff-workspace"
           element={
             <ProtectedRoute>
-              <AppLayout pageTitle="Заметки и задачи">
+              <AppLayout>
                 <StaffWorkspace />
               </AppLayout>
             </ProtectedRoute>
@@ -709,7 +709,7 @@ const AppContent: React.FC = () => {
           path="/training-plan"
           element={
             <RoleRoute roles={['OWNER', 'TRAINER']}>
-              <AppLayout pageTitle="Тренировочный план">
+              <AppLayout>
                 <TrainingPlan />
               </AppLayout>
             </RoleRoute>
@@ -763,7 +763,7 @@ const AppContent: React.FC = () => {
           path="/news"
           element={
             <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
-              <AppLayout pageTitle="Новости">
+              <AppLayout>
                 <News />
               </AppLayout>
             </RoleRoute>

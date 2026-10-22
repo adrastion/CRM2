@@ -79,10 +79,11 @@ const AthleteProfileHeader: React.FC<Props> = ({
         flexDirection: { xs: 'column', sm: 'row' },
         gap: 2.5,
         alignItems: { xs: 'center', sm: 'flex-start' },
-        p: 2,
+        p: { xs: 2, md: 2.5 },
         bgcolor: colors.card,
-        borderRadius: radii.card,
+        borderRadius: `${radii.panel}px`,
         border: `1px solid ${colors.divider}`,
+        boxShadow: '0 2px 12px rgba(32, 34, 36, 0.05)',
       }}
     >
       <Box sx={{ position: 'relative' }}>
@@ -246,11 +247,36 @@ const AthleteProfileHeader: React.FC<Props> = ({
               <Chip
                 size="small"
                 label={ATHLETE_STATUS_LABELS[status] || status}
-                sx={{ bgcolor: colors.primarySoft, fontWeight: 600 }}
+                sx={{
+                  bgcolor: 'rgba(0, 182, 155, 0.14)',
+                  color: colors.success,
+                  fontWeight: 700,
+                  borderRadius: `${radii.button}px`,
+                }}
               />
-              {data.discipline && <Chip size="small" variant="outlined" label={data.discipline} />}
+              {data.discipline && (
+                <Chip
+                  size="small"
+                  label={data.discipline}
+                  sx={{
+                    bgcolor: colors.primarySoft,
+                    color: colors.primary,
+                    fontWeight: 600,
+                    borderRadius: `${radii.button}px`,
+                  }}
+                />
+              )}
               {data.weightCategory && (
-                <Chip size="small" variant="outlined" label={`Категория: ${data.weightCategory}`} />
+                <Chip
+                  size="small"
+                  label={`Категория: ${data.weightCategory}`}
+                  sx={{
+                    bgcolor: colors.surface,
+                    color: colors.textMuted,
+                    fontWeight: 600,
+                    borderRadius: `${radii.button}px`,
+                  }}
+                />
               )}
             </Stack>
             <Stack spacing={0.75}>

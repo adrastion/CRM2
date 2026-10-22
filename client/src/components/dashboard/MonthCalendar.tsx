@@ -21,6 +21,8 @@ interface MonthCalendarProps {
   onSelect?: (isoDate: string) => void;
   /** Заглушка: сетка без данных, клики отключены. */
   placeholder?: boolean;
+  /** Показывать до 3 цветных точек разных слоёв календаря. */
+  multiColor?: boolean;
 }
 
 const MONTHS = [
@@ -59,12 +61,23 @@ const MonthCalendar: React.FC<MonthCalendarProps> = ({
   selected,
   onSelect,
   placeholder,
+  multiColor = false,
 }) => {
   const grid = React.useMemo(() => buildGrid(month), [month]);
   const marksByDate = React.useMemo(() => {
     const map = new Map<string, string | null | undefined>();
     marks.forEach((m) => {
       if (!map.has(m.date)) map.set(m.date, m.color);
+    });
+    return map;
+  }, [marks]);
+  const multiMarksByDate = React.useMemo(() => {
+    const map = new Map<string, string[]>();
+    marks.forEach((m) => {
+      if (!m.color) return;
+      const list = map.get(m.date) || [];
+      if (!list.includes(m.color) && list.length < 3) list.push(m.color);
+      map.set(m.date, list);
     });
     return map;
   }, [marks]);
@@ -143,6 +156,7 @@ const MonthCalendar: React.FC<MonthCalendarProps> = ({
           const iso = toIso(day);
           const inMonth = day.getMonth() === month.getMonth();
           const mark = marksByDate.has(iso);
+          const multi = multiMarksByDate.get(iso) || [];
           const isSelected = selected === iso;
           const isToday = iso === todayIso;
 
@@ -161,7 +175,7 @@ const MonthCalendar: React.FC<MonthCalendarProps> = ({
                 borderRadius: `${radii.cell}px`,
                 bgcolor: isSelected
                   ? colors.primary
-                  : mark
+                  : mark && !multiColor
                   ? colors.primarySoft
                   : inMonth
                   ? colors.surface
@@ -184,7 +198,7 @@ const MonthCalendar: React.FC<MonthCalendarProps> = ({
               }}
             >
               <Box component="span">{day.getDate()}</Box>
-              {mark && !placeholder && (
+              {mark && !placeholder && !multiColor && (
                 <Box
                   aria-hidden
                   sx={{
@@ -194,6 +208,21 @@ const MonthCalendar: React.FC<MonthCalendarProps> = ({
                     bgcolor: isSelected ? colors.white : colors.primary,
                   }}
                 />
+              )}
+              {multiColor && multi.length > 0 && !placeholder && (
+                <Box aria-hidden sx={{ display: 'flex', gap: 0.35 }}>
+                  {multi.map((c) => (
+                    <Box
+                      key={c}
+                      sx={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        bgcolor: isSelected ? colors.white : c,
+                      }}
+                    />
+                  ))}
+                </Box>
               )}
             </Box>
           );

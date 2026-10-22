@@ -4,24 +4,23 @@ import {
   Box,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
   Menu,
   MenuItem,
+  Select,
   Snackbar,
-  Stack,
   Typography,
 } from '@mui/material';
-import {
-  Add,
-  EditOutlined,
-  MoreHoriz,
-  SaveOutlined,
-  Close,
-} from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { Group } from '../../types';
-import { colors, typography } from '../../theme/tokens';
+import { colors } from '../../theme/tokens';
 import { AthleteCardProps, AthleteCardData } from './athleteCardTypes';
-import { buildCalendarEvents, fullName } from './athleteCardUtils';
+import { buildCalendarEvents } from './athleteCardUtils';
 import AthleteProfileHeader from './AthleteProfileHeader';
 import AthleteStandardsAccordion from './AthleteStandardsAccordion';
 import AthletePersonalCalendar from './AthletePersonalCalendar';
@@ -29,6 +28,7 @@ import AthleteCompetitionResults from './AthleteCompetitionResults';
 import AthletePersonalDocs from './AthletePersonalDocs';
 import AthleteContracts from './AthleteContracts';
 import AthleteParents from './AthleteParents';
+import AthleteCardDesktopView from './AthleteCardDesktopView';
 import ClientGroupsDialog from '../client/ClientGroupsDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { isOwnerOrAdmin } from '../../utils/roles';
@@ -107,6 +107,8 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   onClose,
   docsAccess = 'full',
   onTrainerClick,
+  fromSection = 'Клиенты',
+  onFromSectionClick,
 }) => {
   const { user } = useAuth();
   const canManageContracts = mode === 'staff' && isOwnerOrAdmin(user?.role);
@@ -123,6 +125,27 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   const [addStandardToken, setAddStandardToken] = React.useState(0);
   const [groupsDialog, setGroupsDialog] = React.useState(false);
   const [groupsCatalog, setGroupsCatalog] = React.useState<Group[]>([]);
+  const [renewOpen, setRenewOpen] = React.useState(false);
+  const [renewCatalog, setRenewCatalog] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [renewMembershipId, setRenewMembershipId] = React.useState('');
+  const [renewing, setRenewing] = React.useState(false);
+  const [cardTab, setCardTab] = React.useState<
+    import('./AthleteCardDesktopView').AthleteCardTab
+  >('overview');
+  const [actionsAnchor, setActionsAnchor] = React.useState<null | HTMLElement>(null);
+  const [discountType, setDiscountType] = React.useState<'' | 'percent' | 'fixed'>('');
+  const [discountValue, setDiscountValue] = React.useState('');
+  const [tasks, setTasks] = React.useState<
+    Array<{
+      id: string;
+      title: string;
+      dueAt?: string | null;
+      done?: boolean;
+      assigneeName?: string | null;
+      assigneePhoto?: string | null;
+    }>
+  >([]);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -151,6 +174,41 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
     }
     reload();
   }, [initialData, reload]);
+
+  React.useEffect(() => {
+    if (!data) return;
+    setDiscountType((data.personalDiscountType as '' | 'percent' | 'fixed') || '');
+    setDiscountValue(
+      data.personalDiscountValue != null && data.personalDiscountType
+        ? String(data.personalDiscountValue)
+        : ''
+    );
+  }, [data?.id, data?.personalDiscountType, data?.personalDiscountValue]);
+
+  React.useEffect(() => {
+    if (mode !== 'staff') return;
+    void apiService
+      .listStaffTasks({})
+      .then((list: any[]) =>
+        setTasks(
+          (list || []).slice(0, 8).map((t: any) => {
+            const assignee = t.assignees?.[0]?.user || t.assignees?.[0] || t.assignee;
+            const assigneeName = assignee
+              ? [assignee.lastName, assignee.firstName].filter(Boolean).join(' ') || assignee.name
+              : null;
+            return {
+              id: t.id,
+              title: t.title,
+              dueAt: t.dueAt,
+              done: t.status === 'DONE',
+              assigneeName: assigneeName || null,
+              assigneePhoto: assignee?.photo || assignee?.avatar || null,
+            };
+          })
+        )
+      )
+      .catch(() => setTasks([]));
+  }, [mode, data?.id]);
 
   const patchDraft = (patch: Partial<AthleteCardData>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -282,84 +340,52 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   const results = data.competitionResults || [];
   const events = buildCalendarEvents(data);
   const parents = (editing ? draft.parents : data.parents) || [];
+  const upcoming = events
+    .filter((e) => e.type === 'training' && e.startTime && new Date(e.startTime).getTime() >= Date.now() - 86400000)
+    .sort((a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime());
 
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 1,
-          flexWrap: 'wrap',
+  const openRenew = () => {
+    setRenewOpen(true);
+    void apiService
+      .getMemberships({ limit: 200 })
+      .then((res) =>
+        setRenewCatalog(
+          (res.data || [])
+            .filter((m: any) => m.isActive !== false && m.category !== 'GROUP')
+            .map((m: any) => ({ id: m.id, name: m.name }))
+        )
+      )
+      .catch(() => setSnack('Не удалось загрузить абонементы'));
+  };
+
+  const sharedDialogs = (
+    <>
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              startEdit();
+              patchDraft({ photo: reader.result });
+              setSnack('Фото выбрано — сохраните изменения');
+            }
+          };
+          reader.readAsDataURL(file);
         }}
-      >
-        <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, color: colors.text }}>
-          Карточка спортсмена
-          {mode === 'client' ? '' : `: ${fullName(data)}`}
-        </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          {mode === 'staff' && !editing && (
-            <>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<EditOutlined />}
-                onClick={startEdit}
-                sx={{ textTransform: 'none' }}
-              >
-                Редактировать
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<Add />}
-                onClick={(e) => setAddAnchor(e.currentTarget)}
-                sx={{ textTransform: 'none' }}
-              >
-                Добавить информацию
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<MoreHoriz />}
-                onClick={(e) => setMoreAnchor(e.currentTarget)}
-                sx={{ textTransform: 'none' }}
-              >
-                Ещё
-              </Button>
-            </>
-          )}
-          {mode === 'staff' && editing && (
-            <>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<SaveOutlined />}
-                disabled={saving}
-                onClick={save}
-                sx={{ textTransform: 'none' }}
-              >
-                Сохранить
-              </Button>
-              <Button size="small" startIcon={<Close />} onClick={cancelEdit} sx={{ textTransform: 'none' }}>
-                Отмена
-              </Button>
-            </>
-          )}
-          {onClose && (
-            <Button size="small" onClick={onClose} sx={{ textTransform: 'none' }}>
-              Закрыть
-            </Button>
-          )}
-        </Stack>
-      </Box>
+      />
 
       <Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={() => setAddAnchor(null)}>
         <MenuItem
           onClick={() => {
             setAddAnchor(null);
             setAddStandardToken((t) => t + 1);
+            setCardTab('history');
           }}
         >
           Норматив
@@ -367,7 +393,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         <MenuItem
           onClick={() => {
             setAddAnchor(null);
-            setSnack('Результаты соревнований добавляются в разделе «Календарный план» → Соревнования');
+            setSnack('Результаты соревнований — в разделе «Календарный план»');
           }}
         >
           Результат соревнования
@@ -375,6 +401,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         <MenuItem
           onClick={() => {
             setAddAnchor(null);
+            setCardTab('documents');
             startEdit();
           }}
         >
@@ -383,10 +410,10 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         <MenuItem
           onClick={() => {
             setAddAnchor(null);
-            setSnack('События создаются в календарном плане школы');
+            setCardTab('notes');
           }}
         >
-          Событие
+          Заметка
         </MenuItem>
       </Menu>
 
@@ -400,31 +427,159 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         >
           Обновить
         </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setMoreAnchor(null);
+            onClose?.();
+          }}
+        >
+          Закрыть
+        </MenuItem>
       </Menu>
 
-      <AthleteProfileHeader
-        data={data}
-        mode={mode}
-        editing={editing}
-        draft={draft}
-        onDraftChange={patchDraft}
-        onPhotoChange={(base64) => patchDraft({ photo: base64 })}
-        onGroupClick={
-          mode === 'staff'
-            ? async () => {
+      <Menu anchorEl={actionsAnchor} open={Boolean(actionsAnchor)} onClose={() => setActionsAnchor(null)}>
+        <MenuItem
+          onClick={() => {
+            setActionsAnchor(null);
+            startEdit();
+          }}
+        >
+          Редактировать
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setActionsAnchor(null);
+            openRenew();
+          }}
+        >
+          Продлить абонемент
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setActionsAnchor(null);
+            setGroupsDialog(true);
+            void apiService
+              .getGroups({ limit: 1000, page: 1 })
+              .then((r) => setGroupsCatalog(r.data || []))
+              .catch(() => setGroupsCatalog([]));
+          }}
+        >
+          Сменить группы
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={editing} onClose={cancelEdit} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Редактирование карточки</DialogTitle>
+        <DialogContent>
+          <AthleteProfileHeader
+            data={data}
+            mode={mode}
+            editing={editing}
+            draft={draft}
+            onDraftChange={patchDraft}
+            onPhotoChange={(base64) => patchDraft({ photo: base64 })}
+            onGroupClick={
+              mode === 'staff'
+                ? async () => {
+                    try {
+                      const res = await apiService.getGroups({ limit: 1000, page: 1 });
+                      setGroupsCatalog(res.data || []);
+                    } catch {
+                      setGroupsCatalog([]);
+                    }
+                    setGroupsDialog(true);
+                  }
+                : undefined
+            }
+            onTrainerClick={mode === 'client' ? onTrainerClick : undefined}
+          />
+          <Box sx={{ mt: 2 }}>
+            <AthleteParents
+              parents={parents as any}
+              mode={mode}
+              editing={editing}
+              onChange={(next) => patchDraft({ parents: next as any })}
+              onRemoveConfirm={(index) => setRemoveParentIdx(index)}
+            />
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <AthletePersonalDocs
+              data={data}
+              mode={mode}
+              editing={editing}
+              draft={draft}
+              onDraftChange={patchDraft}
+              access={docsAccess}
+              onFileUpload={(field, base64) => patchDraft({ [field]: base64 })}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelEdit} sx={{ textTransform: 'none' }}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            disabled={saving}
+            onClick={save}
+            sx={{ textTransform: 'none', bgcolor: colors.primary, boxShadow: 'none' }}
+          >
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={renewOpen} onClose={() => setRenewOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Продлить абонемент</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 1 }}>
+            <InputLabel>Абонемент</InputLabel>
+            <Select
+              label="Абонемент"
+              value={renewMembershipId}
+              onChange={(e) => setRenewMembershipId(e.target.value)}
+            >
+              {renewCatalog.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenewOpen(false)} sx={{ textTransform: 'none' }}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!renewMembershipId || renewing}
+            sx={{ textTransform: 'none', bgcolor: colors.primary, boxShadow: 'none' }}
+            onClick={() => {
+              void (async () => {
                 try {
-                  const res = await apiService.getGroups({ limit: 1000, page: 1 });
-                  setGroupsCatalog(res.data || []);
-                } catch (e) {
-                  console.error(e);
-                  setGroupsCatalog([]);
+                  setRenewing(true);
+                  await apiService.createClientMembership({
+                    clientId: data.id,
+                    membershipId: renewMembershipId,
+                    startDate: new Date().toISOString(),
+                  });
+                  setRenewOpen(false);
+                  setRenewMembershipId('');
+                  setSnack('Абонемент выдан');
+                  await reload();
+                } catch (e: any) {
+                  setSnack(e?.response?.data?.error || 'Не удалось выдать абонемент');
+                } finally {
+                  setRenewing(false);
                 }
-                setGroupsDialog(true);
-              }
-            : undefined
-        }
-        onTrainerClick={mode === 'client' ? onTrainerClick : undefined}
-      />
+              })();
+            }}
+          >
+            {renewing ? 'Выдача…' : 'Выдать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ClientGroupsDialog
         open={groupsDialog}
@@ -438,71 +593,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         onSuccessMessage={(message) => setSnack(message)}
       />
 
-      <AthleteStandardsAccordion
-        standards={standards}
-        mode={mode}
-        clientId={data.id}
-        groupIds={
-          (data.groupMemberships || [])
-            .filter((gm: any) => gm.isActive !== false)
-            .map((gm: any) => gm.group?.id || gm.groupId)
-            .filter(Boolean) as string[]
-        }
-        addRequestToken={addStandardToken}
-        onChanged={reload}
-        onSnack={setSnack}
-      />
-
-      <AthletePersonalCalendar
-        events={events}
-        onOpenFull={
-          mode === 'staff'
-            ? () => setSnack('Полный календарь школы — раздел «Календарный план»')
-            : undefined
-        }
-      />
-
-      <AthleteCompetitionResults results={results} />
-
-      <AthletePersonalDocs
-        data={data}
-        mode={mode}
-        editing={editing}
-        draft={draft}
-        onDraftChange={patchDraft}
-        access={docsAccess}
-        onFileUpload={(field, base64) => patchDraft({ [field]: base64 })}
-      />
-
-      {mode === 'staff' && clientId && docsAccess !== 'denied' && (
-        <AthleteContracts
-          clientId={clientId}
-          mode={mode}
-          canManage={canManageContracts}
-        />
-      )}
-
-      <AthleteParents
-        parents={parents as any}
-        mode={mode}
-        editing={editing}
-        onChange={(next) => patchDraft({ parents: next as any })}
-        onRemoveConfirm={(index) => setRemoveParentIdx(index)}
-      />
-
-      {data.updatedAt && (
-        <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
-          Последнее изменение: {new Date(data.updatedAt).toLocaleString('ru-RU')}
-        </Typography>
-      )}
-
-      <Snackbar
-        open={Boolean(snack)}
-        autoHideDuration={3500}
-        onClose={() => setSnack('')}
-        message={snack}
-      />
-
+      <Snackbar open={Boolean(snack)} autoHideDuration={3500} onClose={() => setSnack('')} message={snack} />
       <Snackbar
         open={removeParentIdx != null}
         message="Удалить представителя?"
@@ -527,6 +618,216 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
           </>
         }
       />
+    </>
+  );
+
+  if (mode === 'staff') {
+    return (
+      <Box>
+        <AthleteCardDesktopView
+          data={data}
+          fromSection={fromSection}
+          tab={cardTab}
+          onTab={setCardTab}
+          onFromSectionClick={onFromSectionClick || onClose}
+          onClose={onClose}
+          onEdit={startEdit}
+          onAddMenu={setAddAnchor}
+          onMoreMenu={setMoreAnchor}
+          onActionsMenu={setActionsAnchor}
+          onGroupClick={async () => {
+            try {
+              const res = await apiService.getGroups({ limit: 1000, page: 1 });
+              setGroupsCatalog(res.data || []);
+            } catch {
+              setGroupsCatalog([]);
+            }
+            setGroupsDialog(true);
+          }}
+          onPhotoPick={() => photoInputRef.current?.click()}
+          discountType={discountType}
+          discountValue={discountValue}
+          onDiscountType={setDiscountType}
+          onDiscountValue={setDiscountValue}
+          onSaveDiscount={() => {
+            void (async () => {
+              try {
+                const type = discountType || null;
+                const updated = await apiService.updateClient(data.id, {
+                  personalDiscountType: type,
+                  personalDiscountValue: type ? Number(discountValue) || 0 : null,
+                });
+                setData({ ...data, ...updated });
+                setSnack('Скидка сохранена');
+                onSaved?.({ ...data, ...updated });
+              } catch (e: any) {
+                setSnack(e?.response?.data?.error || 'Не удалось сохранить скидку');
+              }
+            })();
+          }}
+          onToggleMembershipFee={() => {
+            void (async () => {
+              try {
+                const updated = await apiService.updateClientMembershipFeeStatus(
+                  data.id,
+                  !data.membershipFeePaid
+                );
+                setData({ ...data, ...updated });
+                setSnack(updated.membershipFeePaid ? 'Взнос отмечен' : 'Отметка снята');
+                onSaved?.({ ...data, ...updated });
+              } catch (e: any) {
+                setSnack(e?.response?.data?.error || 'Не удалось обновить взнос');
+              }
+            })();
+          }}
+          onDeleteClient={
+            isOwnerOrAdmin(user?.role)
+              ? () => {
+                  if (!window.confirm('Удалить клиента?')) return;
+                  void (async () => {
+                    try {
+                      await apiService.deleteClient(data.id);
+                      setSnack('Клиент удалён');
+                      onClose?.();
+                    } catch (e: any) {
+                      setSnack(e?.response?.data?.error || 'Не удалось удалить');
+                    }
+                  })();
+                }
+              : undefined
+          }
+          onMarkPayment={() => {
+            void (async () => {
+              try {
+                const updated = await apiService.updateClientMembershipFeeStatus(data.id, true);
+                setData({ ...data, ...updated });
+                setSnack('Оплата отмечена');
+              } catch (e: any) {
+                setSnack(e?.response?.data?.error || 'Не удалось отметить оплату');
+              }
+            })();
+          }}
+          onRenewMembership={openRenew}
+          upcoming={upcoming}
+          tasks={tasks}
+          notesText={(data as any).notes || (data as any).medicalNotes || null}
+          tabPanels={{
+            memberships: (
+              <Box>
+                <Typography sx={{ fontWeight: 800, mb: 1 }}>Абонементы</Typography>
+                <Button variant="contained" onClick={openRenew} sx={{ textTransform: 'none', mb: 2 }}>
+                  Продлить / выдать
+                </Button>
+                <Typography sx={{ color: '#8B93A7', fontSize: 13 }}>
+                  {data.activeMembership
+                    ? `Активный: ${data.activeMembership.name}`
+                    : 'Нет активного абонемента'}
+                </Typography>
+              </Box>
+            ),
+            trainings: <AthletePersonalCalendar events={events} />,
+            attendance: (
+              <Typography sx={{ color: '#8B93A7' }}>
+                Посещаемость доступна в разделе «Календарный план» и в экспорте Excel.
+              </Typography>
+            ),
+            payments: (
+              <Typography sx={{ color: '#8B93A7' }}>
+                Платежи клиента — во вкладке «Финансы → Оплаты клиентов».
+              </Typography>
+            ),
+            notes: (
+              <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+                {(data as any).medicalNotes || 'Заметок пока нет'}
+              </Typography>
+            ),
+            tasks: (
+              <Box>
+                {tasks.length === 0 ? (
+                  <Typography sx={{ color: '#8B93A7' }}>Нет открытых задач</Typography>
+                ) : (
+                  tasks.map((t) => (
+                    <Typography key={t.id} sx={{ py: 0.75, borderBottom: '1px solid #EEF1F6' }}>
+                      {t.title}
+                    </Typography>
+                  ))
+                )}
+              </Box>
+            ),
+            documents: (
+              <Box>
+                <AthletePersonalDocs
+                  data={data}
+                  mode={mode}
+                  editing={false}
+                  draft={{}}
+                  onDraftChange={() => undefined}
+                  access={docsAccess}
+                  onFileUpload={() => undefined}
+                />
+                {clientId && docsAccess !== 'denied' && (
+                  <Box sx={{ mt: 2 }}>
+                    <AthleteContracts clientId={clientId} mode={mode} canManage={canManageContracts} />
+                  </Box>
+                )}
+              </Box>
+            ),
+            history: (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <AthleteStandardsAccordion
+                  standards={standards}
+                  mode={mode}
+                  clientId={data.id}
+                  groupIds={
+                    (data.groupMemberships || [])
+                      .filter((gm: any) => gm.isActive !== false)
+                      .map((gm: any) => gm.group?.id || gm.groupId)
+                      .filter(Boolean) as string[]
+                  }
+                  addRequestToken={addStandardToken}
+                  onChanged={reload}
+                  onSnack={setSnack}
+                />
+                <AthleteCompetitionResults results={results} />
+              </Box>
+            ),
+          }}
+        />
+        {sharedDialogs}
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <AthleteProfileHeader
+        data={data}
+        mode={mode}
+        editing={editing}
+        draft={draft}
+        onDraftChange={patchDraft}
+        onPhotoChange={(base64) => patchDraft({ photo: base64 })}
+        onTrainerClick={onTrainerClick}
+      />
+      <AthletePersonalCalendar events={events} />
+      <AthleteCompetitionResults results={results} />
+      <AthletePersonalDocs
+        data={data}
+        mode={mode}
+        editing={editing}
+        draft={draft}
+        onDraftChange={patchDraft}
+        access={docsAccess}
+        onFileUpload={(field, base64) => patchDraft({ [field]: base64 })}
+      />
+      <AthleteParents
+        parents={parents as any}
+        mode={mode}
+        editing={editing}
+        onChange={(next) => patchDraft({ parents: next as any })}
+        onRemoveConfirm={(index) => setRemoveParentIdx(index)}
+      />
+      {sharedDialogs}
     </Box>
   );
 };

@@ -60,6 +60,7 @@ model Tenant {
   clientContracts         ClientContract[]
   staffNotes              StaffNote[]
   staffTasks              StaffTask[]
+  calendarNotes           CalendarNote[]
   exercises               Exercise[]
   workoutTemplates        WorkoutTemplate[]
   trainingCycles          TrainingCycle[]
@@ -88,6 +89,8 @@ model TenantSettings {
   clientCanViewAllBranches Boolean  @default(false) // Может ли клиент видеть все филиалы или только свой
   /// Единый цвет задач на календарном плане (только OWNER)
   staffTaskColor           String?  @default("#6A1B9A")
+  /// Расширенные настройки расписания / региона / шаблонов (JSON)
+  scheduleConfig           Json?
   tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
@@ -110,6 +113,8 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   middleName    String?
+  /// JSON-профиль сотрудника (ADMIN/PROMOTER extras: права, зона, цены и т.п.)
+  profileMeta   String?
   /// Интерактивное обучение (per-user)
   hasCompletedOnboarding Boolean @default(false)
   onboardingDeclined     Boolean @default(false)
@@ -121,7 +126,11 @@ model User {
   uploadedAddenda   ClientContractAddendum[]
   uploadedTrainerDocuments TrainerDocument[]
   staffNotesAuthored StaffNote[] @relation("StaffNoteAuthor")
+  staffNoteAttachments StaffNoteAttachment[] @relation("StaffNoteAttachmentUploader")
   staffTasksCreated  StaffTask[] @relation("StaffTaskCreator")
+  staffTaskAttachments StaffTaskAttachment[] @relation("StaffTaskAttachmentUploader")
+  staffTaskComments  StaffTaskComment[] @relation("StaffTaskCommentAuthor")
+  calendarNotesCreated CalendarNote[] @relation("CalendarNoteCreator")
   staffTaskAssignments StaffTaskAssignee[]
   exercisesCreated         Exercise[]         @relation("ExerciseCreator")
   workoutTemplatesCreated  WorkoutTemplate[]  @relation("WorkoutTemplateCreator")
@@ -138,11 +147,25 @@ model User {
 model Branch {
   id          String          @id @default(cuid())
   name        String
+  /// Короткое имя для списков / календаря
+  shortName   String?
   address     String
   phone       String?
   email       String?
   description String?
   isActive    Boolean         @default(true)
+  /// URL/путь фото филиала
+  photoUrl    String?
+  /// Например: «Пн – Вс 08:00 – 22:00»
+  workingHours String?
+  specialization String?
+  /// JSON-массив видов тренировок
+  trainingTypes  String?
+  color       String?
+  /// building | home | store | flag | trophy
+  icon        String?
+  mapLat      Float?
+  mapLng      Float?
   tenantId    String
   /// Старший тренер филиала (права ≈ ADMIN в рамках этого филиала)
   seniorTrainerId String?
@@ -472,6 +495,8 @@ model Trainer {
   judgeCategory        String?
   /// Свободное описание достижений (текст)
   achievements         String?
+  /// Дата начала работы
+  hireDate             DateTime?
   /// Legacy: синхронизируется с salaryScheme при записи
   salaryType           String
   salaryAmount         Decimal?
@@ -706,6 +731,16 @@ model Group {
   maxMembers                Int?
   ageMin                    Int?
   ageMax                    Int?
+  /// Пресет возрастной категории, напр. «6-8 лет (Начальная подготовка)»
+  ageCategory               String?
+  /// Уровень подготовки
+  skillLevel                String?
+  /// permanent | temporary | …
+  groupType                 String?
+  /// morning | evening | day | …
+  stream                    String?
+  /// Онлайн-запись через сайт/приложение
+  onlineBooking             Boolean           @default(false)
   isActive                  Boolean           @default(true)
   tenantId                  String
   branchId                  String
@@ -780,11 +815,12 @@ model Membership {
   /// visits | monthly | group_monthly (legacy type; category — основной классификатор)
   type              String
   isActive          Boolean            @default(true)
+  archivedAt        DateTime?
   tenantId          String
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   visits            Int?
-  /// CLIENT | GROUP
+  /// CLIENT | GROUP | PERSONAL
   category          String             @default("CLIENT")
   /// Окно оплаты группового абонемента (дни месяца), напр. 1–6
   paymentWindowStartDay Int?
@@ -805,6 +841,7 @@ model Membership {
   schoolPaymentMethodMemberships SchoolPaymentMethodMembership[]
 
   @@index([tenantId, category, isActive])
+  @@index([tenantId, archivedAt])
   @@map("memberships")
 }
 
@@ -928,6 +965,8 @@ model Training {
   substituteTrainer   Trainer?      @relation("TrainingSubstitute", fields: [substituteTrainerId], references: [id])
   transactions        Transaction[]
   sessionPlan         TrainingSessionPlan?
+  relatedStaffTasks   StaffTask[]
+  calendarNotes       CalendarNote[]
 
   @@index([tenantId, startTime])
   @@index([tenantId, trainerId, startTime])
@@ -1935,6 +1974,7 @@ model Competition {
   participants             CompetitionParticipant[]
   results                  CompetitionResult[]
   trainers                 CompetitionTrainer[]
+  calendarNotes            CalendarNote[]
   tenant                   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("competitions")
@@ -1945,7 +1985,7 @@ model SchoolEvent {
   id           String                   @id @default(cuid())
   title        String
   description  String?
-  /// parent_meeting | other
+  /// parent_meeting | attestation | activity | open_day | other (+ legacy competition)
   type         String                   @default("other")
   startTime    DateTime
   endTime      DateTime
@@ -1960,6 +2000,8 @@ model SchoolEvent {
   participants SchoolEventParticipant[]
   parents      SchoolEventParent[]
   trainers     SchoolEventTrainer[]
+  relatedStaffTasks StaffTask[]
+  calendarNotes     CalendarNote[]
 
   @@index([tenantId, startTime])
   @@index([tenantId, type])
@@ -2202,38 +2244,144 @@ model StaffNote {
   visibility   String
   title        String
   body         String   @db.Text
+  /// Hex цвет карточки, напр. #8B5CF6
+  color        String?
+  /// general | work | ideas | personal | important
+  categoryKey  String   @default("general")
+  /// none | in_1h | tomorrow | in_1d | in_1w
+  reminderKey  String   @default("none")
+  pinned       Boolean  @default(false)
+  /// JSON-массив тегов
+  tags         String?
+  /// JSON-массив id StaffTask
+  relatedTaskIds String?
+  /// JSON { type, id, label } — связь с клиентом/группой/тренировкой
+  relatedLink  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   author       User     @relation("StaffNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  attachments  StaffNoteAttachment[]
 
   @@index([tenantId, visibility])
   @@index([authorUserId, visibility])
+  @@index([tenantId, pinned])
+  @@index([tenantId, categoryKey])
   @@map("staff_notes")
+}
+
+model StaffNoteAttachment {
+  id           String    @id @default(cuid())
+  noteId       String
+  originalName String
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  createdById  String
+  createdAt    DateTime  @default(now())
+  note         StaffNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation("StaffNoteAttachmentUploader", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@map("staff_note_attachments")
 }
 
 /// Задачи, которые OWNER назначает сотрудникам.
 model StaffTask {
-  id                 String              @id @default(cuid())
-  tenantId           String
-  createdByUserId    String
-  title              String
-  body               String              @db.Text
-  dueAt              DateTime?
-  /// OPEN | DONE | CANCELLED
-  status             String              @default("OPEN")
-  remindBeforeSentAt DateTime?
-  overdueNotifiedAt  DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy          User                @relation("StaffTaskCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  chatThread         ChatThread?
-  assignees          StaffTaskAssignee[]
+  id                   String              @id @default(cuid())
+  tenantId             String
+  createdByUserId      String
+  title                String
+  body                 String              @db.Text
+  dueAt                DateTime?
+  /// OPEN | DONE | CANCELLED | DRAFT
+  status               String              @default("OPEN")
+  /// LOW | MEDIUM | HIGH
+  priority             String              @default("MEDIUM")
+  /// general | growth | meetings | ideas | personal
+  projectKey           String              @default("general")
+  favorite             Boolean             @default(false)
+  archived             Boolean             @default(false)
+  /// none | daily | weekly | monthly
+  recurrence           String              @default("none")
+  /// [{ "id": string, "title": string, "done": boolean }]
+  subtasks             Json?
+  notifyAssignees      Boolean             @default(true)
+  relatedTrainingId    String?
+  relatedSchoolEventId String?
+  remindBeforeSentAt   DateTime?
+  overdueNotifiedAt    DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy            User                @relation("StaffTaskCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  relatedTraining      Training?           @relation(fields: [relatedTrainingId], references: [id], onDelete: SetNull)
+  relatedSchoolEvent   SchoolEvent?        @relation(fields: [relatedSchoolEventId], references: [id], onDelete: SetNull)
+  chatThread           ChatThread?
+  assignees            StaffTaskAssignee[]
+  attachments          StaffTaskAttachment[]
+  comments             StaffTaskComment[]
 
   @@index([tenantId, status, dueAt])
   @@index([createdByUserId])
+  @@index([relatedTrainingId])
+  @@index([relatedSchoolEventId])
+  @@index([tenantId, projectKey])
+  @@index([tenantId, favorite])
+  @@index([tenantId, archived])
   @@map("staff_tasks")
+}
+
+model StaffTaskAttachment {
+  id           String    @id @default(cuid())
+  taskId       String
+  originalName String
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  createdById  String
+  createdAt    DateTime  @default(now())
+  task         StaffTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation("StaffTaskAttachmentUploader", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("staff_task_attachments")
+}
+
+model StaffTaskComment {
+  id        String    @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String    @db.Text
+  createdAt DateTime  @default(now())
+  task      StaffTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User      @relation("StaffTaskCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("staff_task_comments")
+}
+
+/// Заметки к элементам календарного плана (тренировка / событие / соревнование).
+model CalendarNote {
+  id              String       @id @default(cuid())
+  tenantId        String
+  body            String       @db.Text
+  trainingId      String?
+  schoolEventId   String?
+  competitionId   String?
+  createdByUserId String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation("CalendarNoteCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  training        Training?    @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  schoolEvent     SchoolEvent? @relation(fields: [schoolEventId], references: [id], onDelete: Cascade)
+  competition     Competition? @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, trainingId])
+  @@index([tenantId, schoolEventId])
+  @@index([tenantId, competitionId])
+  @@map("calendar_notes")
 }
 
 model StaffTaskAssignee {
@@ -2393,6 +2541,20 @@ model Exercise {
   tenantId        String
   title           String
   description     String                 @db.Text @default("")
+  category        String?
+  /// Силовое | Кардио | Растяжка | …
+  exerciseType    String?
+  sets            Int?
+  reps            Int?
+  restSec         Int?
+  difficulty      String?
+  inventory       String?
+  /// Медленный | Средний | Быстрый
+  tempo           String?
+  /// Внешняя ссылка на видео (YouTube, Rutube…)
+  videoUrl        String?
+  /// JSON-массив тегов
+  tags            String?
   createdByUserId String
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
@@ -2460,6 +2622,10 @@ model TrainingCycle {
   id              String               @id @default(cuid())
   tenantId        String
   title           String?
+  description     String?
+  /// WEEKLY | MONTHLY | CUSTOM
+  frequency       String               @default("WEEKLY")
+  quantity        Int?
   dateFrom        DateTime
   dateTo          DateTime
   createdByUserId String
