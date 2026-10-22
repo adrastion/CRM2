@@ -68,6 +68,10 @@ import CreateBranchDialog, {
   type BranchFormValue,
 } from '../components/groups/CreateBranchDialog';
 import CreateGroupDialog from '../components/groups/CreateGroupDialog';
+import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
+import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
+import { useAuth } from '../contexts/AuthContext';
+import { canAssignSeniorTrainer, canCreateBranches } from '../utils/roles';
 
 const PASTEL_GROUP = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'] as const;
 
@@ -79,10 +83,6 @@ function groupOccupancy(group: Group): { current: number; max: number | null; ra
   const ratio = current / max;
   return { current, max, ratio, isLow: ratio < 0.4 };
 }
-import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
-import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
-import { useAuth } from '../contexts/AuthContext';
-import { canAssignSeniorTrainer, canCreateBranches } from '../utils/roles';
 
 const GROUP_DELETE_OPTIONS: PurgeOption[] = [
   {
