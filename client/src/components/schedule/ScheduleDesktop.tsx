@@ -24,7 +24,7 @@ import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-f
 import { ru } from 'date-fns/locale';
 import MonthCalendar, { CalendarDayMark, toIso } from '../dashboard/MonthCalendar';
 import { Branch, Competition, Group, Hall, Trainer, Training } from '../../types';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 import { buildCalendarItems } from './calendarAdapter';
 import {
   CALENDAR_LAYER_COLORS,
@@ -195,11 +195,11 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
         <Box>
           <Typography
             component="h1"
-            sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.2 }}
+            sx={{ fontWeight: 800, fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.2 }}
           >
             Календарный план
           </Typography>
-          <Typography sx={{ fontSize: 13, color: colors.textMuted, mt: 0.5, maxWidth: 720 }}>
+          <Typography sx={{ fontSize: typography.label, color: colors.textMuted, mt: 0.5, maxWidth: 720 }}>
             Все тренировки, соревнования, задачи и события в едином расписании. Планируйте, контролируйте и не упускайте важное.
           </Typography>
         </Box>
@@ -303,10 +303,10 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                 <Icon sx={{ fontSize: 20 }} />
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: colors.text, lineHeight: 1.2 }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text, lineHeight: 1.2 }}>
                   {card.label}
                 </Typography>
-                <Typography sx={{ fontSize: 11, color: colors.textHint, mb: 0.4 }}>
+                <Typography sx={{ fontSize: typography.label, color: colors.textHint, mb: 0.4 }}>
                   на этой неделе
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
@@ -315,7 +315,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: 13,
+                      fontSize: typography.label,
                       fontWeight: 700,
                       color: stat.delta === 0 ? colors.textHint : up ? '#16A34A' : colors.danger,
                     }}
@@ -324,7 +324,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                     {stat.delta}
                   </Typography>
                 </Box>
-                <Typography sx={{ fontSize: 10, color: colors.textHint, mt: 0.35 }}>
+                <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.35 }}>
                   по сравнению с прошлой неделей
                 </Typography>
               </Box>
@@ -361,7 +361,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   borderRadius: '12px',
                   px: 1.5,
                   height: 36,
@@ -409,7 +409,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                   '&.Mui-checked': { color },
                 }}
               />
-              <Typography sx={{ fontSize: 13, fontWeight: 600, color: colors.text }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}>
                 {label}
               </Typography>
             </Box>
@@ -432,7 +432,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   minWidth: 0,
                   height: 34,
                   px: 1.5,
@@ -515,7 +515,7 @@ const ScheduleDesktop: React.FC<ScheduleDesktopProps> = (props) => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    fontSize: 13,
+                    fontSize: typography.label,
                     height: 34,
                     borderRadius: '10px',
                     color: colors.text,
@@ -650,8 +650,8 @@ const FilterSelect: React.FC<{
         onChange={(e) => onChange(String(e.target.value))}
         renderValue={() => (
           <Box sx={{ lineHeight: 1.05, py: 0.15 }}>
-            <Typography sx={{ fontSize: 10, color: colors.textHint }}>{caption}</Typography>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: colors.text }}>
+            <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>{caption}</Typography>
+            <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text }}>
               {current?.label || empty}
             </Typography>
           </Box>

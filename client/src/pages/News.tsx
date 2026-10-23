@@ -36,7 +36,7 @@ import {
   PlatformNewsEntry,
 } from '../components/PlatformNewsFeed';
 import { apiService } from '../services/api';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import { FAQ_CONTENT } from '../content/faqContent';
 
 type NewsCategory =
@@ -86,7 +86,7 @@ const filterPillSx = (active: boolean) => ({
   height: 34,
   borderRadius: '999px',
   fontWeight: active ? 700 : 500,
-  fontSize: 13,
+  fontSize: typography.label,
   bgcolor: active ? colors.primary : '#fff',
   color: active ? '#fff' : '#1B2438',
   border: active ? '1px solid transparent' : '1px solid #E6EAF2',
@@ -230,7 +230,7 @@ const News: React.FC = () => {
   };
 
   return (
-    <Box data-onboarding="news-page" sx={{ px: { xs: 0.5, sm: 0 }, pb: { xs: 10, md: 1 } }}>
+    <Box data-onboarding="news-page">
       <Box
         sx={{
           display: 'grid',
@@ -255,7 +255,7 @@ const News: React.FC = () => {
                 component="h1"
                 sx={{
                   fontWeight: 800,
-                  fontSize: { xs: 22, md: 26 },
+                  fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
                   color: '#1B2438',
                   letterSpacing: '-0.02em',
                   lineHeight: 1.2,
@@ -263,7 +263,7 @@ const News: React.FC = () => {
               >
                 Новости
               </Typography>
-              <Typography sx={{ mt: 0.75, fontSize: 13, color: '#8B93A7', maxWidth: 540, lineHeight: 1.45 }}>
+              <Typography sx={{ mt: 0.75, fontSize: typography.label, color: '#8B93A7', maxWidth: 540, lineHeight: 1.45 }}>
                 Все важные обновления системы, полезные материалы и объявления для вашей команды.
               </Typography>
             </Box>
@@ -387,7 +387,7 @@ const News: React.FC = () => {
                             borderRadius: '999px',
                             bgcolor: '#EF4444',
                             color: '#fff',
-                            fontSize: 10,
+                            fontSize: typography.hint,
                             fontWeight: 800,
                             letterSpacing: '0.04em',
                             lineHeight: 1.4,
@@ -406,13 +406,13 @@ const News: React.FC = () => {
                           sx={{
                             height: 24,
                             fontWeight: 700,
-                            fontSize: 11,
+                            fontSize: typography.label,
                             bgcolor: meta.bg,
                             color: meta.color,
                             borderRadius: '999px',
                           }}
                         />
-                        <Typography sx={{ fontSize: 12, color: '#8B93A7' }}>
+                        <Typography sx={{ fontSize: typography.label, color: '#8B93A7' }}>
                           {formatNewsDateTime(entry.createdAt)}
                         </Typography>
                       </Box>
@@ -429,7 +429,7 @@ const News: React.FC = () => {
                       </Typography>
                       <Typography
                         sx={{
-                          fontSize: 13,
+                          fontSize: typography.label,
                           color: '#5D6B86',
                           lineHeight: 1.55,
                           whiteSpace: 'pre-wrap',
@@ -450,7 +450,7 @@ const News: React.FC = () => {
                         sx={{
                           textTransform: 'none',
                           fontWeight: 700,
-                          fontSize: 13,
+                          fontSize: typography.label,
                           color: colors.primary,
                           px: 0,
                           minWidth: 0,
@@ -503,7 +503,7 @@ const News: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.85 }}>
                   <CampaignOutlined sx={{ fontSize: 20, color: '#E11D48' }} />
-                  <Typography sx={{ fontWeight: 800, fontSize: 13, color: '#9F1239' }}>Важное</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: typography.label, color: '#9F1239' }}>Важное</Typography>
                 </Box>
                 {isRecent(important.createdAt) && (
                   <Chip
@@ -511,7 +511,7 @@ const News: React.FC = () => {
                     label="Новое"
                     sx={{
                       height: 22,
-                      fontSize: 11,
+                      fontSize: typography.label,
                       fontWeight: 700,
                       bgcolor: '#FEE2E2',
                       color: '#E11D48',
@@ -522,12 +522,12 @@ const News: React.FC = () => {
               <Typography sx={{ fontWeight: 800, fontSize: 14, color: '#1B2438', mb: 0.5 }}>
                 {important.title}
               </Typography>
-              <Typography sx={{ fontSize: 12, color: '#8B93A7', mb: 1 }}>
+              <Typography sx={{ fontSize: typography.label, color: '#8B93A7', mb: 1 }}>
                 {formatNewsDateTime(important.createdAt)}
               </Typography>
               <Typography
                 sx={{
-                  fontSize: 12.5,
+                  fontSize: typography.label,
                   color: '#5D6B86',
                   lineHeight: 1.45,
                   mb: 1.5,
@@ -549,7 +549,7 @@ const News: React.FC = () => {
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   borderRadius: `${radii.button}px`,
                   borderColor: '#F9C5D1',
                   color: '#9F1239',
@@ -611,7 +611,7 @@ const News: React.FC = () => {
                       borderRadius: '999px',
                       bgcolor: '#EAF0FF',
                       color: colors.primary,
-                      fontSize: 11,
+                      fontSize: typography.label,
                       fontWeight: 800,
                       display: 'flex',
                       alignItems: 'center',
@@ -624,7 +624,7 @@ const News: React.FC = () => {
                   <Typography
                     sx={{
                       flex: 1,
-                      fontSize: 12.5,
+                      fontSize: typography.label,
                       color: '#1B2438',
                       fontWeight: 500,
                       lineHeight: 1.35,
@@ -674,7 +674,7 @@ const News: React.FC = () => {
                     }}
                   />
                 </Box>
-                <Typography sx={{ mt: 0.5, fontSize: 12.5, color: '#8B93A7', lineHeight: 1.4 }}>
+                <Typography sx={{ mt: 0.5, fontSize: typography.label, color: '#8B93A7', lineHeight: 1.4 }}>
                   Получайте важные обновления на email и в уведомлениях системы
                 </Typography>
               </Box>

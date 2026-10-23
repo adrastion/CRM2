@@ -351,7 +351,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                         py: 0.35,
                         borderRadius: `${radii.button}px`,
                         fontWeight: 600,
-                        fontSize: 11,
+                        fontSize: typography.label,
                         whiteSpace: 'nowrap',
                         lineHeight: 1.2,
                       }}
@@ -427,12 +427,12 @@ const ClientsList: React.FC<ClientsListProps> = ({
                         py: 0.4,
                         borderRadius: `${radii.button}px`,
                         fontWeight: 600,
-                        fontSize: 12,
+                        fontSize: typography.label,
                       }}
                     >
                       {groupName}
                     </Box>
-                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.textMuted }}>
+                    <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.textMuted }}>
                       {formatBalance(client.balance)}
                     </Typography>
                   </Box>
@@ -477,7 +477,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                           py: 0.35,
                           borderRadius: '8px',
                           fontWeight: 600,
-                          fontSize: 11,
+                          fontSize: typography.label,
                         }}
                       >
                         Подтвердить
@@ -491,7 +491,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                           py: 0.35,
                           borderRadius: '8px',
                           fontWeight: 600,
-                          fontSize: 11,
+                          fontSize: typography.label,
                         }}
                       >
                         Отклонить
@@ -588,7 +588,7 @@ const ClientsList: React.FC<ClientsListProps> = ({
                         component="span"
                         sx={{
                           fontWeight: 500,
-                          fontSize: 11,
+                          fontSize: typography.label,
                           color: 'inherit',
                           display: 'block',
                         }}

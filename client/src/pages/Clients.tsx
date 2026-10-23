@@ -1098,7 +1098,7 @@ const Clients: React.FC = () => {
 
   // Подстраница карточки спортсмена (не модальное окно)
   if (editDialogOpen && editingClient) {
-    return (
+  return (
       <Box sx={{ pb: 2 }}>
         <AthleteCard
           mode="staff"
@@ -1120,12 +1120,12 @@ const Clients: React.FC = () => {
           onDiscard={editUnsaved.discard}
           onSave={editUnsaved.save}
         />
-      </Box>
+                    </Box>
     );
   }
 
   return (
-    <Box>
+              <Box>
       <ClientsBoard
         clients={clients}
         branches={branches}
@@ -1174,7 +1174,7 @@ const Clients: React.FC = () => {
                 } catch (err) {
                   console.error(err);
                   setSnackbarMessage('Не удалось загрузить каталог абонементов');
-                  setSnackbarOpen(true);
+                                  setSnackbarOpen(true);
                 }
               }
         }
@@ -1478,7 +1478,7 @@ const Clients: React.FC = () => {
           setSelectedClientForMembership(null);
           setSelectedMembershipId('');
           setMembershipStartDate(new Date());
-        }}
+        }} 
         maxWidth="sm" 
         fullWidth
       >

@@ -110,7 +110,7 @@ const PaperEmpty: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       textAlign: 'center',
     }}
   >
-    <Typography sx={{ color: colors.textEmpty, fontSize: 14 }}>{children}</Typography>
+    <Typography sx={{ color: colors.textEmpty, fontSize: typography.field }}>{children}</Typography>
   </Box>
 );
 
@@ -160,12 +160,12 @@ const QuickAction: React.FC<{
       <DesignIcon category="metric" name={iconName} size={20} />
     </Box>
     <Box sx={{ minWidth: 0, flex: 1 }}>
-      <Typography sx={{ fontSize: { xs: typography.label.xs, sm: typography.label.sm, md: 11 }, fontWeight: 700, color: colors.text, lineHeight: 1.2 }}>
+      <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text, lineHeight: 1.2 }}>
         {title}
       </Typography>
       <Typography
         sx={{
-          fontSize: { xs: typography.hint.xs, sm: typography.hint.sm, md: 9 },
+          fontSize: typography.hint,
           color: colors.textSubtle,
           display: { xs: 'none', sm: 'block' },
           mt: 0.25,
@@ -403,11 +403,11 @@ const Dashboard: React.FC = () => {
           <Box sx={{ minWidth: 0 }}>
             <Typography
               component="h1"
-              sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 800, color: '#1B2438', lineHeight: 1.2 }}
+              sx={{ fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, fontWeight: 800, color: '#1B2438', lineHeight: 1.2 }}
             >
               Здравствуйте{greetingName ? `, ${greetingName}` : ''}
             </Typography>
-            <Typography sx={{ mt: 0.35, fontSize: 13, color: colors.textHint }}>
+            <Typography sx={{ mt: 0.35, fontSize: typography.label, color: colors.textHint }}>
               {roleLabel(user?.role)}
               {tenant?.name ? ` · ${tenant.name}` : ''}
             </Typography>
@@ -429,12 +429,12 @@ const Dashboard: React.FC = () => {
           >
             <CalendarToday sx={{ fontSize: 18, color: colors.primary }} />
             <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontSize: 10, color: colors.textHint, lineHeight: 1.2 }}>
+              <Typography sx={{ fontSize: typography.hint, color: colors.textHint, lineHeight: 1.2 }}>
                 Сегодня
               </Typography>
               <Typography
                 sx={{
-                  fontSize: 11,
+                  fontSize: typography.label,
                   fontWeight: 700,
                   color: colors.text,
                   lineHeight: 1.2,
@@ -495,15 +495,15 @@ const Dashboard: React.FC = () => {
                 >
                   <DesignIcon category="metric" name={m.iconName} size={20} />
                 </Box>
-                <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.textMuted }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: colors.textMuted }}>
                   {m.label}
                 </Typography>
               </Box>
-              <Typography sx={{ fontSize: 20, fontWeight: 800, color: colors.text, lineHeight: 1.15 }}>
+              <Typography sx={{ fontSize: typography.metric, fontWeight: 800, color: colors.text, lineHeight: 1.15 }}>
                 {m.value}
               </Typography>
               {m.delta && (
-                <Typography sx={{ mt: 0.35, fontSize: 12, fontWeight: 700, color: m.deltaColor }}>
+                <Typography sx={{ mt: 0.35, fontSize: typography.label, fontWeight: 700, color: m.deltaColor }}>
                   {m.delta}
                 </Typography>
               )}
@@ -519,7 +519,7 @@ const Dashboard: React.FC = () => {
             mb: 1.25,
           }}
         >
-          <Typography sx={{ fontSize: 16, fontWeight: 800, color: colors.text }}>
+          <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 800, color: colors.text }}>
             Ближайшие тренировки
           </Typography>
           <Button
@@ -593,14 +593,14 @@ const Dashboard: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Typography sx={{ fontSize: 13, fontWeight: 700, color: colors.text }}>
+                      <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text }}>
                         {format(new Date(training.startTime), 'HH:mm')}
                       </Typography>
                     </Box>
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography
                         sx={{
-                          fontSize: 14,
+                          fontSize: typography.field,
                           fontWeight: 700,
                           color: colors.text,
                           overflow: 'hidden',
@@ -613,7 +613,7 @@ const Dashboard: React.FC = () => {
                       {place && (
                         <Typography
                           sx={{
-                            fontSize: 12,
+                            fontSize: typography.label,
                             color: colors.textHint,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -625,8 +625,8 @@ const Dashboard: React.FC = () => {
                       )}
                       {trainerName && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                          <PersonOutline sx={{ fontSize: 14, color: colors.primary }} />
-                          <Typography sx={{ fontSize: 12, color: colors.textMuted }}>
+                          <PersonOutline sx={{ fontSize: 18, color: colors.primary }} />
+                          <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
                             {trainerName}
                           </Typography>
                         </Box>
@@ -671,13 +671,13 @@ const Dashboard: React.FC = () => {
           data-onboarding="dashboard"
         >
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography sx={{ mb: 0.25, fontSize: 9, fontWeight: 500, color: colors.textMuted }}>
+            <Typography sx={{ mb: 0.25, fontSize: typography.hint, fontWeight: 500, color: colors.textMuted }}>
               Панель управления
             </Typography>
             <Typography
               component="h1"
               sx={{
-                fontSize: { xs: 22, md: 26 },
+                fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
                 fontWeight: 800,
                 color: '#1B2438',
                 lineHeight: 1.2,
@@ -704,7 +704,7 @@ const Dashboard: React.FC = () => {
                 '!'
               )}
             </Typography>
-            <Typography sx={{ mt: 0.4, fontSize: 11, color: colors.textMuted, maxWidth: 520 }}>
+            <Typography sx={{ mt: 0.4, fontSize: typography.label, color: colors.textMuted, maxWidth: 520 }}>
               Центр управления вашим бизнесом. Всё под рукой — для роста и результата.
             </Typography>
           </Box>
@@ -725,8 +725,8 @@ const Dashboard: React.FC = () => {
                 alignSelf: 'center',
               }}
             >
-              <CalendarToday sx={{ fontSize: 14, color: colors.primary }} />
-              <Typography sx={{ fontSize: 10, fontWeight: 600, color: colors.text, whiteSpace: 'nowrap' }}>
+              <CalendarToday sx={{ fontSize: 18, color: colors.primary }} />
+              <Typography sx={{ fontSize: typography.hint, fontWeight: 600, color: colors.text, whiteSpace: 'nowrap' }}>
                 {todayDesktop}
               </Typography>
             </Box>
@@ -771,10 +771,10 @@ const Dashboard: React.FC = () => {
                   <WorkspacePremium sx={{ fontSize: 22, color: '#FFD56A' }} />
                 </Box>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: colors.text, lineHeight: 1.15 }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 800, color: colors.text, lineHeight: 1.15 }}>
                     Мой тариф
                   </Typography>
-                  <Typography sx={{ fontSize: 10, color: colors.textHint, mt: 0.25, lineHeight: 1.25 }}>
+                  <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.25, lineHeight: 1.25 }}>
                     Больше возможностей для развития вашего центра
                   </Typography>
                 </Box>
@@ -804,7 +804,7 @@ const Dashboard: React.FC = () => {
         <Box>
           <Typography
             component="h2"
-            sx={{ fontSize: 11, fontWeight: 700, color: colors.text, mb: 0.75 }}
+            sx={{ fontSize: typography.label, fontWeight: 700, color: colors.text, mb: 0.75 }}
           >
             Быстрые действия
           </Typography>
@@ -887,7 +887,7 @@ const Dashboard: React.FC = () => {
                 <Button
                   size="small"
                   onClick={() => setShowAllActivities((value) => !value)}
-                  sx={{ p: 0, minWidth: 0, fontSize: 13, textTransform: 'none', fontWeight: 600 }}
+                  sx={{ p: 0, minWidth: 0, fontSize: typography.label, textTransform: 'none', fontWeight: 600 }}
                 >
                   {showAllActivities ? 'Свернуть' : 'Вся активность →'}
                 </Button>
@@ -949,7 +949,7 @@ const Dashboard: React.FC = () => {
                               alignItems: 'center',
                               justifyContent: 'center',
                               flexShrink: 0,
-                              '& svg': { fontSize: 13 },
+                              '& svg': { fontSize: typography.label },
                             }}
                           >
                             {activity.type === 'payment' || activity.amount != null ? (
@@ -961,7 +961,7 @@ const Dashboard: React.FC = () => {
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                               <Typography
-                                sx={{ fontSize: 10, fontWeight: 600, color: colors.text }}
+                                sx={{ fontSize: typography.hint, fontWeight: 600, color: colors.text }}
                               >
                                 {activity.title}
                                 {canExpand && activity.count != null ? ` · ${activity.count}` : ''}
@@ -972,7 +972,7 @@ const Dashboard: React.FC = () => {
                                   size="small"
                                   sx={{
                                     height: 18,
-                                    fontSize: 8,
+                                    fontSize: typography.hint,
                                     fontWeight: 600,
                                     bgcolor:
                                       typeTag === 'Платеж'
@@ -983,17 +983,17 @@ const Dashboard: React.FC = () => {
                                 />
                               )}
                             </Box>
-                            <Typography sx={{ fontSize: 9, color: colors.textMuted }}>
+                            <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
                               {activity.description}
                             </Typography>
-                            <Typography sx={{ fontSize: 8, color: colors.textHint, mt: 0.25 }}>
+                            <Typography sx={{ fontSize: typography.hint, color: colors.textHint, mt: 0.25 }}>
                               {format(new Date(activity.timestamp), 'd MMMM yyyy, HH:mm', { locale: ru })}
                             </Typography>
                           </Box>
                           {activity.amount != null && (
                             <Typography
                               sx={{
-                                fontSize: 10,
+                                fontSize: typography.hint,
                                 fontWeight: 700,
                                 color: colors.success,
                                 whiteSpace: 'nowrap',
@@ -1067,9 +1067,9 @@ const Dashboard: React.FC = () => {
             action={
               <Button
                 size="small"
-                endIcon={<ArrowForward sx={{ fontSize: 16 }} />}
+                endIcon={<ArrowForward sx={{ fontSize: 18 }} />}
                 onClick={() => navigate('/schedule')}
-                sx={{ p: 0, textTransform: 'none', color: colors.primary, fontSize: 13, fontWeight: 600, minWidth: 0 }}
+                sx={{ p: 0, textTransform: 'none', color: colors.primary, fontSize: typography.label, fontWeight: 600, minWidth: 0 }}
               >
                 Все тренировки
               </Button>
@@ -1117,7 +1117,7 @@ const Dashboard: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <Typography sx={{ fontSize: 10, fontWeight: 700, color: colors.text }}>
+                      <Typography sx={{ fontSize: typography.hint, fontWeight: 700, color: colors.text }}>
                         {format(new Date(training.startTime), 'HH:mm')}
                       </Typography>
                     </Box>
@@ -1135,20 +1135,20 @@ const Dashboard: React.FC = () => {
                         flexShrink: 0,
                       }}
                     >
-                      <CalendarToday sx={{ fontSize: 13 }} />
+                      <CalendarToday sx={{ fontSize: 18 }} />
                     </Box>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography
-                        sx={{ fontSize: 10, fontWeight: 600, color: colors.text }}
+                        sx={{ fontSize: typography.label, fontWeight: 600, color: colors.text }}
                       >
                         {training.title || training.group?.name || 'Тренировка'}
                       </Typography>
-                      <Typography sx={{ fontSize: 9, color: colors.textMuted }}>
+                      <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
                         {formatDate(training.startTime)} –{' '}
                         {format(new Date(training.endTime), 'HH:mm', { locale: ru })}
                       </Typography>
                       {training.trainer?.user && (
-                        <Typography sx={{ fontSize: 8, color: colors.textHint }}>
+                        <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
                           Тренер: {training.trainer.user.lastName} {training.trainer.user.firstName}
                         </Typography>
                       )}
@@ -1156,7 +1156,7 @@ const Dashboard: React.FC = () => {
                     <Chip
                       label={`${training.memberCount} чел.`}
                       size="small"
-                      sx={{ height: 20, bgcolor: colors.card, fontSize: 8, fontWeight: 600, flexShrink: 0 }}
+                      sx={{ height: 20, bgcolor: colors.card, fontSize: typography.hint, fontWeight: 600, flexShrink: 0 }}
                     />
                   </Box>
                 ))}

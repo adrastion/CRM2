@@ -50,7 +50,7 @@ const Panel: React.FC<PanelProps> = ({ title, action, children, flush, minHeight
               fontSize: {
                 xs: typography.panelTitle.xs,
                 sm: typography.panelTitle.sm,
-                md: compact ? 12 : typography.panelTitle.md,
+                md: typography.panelTitle.md,
               },
               fontWeight: 700,
               color: colors.text,

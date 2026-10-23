@@ -35,7 +35,7 @@ import {
   isEmployeeAdmin,
   isEmployeePromoter,
 } from './TrainerCard';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 
 export type StaffTab = 'all' | 'trainers' | 'admins' | 'promoters' | 'other';
 
@@ -261,10 +261,10 @@ const EmployeesBoard: React.FC<Props> = ({
         sx={{ mb: 2 }}
       >
         <Box>
-          <Typography sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.03em' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, color: '#1B2438', letterSpacing: '-0.03em' }}>
             Сотрудники
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
+          <Typography sx={{ fontSize: typography.label, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
             Команда вашей организации. Управляйте ролями, доступами и загрузкой сотрудников.
           </Typography>
         </Box>
@@ -288,7 +288,7 @@ const EmployeesBoard: React.FC<Props> = ({
           <Button
             variant="contained"
             startIcon={<Add />}
-            endIcon={<Box component="span" sx={{ fontSize: 10, opacity: 0.8 }}>▾</Box>}
+            endIcon={<Box component="span" sx={{ fontSize: typography.hint, opacity: 0.8 }}>▾</Box>}
             onClick={(e) => (canPickRole ? setAddEl(e.currentTarget) : onAdd())}
             sx={{
               textTransform: 'none',
@@ -343,17 +343,17 @@ const EmployeesBoard: React.FC<Props> = ({
               </Box>
               <Sparkline color={k.spark} />
             </Stack>
-            <Typography sx={{ mt: 1.25, fontSize: 12.5, fontWeight: 700, color: '#8B93A7' }}>
+            <Typography sx={{ mt: 1.25, fontSize: typography.label, fontWeight: 700, color: '#8B93A7' }}>
               {k.title}
             </Typography>
             <Typography sx={{ fontWeight: 800, fontSize: 22, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
               {k.value}
             </Typography>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 800, color: k.delta === '0%' ? '#8B93A7' : '#059669' }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 800, color: k.delta === '0%' ? '#8B93A7' : '#059669' }}>
                 {k.delta === '0%' ? k.delta : `↑${k.delta}`}
               </Typography>
-              <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#8B93A7' }}>{k.hint}</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{k.hint}</Typography>
             </Stack>
           </Box>
         ))}
@@ -384,7 +384,7 @@ const EmployeesBoard: React.FC<Props> = ({
                   bgcolor: active ? colors.primary : 'transparent',
                   color: active ? '#fff' : '#5A6275',
                   fontWeight: 750,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   '&:hover': { bgcolor: active ? colors.primary : '#F0F2F7' },
                 }}
               >
@@ -392,7 +392,7 @@ const EmployeesBoard: React.FC<Props> = ({
                 <Box
                   component="span"
                   sx={{
-                    fontSize: 11.5,
+                    fontSize: typography.label,
                     fontWeight: 800,
                     px: 0.7,
                     py: 0.15,
@@ -485,7 +485,7 @@ const EmployeesBoard: React.FC<Props> = ({
             'Статус',
             'Действия',
           ].map((h) => (
-            <Typography key={h} sx={{ fontSize: 11.5, fontWeight: 800, color: '#8B93A7' }}>
+            <Typography key={h} sx={{ fontSize: typography.label, fontWeight: 800, color: '#8B93A7' }}>
               {h}
             </Typography>
           ))}
@@ -541,7 +541,7 @@ const EmployeesBoard: React.FC<Props> = ({
                   sx={{
                     width: 36,
                     height: 36,
-                    fontSize: 12,
+                    fontSize: typography.label,
                     fontWeight: 800,
                     bgcolor: '#E8EEFF',
                     color: colors.primary,
@@ -552,7 +552,7 @@ const EmployeesBoard: React.FC<Props> = ({
                 <Typography
                   sx={{
                     fontWeight: 750,
-                    fontSize: 13.5,
+                    fontSize: typography.label,
                     color: '#1B2438',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -569,7 +569,7 @@ const EmployeesBoard: React.FC<Props> = ({
                 sx={{
                   height: 24,
                   fontWeight: 750,
-                  fontSize: 11.5,
+                  fontSize: typography.label,
                   bgcolor: chip.bg,
                   color: chip.fg,
                   borderRadius: '999px',
@@ -580,41 +580,41 @@ const EmployeesBoard: React.FC<Props> = ({
               <Box minWidth={0}>
                 <Stack direction="row" spacing={0.5} alignItems="center">
                   <PhoneOutlined sx={{ fontSize: 16, color: colors.primary }} />
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {u.phone || '—'}
                   </Typography>
                 </Stack>
                 <Stack direction="row" spacing={0.5} alignItems="center">
                   <EmailOutlined sx={{ fontSize: 16, color: colors.primary }} />
-                  <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: '#8B93A7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {u.email || '—'}
                   </Typography>
                 </Stack>
               </Box>
 
-              <Typography sx={{ fontSize: 13, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {isAdmin ? '—' : e.qualification || '—'}
               </Typography>
 
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#1B2438' }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>
                 {isAdmin ? '—' : yearsLabel(e.experience)}
               </Typography>
 
-              <Typography sx={{ fontSize: 13, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {isAdmin ? '—' : branches}
               </Typography>
 
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#1B2438' }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>
                 {isAdmin ? '—' : groupsLabel(groupsCount)}
               </Typography>
 
               <Box>
                 {isAdmin ? (
-                  <Typography sx={{ fontSize: 13, color: '#8B93A7' }}>—</Typography>
+                  <Typography sx={{ fontSize: typography.label, color: '#8B93A7' }}>—</Typography>
                 ) : (
                   <>
                     <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
-                      <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: barColor }}>{workload}%</Typography>
+                      <Typography sx={{ fontSize: typography.label, fontWeight: 800, color: barColor }}>{workload}%</Typography>
                     </Stack>
                     <LinearProgress
                       variant="determinate"
@@ -636,7 +636,7 @@ const EmployeesBoard: React.FC<Props> = ({
                 sx={{
                   height: 24,
                   fontWeight: 750,
-                  fontSize: 11.5,
+                  fontSize: typography.label,
                   bgcolor: active ? '#12B981' : '#FFEDD5',
                   color: active ? '#fff' : '#EA580C',
                   borderRadius: '999px',

@@ -28,7 +28,7 @@ import {
   ArrowForward,
   HeadsetMicOutlined,
 } from '@mui/icons-material';
-import { colors, radii, typography } from '../../theme/tokens';
+import { colors, radii, sizes, typography } from '../../theme/tokens';
 import DesignIcon from '../common/DesignIcon';
 import NotificationsBell from '../notifications/NotificationsBell';
 import { NavIconName } from '../../assets/icons/registry';
@@ -417,7 +417,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               component="span"
               sx={{
                 flex: 1,
-                fontSize: 11,
+                fontSize: typography.label,
                 fontWeight: active ? 700 : 500,
                 lineHeight: 1.25,
                 minWidth: 0,
@@ -738,7 +738,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'left', minWidth: 0 }}>
               <Typography
                 sx={{
-                  fontSize: 11,
+                  fontSize: typography.label,
                   fontWeight: 600,
                   color: colors.text,
                   lineHeight: 1.2,
@@ -750,7 +750,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               >
                 {userName}
               </Typography>
-              <Typography sx={{ fontSize: 9, color: colors.textHint }}>
+              <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
                 {userRole}
               </Typography>
             </Box>
@@ -904,7 +904,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           inputProps={{ 'aria-label': 'Глобальный поиск' }}
           sx={{
             flex: 1,
-            fontSize: 11,
+            fontSize: typography.label,
             color: colors.text,
             '& input::placeholder': { color: colors.textHint, opacity: 1 },
           }}
@@ -998,7 +998,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Box
           sx={{
-            width: 188,
+            width: sizes.sidebarWidth,
             flexShrink: 0,
             display: { xs: 'none', md: 'flex' },
             flexDirection: 'column',
@@ -1233,12 +1233,12 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             flex: 1,
             minWidth: 0,
             bgcolor: colors.surface,
-            px: { xs: 2, md: 2.25 },
-            py: { xs: 2, md: 1 },
-            pb: { xs: 11, md: 1.5 },
+            px: { xs: 2, md: 3 },
+            py: { xs: 2, md: 2.5 },
+            pb: { xs: 11, md: 2.5 },
             display: 'flex',
             flexDirection: 'column',
-            gap: { xs: 2, md: 1.25 },
+            gap: { xs: 2, md: 2.5 },
           }}
         >
           <Box
@@ -1317,7 +1317,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     flexDirection: 'column',
                     alignItems: 'center',
                     gap: 0.25,
-                    fontSize: 11,
+                    fontSize: typography.label,
                     fontWeight: active ? 700 : 500,
                     cursor: item ? 'pointer' : 'default',
                     opacity: item ? 1 : 0.4,
@@ -1390,7 +1390,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     flexDirection: 'column',
                     alignItems: 'center',
                     gap: 0.25,
-                    fontSize: 11,
+                    fontSize: typography.label,
                     fontWeight: clientsActive ? 700 : 500,
                     cursor: clientsItem ? 'pointer' : 'default',
                     opacity: clientsItem ? 1 : 0.4,
@@ -1416,7 +1416,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: 0.25,
-                fontSize: 11,
+                fontSize: typography.label,
                 fontWeight: mobileNavOpen ? 700 : 500,
                 cursor: 'pointer',
                 minWidth: 56,

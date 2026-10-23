@@ -19,7 +19,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import CreateNoteDialog from '../components/staff/CreateNoteDialog';
 import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
 import NotesBoard, { type StaffNoteRow } from '../components/staff/NotesBoard';
@@ -125,14 +125,14 @@ const StaffWorkspace: React.FC = () => {
           <Typography
             sx={{
               fontWeight: 800,
-              fontSize: { xs: 22, md: 26 },
+              fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
               color: '#1B2438',
               letterSpacing: '-0.03em',
             }}
           >
             Заметки и задачи
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
+          <Typography sx={{ fontSize: typography.label, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
             Фиксируйте идеи, ведите планерки и ставьте задачи себе и команде.
           </Typography>
         </Box>

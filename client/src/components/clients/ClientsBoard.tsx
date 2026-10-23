@@ -8,7 +8,6 @@ import {
   FormControl,
   IconButton,
   InputAdornment,
-  LinearProgress,
   Menu,
   MenuItem,
   Select,
@@ -31,15 +30,19 @@ import {
   Refresh,
   Search,
   SettingsOutlined,
-  Star,
   ViewListOutlined,
 } from '@mui/icons-material';
 import { differenceInYears, format, isToday, isTomorrow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Client } from '../../types';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
+import {
+  clientAccountStatusLabel,
+  getClientAccountStatus,
+  type ClientAccountStatusKey,
+} from '../../utils/clientAccountStatus';
 
-export type ClientCategoryTab = 'all' | 'trial' | 'active' | 'inactive' | 'new' | 'vip';
+export type ClientCategoryTab = 'all' | 'trial' | 'active' | 'inactive' | 'new';
 
 type BranchLite = { id: string; name: string };
 type GroupLite = { id: string; name: string; isActive?: boolean; branchId?: string };
@@ -58,7 +61,8 @@ type Props = {
   onDelete?: (clientId: string) => void;
 };
 
-type ClientStatusKey = 'active' | 'trial' | 'inactive';
+/** Категория для вкладок «Пробные / Активные / Неактивные» (по абонементу/группе). */
+type MembershipCategoryKey = 'active' | 'trial' | 'inactive';
 
 function fullName(c: Client) {
   return [c.lastName, c.firstName, c.middleName].filter(Boolean).join(' ');
@@ -83,17 +87,13 @@ function isTrialClient(c: Client) {
   return (c.groupMemberships || []).some((gm: any) => gm.isActive && gm.isTrial);
 }
 
-function isVipClient(c: Client) {
-  return Boolean((c as any).isVip || (c.achievements || []).length >= 1);
-}
-
 function isNewClient(c: Client) {
   if (!c.createdAt) return false;
   const d = new Date(c.createdAt);
   return Date.now() - d.getTime() < 30 * 24 * 60 * 60 * 1000;
 }
 
-function clientStatus(c: Client): ClientStatusKey {
+function membershipCategory(c: Client): MembershipCategoryKey {
   if (isTrialClient(c)) return 'trial';
   if (c.activeMembership && c.activeMembership.isActive) {
     if (c.activeMembership.endDate && new Date(c.activeMembership.endDate) < new Date()) {
@@ -106,6 +106,14 @@ function clientStatus(c: Client): ClientStatusKey {
     return 'active';
   }
   return 'inactive';
+}
+
+/** Статус ЛК в таблице: три значения по ТЗ. */
+function registrationStatus(c: Client): Exclude<ClientAccountStatusKey, 'lead'> {
+  const s = getClientAccountStatus(c);
+  if (s === 'registered') return 'registered';
+  if (s === 'pending') return 'pending';
+  return 'unregistered';
 }
 
 function primaryGroup(c: Client): { name: string; branch: string | null; isTrial: boolean } {
@@ -146,18 +154,6 @@ function membershipInfo(c: Client): { title: string; sub: string; expired: boole
   };
 }
 
-function attendanceInfo(c: Client): { pct: number; label: string; danger: boolean } | null {
-  const m = c.activeMembership;
-  if (!m || m.visitsTotal == null || m.visitsTotal <= 0) return null;
-  const used = Math.min(m.visitsUsed, m.visitsTotal);
-  const pct = Math.round((used / m.visitsTotal) * 100);
-  return {
-    pct,
-    label: `${used} из ${m.visitsTotal}`,
-    danger: pct < 30,
-  };
-}
-
 function formatBalance(value?: number) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return '0 ₽';
@@ -178,10 +174,13 @@ function nextLessonLabel(c: Client): { main: string; sub: string; accent?: strin
   return { main: format(start, 'd MMM', { locale: ru }), sub: time };
 }
 
-const STATUS_CHIP: Record<ClientStatusKey, { label: string; bg: string; fg: string }> = {
-  active: { label: 'Активен', bg: '#D1FAE5', fg: '#059669' },
-  trial: { label: 'Пробное', bg: '#EDE9FE', fg: '#7C3AED' },
-  inactive: { label: 'Неактивен', bg: '#FEE2E2', fg: '#DC2626' },
+const REG_STATUS_CHIP: Record<
+  Exclude<ClientAccountStatusKey, 'lead'>,
+  { label: string; bg: string; fg: string }
+> = {
+  unregistered: { label: clientAccountStatusLabel('unregistered'), bg: '#F3F4F6', fg: '#6B7280' },
+  pending: { label: clientAccountStatusLabel('pending'), bg: '#FEF3C7', fg: '#D97706' },
+  registered: { label: clientAccountStatusLabel('registered'), bg: '#D1FAE5', fg: '#059669' },
 };
 
 function Sparkline({ color }: { color: string }) {
@@ -241,16 +240,14 @@ const ClientsBoard: React.FC<Props> = ({
     let active = 0;
     let inactive = 0;
     let neu = 0;
-    let vip = 0;
     for (const c of clients) {
-      const st = clientStatus(c);
+      const st = membershipCategory(c);
       if (st === 'trial') trial += 1;
       else if (st === 'active') active += 1;
       else inactive += 1;
       if (isNewClient(c)) neu += 1;
-      if (isVipClient(c)) vip += 1;
     }
-    return { all: clients.length, trial, active, inactive, neu, vip };
+    return { all: clients.length, trial, active, inactive, neu };
   }, [clients]);
 
   const filtered = useMemo(() => {
@@ -273,7 +270,7 @@ const ClientsBoard: React.FC<Props> = ({
         if (!ok) return false;
       }
       if (statusFilter) {
-        if (clientStatus(c) !== statusFilter) return false;
+        if (registrationStatus(c) !== statusFilter) return false;
       }
       if (membershipFilter === 'none' && c.activeMembership) return false;
       if (membershipFilter === 'active' && !c.activeMembership) return false;
@@ -285,11 +282,10 @@ const ClientsBoard: React.FC<Props> = ({
         const src = (c as any).source || ((c as any).createdByUserId ? 'promoter' : 'manual');
         if (src !== sourceFilter) return false;
       }
-      if (tab === 'trial' && clientStatus(c) !== 'trial') return false;
-      if (tab === 'active' && clientStatus(c) !== 'active') return false;
-      if (tab === 'inactive' && clientStatus(c) !== 'inactive') return false;
+      if (tab === 'trial' && membershipCategory(c) !== 'trial') return false;
+      if (tab === 'active' && membershipCategory(c) !== 'active') return false;
+      if (tab === 'inactive' && membershipCategory(c) !== 'inactive') return false;
       if (tab === 'new' && !isNewClient(c)) return false;
-      if (tab === 'vip' && !isVipClient(c)) return false;
       return true;
     });
   }, [clients, search, branchId, groupId, statusFilter, membershipFilter, sourceFilter, tab]);
@@ -324,7 +320,6 @@ const ClientsBoard: React.FC<Props> = ({
     { key: 'active', label: 'Активные', count: counts.active },
     { key: 'inactive', label: 'Неактивные', count: counts.inactive },
     { key: 'new', label: 'Новые', count: counts.neu },
-    { key: 'vip', label: 'VIP', count: counts.vip },
   ];
 
   const kpi = [
@@ -387,11 +382,11 @@ const ClientsBoard: React.FC<Props> = ({
         sx={{ mb: 2 }}
       >
         <Box>
-          <Typography sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.03em' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, color: '#1B2438', letterSpacing: '-0.03em' }}>
             Клиенты
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
-            Управление клиентской базой, абонементами и посещаемостью
+          <Typography sx={{ fontSize: typography.label, color: '#8B93A7', fontWeight: 600, mt: 0.35 }}>
+            Управление клиентской базой, абонементами и группами
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -438,7 +433,7 @@ const ClientsBoard: React.FC<Props> = ({
           <Button
             variant="contained"
             startIcon={<Add />}
-            endIcon={<Box component="span" sx={{ fontSize: 10, opacity: 0.8 }}>▾</Box>}
+            endIcon={<Box component="span" sx={{ fontSize: typography.hint, opacity: 0.8 }}>▾</Box>}
             onClick={(e) => setAddEl(e.currentTarget)}
             sx={{
               textTransform: 'none',
@@ -494,7 +489,7 @@ const ClientsBoard: React.FC<Props> = ({
               </Box>
               <Sparkline color={k.spark} />
             </Stack>
-            <Typography sx={{ mt: 1.25, fontSize: 12.5, fontWeight: 700, color: '#8B93A7' }}>
+            <Typography sx={{ mt: 1.25, fontSize: typography.label, fontWeight: 700, color: '#8B93A7' }}>
               {k.title}
             </Typography>
             <Typography sx={{ fontWeight: 800, fontSize: 22, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
@@ -503,7 +498,7 @@ const ClientsBoard: React.FC<Props> = ({
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
               <Typography
                 sx={{
-                  fontSize: 12,
+                  fontSize: typography.label,
                   fontWeight: 800,
                   color: k.deltaUp ? '#059669' : '#DC2626',
                 }}
@@ -511,7 +506,7 @@ const ClientsBoard: React.FC<Props> = ({
                 {k.deltaUp ? '↑' : '↓'}
                 {k.delta}
               </Typography>
-              <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#8B93A7' }}>{k.hint}</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{k.hint}</Typography>
             </Stack>
           </Box>
         ))}
@@ -574,9 +569,9 @@ const ClientsBoard: React.FC<Props> = ({
                 onChange={setStatusFilter}
                 options={[
                   { value: '', label: 'Все статусы' },
-                  { value: 'active', label: 'Активен' },
-                  { value: 'trial', label: 'Пробное' },
-                  { value: 'inactive', label: 'Неактивен' },
+                  { value: 'unregistered', label: 'Не зарегистрирован' },
+                  { value: 'registered', label: 'Зарегистрирован' },
+                  { value: 'pending', label: 'Ожидает подтверждения' },
                 ]}
               />
               <FilterSelect
@@ -644,7 +639,7 @@ const ClientsBoard: React.FC<Props> = ({
                   bgcolor: active ? colors.primary : 'transparent',
                   color: active ? '#fff' : '#5A6275',
                   fontWeight: 750,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   border: active ? 'none' : '1px solid transparent',
                   '&:hover': { bgcolor: active ? colors.primary : '#F0F2F7' },
                 }}
@@ -653,7 +648,7 @@ const ClientsBoard: React.FC<Props> = ({
                 <Box
                   component="span"
                   sx={{
-                    fontSize: 11.5,
+                    fontSize: typography.label,
                     fontWeight: 800,
                     px: 0.7,
                     py: 0.15,
@@ -697,13 +692,13 @@ const ClientsBoard: React.FC<Props> = ({
           sx={{
             display: 'grid',
             gridTemplateColumns:
-              '40px minmax(180px,1.3fr) minmax(150px,1.1fr) 100px minmax(120px,1fr) minmax(110px,0.95fr) minmax(110px,0.9fr) 90px minmax(100px,0.85fr) 88px',
+              '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px',
             gap: 1,
             px: 1.5,
             py: 1.1,
             borderBottom: '1px solid #EEF1F6',
             bgcolor: '#FAFBFD',
-            minWidth: 1100,
+            minWidth: 1000,
             alignItems: 'center',
           }}
         >
@@ -714,26 +709,23 @@ const ClientsBoard: React.FC<Props> = ({
             'Статус',
             'Группа / Филиал',
             'Абонемент',
-            'Посещаемость',
             'Баланс',
             'Следующее занятие',
             'Действия',
           ].map((h) => (
-            <Typography key={h} sx={{ fontSize: 11.5, fontWeight: 800, color: '#8B93A7', letterSpacing: '0.02em' }}>
+            <Typography key={h} sx={{ fontSize: typography.label, fontWeight: 800, color: '#8B93A7', letterSpacing: '0.02em' }}>
               {h}
             </Typography>
           ))}
         </Box>
 
         {filtered.map((c, idx) => {
-          const st = STATUS_CHIP[clientStatus(c)];
+          const st = REG_STATUS_CHIP[registrationStatus(c)];
           const grp = primaryGroup(c);
           const mem = membershipInfo(c);
-          const att = attendanceInfo(c);
           const next = nextLessonLabel(c);
           const bal = Number(c.balance ?? 0);
           const age = ageLabel(c);
-          const vip = isVipClient(c);
 
           return (
             <Box
@@ -741,11 +733,11 @@ const ClientsBoard: React.FC<Props> = ({
               sx={{
                 display: 'grid',
                 gridTemplateColumns:
-                  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) 100px minmax(120px,1fr) minmax(110px,0.95fr) minmax(110px,0.9fr) 90px minmax(100px,0.85fr) 88px',
+                  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px',
                 gap: 1,
                 px: 1.5,
                 py: 1.15,
-                minWidth: 1100,
+                minWidth: 1000,
                 alignItems: 'center',
                 borderBottom: '1px solid #F1F3F7',
                 bgcolor: idx % 2 === 1 ? '#FAFBFD' : '#fff',
@@ -768,7 +760,7 @@ const ClientsBoard: React.FC<Props> = ({
                   sx={{
                     width: 36,
                     height: 36,
-                    fontSize: 12,
+                    fontSize: typography.label,
                     fontWeight: 800,
                     bgcolor: '#E8EEFF',
                     color: colors.primary,
@@ -777,47 +769,29 @@ const ClientsBoard: React.FC<Props> = ({
                   {initials(c)}
                 </Avatar>
                 <Box minWidth={0}>
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <Typography
-                      sx={{
-                        fontWeight: 750,
-                        fontSize: 13.5,
-                        color: '#1B2438',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {fullName(c)}
-                    </Typography>
-                    {vip && (
-                      <Chip
-                        size="small"
-                        icon={<Star sx={{ fontSize: '12px !important', color: '#fff !important' }} />}
-                        label="VIP"
-                        sx={{
-                          height: 18,
-                          fontSize: 10,
-                          fontWeight: 800,
-                          bgcolor: '#F59E0B',
-                          color: '#fff',
-                          '& .MuiChip-icon': { ml: 0.5 },
-                          '& .MuiChip-label': { px: 0.5 },
-                        }}
-                      />
-                    )}
-                  </Stack>
+                  <Typography
+                    sx={{
+                      fontWeight: 750,
+                      fontSize: typography.label,
+                      color: '#1B2438',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {fullName(c)}
+                  </Typography>
                   {age && (
-                    <Typography sx={{ fontSize: 11.5, fontWeight: 650, color: '#8B93A7' }}>{age}</Typography>
+                    <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#8B93A7' }}>{age}</Typography>
                   )}
                 </Box>
               </Stack>
 
               <Box minWidth={0}>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {c.phone || '—'}
                 </Typography>
-                <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: '#8B93A7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {c.email || '—'}
                 </Typography>
               </Box>
@@ -828,11 +802,13 @@ const ClientsBoard: React.FC<Props> = ({
                 sx={{
                   height: 24,
                   fontWeight: 750,
-                  fontSize: 11.5,
+                  fontSize: typography.label,
                   bgcolor: st.bg,
                   color: st.fg,
                   borderRadius: '999px',
                   width: 'fit-content',
+                  maxWidth: '100%',
+                  '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
                 }}
               />
 
@@ -843,10 +819,10 @@ const ClientsBoard: React.FC<Props> = ({
                 }}
                 sx={{ minWidth: 0 }}
               >
-                <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 750, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {grp.name}
                 </Typography>
-                <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: '#8B93A7' }}>
+                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>
                   {grp.branch ? `Филиал: ${grp.branch}` : '—'}
                 </Typography>
               </Box>
@@ -859,45 +835,19 @@ const ClientsBoard: React.FC<Props> = ({
               >
                 <Typography
                   sx={{
-                    fontSize: 13,
+                    fontSize: typography.label,
                     fontWeight: 750,
                     color: mem.expired ? '#DC2626' : '#1B2438',
                   }}
                 >
                   {mem.title}
                 </Typography>
-                <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: '#8B93A7' }}>{mem.sub}</Typography>
-              </Box>
-
-              <Box>
-                {att ? (
-                  <>
-                    <LinearProgress
-                      variant="determinate"
-                      value={att.pct}
-                      sx={{
-                        height: 6,
-                        borderRadius: 99,
-                        bgcolor: '#EEF1F6',
-                        mb: 0.5,
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: att.danger ? '#EF4444' : '#12B981',
-                          borderRadius: 99,
-                        },
-                      }}
-                    />
-                    <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#8B93A7' }}>
-                      {att.label}
-                    </Typography>
-                  </>
-                ) : (
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 650, color: '#8B93A7' }}>—</Typography>
-                )}
+                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{mem.sub}</Typography>
               </Box>
 
               <Typography
                 sx={{
-                  fontSize: 13.5,
+                  fontSize: typography.label,
                   fontWeight: 800,
                   color: bal < 0 ? '#DC2626' : '#1B2438',
                 }}
@@ -908,7 +858,7 @@ const ClientsBoard: React.FC<Props> = ({
               <Box>
                 <Typography
                   sx={{
-                    fontSize: 13,
+                    fontSize: typography.label,
                     fontWeight: 750,
                     color: next.accent || (next.main === 'Нет записей' ? '#8B93A7' : '#1B2438'),
                   }}
@@ -916,7 +866,7 @@ const ClientsBoard: React.FC<Props> = ({
                   {next.main}
                 </Typography>
                 {next.sub && (
-                  <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: '#8B93A7' }}>{next.sub}</Typography>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{next.sub}</Typography>
                 )}
               </Box>
 
@@ -1011,7 +961,7 @@ function FilterSelect({
 }) {
   return (
     <FormControl size="small" sx={{ minWidth: 140, flex: '0 0 auto' }}>
-      <Typography sx={{ fontSize: 11, fontWeight: 750, color: '#8B93A7', mb: 0.35 }}>{label}</Typography>
+      <Typography sx={{ fontSize: typography.label, fontWeight: 750, color: '#8B93A7', mb: 0.35 }}>{label}</Typography>
       <Select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1019,7 +969,7 @@ function FilterSelect({
         sx={{
           borderRadius: '10px',
           fontWeight: 650,
-          fontSize: 13,
+          fontSize: typography.label,
           bgcolor: '#F7F8FB',
           '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
         }}

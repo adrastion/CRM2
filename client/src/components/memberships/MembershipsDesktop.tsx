@@ -33,7 +33,7 @@ import {
 } from '@mui/material';
 import * as XLSX from 'xlsx';
 import { Membership } from '../../types';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 import MetricCard from '../dashboard/MetricCard';
 
 interface MembershipStats {
@@ -274,10 +274,10 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
     <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', gap: 1.25 }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 800, lineHeight: 1.2, color: '#1B2438', letterSpacing: '-0.02em' }}>
+          <Typography sx={{ fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, fontWeight: 800, lineHeight: 1.2, color: '#1B2438', letterSpacing: '-0.02em' }}>
             Абонементы
           </Typography>
-          <Typography sx={{ mt: 0.35, fontSize: 13, color: '#8B93A7', fontWeight: 600 }}>
+          <Typography sx={{ mt: 0.35, fontSize: typography.label, color: '#8B93A7', fontWeight: 600 }}>
             Создавайте тарифы, управляйте сроками действия и назначайте абонементы клиентам.
           </Typography>
         </Box>
@@ -290,7 +290,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
             px: 1.75,
             borderRadius: `${radii.button}px`,
             textTransform: 'none',
-            fontSize: 13,
+            fontSize: typography.label,
             fontWeight: 700,
             boxShadow: '0 4px 12px rgba(47,107,255,0.25)',
           }}
@@ -358,36 +358,36 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
           InputProps={{
             startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 18 }} /></InputAdornment>,
           }}
-          sx={{ '& .MuiOutlinedInput-root': { height: 40, bgcolor: colors.card, fontSize: 13 } }}
+          sx={{ '& .MuiOutlinedInput-root': { height: 40, bgcolor: colors.card, fontSize: typography.label } }}
         />
-        <Select size="small" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: 13 }}>
+        <Select size="small" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: typography.label }}>
           <MenuItem value="ALL">Все типы</MenuItem>
           <MenuItem value="CLIENT">Клиентские</MenuItem>
           <MenuItem value="GROUP">Групповые</MenuItem>
           <MenuItem value="PERSONAL">Персональные</MenuItem>
         </Select>
-        <Select size="small" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: 13 }}>
+        <Select size="small" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: typography.label }}>
           <MenuItem value="ALL">Все филиалы</MenuItem>
           {branches.map((branch) => <MenuItem key={branch.id} value={branch.id}>{branch.name}</MenuItem>)}
         </Select>
-        <Select size="small" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: 13 }}>
+        <Select size="small" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: typography.label }}>
           <MenuItem value="ALL">Все статусы</MenuItem>
           <MenuItem value="active">Активные</MenuItem>
           <MenuItem value="expiring">Скоро истекают</MenuItem>
           <MenuItem value="inactive">Неактивные</MenuItem>
           <MenuItem value="archive">Архив</MenuItem>
         </Select>
-        <Select size="small" value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: 13 }}>
+        <Select size="small" value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value)} sx={{ height: 40, bgcolor: colors.card, fontSize: typography.label }}>
           <MenuItem value="ALL">Все периоды</MenuItem>
           <MenuItem value="SHORT">До 14 дней</MenuItem>
           <MenuItem value="MONTH">1 месяц</MenuItem>
           <MenuItem value="LONG">Больше месяца</MenuItem>
           <MenuItem value="UNLIMITED">Без срока</MenuItem>
         </Select>
-        <Button onClick={exportRows} variant="outlined" sx={{ height: 40, px: 1.25, minWidth: 72, textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
+        <Button onClick={exportRows} variant="outlined" sx={{ height: 40, px: 1.25, minWidth: 72, textTransform: 'none', fontSize: typography.label, fontWeight: 600 }}>
           Экспорт
         </Button>
-        <Button onClick={resetFilters} startIcon={<Replay sx={{ fontSize: 18 }} />} sx={{ height: 40, px: 1.25, minWidth: 72, textTransform: 'none', fontSize: 13, fontWeight: 600, color: colors.textMuted }}>
+        <Button onClick={resetFilters} startIcon={<Replay sx={{ fontSize: 18 }} />} sx={{ height: 40, px: 1.25, minWidth: 72, textTransform: 'none', fontSize: typography.label, fontWeight: 600, color: colors.textMuted }}>
           Сбросить
         </Button>
       </Box>
@@ -405,7 +405,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
                 height: 32,
                 borderRadius: '12px',
                 textTransform: 'none',
-                fontSize: 12.5,
+                fontSize: typography.label,
                 fontWeight: 600,
                 bgcolor: active ? colors.primary : '#EEF0F5',
                 color: active ? colors.white : colors.textMuted,
@@ -413,7 +413,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
               }}
             >
               {tab.label}
-              <Box component="span" sx={{ ml: 0.65, px: 0.65, py: 0.05, borderRadius: 99, bgcolor: active ? 'rgba(255,255,255,0.2)' : '#E2E6EE', fontSize: 11, fontWeight: 700 }}>
+              <Box component="span" sx={{ ml: 0.65, px: 0.65, py: 0.05, borderRadius: 99, bgcolor: active ? 'rgba(255,255,255,0.2)' : '#E2E6EE', fontSize: typography.label, fontWeight: 700 }}>
                 {counts[tab.id]}
               </Box>
             </Button>
@@ -426,13 +426,13 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mb: 0.75 }}>
             <Box sx={KPI_ICON_SX('#F0E8FF', '#8A48D7')}><SellOutlined /></Box>
             <Box>
-              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Объединить абонементы</Typography>
-              <Typography sx={{ fontSize: 11, color: colors.textHint }}>Клиенты и группы перенесутся на выбранный целевой абонемент.</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700 }}>Объединить абонементы</Typography>
+              <Typography sx={{ fontSize: typography.label, color: colors.textHint }}>Клиенты и группы перенесутся на выбранный целевой абонемент.</Typography>
             </Box>
           </Box>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr auto', gap: 0.75 }}>
             <FormControl size="small">
-              <Select displayEmpty value={mergeTargetId} onChange={(event) => onMergeTargetChange(String(event.target.value))} sx={{ height: 40, fontSize: 13 }}>
+              <Select displayEmpty value={mergeTargetId} onChange={(event) => onMergeTargetChange(String(event.target.value))} sx={{ height: 40, fontSize: typography.label }}>
                 <MenuItem value=""><em>Выберите целевой абонемент…</em></MenuItem>
                 {items.filter((item) => !item.archivedAt && !mergeSourceIds.includes(item.id)).map((item) => (
                   <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
@@ -447,7 +447,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
                 onChange={(event) => onMergeSourcesChange(event.target.value as string[])}
                 input={<OutlinedInput />}
                 renderValue={(selected) => selected.length ? `${selected.length} выбрано` : <em>Выберите абонементы для объединения…</em>}
-                sx={{ height: 40, fontSize: 13 }}
+                sx={{ height: 40, fontSize: typography.label }}
               >
                 {items.filter((item) => item.id !== mergeTargetId).map((item) => (
                   <MenuItem key={item.id} value={item.id}>
@@ -457,7 +457,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
                 ))}
               </Select>
             </FormControl>
-            <Button variant="outlined" onClick={onMerge} disabled={merging || !mergeTargetId || mergeSourceIds.length === 0} sx={{ height: 40, textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
+            <Button variant="outlined" onClick={onMerge} disabled={merging || !mergeTargetId || mergeSourceIds.length === 0} sx={{ height: 40, textTransform: 'none', fontSize: typography.label, fontWeight: 600 }}>
               {merging ? 'Объединение…' : 'Объединить'}
             </Button>
           </Box>
@@ -470,7 +470,7 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
             <TableRow sx={{ bgcolor: '#F7F8FB' }}>
               <TableCell padding="checkbox"><Checkbox size="small" checked={allVisibleSelected} onChange={toggleAll} /></TableCell>
               {['Название абонемента', 'Тип', 'Цена', 'Срок действия', 'Занятий', 'Применён к клиентам', 'Филиалы / Группы', 'Статус', 'Действия'].map((label) => (
-                <TableCell key={label} sx={{ py: 1, px: 1, fontSize: 11, fontWeight: 800, color: '#8B93A7', whiteSpace: 'nowrap' }}>{label}</TableCell>
+                <TableCell key={label} sx={{ py: 1, px: 1, fontSize: typography.label, fontWeight: 800, color: '#8B93A7', whiteSpace: 'nowrap' }}>{label}</TableCell>
               ))}
             </TableRow>
           </TableHead>
@@ -500,31 +500,31 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
                     />
                   </TableCell>
                   <TableCell sx={{ py: 1, px: 1, maxWidth: 220 }}>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#1B2438' }}>{membership.name}</Typography>
-                    <Typography noWrap sx={{ maxWidth: 210, fontSize: 11, color: '#8B93A7' }}>{membership.description || 'Без описания'}</Typography>
+                    <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>{membership.name}</Typography>
+                    <Typography noWrap sx={{ maxWidth: 210, fontSize: typography.label, color: '#8B93A7' }}>{membership.description || 'Без описания'}</Typography>
                   </TableCell>
                   <TableCell sx={{ px: 1 }}>
-                    <Box component="span" sx={{ px: 0.85, py: 0.35, borderRadius: '8px', bgcolor: category.bg, color: category.fg, fontSize: 11, fontWeight: 700 }}>{categoryLabel(membership.category)}</Box>
+                    <Box component="span" sx={{ px: 0.85, py: 0.35, borderRadius: '8px', bgcolor: category.bg, color: category.fg, fontSize: typography.label, fontWeight: 700 }}>{categoryLabel(membership.category)}</Box>
                   </TableCell>
-                  <TableCell sx={{ px: 1, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{Number(membership.price).toLocaleString('ru-RU')} ₽</TableCell>
-                  <TableCell sx={{ px: 1, fontSize: 12, whiteSpace: 'nowrap' }}>{periodLabel(membership)}</TableCell>
-                  <TableCell sx={{ px: 1, fontSize: 13, fontWeight: 700 }}>{membership.visits == null ? '∞' : membership.visits}</TableCell>
+                  <TableCell sx={{ px: 1, fontSize: typography.label, fontWeight: 700, whiteSpace: 'nowrap' }}>{Number(membership.price).toLocaleString('ru-RU')} ₽</TableCell>
+                  <TableCell sx={{ px: 1, fontSize: typography.label, whiteSpace: 'nowrap' }}>{periodLabel(membership)}</TableCell>
+                  <TableCell sx={{ px: 1, fontSize: typography.label, fontWeight: 700 }}>{membership.visits == null ? '∞' : membership.visits}</TableCell>
                   <TableCell sx={{ px: 1 }}>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{membership.assignedClientsCount || 0}</Typography>
-                    <Typography sx={{ fontSize: 11, color: '#8B93A7' }}>клиентов</Typography>
+                    <Typography sx={{ fontSize: typography.label, fontWeight: 700 }}>{membership.assignedClientsCount || 0}</Typography>
+                    <Typography sx={{ fontSize: typography.label, color: '#8B93A7' }}>клиентов</Typography>
                   </TableCell>
                   <TableCell sx={{ px: 1, maxWidth: 160 }}>
-                    <Typography sx={{ fontSize: 11, color: colors.textMuted, lineHeight: 1.35 }}>{groupsAndBranches(membership)}</Typography>
+                    <Typography sx={{ fontSize: typography.label, color: colors.textMuted, lineHeight: 1.35 }}>{groupsAndBranches(membership)}</Typography>
                   </TableCell>
                   <TableCell sx={{ px: 1 }}>
-                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 0.85, py: 0.35, borderRadius: '8px', bgcolor: status.bg, color: status.fg, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 0.85, py: 0.35, borderRadius: '8px', bgcolor: status.bg, color: status.fg, fontSize: typography.label, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: status.fg }} />
                       {status.label}
                     </Box>
                   </TableCell>
                   <TableCell sx={{ px: 0.75, whiteSpace: 'nowrap' }}>
                     {membership.category !== 'GROUP' && !membership.archivedAt && (
-                      <Button size="small" variant="contained" onClick={() => onAssign(membership)} sx={{ mr: 0.5, minWidth: 0, px: 1, py: 0.45, fontSize: 12, fontWeight: 700, textTransform: 'none', boxShadow: 'none' }}>Назначить</Button>
+                      <Button size="small" variant="contained" onClick={() => onAssign(membership)} sx={{ mr: 0.5, minWidth: 0, px: 1, py: 0.45, fontSize: typography.label, fontWeight: 700, textTransform: 'none', boxShadow: 'none' }}>Назначить</Button>
                     )}
                     <IconButton size="small" onClick={() => onEdit(membership)}><EditOutlined sx={{ fontSize: 18 }} /></IconButton>
                     <IconButton size="small" onClick={() => onDuplicate(membership)}><ContentCopyOutlined sx={{ fontSize: 18 }} /></IconButton>

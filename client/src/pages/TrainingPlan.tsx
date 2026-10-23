@@ -29,7 +29,7 @@ import { Add, Delete, DescriptionOutlined, Edit, ExpandMore } from '@mui/icons-m
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import CyclesBoard from '../components/trainingPlan/CyclesBoard';
 import CreateCycleWizardDialog from '../components/trainingPlan/CreateCycleWizardDialog';
 import CreateExerciseDialog from '../components/trainingPlan/CreateExerciseDialog';
@@ -657,7 +657,7 @@ const TrainingPlan: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: { xs: 1.5, md: 2 } }}>
+    <Box>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -666,10 +666,10 @@ const TrainingPlan: React.FC = () => {
         sx={{ mb: 2 }}
       >
         <Box>
-          <Typography sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 800, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+          <Typography sx={{ fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, fontWeight: 800, color: '#1B2438', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
             Тренировочный план
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: '#6B7280', mt: 0.6, maxWidth: 640 }}>
+          <Typography sx={{ fontSize: typography.label, color: '#6B7280', mt: 0.6, maxWidth: 640 }}>
             {tab === 0
               ? 'Каталог упражнений, шаблонов разминки/тренировки и циклы по существующим занятиям.'
               : 'Собирайте циклы тренировок для конкретных групп из готовых упражнений и шаблонов.'}

@@ -759,7 +759,7 @@ const Finance: React.FC = () => {
 
   const filterPillSx = (selected: boolean) => ({
     fontWeight: 600,
-    fontSize: 12.5,
+    fontSize: typography.label,
     borderRadius: '12px',
     height: 32,
     bgcolor: selected ? colors.primary : colors.surface,
@@ -774,7 +774,7 @@ const Finance: React.FC = () => {
     '& .MuiOutlinedInput-root': {
       borderRadius: '12px',
       bgcolor: colors.card,
-      fontSize: 13,
+      fontSize: typography.label,
     },
   };
 
@@ -886,7 +886,7 @@ const Finance: React.FC = () => {
               label={chip}
               onDelete={onClearFilters}
               sx={filterChipSx}
-              deleteIcon={<Close sx={{ fontSize: 12 }} />}
+              deleteIcon={<Close sx={{ fontSize: typography.label }} />}
             />
           ))}
           {chips.length > 0 && (
@@ -896,7 +896,7 @@ const Finance: React.FC = () => {
               sx={{
                 textTransform: 'none',
                 fontWeight: 600,
-                fontSize: 12.5,
+                fontSize: typography.label,
                 color: colors.primary,
                 minWidth: 0,
                 px: 0.5,
@@ -907,7 +907,7 @@ const Finance: React.FC = () => {
             </Button>
           )}
         </Stack>
-        <Typography sx={{ fontSize: 13, color: '#8B93A7', fontWeight: 600, whiteSpace: 'nowrap' }}>
+        <Typography sx={{ fontSize: typography.label, color: '#8B93A7', fontWeight: 600, whiteSpace: 'nowrap' }}>
           Найдено операций: {foundCount}
         </Typography>
       </Box>
@@ -954,7 +954,7 @@ const Finance: React.FC = () => {
               component="h1"
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: 22, md: 26 },
+                fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
                 color: '#1B2438',
                 letterSpacing: '-0.02em',
                 lineHeight: 1.2,
@@ -962,7 +962,7 @@ const Finance: React.FC = () => {
             >
               Финансы
             </Typography>
-            <Typography sx={{ fontSize: 13, color: '#8B93A7', mt: 0.75, maxWidth: 640, lineHeight: 1.45 }}>
+            <Typography sx={{ fontSize: typography.label, color: '#8B93A7', mt: 0.75, maxWidth: 640, lineHeight: 1.45 }}>
               Управляйте доходами и расходами спортивного центра. Контролируйте все операции в одном месте.
             </Typography>
           </Box>
@@ -973,7 +973,7 @@ const Finance: React.FC = () => {
             sx={{
               textTransform: 'none',
               fontWeight: 600,
-              fontSize: 13,
+              fontSize: typography.label,
               borderRadius: '12px',
               borderColor: '#E6EAF2',
               color: '#1B2438',
@@ -1163,7 +1163,7 @@ const Finance: React.FC = () => {
 
             <Typography sx={filterSectionTitleSx}>По клиенту / сотруднику</Typography>
             <Box sx={{ mb: 1.25 }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>Клиент</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>Клиент</Typography>
               <Autocomplete
                 size="small"
                 options={clients}
@@ -1176,7 +1176,7 @@ const Finance: React.FC = () => {
               />
             </Box>
             <Box sx={{ mb: 2.5 }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>
                 Сотрудник (тренер/администратор)
               </Typography>
               <Autocomplete
@@ -1293,7 +1293,7 @@ const Finance: React.FC = () => {
                     sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
                   />
                 }
-                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>Только с документами</Typography>}
+                label={<Typography sx={{ fontSize: typography.label, fontWeight: 650 }}>Только с документами</Typography>}
               />
               <FormControlLabel
                 control={
@@ -1305,7 +1305,7 @@ const Finance: React.FC = () => {
                     sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
                   />
                 }
-                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>Только регулярные</Typography>}
+                label={<Typography sx={{ fontSize: typography.label, fontWeight: 650 }}>Только регулярные</Typography>}
               />
               <FormControlLabel
                 control={
@@ -1317,7 +1317,7 @@ const Finance: React.FC = () => {
                     sx={{ color: colors.primary, '&.Mui-checked': { color: colors.primary } }}
                   />
                 }
-                label={<Typography sx={{ fontSize: 13.5, fontWeight: 650 }}>С комментарием</Typography>}
+                label={<Typography sx={{ fontSize: typography.label, fontWeight: 650 }}>С комментарием</Typography>}
               />
             </Stack>
           </Box>
@@ -1417,7 +1417,7 @@ const Finance: React.FC = () => {
           <Typography sx={filterSectionTitleSx}>Дата</Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2.5 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <DatePicker
                 value={draftSalaryDateFrom}
                 onChange={setDraftSalaryDateFrom}
@@ -1432,7 +1432,7 @@ const Finance: React.FC = () => {
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <DatePicker
                 value={draftSalaryDateTo}
                 onChange={setDraftSalaryDateTo}
@@ -1462,7 +1462,7 @@ const Finance: React.FC = () => {
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <TextField
                 size="small"
                 fullWidth
@@ -1473,7 +1473,7 @@ const Finance: React.FC = () => {
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <TextField
                 size="small"
                 fullWidth
@@ -1668,7 +1668,7 @@ const Finance: React.FC = () => {
           <Typography sx={filterSectionTitleSx}>Сумма</Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>От</Typography>
               <TextField
                 size="small"
                 fullWidth
@@ -1679,7 +1679,7 @@ const Finance: React.FC = () => {
               />
             </Box>
             <Box sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#5A6478', mb: 0.5 }}>До</Typography>
               <TextField
                 size="small"
                 fullWidth

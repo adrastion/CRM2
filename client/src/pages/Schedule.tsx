@@ -80,7 +80,7 @@ import ScheduleDesktop, {
 import { CalendarItem, CalendarViewMode, ScheduleSummaryCounts } from '../components/schedule/calendarTypes';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
 import CreateTrainingFlowDialogs from '../components/schedule/CreateTrainingFlowDialogs';
 import CreateSchoolEventDialog, {
@@ -1710,7 +1710,7 @@ const Schedule: React.FC = () => {
           <Typography
             variant="h6"
             component="h1"
-            sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.02em' }}
+            sx={{ fontWeight: 800, fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, color: '#1B2438', letterSpacing: '-0.02em' }}
           >
             Календарь
           </Typography>
@@ -1914,7 +1914,7 @@ const Schedule: React.FC = () => {
                 py: 0.6,
                 textTransform: 'none',
                 fontWeight: 600,
-                fontSize: 13,
+                fontSize: typography.label,
                 color: colors.textMuted,
                 flex: { xs: 1, sm: 'none' },
                 '&.Mui-selected': {
@@ -2014,7 +2014,7 @@ const Schedule: React.FC = () => {
                     gap: 0.5,
                   }}
                 >
-                  <Typography sx={{ fontSize: 11, fontWeight: 500, color: colors.textHint, textTransform: 'capitalize', lineHeight: 1 }}>
+                  <Typography sx={{ fontSize: typography.label, fontWeight: 500, color: colors.textHint, textTransform: 'capitalize', lineHeight: 1 }}>
                     {format(d, 'EEEEEE', { locale: ru })}
                   </Typography>
                   <Box
@@ -2177,7 +2177,7 @@ const Schedule: React.FC = () => {
                       <Typography
                         sx={{
                           fontWeight: 700,
-                          fontSize: 13,
+                          fontSize: typography.label,
                           color: colors.primary,
                           minWidth: 52,
                           pt: 0.15,
@@ -2235,7 +2235,7 @@ const Schedule: React.FC = () => {
                               width: 48,
                               flexShrink: 0,
                               pt: 1.25,
-                              fontSize: 12,
+                              fontSize: typography.label,
                               fontWeight: 600,
                               color: colors.textHint,
                               fontVariantNumeric: 'tabular-nums',
@@ -2258,16 +2258,16 @@ const Schedule: React.FC = () => {
                             <Typography sx={{ fontWeight: 800, fontSize: 14, color: colors.text }}>
                               {training.title || group?.name || (isIndividual ? 'Индивидуальная тренировка' : 'Тренировка')}
                             </Typography>
-                            <Typography sx={{ fontSize: 12, color: colors.textMuted, mt: 0.25 }}>
+                            <Typography sx={{ fontSize: typography.label, color: colors.textMuted, mt: 0.25 }}>
                             {format(new Date(training.startTime), 'HH:mm')} – {format(new Date(training.endTime), 'HH:mm')}
                           </Typography>
                             {trainer?.user && (
-                              <Typography sx={{ fontSize: 12, color: colors.textMuted }}>
+                              <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
                                 {trainer.user.lastName} {trainer.user.firstName?.[0] ? `${trainer.user.firstName[0]}.` : ''}
                               </Typography>
                             )}
                             {place && (
-                              <Typography sx={{ fontSize: 12, color: colors.textHint }}>{place}</Typography>
+                              <Typography sx={{ fontSize: typography.label, color: colors.textHint }}>{place}</Typography>
                             )}
                           </Paper>
                         </Box>
@@ -2283,7 +2283,7 @@ const Schedule: React.FC = () => {
                           <Typography
                             sx={{
                               fontWeight: 700,
-                              fontSize: 13,
+                              fontSize: typography.label,
                               color: barColor,
                               minWidth: 52,
                               pt: 0.15,
@@ -2310,7 +2310,7 @@ const Schedule: React.FC = () => {
                                   trainerId={trainer.id}
                                   name={`${trainer.user.lastName} ${trainer.user.firstName}`.trim()}
                                   variant="inherit"
-                                  sx={{ color: 'inherit', fontWeight: 500, fontSize: 13 }}
+                                  sx={{ color: 'inherit', fontWeight: 500, fontSize: typography.label }}
                                   onOpen={openTrainer}
                                 />
                           </Typography>
@@ -2435,7 +2435,7 @@ const Schedule: React.FC = () => {
                           {dayCompetitions.map((competition) => (
                             <Chip
                               key={competition.id}
-                              icon={<EmojiEvents sx={{ fontSize: 12 }} />}
+                              icon={<EmojiEvents sx={{ fontSize: typography.label }} />}
                               label={competition.name}
                               size="small"
                               sx={{
@@ -2458,7 +2458,7 @@ const Schedule: React.FC = () => {
                           {dayEvents.map((event) => (
                             <Chip
                               key={event.id}
-                              icon={<CalendarToday sx={{ fontSize: 12 }} />}
+                              icon={<CalendarToday sx={{ fontSize: typography.label }} />}
                               label={event.title}
                               size="small"
                               sx={{
@@ -2481,7 +2481,7 @@ const Schedule: React.FC = () => {
                           {dayTasks.map((task: any) => (
                             <Chip
                               key={task.id}
-                              icon={<TaskAlt sx={{ fontSize: 12, color: '#fff !important' }} />}
+                              icon={<TaskAlt sx={{ fontSize: typography.label, color: '#fff !important' }} />}
                               label={task.title}
                               size="small"
                               component={RouterLink}
@@ -2620,7 +2620,7 @@ const Schedule: React.FC = () => {
                                 {occupancyLabel}
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.25 }}>
-                                <People sx={{ fontSize: 10 }} />
+                                <People sx={{ fontSize: typography.hint }} />
                                 <Typography variant="caption" sx={{ fontSize: '0.65rem' }} component="div">
                                   {isSubstitute && substituteTrainer?.user ? (
                                     <>
@@ -3532,7 +3532,7 @@ const Schedule: React.FC = () => {
                                     label={`Долг по абонементу: ${Math.abs(
                                       item.client.activeMembership.remaining
                                     )} пос.`}
-                                    sx={{ alignSelf: 'flex-start', height: 22, fontSize: 11 }}
+                                    sx={{ alignSelf: 'flex-start', height: 22, fontSize: typography.label }}
                                   />
                                 )}
                               {item.client.activeMembership?.remaining != null &&

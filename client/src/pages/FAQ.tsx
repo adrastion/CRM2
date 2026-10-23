@@ -36,7 +36,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import PublicFooter from '../components/PublicFooter';
 import { KnowledgeMaterialsPanel } from './KnowledgeBase';
 import { useAuth } from '../contexts/AuthContext';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import { FAQ_CONTENT, FaqTopic } from '../content/faqContent';
 
 type FaqTab = 'questions' | 'materials';
@@ -101,7 +101,7 @@ const filterPillSx = (active: boolean) => ({
   height: 34,
   borderRadius: '999px',
   fontWeight: active ? 700 : 500,
-  fontSize: 13,
+  fontSize: typography.label,
   bgcolor: active ? colors.primary : '#fff',
   color: active ? '#fff' : '#1B2438',
   border: active ? '1px solid transparent' : '1px solid #E6EAF2',
@@ -218,7 +218,7 @@ const FAQ: React.FC = () => {
                   component="h1"
                   sx={{
                     fontWeight: 800,
-                    fontSize: { xs: 22, md: 26 },
+                    fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
                     color: '#1B2438',
                     letterSpacing: '-0.02em',
                     lineHeight: 1.2,
@@ -226,7 +226,7 @@ const FAQ: React.FC = () => {
                 >
                   База знаний (FAQ)
         </Typography>
-                <Typography sx={{ mt: 0.75, fontSize: 13, color: '#8B93A7', maxWidth: 520, lineHeight: 1.45 }}>
+                <Typography sx={{ mt: 0.75, fontSize: typography.label, color: '#8B93A7', maxWidth: 520, lineHeight: 1.45 }}>
                   Найдите ответы на популярные вопросы или изучите инструкции по работе с системой.
         </Typography>
               </Box>
@@ -385,7 +385,7 @@ const FAQ: React.FC = () => {
                             <Typography
                               sx={{
                                 mt: 0.35,
-                                fontSize: 12.5,
+                                fontSize: typography.label,
                                 color: '#8B93A7',
                                 lineHeight: 1.4,
                               }}
@@ -456,7 +456,7 @@ const FAQ: React.FC = () => {
                         borderRadius: '999px',
                         bgcolor: '#EAF0FF',
                         color: colors.primary,
-                        fontSize: 11,
+                        fontSize: typography.label,
                         fontWeight: 800,
                         display: 'flex',
                         alignItems: 'center',
@@ -467,7 +467,7 @@ const FAQ: React.FC = () => {
                     >
                       {i + 1}
                     </Box>
-                    <Typography sx={{ fontSize: 12.5, color: '#404B63', lineHeight: 1.4 }}>{step}</Typography>
+                    <Typography sx={{ fontSize: typography.label, color: '#404B63', lineHeight: 1.4 }}>{step}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -479,7 +479,7 @@ const FAQ: React.FC = () => {
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   borderRadius: `${radii.button}px`,
                   bgcolor: colors.primary,
                   boxShadow: 'none',
@@ -577,7 +577,7 @@ const FAQ: React.FC = () => {
                     }}
                   >
                     <PlayArrowRounded sx={{ fontSize: 18, color: colors.primary }} />
-                    <Typography sx={{ fontSize: 13, color: '#1B2438', fontWeight: 500 }}>{v.label}</Typography>
+                    <Typography sx={{ fontSize: typography.label, color: '#1B2438', fontWeight: 500 }}>{v.label}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -590,7 +590,7 @@ const FAQ: React.FC = () => {
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   color: colors.primary,
                   px: 0.5,
                   '&:hover': { bgcolor: 'transparent', color: colors.primaryDark },
@@ -629,7 +629,7 @@ const FAQ: React.FC = () => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    fontSize: 13,
+                    fontSize: typography.label,
                     borderRadius: `${radii.button}px`,
                     bgcolor: colors.primary,
                     boxShadow: 'none',
@@ -646,7 +646,7 @@ const FAQ: React.FC = () => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    fontSize: 13,
+                    fontSize: typography.label,
                     borderRadius: `${radii.button}px`,
                     borderColor: '#E6EAF2',
                     color: '#1B2438',

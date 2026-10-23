@@ -35,7 +35,7 @@ import {
   useTheme,
 } from '@mui/material';
 import { Branch, Group, GroupScheduleItem, Trainer } from '../../types';
-import { colors, radii } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 
 type Section = {
   key: string;
@@ -186,7 +186,7 @@ function Donut({ pct, color }: { pct: number; color: string }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: 11,
+          fontSize: typography.label,
           fontWeight: 800,
           color: '#1B2438',
         }}
@@ -323,10 +323,10 @@ const BranchesGroupsBoard: React.FC<Props> = ({
         }}
       >
         <Box>
-          <Typography sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 800, color: '#1B2438', letterSpacing: '-0.02em' }}>
+          <Typography sx={{ fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, fontWeight: 800, color: '#1B2438', letterSpacing: '-0.02em' }}>
             Филиалы и группы
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: '#6B7280', mt: 0.5 }}>
+          <Typography sx={{ fontSize: typography.label, color: '#6B7280', mt: 0.5 }}>
             Контролируйте филиалы, группы, загрузку и проблемные зоны.
           </Typography>
         </Box>
@@ -441,7 +441,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
               '& .MuiOutlinedInput-root': {
                 borderRadius: '12px',
                 bgcolor: '#F7F8FB',
-                fontSize: 13,
+                fontSize: typography.label,
                 '& fieldset': { borderColor: 'transparent' },
               },
             }}
@@ -506,7 +506,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                   height: 32,
                   borderRadius: '999px',
                   fontWeight: 800,
-                  fontSize: 13,
+                  fontSize: typography.label,
                   bgcolor: on ? fg : bg,
                   color: on ? '#fff' : fg,
                   '&:hover': { bgcolor: on ? fg : bg, opacity: 0.92 },
@@ -517,14 +517,14 @@ const BranchesGroupsBoard: React.FC<Props> = ({
           <Box sx={{ flex: 1 }} />
           <Button
             startIcon={<FileDownloadOutlined sx={{ fontSize: 18 }} />}
-            sx={{ textTransform: 'none', fontWeight: 700, color: '#5A6275', fontSize: 13 }}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#5A6275', fontSize: typography.label }}
             onClick={() => undefined}
           >
             Экспорт в Excel
           </Button>
           <Button
             startIcon={<SettingsOutlined sx={{ fontSize: 18 }} />}
-            sx={{ textTransform: 'none', fontWeight: 700, color: '#5A6275', fontSize: 13 }}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#5A6275', fontSize: typography.label }}
             onClick={() => undefined}
           >
             Настройка вида
@@ -569,7 +569,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                       {section.branch?.name || 'Без филиала'}
                     </Typography>
                     {section.branch?.address && (
-                      <Typography sx={{ fontSize: 12, color: '#8B8C8F', display: 'flex', alignItems: 'center', gap: 0.35, mt: 0.2 }}>
+                      <Typography sx={{ fontSize: typography.label, color: '#8B8C8F', display: 'flex', alignItems: 'center', gap: 0.35, mt: 0.2 }}>
                         <LocationOnOutlined sx={{ fontSize: 14 }} />
                         {section.branch.address}
                       </Typography>
@@ -577,12 +577,12 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                   </Box>
 
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 140 }}>
-                    <Avatar sx={{ width: 28, height: 28, fontSize: 11, bgcolor: '#EAF0FF', color: colors.primary }}>
+                    <Avatar sx={{ width: 28, height: 28, fontSize: typography.label, bgcolor: '#EAF0FF', color: colors.primary }}>
                       {(seniorName || '?').charAt(0)}
                     </Avatar>
                     <Box>
-                      <Typography sx={{ fontSize: 10, color: '#8B8C8F', fontWeight: 600 }}>Ответственный</Typography>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#1B2438' }}>{seniorName}</Typography>
+                      <Typography sx={{ fontSize: typography.hint, color: '#8B8C8F', fontWeight: 600 }}>Ответственный</Typography>
+                      <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>{seniorName}</Typography>
                     </Box>
                   </Box>
 
@@ -590,14 +590,14 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                     <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#1B2438' }}>
                       {section.groups.length} групп
                     </Typography>
-                    <Typography sx={{ fontSize: 12, color: '#8B8C8F' }}>
+                    <Typography sx={{ fontSize: typography.label, color: '#8B8C8F' }}>
                       {seatsTaken} / {seatsTotal || '∞'} участников
                     </Typography>
                   </Box>
 
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Donut pct={loadPct} color={fillColor(loadPct)} />
-                    <Typography sx={{ fontSize: 11, color: '#8B8C8F', fontWeight: 600, maxWidth: 72, lineHeight: 1.2 }}>
+                    <Typography sx={{ fontSize: typography.label, color: '#8B8C8F', fontWeight: 600, maxWidth: 72, lineHeight: 1.2 }}>
                       заполняемость
                     </Typography>
                   </Box>
@@ -608,7 +608,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                     sx={{
                       height: 24,
                       fontWeight: 800,
-                      fontSize: 11,
+                      fontSize: typography.label,
                       bgcolor: section.branch?.isActive === false ? '#F4F6FA' : '#E7F8F2',
                       color: section.branch?.isActive === false ? '#8B8C8F' : '#00997A',
                     }}
@@ -647,7 +647,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                 {isMobile ? (
                   <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {section.groups.length === 0 ? (
-                      <Typography sx={{ textAlign: 'center', color: '#8B8C8F', py: 2, fontSize: 13 }}>
+                      <Typography sx={{ textAlign: 'center', color: '#8B8C8F', py: 2, fontSize: typography.label }}>
                         В этом филиале пока нет групп
                       </Typography>
                     ) : (
@@ -684,7 +684,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                             <TableCell
                               key={h}
                               sx={{
-                                fontSize: 11,
+                                fontSize: typography.label,
                                 fontWeight: 800,
                                 color: '#8B8C8F',
                                 borderBottom: '1px solid #EEF1F6',
@@ -727,7 +727,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                       onClick={() => onEditGroup(group)}
                                       sx={{
                                         fontWeight: 800,
-                                        fontSize: 13,
+                                        fontSize: typography.label,
                                         color: '#1B2438',
                                         cursor: 'pointer',
                                         '&:hover': { color: colors.primary },
@@ -737,7 +737,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                     </Typography>
                                   </Box>
                                 </TableCell>
-                                <TableCell sx={{ fontSize: 12, color: '#5A6275', maxWidth: 180 }}>
+                                <TableCell sx={{ fontSize: typography.label, color: '#5A6275', maxWidth: 180 }}>
                                   {group.description || '—'}
                                 </TableCell>
                                 <TableCell>
@@ -751,26 +751,26 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                       '&:hover .name': { color: colors.primary },
                                     }}
                                   >
-                                    <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: '#EAF0FF', color: colors.primary }}>
+                                    <Avatar sx={{ width: 24, height: 24, fontSize: typography.hint, bgcolor: '#EAF0FF', color: colors.primary }}>
                                       {trainerShort(group.trainer).charAt(0)}
                                     </Avatar>
-                                    <Typography className="name" sx={{ fontSize: 12, fontWeight: 700, color: '#1B2438' }}>
+                                    <Typography className="name" sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>
                                       {trainerShort(group.trainer)}
                                     </Typography>
                                   </Box>
                                 </TableCell>
-                                <TableCell sx={{ fontSize: 12, fontWeight: 700, color: '#1B2438' }}>{ageLabel(group)}</TableCell>
-                                <TableCell sx={{ fontSize: 12, fontWeight: 700, color: '#1B2438' }}>
+                                <TableCell sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>{ageLabel(group)}</TableCell>
+                                <TableCell sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>
                                   {group.maxMembers ?? '∞'}
                                 </TableCell>
-                                <TableCell sx={{ fontSize: 12, fontWeight: 800, color: '#1B2438' }}>{occ.current}</TableCell>
+                                <TableCell sx={{ fontSize: typography.label, fontWeight: 800, color: '#1B2438' }}>{occ.current}</TableCell>
                                 <TableCell sx={{ minWidth: 120 }}>
                                   {pct == null ? (
-                                    <Typography sx={{ fontSize: 12, color: '#8B8C8F' }}>—</Typography>
+                                    <Typography sx={{ fontSize: typography.label, color: '#8B8C8F' }}>—</Typography>
                                   ) : (
                                     <Box>
                                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.35 }}>
-                                        <Typography sx={{ fontSize: 11, fontWeight: 800, color: bar }}>{pct}%</Typography>
+                                        <Typography sx={{ fontSize: typography.label, fontWeight: 800, color: bar }}>{pct}%</Typography>
                                       </Box>
                                       <LinearProgress
                                         variant="determinate"
@@ -785,13 +785,13 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                     </Box>
                                   )}
                                 </TableCell>
-                                <TableCell sx={{ fontSize: 11, color: '#5A6275', maxWidth: 160, whiteSpace: 'nowrap' }}>
+                                <TableCell sx={{ fontSize: typography.label, color: '#5A6275', maxWidth: 160, whiteSpace: 'nowrap' }}>
                                   {scheduleLabel(group.schedule)}
                                 </TableCell>
                                 <TableCell>
                                   <Typography
                                     sx={{
-                                      fontSize: 12,
+                                      fontSize: typography.label,
                                       fontWeight: 800,
                                       color: group.isActive ? '#00B69B' : '#8B8C8F',
                                     }}
@@ -802,7 +802,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                 <TableCell>
                                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                     {probs.length === 0 ? (
-                                      <Typography sx={{ fontSize: 12, color: '#8B8C8F' }}>—</Typography>
+                                      <Typography sx={{ fontSize: typography.label, color: '#8B8C8F' }}>—</Typography>
                                     ) : (
                                       probs.map((p) => (
                                         <Chip
@@ -812,7 +812,7 @@ const BranchesGroupsBoard: React.FC<Props> = ({
                                           label={p.label}
                                           sx={{
                                             height: 22,
-                                            fontSize: 10,
+                                            fontSize: typography.hint,
                                             fontWeight: 800,
                                             bgcolor: p.tone === 'red' ? '#FFE8EE' : '#FFF4E8',
                                             color: p.tone === 'red' ? '#E23B5A' : '#E07A12',
@@ -882,8 +882,8 @@ function Metric({
       <Avatar sx={{ bgcolor: tint, width: 36, height: 36 }}>{icon}</Avatar>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: 22, fontWeight: 800, color: valueColor || '#1B2438', lineHeight: 1 }}>{value}</Typography>
-        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#1B2438', mt: 0.35 }}>{title}</Typography>
-        <Typography sx={{ fontSize: 11, fontWeight: 700, color: hintColor }}>{hint}</Typography>
+        <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438', mt: 0.35 }}>{title}</Typography>
+        <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: hintColor }}>{hint}</Typography>
       </Box>
       <Spark color={spark} />
     </Box>
@@ -914,8 +914,8 @@ function FilterSelect({
       onChange={(e) => onChange(String(e.target.value))}
       renderValue={() => (
         <Box sx={{ py: 0.1 }}>
-          <Typography sx={{ fontSize: 10, color: '#8B8C8F', lineHeight: 1.1 }}>{label}</Typography>
-          <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#1B2438', lineHeight: 1.25 }}>
+          <Typography sx={{ fontSize: typography.hint, color: '#8B8C8F', lineHeight: 1.1 }}>{label}</Typography>
+          <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438', lineHeight: 1.25 }}>
             {current?.label || empty}
           </Typography>
         </Box>
@@ -961,18 +961,18 @@ function MobileGroupCard({
         <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }} onClick={onEdit}>
           {group.name}
         </Typography>
-        <Typography sx={{ fontSize: 12, fontWeight: 800, color: group.isActive ? '#00B69B' : '#8B8C8F' }}>
+        <Typography sx={{ fontSize: typography.label, fontWeight: 800, color: group.isActive ? '#00B69B' : '#8B8C8F' }}>
           {group.isActive ? 'Активна' : 'Неактивна'}
         </Typography>
       </Box>
-      <Typography sx={{ fontSize: 12, color: '#5A6275', mb: 0.5 }}>{group.description || '—'}</Typography>
-      <Typography sx={{ fontSize: 12, color: '#1B2438', fontWeight: 700, mb: 0.5 }}>
+      <Typography sx={{ fontSize: typography.label, color: '#5A6275', mb: 0.5 }}>{group.description || '—'}</Typography>
+      <Typography sx={{ fontSize: typography.label, color: '#1B2438', fontWeight: 700, mb: 0.5 }}>
         {trainerShort(group.trainer)} · {ageLabel(group)} · {occ.current}/{occ.max ?? '∞'}
       </Typography>
       {probs.length > 0 && (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
           {probs.map((p) => (
-            <Chip key={p.label} size="small" label={p.label} sx={{ height: 20, fontSize: 10, fontWeight: 800 }} />
+            <Chip key={p.label} size="small" label={p.label} sx={{ height: 20, fontSize: typography.hint, fontWeight: 800 }} />
           ))}
         </Box>
       )}

@@ -47,7 +47,7 @@ import ActiveSessionsPanel from '../components/auth/ActiveSessionsPanel';
 import PasswordField from '../components/common/PasswordField';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import SettingsSchedulePanel from '../components/settings/SettingsSchedulePanel';
 import { ScheduleConfig } from '../components/settings/scheduleConfig';
 
@@ -602,11 +602,11 @@ const Settings: React.FC = () => {
           <Typography
             variant="h5"
             component="h1"
-            sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#1B2438', letterSpacing: '-0.02em' }}
+            sx={{ fontWeight: 800, fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md }, color: '#1B2438', letterSpacing: '-0.02em' }}
           >
             Настройки
           </Typography>
-          <Typography sx={{ fontSize: 13, color: colors.textHint, mt: 0.25 }}>
+          <Typography sx={{ fontSize: typography.label, color: colors.textHint, mt: 0.25 }}>
             Настройте систему под задачи вашей организации
           </Typography>
         </Box>
@@ -1103,7 +1103,7 @@ const Settings: React.FC = () => {
           <TabPanel value={tabValue} index={TAB.branches}>
             <Paper elevation={0} sx={sectionPaperSx}>
               <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Филиалы</Typography>
-              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+              <Typography sx={{ color: colors.textHint, fontSize: typography.label }}>
                 Раздел в подготовке. Управление филиалами доступно в меню «Филиалы и группы».
               </Typography>
             </Paper>
@@ -1112,7 +1112,7 @@ const Settings: React.FC = () => {
           <TabPanel value={tabValue} index={TAB.roles}>
             <Paper elevation={0} sx={sectionPaperSx}>
               <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Роли и права</Typography>
-              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+              <Typography sx={{ color: colors.textHint, fontSize: typography.label }}>
                 Раздел в подготовке.
               </Typography>
             </Paper>
@@ -1121,7 +1121,7 @@ const Settings: React.FC = () => {
           <TabPanel value={tabValue} index={TAB.integrations}>
             <Paper elevation={0} sx={sectionPaperSx}>
               <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Интеграции</Typography>
-              <Typography sx={{ color: colors.textHint, fontSize: 13 }}>
+              <Typography sx={{ color: colors.textHint, fontSize: typography.label }}>
                 Раздел в подготовке.
               </Typography>
             </Paper>

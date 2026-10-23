@@ -126,7 +126,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography
                 sx={{
-                  fontSize: 12.5,
+                  fontSize: typography.label,
                   color: colors.textMuted,
                   fontWeight: 700,
                   mb: { xs: 0.75, md: 0.3 },
@@ -136,7 +136,11 @@ const MetricCard: React.FC<MetricCardProps> = ({
               </Typography>
               <Typography
                 sx={{
-                  fontSize: 22,
+                  fontSize: {
+                    xs: typography.metric.xs,
+                    sm: typography.metric.sm,
+                    md: typography.metric.md,
+                  },
                   fontWeight: 800,
                   color: colors.text,
                   lineHeight: 1.05,
@@ -212,21 +216,21 @@ const MetricCard: React.FC<MetricCardProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35, flexWrap: 'wrap', pl: 4.75 }}>
             <Typography
               aria-hidden
-              sx={{ fontSize: 10, lineHeight: 1, fontWeight: 800, color: (trend as number) >= 0 ? colors.success : colors.danger }}
+              sx={{ fontSize: typography.label, lineHeight: 1, fontWeight: 800, color: (trend as number) >= 0 ? colors.success : colors.danger }}
             >
               {(trend as number) >= 0 ? '↑' : '↓'}
             </Typography>
-            <Typography sx={{ fontSize: 9, fontWeight: 700, color: (trend as number) >= 0 ? colors.success : colors.danger }}>
+            <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: (trend as number) >= 0 ? colors.success : colors.danger }}>
               {(trend as number) >= 0 ? '+' : ''}
               {trend}
               {trendSuffix}
             </Typography>
-            <Typography sx={{ fontSize: 8, color: colors.textMuted }}>
+            <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
               {trendLabel || 'за 7 дней'}
             </Typography>
           </Box>
         ) : (
-          <Typography sx={{ fontSize: 8, color: colors.textHint, pl: 4.75 }}>
+          <Typography sx={{ fontSize: typography.hint, color: colors.textHint, pl: 4.75 }}>
             {hasTrend ? 'без изменений' : '—'}
           </Typography>
         )

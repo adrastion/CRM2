@@ -22,7 +22,7 @@ import { Add } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { Membership } from '../types';
-import { colors, radii } from '../theme/tokens';
+import { colors, radii, typography } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import MembershipsDesktop from '../components/memberships/MembershipsDesktop';
@@ -396,7 +396,7 @@ const Memberships: React.FC = () => {
     px: 1.75,
     py: 0.6,
     fontWeight: 600,
-    fontSize: 13,
+    fontSize: typography.label,
     minWidth: 0,
     border: 'none',
     cursor: 'pointer',
@@ -423,7 +423,7 @@ const Memberships: React.FC = () => {
         <Box>
           <Typography
             sx={{
-              fontSize: { xs: 22, md: 26 },
+              fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
               fontWeight: 800,
               color: '#1B2438',
               letterSpacing: '-0.02em',
@@ -431,7 +431,7 @@ const Memberships: React.FC = () => {
           >
             Абонементы
           </Typography>
-          <Typography sx={{ fontSize: 13, color: colors.textHint, mt: 0.25 }}>
+          <Typography sx={{ fontSize: typography.label, color: colors.textHint, mt: 0.25 }}>
             Создание и назначение абонементов клиентам
           </Typography>
         </Box>
@@ -665,7 +665,7 @@ const Memberships: React.FC = () => {
                     py: 0.3,
                     borderRadius: `${radii.button}px`,
                     fontWeight: 700,
-                    fontSize: 11,
+                    fontSize: typography.label,
                   }}
                 >
                   {m.archivedAt ? 'Архив' : m.isActive !== false ? 'Активен' : 'Неактивен'}
@@ -674,17 +674,17 @@ const Memberships: React.FC = () => {
               <Typography sx={{ fontWeight: 800, fontSize: 22, color: colors.primary, lineHeight: 1.1 }}>
                 {Number(m.price).toLocaleString('ru-RU')} ₽
               </Typography>
-              <Typography sx={{ fontSize: 13, color: colors.textMuted }}>
+              <Typography sx={{ fontSize: typography.label, color: colors.textMuted }}>
                 {membershipMetaLine(m)}
               </Typography>
               <Box display="flex" gap={2} flexWrap="wrap">
-                <Typography sx={{ fontSize: 12, color: colors.textHint }}>
+                <Typography sx={{ fontSize: typography.label, color: colors.textHint }}>
                   Групп:{' '}
                   <Box component="span" sx={{ fontWeight: 700, color: colors.text }}>
                     {m.membershipGroups?.length || 0}
                   </Box>
                 </Typography>
-                <Typography sx={{ fontSize: 12, color: colors.textHint }}>
+                <Typography sx={{ fontSize: typography.label, color: colors.textHint }}>
                   Занятий:{' '}
                   <Box component="span" sx={{ fontWeight: 700, color: colors.text }}>
                     {membershipVisitsLabel(m)}
