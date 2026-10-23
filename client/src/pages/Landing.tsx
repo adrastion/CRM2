@@ -5,12 +5,12 @@ import PublicSiteNav from '../components/PublicSiteNav';
 import PublicFooter from '../components/PublicFooter';
 import { colors, radii, typography } from '../theme/tokens';
 import { currentSessionDestination, hasAnySession } from '../utils/authSession';
-import heroGym from '../assets/landing-hero-gym.jpg';
-import sectionDesk from '../assets/landing-section-desk.jpg';
-import shotDashboard from '../assets/landing-shot-dashboard.png';
-import shotClients from '../assets/landing-shot-clients.png';
-import shotSchedule from '../assets/landing-shot-schedule.png';
-import shotFinance from '../assets/landing-shot-finance.png';
+import heroGym from '../assets/landing-hero-gym.webp';
+import sectionDesk from '../assets/landing-section-desk.webp';
+import shotDashboard from '../assets/landing-shot-dashboard.webp';
+import shotClients from '../assets/landing-shot-clients.webp';
+import shotSchedule from '../assets/landing-shot-schedule.webp';
+import shotFinance from '../assets/landing-shot-finance.webp';
 
 const MODULES = [
   {

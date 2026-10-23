@@ -877,6 +877,8 @@ model ClientMembership {
   membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId, clientId, isActive])
+  @@index([tenantId, isActive, endDate])
   @@map("client_memberships")
 }
 

@@ -103,6 +103,41 @@ export async function getActiveMembershipSummary(
   return toMembershipSummary(row);
 }
 
+/** Batch-версия getActiveMembershipSummary — один запрос вместо N+1. */
+export async function getActiveMembershipSummaries(
+  clientIds: string[],
+  tenantId: string
+): Promise<Map<string, ActiveMembershipSummary | null>> {
+  const result = new Map<string, ActiveMembershipSummary | null>();
+  const unique = [...new Set(clientIds.filter(Boolean))];
+  for (const id of unique) result.set(id, null);
+  if (!unique.length) return result;
+
+  const rows = await prisma.clientMembership.findMany({
+    where: {
+      clientId: { in: unique },
+      tenantId,
+      isActive: true,
+    },
+    include: { membership: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const byClient = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byClient.get(row.clientId);
+    if (list) list.push(row);
+    else byClient.set(row.clientId, [row]);
+  }
+
+  for (const [clientId, list] of byClient) {
+    const visitPack = list.find((r) => r.visitsTotal != null);
+    const chosen = visitPack || list[0];
+    result.set(clientId, chosen ? toMembershipSummary(chosen) : null);
+  }
+  return result;
+}
+
 /** Клиент на абонементной схеме (активный или долговой пакет) — monthly не начисляем. */
 export async function clientHasMembershipBilling(
   clientId: string,

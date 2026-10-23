@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { useSearchParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
@@ -72,7 +72,6 @@ import { apiService } from '../services/api';
 import ClientNameLink from '../components/ClientNameLink';
 import TrainerNameLink from '../components/TrainerNameLink';
 import { useStaffEntityCards } from '../components/StaffEntityCardHost';
-import CompetitionsPanel from '../components/competitions/CompetitionsPanel';
 import ScheduleDesktop, {
   getScheduleRange,
   getSummaryRange,
@@ -82,10 +81,25 @@ import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall
 import { useAuth } from '../contexts/AuthContext';
 import { colors, radii, typography } from '../theme/tokens';
 import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
-import CreateTrainingFlowDialogs from '../components/schedule/CreateTrainingFlowDialogs';
-import CreateSchoolEventDialog, {
-  schoolEventTypeLabel,
-} from '../components/schedule/CreateSchoolEventDialog';
+
+const CompetitionsPanel = lazy(() => import('../components/competitions/CompetitionsPanel'));
+const CreateTrainingFlowDialogs = lazy(
+  () => import('../components/schedule/CreateTrainingFlowDialogs')
+);
+const CreateSchoolEventDialog = lazy(
+  () => import('../components/schedule/CreateSchoolEventDialog')
+);
+
+const SCHOOL_EVENT_TYPE_LABELS: Record<string, string> = {
+  parent_meeting: 'Родительское собрание',
+  attestation: 'Аттестация',
+  activity: 'Мероприятие',
+  open_day: 'День открытых дверей',
+  other: 'Другое',
+  competition: 'Соревнование',
+};
+const schoolEventTypeLabel = (type?: string | null): string =>
+  (type && SCHOOL_EVENT_TYPE_LABELS[type]) || 'Мероприятие';
 
 /** Цвета полоски события по типу (макет календарного плана). */
 const EVENT_BAR = {
@@ -259,33 +273,143 @@ const Schedule: React.FC = () => {
   const [isUpdating, setIsUpdating] = useState(false); // Индикатор обновления тренировки
   const [formData, setFormData] = useState<TrainingFormData>(createEmptyTrainingForm);
   const [editFormBaseline, setEditFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
+  const catalogLoadedRef = useRef(false);
+  const rangeParamsRef = useRef({
+    selectedDate,
+    viewMode,
+    filterBranchId,
+    filterHallId,
+    filterTrainerId,
+    filterGroupId,
+  });
+  rangeParamsRef.current = {
+    selectedDate,
+    viewMode,
+    filterBranchId,
+    filterHallId,
+    filterTrainerId,
+    filterGroupId,
+  };
+
+  /** Справочники (группы/тренеры/филиалы/…) — один раз за сессию страницы. */
+  const loadCatalog = async (signal?: AbortSignal) => {
+    if (catalogLoadedRef.current) return;
+    const [
+      groupsRes,
+      trainersRes,
+      branchesRes,
+      hallsRes,
+      settingsRes,
+      clientsRes,
+      staffUsersRes,
+    ] = await Promise.all([
+      apiService.getGroups({ limit: 500, page: 1 }, signal),
+      apiService.getTrainers({ limit: 500, page: 1 }, signal),
+      apiService.getBranches({ limit: 200, page: 1 }, signal),
+      apiService
+        .getHalls({ limit: 200, page: 1 }, signal)
+        .catch(() => ({ data: [], pagination: {} })),
+      apiService.getSettings().catch(() => null),
+      apiService.getClients({ limit: 500, page: 1 }, signal).catch(() => ({ data: [] })),
+      apiService.listStaffWorkspaceUsers().catch(() => []),
+    ]);
+    if (signal?.aborted) return;
+    setGroups(groupsRes.data);
+    setTrainers(trainersRes.data);
+    setBranches(branchesRes.data);
+    setHalls(hallsRes.data || []);
+    setClients(clientsRes?.data || []);
+    setDesktopStaffUsers(
+      Array.isArray(staffUsersRes)
+        ? staffUsersRes.map((u: any) => ({
+            id: u.id,
+            firstName: u.firstName,
+            lastName: u.lastName,
+          }))
+        : []
+    );
+    if (settingsRes?.data?.defaultTrainingDuration) {
+      setDefaultTrainingDuration(settingsRes.data.defaultTrainingDuration);
+    }
+    if (settingsRes?.data?.staffTaskColor) {
+      setStaffTaskColor(settingsRes.data.staffTaskColor);
+    }
+    catalogLoadedRef.current = true;
+  };
+
+  /** События видимого периода календаря (без справочников). */
+  const loadRange = async (signal?: AbortSignal) => {
+    const {
+      selectedDate: date,
+      viewMode: mode,
+      filterBranchId: branchId,
+      filterHallId: hallId,
+      filterTrainerId: trainerId,
+      filterGroupId: groupId,
+    } = rangeParamsRef.current;
+    const { from, to } = getScheduleRange(date, mode);
+    const summaryRange = getSummaryRange(date);
+    const rangeLimit = mode === 'day' ? 200 : mode === 'week' ? 400 : 600;
+
+    const [trainingsRes, competitionsRes, eventsRes, tasksRes, summaryRes] = await Promise.all([
+      apiService.getTrainings(
+        {
+          limit: rangeLimit,
+          page: 1,
+          startDate: from.toISOString(),
+          endDate: to.toISOString(),
+        },
+        signal
+      ),
+      apiService.getCompetitions(
+        {
+          limit: rangeLimit,
+          page: 1,
+          startDate: from.toISOString(),
+          endDate: to.toISOString(),
+        },
+        signal
+      ),
+      apiService
+        .getSchoolEvents(
+          { startDate: from.toISOString(), endDate: to.toISOString() },
+          signal
+        )
+        .catch(() => []),
+      apiService
+        .listStaffTasks({ from: from.toISOString(), to: to.toISOString() })
+        .catch(() => []),
+      apiService
+        .getScheduleSummary({
+          startDate: summaryRange.from.toISOString(),
+          endDate: summaryRange.to.toISOString(),
+          ...(branchId ? { branchId } : {}),
+          ...(hallId ? { hallId } : {}),
+          ...(trainerId ? { trainerId } : {}),
+          ...(groupId ? { groupId } : {}),
+        })
+        .catch(() => null),
+    ]);
+
+    if (signal?.aborted) return;
+    setTrainings(trainingsRes.data);
+    setCompetitions(competitionsRes.data);
+    setSchoolEvents(eventsRes || []);
+    setStaffTasks(Array.isArray(tasksRes) ? tasksRes : []);
+    if (summaryRes) {
+      setScheduleSummary({
+        trainings: summaryRes.trainings,
+        competitions: summaryRes.competitions,
+        tasks: summaryRes.tasks,
+        events: summaryRes.events,
+      });
+    }
+  };
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { from, to } = getScheduleRange(selectedDate, viewMode);
-      const [trainingsRes, groupsRes, trainersRes, branchesRes, clientsRes, eventsRes] = await Promise.all([
-        apiService.getTrainings({
-          limit: 1000,
-          page: 1,
-          startDate: from.toISOString(),
-          endDate: to.toISOString(),
-        }),
-        apiService.getGroups({ limit: 1000, page: 1 }),
-        apiService.getTrainers({ limit: 1000, page: 1 }),
-        apiService.getBranches({ limit: 1000, page: 1 }),
-        apiService.getClients({ limit: 1000, page: 1 }),
-        apiService
-          .getSchoolEvents({ startDate: from.toISOString(), endDate: to.toISOString() })
-          .catch(() => []),
-      ]);
-      
-      setTrainings(trainingsRes.data);
-      setGroups(groupsRes.data);
-      setTrainers(trainersRes.data);
-      setBranches(branchesRes.data);
-      setClients(clientsRes.data || []);
-      setSchoolEvents(eventsRes || []);
+      await loadRange();
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -301,117 +425,9 @@ const Schedule: React.FC = () => {
       try {
         if (!isMounted || abortController.signal.aborted) return;
         setLoading(true);
-        
-        try {
-          const duplicateResult = await apiService.removeDuplicateTrainings();
-          if (duplicateResult?.removedCount > 0) {
-            console.log(`Автоматически удалено ${duplicateResult.removedCount} дублирующихся тренировок`);
-          }
-        } catch (duplicateError) {
-          console.warn('Не удалось проверить дубликаты тренировок:', duplicateError);
-        }
-        
+        await loadCatalog(abortController.signal);
         if (!isMounted || abortController.signal.aborted) return;
-        
-        const { from, to } = getScheduleRange(selectedDate, viewMode);
-        const summaryRange = getSummaryRange(selectedDate);
-
-        const [
-          trainingsRes,
-          competitionsRes,
-          groupsRes,
-          trainersRes,
-          branchesRes,
-          hallsRes,
-          settingsRes,
-          clientsRes,
-          eventsRes,
-          tasksRes,
-          summaryRes,
-          staffUsersRes,
-        ] = await Promise.all([
-          apiService.getTrainings(
-            {
-              limit: 1000,
-              page: 1,
-              startDate: from.toISOString(),
-              endDate: to.toISOString(),
-            },
-            abortController.signal
-          ),
-          apiService.getCompetitions(
-            {
-              limit: 1000,
-              page: 1,
-              startDate: from.toISOString(),
-              endDate: to.toISOString(),
-            },
-            abortController.signal
-          ),
-          apiService.getGroups({ limit: 1000, page: 1 }, abortController.signal),
-          apiService.getTrainers({ limit: 1000, page: 1 }, abortController.signal),
-          apiService.getBranches({ limit: 1000, page: 1 }, abortController.signal),
-          apiService
-            .getHalls({ limit: 1000, page: 1 }, abortController.signal)
-            .catch(() => ({ data: [], pagination: {} })),
-          apiService.getSettings().catch(() => null),
-          apiService.getClients({ limit: 1000 }, abortController.signal).catch(() => ({ data: [] })),
-          apiService
-            .getSchoolEvents(
-              { startDate: from.toISOString(), endDate: to.toISOString() },
-              abortController.signal
-            )
-            .catch(() => []),
-          apiService
-            .listStaffTasks({ from: from.toISOString(), to: to.toISOString() })
-            .catch(() => []),
-          apiService
-            .getScheduleSummary({
-              startDate: summaryRange.from.toISOString(),
-              endDate: summaryRange.to.toISOString(),
-              ...(filterBranchId ? { branchId: filterBranchId } : {}),
-              ...(filterHallId ? { hallId: filterHallId } : {}),
-              ...(filterTrainerId ? { trainerId: filterTrainerId } : {}),
-              ...(filterGroupId ? { groupId: filterGroupId } : {}),
-            })
-            .catch(() => null),
-          apiService.listStaffWorkspaceUsers().catch(() => []),
-        ]);
-        
-        if (!isMounted || abortController.signal.aborted) return;
-        setTrainings(trainingsRes.data);
-        setCompetitions(competitionsRes.data);
-        setGroups(groupsRes.data);
-        setTrainers(trainersRes.data);
-        setBranches(branchesRes.data);
-        setHalls(hallsRes.data || []);
-        setClients(clientsRes?.data || []);
-        setSchoolEvents(eventsRes || []);
-        setStaffTasks(Array.isArray(tasksRes) ? tasksRes : []);
-        if (summaryRes) {
-          setScheduleSummary({
-            trainings: summaryRes.trainings,
-            competitions: summaryRes.competitions,
-            tasks: summaryRes.tasks,
-            events: summaryRes.events,
-          });
-        }
-        setDesktopStaffUsers(
-          Array.isArray(staffUsersRes)
-            ? staffUsersRes.map((u: any) => ({
-                id: u.id,
-                firstName: u.firstName,
-                lastName: u.lastName,
-              }))
-            : []
-        );
-
-        if (settingsRes?.data?.defaultTrainingDuration) {
-          setDefaultTrainingDuration(settingsRes.data.defaultTrainingDuration);
-        }
-        if (settingsRes?.data?.staffTaskColor) {
-          setStaffTaskColor(settingsRes.data.staffTaskColor);
-        }
+        await loadRange(abortController.signal);
       } catch (error: any) {
         if (error?.code === 'ERR_CANCELED' || error?.message === 'canceled' || abortController.signal.aborted) {
           return;
@@ -1702,7 +1718,11 @@ const Schedule: React.FC = () => {
             onCopyItem={(item) => void handleDesktopCopyItem(item)}
             onDeleteItem={(item) => void handleDesktopDeleteItem(item)}
             onRefresh={() => void fetchData()}
-            competitionsPanel={<CompetitionsPanel embedded />}
+            competitionsPanel={
+              <Suspense fallback={null}>
+                <CompetitionsPanel embedded />
+              </Suspense>
+            }
           />
         ) : (
         <>
@@ -1767,7 +1787,9 @@ const Schedule: React.FC = () => {
         </Box>
 
         {sectionTab === 'competitions' ? (
-          <CompetitionsPanel embedded />
+          <Suspense fallback={<CircularProgress size={28} sx={{ m: 2 }} />}>
+            <CompetitionsPanel embedded />
+          </Suspense>
         ) : (
         <>
         {/* Filters and View Toggle */}
@@ -2675,19 +2697,23 @@ const Schedule: React.FC = () => {
                 </>
               )}
               
-        <CreateTrainingFlowDialogs
-          open={trainingTypeDialog}
-          onClose={() => {
-            setTrainingTypeDialog(false);
-            setSelectedDayForTraining(null);
-          }}
-          initialDate={selectedDayForTraining || selectedDate || new Date()}
-          onSuccess={async () => {
-            setTrainingTypeDialog(false);
-            setSelectedDayForTraining(null);
-            await fetchData();
-          }}
-        />
+        {trainingTypeDialog ? (
+          <Suspense fallback={null}>
+            <CreateTrainingFlowDialogs
+              open={trainingTypeDialog}
+              onClose={() => {
+                setTrainingTypeDialog(false);
+                setSelectedDayForTraining(null);
+              }}
+              initialDate={selectedDayForTraining || selectedDate || new Date()}
+              onSuccess={async () => {
+                setTrainingTypeDialog(false);
+                setSelectedDayForTraining(null);
+                await fetchData();
+              }}
+            />
+          </Suspense>
+        ) : null}
 
         {/* Edit Training Dialog */}
         <Dialog
@@ -3971,22 +3997,29 @@ const Schedule: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-        <CreateSchoolEventDialog
-          open={eventDialog}
-          onClose={() => {
-            setEventDialog(false);
-            setSelectedSchoolEvent(null);
-          }}
-          event={selectedSchoolEvent}
-          initialDate={createEventInitialDate}
-          branches={branches}
-          groups={groups}
-          trainers={trainers}
-          onSuccess={async () => {
-            const events = await apiService.getSchoolEvents().catch(() => []);
-            setSchoolEvents(events || []);
-          }}
-        />
+        {eventDialog ? (
+          <Suspense fallback={null}>
+            <CreateSchoolEventDialog
+              open={eventDialog}
+              onClose={() => {
+                setEventDialog(false);
+                setSelectedSchoolEvent(null);
+              }}
+              event={selectedSchoolEvent}
+              initialDate={createEventInitialDate}
+              branches={branches}
+              groups={groups}
+              trainers={trainers}
+              onSuccess={async () => {
+                const { from, to } = getScheduleRange(selectedDate, viewMode);
+                const events = await apiService
+                  .getSchoolEvents({ startDate: from.toISOString(), endDate: to.toISOString() })
+                  .catch(() => []);
+                setSchoolEvents(events || []);
+              }}
+            />
+          </Suspense>
+        ) : null}
 
         <Dialog open={eventDetailDialog} onClose={() => setEventDetailDialog(false)} maxWidth="sm" fullWidth>
           <DialogTitle>{selectedSchoolEvent?.title || 'Событие'}</DialogTitle>

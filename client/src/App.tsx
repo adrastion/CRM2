@@ -18,6 +18,7 @@ import CookieConsentBanner from './components/CookieConsentBanner';
 import MaintenanceScheduleNotice from './components/MaintenanceScheduleNotice';
 import SandboxExitBanner from './components/SandboxExitBanner';
 import { currentSessionDestination, hasAnySession } from './utils/authSession';
+import { schoolCabinetHome } from './utils/accountSwitcher';
 import SwitchAccountFromPush from './components/SwitchAccountFromPush';
 import SpellcheckProvider from './spellcheck/SpellcheckProvider';
 
@@ -148,7 +149,7 @@ const RoleRoute: React.FC<{ roles: string[]; children: React.ReactNode }> = ({ r
         !roles.includes('TRAINER')));
 
   if (!roleOk) {
-    return <Navigate to={user?.role === 'PROMOTER' ? '/clients' : '/dashboard'} replace />;
+    return <Navigate to={schoolCabinetHome(user?.role)} replace />;
   }
 
   return <>{children}</>;
@@ -169,7 +170,7 @@ const HomeRoute: React.FC = () => {
 
   if (hasAnySession()) {
     const dest = currentSessionDestination();
-    return <Navigate to={dest || '/dashboard'} replace />;
+    return <Navigate to={dest || schoolCabinetHome(null)} replace />;
   }
   return <Landing />;
 };
@@ -216,7 +217,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return !isAuthenticated ? (
     <>{children}</>
   ) : (
-    <Navigate to={user?.role === 'PROMOTER' ? '/clients' : '/dashboard'} replace />
+    <Navigate to={schoolCabinetHome(user?.role)} replace />
   );
 };
 
@@ -312,6 +313,9 @@ const MaintenanceGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         const maintenanceOn = Boolean(status?.maintenance?.enabled ?? status?.enabled);
         const closedOn = Boolean(status?.closedTesting?.enabled);
         const testingOn = Boolean(status?.testing?.enabled);
+
+        // Единый статус для баннера расписания ТО (без второго poller'а).
+        window.dispatchEvent(new CustomEvent('maintenance-status', { detail: status }));
 
         if (maintenanceOn) {
           sessionStorage.setItem('maintenanceMode', '1');

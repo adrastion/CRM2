@@ -3,7 +3,6 @@ import { Box, Typography } from '@mui/material';
 import { apiService } from '../services/api';
 
 const WARN_MS = 15 * 60 * 1000;
-const POLL_MS = 20_000;
 
 function formatLeft(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -16,7 +15,14 @@ function isHidden() {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
 
-/** Объявление и полноэкранный таймер за 15 минут до плановых техработ. Супер-админ его не видит. */
+function applyScheduleFromStatus(status: any): string | null {
+  const enabled = Boolean(status?.maintenance?.enabled ?? status?.enabled);
+  if (enabled) return null;
+  return status?.maintenance?.scheduledAt || null;
+}
+
+/** Объявление и полноэкранный таймер за 15 минут до плановых техработ. Супер-админ его не видит.
+ *  Не поллит сам — слушает единый `maintenance-status` из MaintenanceGate (App). */
 const MaintenanceScheduleNotice: React.FC<{ isSuperAdmin: boolean }> = ({ isSuperAdmin }) => {
   const [scheduledAt, setScheduledAt] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -25,31 +31,22 @@ const MaintenanceScheduleNotice: React.FC<{ isSuperAdmin: boolean }> = ({ isSupe
   useEffect(() => {
     if (isSuperAdmin) return;
     let cancelled = false;
-    const pull = async () => {
-      if (isHidden()) return;
-      try {
-        const status = await apiService.getMaintenanceStatus();
-        if (cancelled) return;
-        const at = status?.maintenance?.scheduledAt || null;
-        const enabled = Boolean(status?.maintenance?.enabled ?? status?.enabled);
-        setScheduledAt(enabled ? null : at);
-        if (enabled) {
-          window.dispatchEvent(new CustomEvent('maintenance-mode', { detail: { mode: 'maintenance' } }));
-        }
-      } catch {
-        /* публичный статус может быть недоступен */
-      }
+    // Один стартовый снимок (если Gate ещё не успел разослать событие).
+    void apiService
+      .getMaintenanceStatus()
+      .then((status) => {
+        if (!cancelled) setScheduledAt(applyScheduleFromStatus(status));
+      })
+      .catch(() => undefined);
+
+    const onStatus = (e: Event) => {
+      const status = (e as CustomEvent).detail;
+      setScheduledAt(applyScheduleFromStatus(status));
     };
-    void pull();
-    const poll = window.setInterval(pull, POLL_MS);
-    const onVis = () => {
-      if (!isHidden()) void pull();
-    };
-    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('maintenance-status', onStatus as EventListener);
     return () => {
       cancelled = true;
-      window.clearInterval(poll);
-      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('maintenance-status', onStatus as EventListener);
     };
   }, [isSuperAdmin]);
 

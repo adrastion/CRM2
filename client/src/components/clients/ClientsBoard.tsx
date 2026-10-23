@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { differenceInYears, format, isToday, isTomorrow } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { List, type RowComponentProps } from 'react-window';
 import { Client } from '../../types';
 import { colors, radii, typography } from '../../theme/tokens';
 import {
@@ -41,6 +42,11 @@ import {
   getClientAccountStatus,
   type ClientAccountStatusKey,
 } from '../../utils/clientAccountStatus';
+
+const CLIENT_ROW_H = 64;
+const CLIENT_LIST_MAX_H = 560;
+const CLIENT_GRID_COLS =
+  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px';
 
 export type ClientCategoryTab = 'all' | 'trial' | 'active' | 'inactive' | 'new';
 
@@ -209,6 +215,224 @@ const cardSx = {
   border: '1px solid #EEF1F6',
   boxShadow: '0 2px 10px rgba(27, 36, 56, 0.04)',
 };
+
+type ClientRowProps = {
+  clients: Client[];
+  selected: Set<string>;
+  toggleOne: (id: string) => void;
+  onEdit: (client: Client) => void;
+  onGroupClick?: (client: Client) => void;
+  onMembershipClick?: (client: Client) => void;
+  openRowMenu: (el: HTMLElement, client: Client) => void;
+};
+
+function ClientRow({
+  index,
+  style,
+  clients,
+  selected,
+  toggleOne,
+  onEdit,
+  onGroupClick,
+  onMembershipClick,
+  openRowMenu,
+}: RowComponentProps<ClientRowProps>) {
+  const c = clients[index];
+  if (!c) return <Box style={style} />;
+  const st = REG_STATUS_CHIP[registrationStatus(c)];
+  const grp = primaryGroup(c);
+  const mem = membershipInfo(c);
+  const next = nextLessonLabel(c);
+  const bal = Number(c.balance ?? 0);
+  const age = ageLabel(c);
+
+  return (
+    <Box
+      style={style}
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: CLIENT_GRID_COLS,
+        gap: 1,
+        px: 1.5,
+        alignItems: 'center',
+        minWidth: 1000,
+        borderBottom: '1px solid #F1F3F7',
+        bgcolor: index % 2 === 1 ? '#FAFBFD' : '#fff',
+        '&:hover': { bgcolor: '#F5F8FF' },
+        cursor: 'pointer',
+        boxSizing: 'border-box',
+      }}
+      onClick={() => onEdit(c)}
+    >
+      <Checkbox
+        size="small"
+        checked={selected.has(c.id)}
+        onClick={(e) => e.stopPropagation()}
+        onChange={() => toggleOne(c.id)}
+        sx={{ p: 0.5 }}
+      />
+
+      <Stack direction="row" spacing={1.1} alignItems="center" minWidth={0}>
+        <Avatar
+          src={c.photo || undefined}
+          sx={{
+            width: 36,
+            height: 36,
+            fontSize: typography.label,
+            fontWeight: 800,
+            bgcolor: '#E8EEFF',
+            color: colors.primary,
+          }}
+        >
+          {initials(c)}
+        </Avatar>
+        <Box minWidth={0}>
+          <Typography
+            sx={{
+              fontWeight: 750,
+              fontSize: typography.label,
+              color: '#1B2438',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {fullName(c)}
+          </Typography>
+          {age && (
+            <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#8B93A7' }}>{age}</Typography>
+          )}
+        </Box>
+      </Stack>
+
+      <Box minWidth={0}>
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 650,
+            color: '#1B2438',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {c.phone || '—'}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 600,
+            color: '#8B93A7',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {c.email || '—'}
+        </Typography>
+      </Box>
+
+      <Chip
+        size="small"
+        label={st.label}
+        sx={{
+          height: 24,
+          fontWeight: 750,
+          fontSize: typography.label,
+          bgcolor: st.bg,
+          color: st.fg,
+          borderRadius: '999px',
+          width: 'fit-content',
+          maxWidth: '100%',
+          '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
+        }}
+      />
+
+      <Box
+        onClick={(e) => {
+          e.stopPropagation();
+          onGroupClick?.(c);
+        }}
+        sx={{ minWidth: 0 }}
+      >
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 750,
+            color: '#1B2438',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {grp.name}
+        </Typography>
+        <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>
+          {grp.branch ? `Филиал: ${grp.branch}` : '—'}
+        </Typography>
+      </Box>
+
+      <Box
+        onClick={(e) => {
+          e.stopPropagation();
+          onMembershipClick?.(c);
+        }}
+      >
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 750,
+            color: mem.expired ? '#DC2626' : '#1B2438',
+          }}
+        >
+          {mem.title}
+        </Typography>
+        <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{mem.sub}</Typography>
+      </Box>
+
+      <Typography
+        sx={{
+          fontSize: typography.label,
+          fontWeight: 800,
+          color: bal < 0 ? '#DC2626' : '#1B2438',
+        }}
+      >
+        {formatBalance(bal)}
+      </Typography>
+
+      <Box>
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            fontWeight: 750,
+            color: next.accent || (next.main === 'Нет записей' ? '#8B93A7' : '#1B2438'),
+          }}
+        >
+          {next.main}
+        </Typography>
+        {next.sub && (
+          <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{next.sub}</Typography>
+        )}
+      </Box>
+
+      <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()}>
+        <IconButton size="small" sx={{ color: colors.primary }} onClick={() => onEdit(c)}>
+          <CalendarMonthOutlined fontSize="small" />
+        </IconButton>
+        <IconButton size="small" sx={{ color: '#8B93A7' }}>
+          <ChatBubbleOutline fontSize="small" />
+        </IconButton>
+        <IconButton
+          size="small"
+          sx={{ color: '#8B93A7' }}
+          onClick={(e) => openRowMenu(e.currentTarget, c)}
+        >
+          <MoreVert fontSize="small" />
+        </IconButton>
+      </Stack>
+    </Box>
+  );
+}
 
 const ClientsBoard: React.FC<Props> = ({
   clients,
@@ -691,8 +915,7 @@ const ClientsBoard: React.FC<Props> = ({
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns:
-              '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px',
+            gridTemplateColumns: CLIENT_GRID_COLS,
             gap: 1,
             px: 1.5,
             py: 1.1,
@@ -719,177 +942,31 @@ const ClientsBoard: React.FC<Props> = ({
           ))}
         </Box>
 
-        {filtered.map((c, idx) => {
-          const st = REG_STATUS_CHIP[registrationStatus(c)];
-          const grp = primaryGroup(c);
-          const mem = membershipInfo(c);
-          const next = nextLessonLabel(c);
-          const bal = Number(c.balance ?? 0);
-          const age = ageLabel(c);
-
-          return (
-            <Box
-              key={c.id}
-              sx={{
-                display: 'grid',
-                gridTemplateColumns:
-                  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px',
-                gap: 1,
-                px: 1.5,
-                py: 1.15,
-                minWidth: 1000,
-                alignItems: 'center',
-                borderBottom: '1px solid #F1F3F7',
-                bgcolor: idx % 2 === 1 ? '#FAFBFD' : '#fff',
-                '&:hover': { bgcolor: '#F5F8FF' },
-                cursor: 'pointer',
+        {filtered.length > 0 ? (
+          <Box
+            sx={{
+              height: Math.min(filtered.length * CLIENT_ROW_H, CLIENT_LIST_MAX_H),
+              minWidth: 1000,
+            }}
+          >
+            <List
+              rowCount={filtered.length}
+              rowHeight={CLIENT_ROW_H}
+              rowComponent={ClientRow}
+              rowProps={{
+                clients: filtered,
+                selected,
+                toggleOne,
+                onEdit,
+                onGroupClick,
+                onMembershipClick,
+                openRowMenu: (el, client) => setRowMenu({ el, client }),
               }}
-              onClick={() => onEdit(c)}
-            >
-              <Checkbox
-                size="small"
-                checked={selected.has(c.id)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggleOne(c.id)}
-                sx={{ p: 0.5 }}
-              />
-
-              <Stack direction="row" spacing={1.1} alignItems="center" minWidth={0}>
-                <Avatar
-                  src={c.photo || undefined}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    fontSize: typography.label,
-                    fontWeight: 800,
-                    bgcolor: '#E8EEFF',
-                    color: colors.primary,
-                  }}
-                >
-                  {initials(c)}
-                </Avatar>
-                <Box minWidth={0}>
-                  <Typography
-                    sx={{
-                      fontWeight: 750,
-                      fontSize: typography.label,
-                      color: '#1B2438',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {fullName(c)}
-                  </Typography>
-                  {age && (
-                    <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#8B93A7' }}>{age}</Typography>
-                  )}
-                </Box>
-              </Stack>
-
-              <Box minWidth={0}>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 650, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {c.phone || '—'}
-                </Typography>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {c.email || '—'}
-                </Typography>
-              </Box>
-
-              <Chip
-                size="small"
-                label={st.label}
-                sx={{
-                  height: 24,
-                  fontWeight: 750,
-                  fontSize: typography.label,
-                  bgcolor: st.bg,
-                  color: st.fg,
-                  borderRadius: '999px',
-                  width: 'fit-content',
-                  maxWidth: '100%',
-                  '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
-                }}
-              />
-
-              <Box
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onGroupClick?.(c);
-                }}
-                sx={{ minWidth: 0 }}
-              >
-                <Typography sx={{ fontSize: typography.label, fontWeight: 750, color: '#1B2438', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {grp.name}
-                </Typography>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>
-                  {grp.branch ? `Филиал: ${grp.branch}` : '—'}
-                </Typography>
-              </Box>
-
-              <Box
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMembershipClick?.(c);
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: typography.label,
-                    fontWeight: 750,
-                    color: mem.expired ? '#DC2626' : '#1B2438',
-                  }}
-                >
-                  {mem.title}
-                </Typography>
-                <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{mem.sub}</Typography>
-              </Box>
-
-              <Typography
-                sx={{
-                  fontSize: typography.label,
-                  fontWeight: 800,
-                  color: bal < 0 ? '#DC2626' : '#1B2438',
-                }}
-              >
-                {formatBalance(bal)}
-              </Typography>
-
-              <Box>
-                <Typography
-                  sx={{
-                    fontSize: typography.label,
-                    fontWeight: 750,
-                    color: next.accent || (next.main === 'Нет записей' ? '#8B93A7' : '#1B2438'),
-                  }}
-                >
-                  {next.main}
-                </Typography>
-                {next.sub && (
-                  <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{next.sub}</Typography>
-                )}
-              </Box>
-
-              <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()}>
-                <IconButton size="small" sx={{ color: colors.primary }} onClick={() => onEdit(c)}>
-                  <CalendarMonthOutlined fontSize="small" />
-                </IconButton>
-                <IconButton size="small" sx={{ color: '#8B93A7' }}>
-                  <ChatBubbleOutline fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  sx={{ color: '#8B93A7' }}
-                  onClick={(e) => setRowMenu({ el: e.currentTarget, client: c })}
-                >
-                  <MoreVert fontSize="small" />
-                </IconButton>
-              </Stack>
-            </Box>
-          );
-        })}
-
-        {!filtered.length && (
+              style={{ height: '100%', width: '100%' }}
+              overscanCount={8}
+            />
+          </Box>
+        ) : (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <Typography sx={{ color: '#8B93A7', fontWeight: 650, mb: 1.5 }}>Клиенты не найдены</Typography>
             <Button variant="contained" startIcon={<Add />} onClick={onAdd} sx={{ textTransform: 'none', fontWeight: 700 }}>

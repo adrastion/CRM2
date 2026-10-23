@@ -235,40 +235,99 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     ];
   }
 
-  // Get clients with pagination
+  // Get clients with pagination — только поля списка (без жирных nested user)
   const [clients, total] = await Promise.all([
     prisma.client.findMany({
       where,
       skip,
       take,
       orderBy: { [sortBy]: sortOrder },
-      include: {
-        parents: true,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        middleName: true,
+        email: true,
+        phone: true,
+        dateOfBirth: true,
+        gender: true,
+        photo: true,
+        balance: true,
+        isActive: true,
+        athleteStatus: true,
+        createdAt: true,
+        updatedAt: true,
+        tenantId: true,
+        createdByUserId: true,
+        personalDiscountType: true,
+        personalDiscountValue: true,
+        password: true,
+        isAccountApproved: true,
+        emailVerified: true,
+        birthCertificate: true,
+        medicalCertificate: true,
+        parents: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            relationType: true,
+            password: true,
+          },
+        },
         achievements: {
           orderBy: { date: 'desc' },
-          take: 5
+          take: 5,
+          select: {
+            id: true,
+            title: true,
+            date: true,
+            type: true,
+          },
         },
         groupMemberships: {
           where: { isActive: true },
-          include: {
+          select: {
+            id: true,
+            groupId: true,
+            isActive: true,
+            isTrial: true,
             group: {
-              include: {
-                trainer: {
-                  include: { user: true }
+              select: {
+                id: true,
+                name: true,
+                trainerId: true,
+                branchId: true,
+                isMonthlyPayment: true,
+                monthlyPaymentAmount: true,
+                branch: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
                 },
-                branch: true
-              }
-            }
-          }
+              },
+            },
+          },
         },
         clientMemberships: {
           where: { isActive: true },
-          include: {
-            membership: true
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            membershipId: true,
+            visitsUsed: true,
+            visitsTotal: true,
+            endDate: true,
+            isActive: true,
+            membership: {
+              select: { id: true, name: true, type: true },
+            },
           },
-          orderBy: { createdAt: 'desc' }
         },
-      }
+      },
     }),
     prisma.client.count({ where })
   ]);

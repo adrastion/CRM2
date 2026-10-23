@@ -276,9 +276,7 @@ const SpellcheckProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (mobileSpellOff) return;
 
     ensureSpellStyles();
-    const idle = window.setTimeout(() => {
-      void loadRuSpell().catch(() => undefined);
-    }, 1200);
+    // Словарь (~3.4 MB) грузим только при первом фокусе в editable, не на idle.
 
     const onFocusIn = (e: FocusEvent) => {
       const t = e.target;
@@ -341,7 +339,6 @@ const SpellcheckProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('resize', onResize);
 
     return () => {
-      window.clearTimeout(idle);
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       document.removeEventListener('focusin', onFocusIn, true);

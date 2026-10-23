@@ -1,7 +1,20 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import AddFinanceOperationDialog from '../components/finance/AddFinanceOperationDialog';
-import CreateClientDialog from '../components/client/CreateClientDialog';
-import CreateTrainingFlowDialogs from '../components/schedule/CreateTrainingFlowDialogs';
+import React, {
+  createContext,
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
+
+const CreateClientDialog = lazy(() => import('../components/client/CreateClientDialog'));
+const CreateTrainingFlowDialogs = lazy(
+  () => import('../components/schedule/CreateTrainingFlowDialogs')
+);
+const AddFinanceOperationDialog = lazy(
+  () => import('../components/finance/AddFinanceOperationDialog')
+);
 
 type CreateFlowsContextValue = {
   openCreateClient: () => void;
@@ -44,9 +57,21 @@ export const CreateFlowsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   return (
     <CreateFlowsContext.Provider value={value}>
       {children}
-      <CreateClientDialog open={clientOpen} onClose={() => setClientOpen(false)} />
-      <CreateTrainingFlowDialogs open={trainingOpen} onClose={() => setTrainingOpen(false)} />
-      <AddFinanceOperationDialog open={financeOpen} onClose={() => setFinanceOpen(false)} />
+      {clientOpen ? (
+        <Suspense fallback={null}>
+          <CreateClientDialog open={clientOpen} onClose={() => setClientOpen(false)} />
+        </Suspense>
+      ) : null}
+      {trainingOpen ? (
+        <Suspense fallback={null}>
+          <CreateTrainingFlowDialogs open={trainingOpen} onClose={() => setTrainingOpen(false)} />
+        </Suspense>
+      ) : null}
+      {financeOpen ? (
+        <Suspense fallback={null}>
+          <AddFinanceOperationDialog open={financeOpen} onClose={() => setFinanceOpen(false)} />
+        </Suspense>
+      ) : null}
     </CreateFlowsContext.Provider>
   );
 };

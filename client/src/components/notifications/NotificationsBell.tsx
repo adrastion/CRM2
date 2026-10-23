@@ -185,7 +185,7 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
       void load({ silent });
     };
     pull(false);
-    const t = window.setInterval(() => pull(true), 30000);
+    const t = window.setInterval(() => pull(true), 60_000);
     const onVis = () => {
       if (document.visibilityState === 'visible') pull(true);
     };

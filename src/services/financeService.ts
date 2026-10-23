@@ -1799,8 +1799,8 @@ export class FinanceService {
 
   /**
    * Текущий баланс клиента как в «Финансы → Операции клиентов» (колонка Баланс):
-   * накопленное оплачено − начислено по последнему периоду.
-   * Без membership-операций = Client.balance (та же семантика, что в membershipSummary).
+   * накопленное оплачено − начислено по всем периодам.
+   * Узкий путь: только payments + Client.balance, без полного membershipSummary.
    */
   static async clientMembershipBalances(
     tenantId: string,
@@ -1809,13 +1809,142 @@ export class FinanceService {
     const result = new Map<string, number>();
     if (!clientIds.length) return result;
 
-    const rows = await this.membershipSummary(tenantId, { clientIds });
-    // membershipSummary отдаёт периоды от новых к старым — первая строка клиента = актуальный remaining
-    for (const row of rows) {
-      if (!result.has(row.clientId)) {
-        result.set(row.clientId, Number(row.remaining) || 0);
+    const paymentPeriodKey = (p: {
+      periodKey?: string | null;
+      dueDate?: Date | null;
+      createdAt: Date;
+      notes?: string | null;
+    }): string => {
+      if (p.periodKey && (p.periodKey.startsWith('pack:') || p.periodKey.startsWith('debit:'))) {
+        return p.periodKey;
       }
+      const packMatch = p.notes?.match(/clientMembershipId=([a-zA-Z0-9_-]+)/);
+      if (packMatch) return `pack:${packMatch[1]}`;
+      const debitMatch = p.notes?.match(/clientDebitId=([a-zA-Z0-9_-]+)/);
+      if (debitMatch) return `debit:${debitMatch[1]}`;
+      if (p.periodKey && /^\d{4}-\d{2}$/.test(p.periodKey)) return p.periodKey;
+      const d = p.dueDate || p.createdAt;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    const isWalletCredit = (notes?: string | null) =>
+      (notes || '').includes('[allocation:credit]');
+    const isExcessPay = (notes?: string | null) =>
+      (notes || '').includes('[payment-excess]');
+
+    const [clients, payments] = await Promise.all([
+      prisma.client.findMany({
+        where: { tenantId, id: { in: clientIds } },
+        select: { id: true, balance: true },
+      }),
+      prisma.payment.findMany({
+        where: {
+          tenantId,
+          clientId: { in: clientIds },
+          status: { not: 'cancelled' },
+          OR: [{ type: 'membership' }, { isMonthlyPayment: true }],
+        },
+        select: {
+          id: true,
+          clientId: true,
+          amount: true,
+          status: true,
+          notes: true,
+          periodKey: true,
+          dueDate: true,
+          createdAt: true,
+          isAccrualAdjustment: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+
+    const walletByClient = new Map(
+      clients.map((c) => [c.id, Number(c.balance) || 0] as const)
+    );
+    const paymentsByClient = new Map<string, typeof payments>();
+    for (const p of payments) {
+      const list = paymentsByClient.get(p.clientId);
+      if (list) list.push(p);
+      else paymentsByClient.set(p.clientId, [p]);
     }
+
+    for (const clientId of clientIds) {
+      const clientPayments = paymentsByClient.get(clientId);
+      if (!clientPayments?.length) {
+        result.set(clientId, walletByClient.get(clientId) ?? 0);
+        continue;
+      }
+
+      const byPeriod = new Map<string, typeof payments>();
+      for (const p of clientPayments) {
+        const key = paymentPeriodKey(p);
+        const list = byPeriod.get(key);
+        if (list) list.push(p);
+        else byPeriod.set(key, [p]);
+      }
+
+      const periodEntries = [...byPeriod.entries()].map(([periodKey, periodPayments]) => {
+        const sortAt = Math.max(...periodPayments.map((p) => p.createdAt.getTime()));
+        return { periodKey, payments: periodPayments, sortAt };
+      });
+      periodEntries.sort((a, b) => a.sortAt - b.sortAt || a.periodKey.localeCompare(b.periodKey));
+
+      let running = 0;
+      for (const { payments: periodPayments } of periodEntries) {
+        const walletCredits = periodPayments.filter(
+          (p) => !p.isAccrualAdjustment && isWalletCredit(p.notes) && p.status === 'paid'
+        );
+        const walletCreditSum = walletCredits.reduce((s, p) => s + Number(p.amount), 0);
+
+        const pending = periodPayments.filter(
+          (p) =>
+            !p.isAccrualAdjustment &&
+            !isWalletCredit(p.notes) &&
+            (p.status === 'pending' || p.status === 'overdue')
+        );
+        const paid = periodPayments.filter(
+          (p) =>
+            !p.isAccrualAdjustment &&
+            !isWalletCredit(p.notes) &&
+            p.status === 'paid'
+        );
+
+        const dueAmount = pending.reduce((s, p) => s + Number(p.amount), 0);
+        const chargePaidAmount = paid.reduce((s, p) => s + Number(p.amount), 0);
+
+        let settledByCredit = 0;
+        for (const c of walletCredits) {
+          const settleMatch = (c.notes || '').match(/\[settled:([^\]]+)\]/);
+          if (!settleMatch) continue;
+          const ids = new Set(
+            settleMatch[1]
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          );
+          for (const p of paid) {
+            if (ids.has(p.id)) settledByCredit += Number(p.amount);
+          }
+        }
+        const paidAmount =
+          Math.round((chargePaidAmount + walletCreditSum - settledByCredit) * 100) / 100;
+
+        const paidTowardCharge = paid
+          .filter((p) => Number(p.amount) > 0 && !isExcessPay(p.notes))
+          .reduce((s, p) => s + Number(p.amount), 0);
+
+        let membershipPrice = 0;
+        if (pending.length > 0 || paidTowardCharge > 0) {
+          membershipPrice = Math.round((dueAmount + paidTowardCharge) * 100) / 100;
+        }
+
+        running = running - membershipPrice + paidAmount;
+      }
+
+      result.set(clientId, Math.round(running * 100) / 100);
+    }
+
     return result;
   }
 

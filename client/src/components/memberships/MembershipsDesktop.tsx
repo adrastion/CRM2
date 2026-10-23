@@ -31,7 +31,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import * as XLSX from 'xlsx';
 import { Membership } from '../../types';
 import { colors, radii, typography } from '../../theme/tokens';
 import MetricCard from '../dashboard/MetricCard';
@@ -231,7 +230,8 @@ const MembershipsDesktop: React.FC<MembershipsDesktopProps> = ({
     setPeriodFilter('ALL');
   };
 
-  const exportRows = () => {
+  const exportRows = async () => {
+    const XLSX = await import('xlsx');
     const rows = filteredItems.map((membership) => ({
       Название: membership.name,
       Тип: categoryLabel(membership.category),

@@ -6,7 +6,7 @@ import { accrueForAttendance, reverseForAttendance } from '../services/trainerSa
 import {
   consumeVisitFromActivePack,
   findActiveClientMembership,
-  getActiveMembershipSummary,
+  getActiveMembershipSummaries,
   restoreVisitToActivePack,
 } from '../services/clientMembershipService';
 import * as XLSX from 'xlsx';
@@ -322,23 +322,25 @@ export const getAttendancesByTraining = async (req: AuthenticatedRequest, res: R
 
     const tenantId = req.tenant?.id;
     if (tenantId && result.length > 0) {
-      result = await Promise.all(
-        result.map(async (row) => {
-          const summary = await getActiveMembershipSummary(row.client.id, tenantId);
-          return {
-            ...row,
-            client: {
-              ...row.client,
-              activeMembership: summary
-                ? {
-                    ...summary,
-                    endDate: summary.endDate ? summary.endDate.toISOString() : null,
-                  }
-                : null,
-            },
-          };
-        })
+      const summaries = await getActiveMembershipSummaries(
+        result.map((row) => row.client.id),
+        tenantId
       );
+      result = result.map((row) => {
+        const summary = summaries.get(row.client.id) || null;
+        return {
+          ...row,
+          client: {
+            ...row.client,
+            activeMembership: summary
+              ? {
+                  ...summary,
+                  endDate: summary.endDate ? summary.endDate.toISOString() : null,
+                }
+              : null,
+          },
+        };
+      });
     }
 
     res.json({

@@ -9,7 +9,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
-  List,
+  List as MuiList,
   ListItemButton,
   ListItemText,
   Menu,
@@ -57,6 +57,10 @@ import {
   renderMentionNodes,
   renderMentionPlain,
 } from './chatMentionUtils';
+
+const CHAT_MSG_PAGE = 50;
+/** Intrinsic size hint for content-visibility virtualization of off-screen bubbles. */
+const CHAT_MSG_ROW_EST = 96;
 
 export type PresenceStatus = 'unregistered' | 'offline' | 'online';
 
@@ -279,6 +283,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -443,17 +450,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       }
       setActiveThreadId(threadId);
       activeThreadIdRef.current = threadId;
+      const pageParams = { limit: CHAT_MSG_PAGE };
       const data =
         mode === 'staff'
-          ? await apiService.getChatMessages(threadId!)
+          ? await apiService.getChatMessages(threadId!, pageParams)
           : mode === 'client'
-            ? await apiService.clientGetChatMessages(threadId!)
-            : await apiService.getPlatformChatMessages(threadId!);
+            ? await apiService.clientGetChatMessages(threadId!, pageParams)
+            : await apiService.getPlatformChatMessages(threadId!, pageParams);
       const viewDeleted = Boolean(data.canViewDeleted);
       setCanViewDeleted(viewDeleted);
       canViewDeletedRef.current = viewDeleted;
       const incoming = (data.messages || []) as ChatMessageItem[];
-      setMessages(viewDeleted ? incoming : incoming.filter((m) => !m.deleted));
+      const visible = viewDeleted ? incoming : incoming.filter((m) => !m.deleted);
+      setMessages(visible);
+      setHasMoreMessages(Boolean(data.hasMore) || incoming.length >= CHAT_MSG_PAGE);
       setPins(
         viewDeleted
           ? data.pins || []
@@ -476,11 +486,56 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось открыть чат');
+      setHasMoreMessages(false);
       pendingOpenScrollRef.current = false;
     } finally {
       setLoadingMessages(false);
     }
   };
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeThreadId || !hasMoreMessages || loadingOlderRef.current) return;
+    const oldest = messages[0];
+    if (!oldest?.id) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const el = feedRef.current;
+    const prevHeight = el?.scrollHeight || 0;
+    const prevTop = el?.scrollTop || 0;
+    try {
+      const pageParams = { limit: CHAT_MSG_PAGE, before: oldest.id };
+      const data =
+        mode === 'staff'
+          ? await apiService.getChatMessages(activeThreadId, pageParams)
+          : mode === 'client'
+            ? await apiService.clientGetChatMessages(activeThreadId, pageParams)
+            : await apiService.getPlatformChatMessages(activeThreadId, pageParams);
+      const incoming = (data.messages || []) as ChatMessageItem[];
+      const visible = canViewDeletedRef.current
+        ? incoming
+        : incoming.filter((m) => !m.deleted);
+      if (!visible.length) {
+        setHasMoreMessages(false);
+        return;
+      }
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const older = visible.filter((m) => !seen.has(m.id));
+        return older.length ? [...older, ...prev] : prev;
+      });
+      setHasMoreMessages(Boolean(data.hasMore) || incoming.length >= CHAT_MSG_PAGE);
+      requestAnimationFrame(() => {
+        const feed = feedRef.current;
+        if (!feed) return;
+        feed.scrollTop = prevTop + (feed.scrollHeight - prevHeight);
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [activeThreadId, hasMoreMessages, messages, mode]);
 
   const initialOpenedRef = useRef(false);
   useEffect(() => {
@@ -1092,7 +1147,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             <CircularProgress size={28} />
           </Box>
         ) : (
-          <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
+          <MuiList dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
             {filteredThreads.length === 0 ? (
               <Typography color="text.secondary" sx={{ p: 2 }}>
                 Нет доступных бесед
@@ -1198,9 +1253,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 );
               })
             )}
-          </List>
-        )}
-      </Box>
+          </MuiList>
+              )}
+            </Box>
 
       <Box
         sx={{
@@ -1320,6 +1375,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
                 nearBottomRef.current = gap < 120;
                 persistFeedScroll(activeThreadId);
+                if (el.scrollTop < 80 && hasMoreMessages && !loadingOlderRef.current) {
+                  void loadOlderMessages();
+                }
               }}
               sx={{
                 flex: 1,
@@ -1334,7 +1392,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                   <CircularProgress size={28} />
                 </Box>
               ) : (
-                messages
+                <>
+                {(loadingOlder || hasMoreMessages) && (
+                  <Box display="flex" justifyContent="center" py={1}>
+                    {loadingOlder ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: colors.textHint, cursor: 'pointer' }}
+                        onClick={() => void loadOlderMessages()}
+                      >
+                        Загрузить раньше
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+                {messages
                   .filter((m) => canViewDeleted || !m.deleted)
                   .map((m, idx, list) => {
                   const own = isOwn(m);
@@ -1374,6 +1448,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                           display: 'flex',
                           justifyContent: own ? 'flex-end' : 'flex-start',
                           mb: 0.75,
+                          contentVisibility: 'auto',
+                          containIntrinsicSize: `auto ${CHAT_MSG_ROW_EST}px`,
                         }}
                       >
                         <Box
@@ -1601,7 +1677,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                       </Box>
                     </React.Fragment>
                   );
-                })
+                })}
+                </>
               )}
               <div ref={bottomRef} />
             </Box>
@@ -1879,7 +1956,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
       <Dialog open={Boolean(readByDialog)} onClose={() => setReadByDialog(null)} fullWidth maxWidth="xs">
         <DialogTitle>Прочитали</DialogTitle>
         <DialogContent dividers>
-          <List dense>
+          <MuiList dense>
             {(readByDialog?.readBy || []).map((r) => (
               <ListItemButton key={`${r.type}:${r.id}`} disableRipple>
                 <ListItemText
@@ -1888,14 +1965,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 />
               </ListItemButton>
             ))}
-          </List>
+          </MuiList>
         </DialogContent>
       </Dialog>
 
       <Dialog open={participantsOpen} onClose={() => setParticipantsOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Участники</DialogTitle>
         <DialogContent dividers>
-          <List dense>
+          <MuiList dense>
             {participants.map((p) => (
               <ListItemButton
                 key={`${p.type}:${p.id}`}
@@ -1912,7 +1989,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 Нет участников
               </Typography>
             )}
-          </List>
+          </MuiList>
         </DialogContent>
       </Dialog>
 

@@ -1,6 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { switchToAccountSafe, getActiveAccountId } from '../utils/accountSwitcher';
+import {
+  switchToAccountSafe,
+  getActiveAccountId,
+  listSavedAccounts,
+  schoolCabinetHome,
+} from '../utils/accountSwitcher';
 
 function destinationForSlot(accountId: string, next?: string | null): string {
   if (next && next.startsWith('/') && !next.startsWith('//')) return next;
@@ -9,7 +14,24 @@ function destinationForSlot(accountId: string, next?: string | null): string {
   }
   if (accountId.startsWith('SUPER_ADMIN:')) return '/admin/dashboard';
   if (accountId.startsWith('TESTER:')) return '/tester/dashboard';
-  return '/dashboard';
+  if (accountId.startsWith('TENANT_USER:')) {
+    const slot = listSavedAccounts().find((a) => a.id === accountId);
+    let role: string | null = null;
+    try {
+      role = slot?.keys?.user ? JSON.parse(slot.keys.user)?.role : null;
+    } catch {
+      role = null;
+    }
+    if (!role) {
+      try {
+        role = JSON.parse(localStorage.getItem('user') || '{}')?.role || null;
+      } catch {
+        role = null;
+      }
+    }
+    return schoolCabinetHome(role);
+  }
+  return schoolCabinetHome(null);
 }
 
 async function applySwitch(accountId: string, next?: string | null) {

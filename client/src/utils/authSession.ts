@@ -8,6 +8,7 @@ import {
   fallbackToSchoolAccount,
   getActiveAccountId,
   listSavedAccounts,
+  schoolCabinetHome,
 } from './accountSwitcher';
 import { apiService } from '../services/api';
 
@@ -73,7 +74,7 @@ function writeSessionKeys(session: SessionLike): string {
       localStorage.setItem('token', session.token);
       localStorage.setItem('user', JSON.stringify(session.user));
       localStorage.setItem('tenant', JSON.stringify(session.tenant));
-      destination = '/dashboard';
+      destination = schoolCabinetHome(session.user?.role);
       break;
 
     case 'CLIENT':
@@ -276,7 +277,15 @@ export function hasAnySession(): boolean {
 
 /** Куда вести пользователя, у которого уже есть сессия. */
 export function currentSessionDestination(): string | null {
-  if (localStorage.getItem('token')) return '/dashboard';
+  if (localStorage.getItem('token')) {
+    let role: string | null = null;
+    try {
+      role = JSON.parse(localStorage.getItem('user') || '{}')?.role || null;
+    } catch {
+      role = null;
+    }
+    return schoolCabinetHome(role);
+  }
   if (localStorage.getItem('clientToken')) return '/client/dashboard';
   if (localStorage.getItem('superAdminToken')) return '/admin/dashboard';
   if (localStorage.getItem('testerToken')) return '/tester/dashboard';

@@ -53,6 +53,15 @@ const ROLE_LABELS: Record<string, string> = {
   PROMOTER: 'Промоутер',
 };
 
+/** Домашняя страница школьного кабинета. PROMOTER не имеет доступа к /dashboard. */
+export function schoolCabinetHome(role?: string | null): string {
+  return role === 'PROMOTER' ? '/clients' : '/dashboard';
+}
+
+function storedSchoolRole(): string | null {
+  return safeParse<{ role?: string }>(localStorage.getItem('user'))?.role || null;
+}
+
 function personName(parts: Array<string | undefined | null>): string {
   return parts.filter(Boolean).join(' ').trim();
 }
@@ -77,7 +86,7 @@ function clearActiveAuthKeys(): void {
 }
 
 function activeDestination(): string {
-  if (localStorage.getItem('token')) return '/dashboard';
+  if (localStorage.getItem('token')) return schoolCabinetHome(storedSchoolRole());
   if (localStorage.getItem('clientToken')) return '/client/dashboard';
   if (localStorage.getItem('superAdminToken')) return '/admin/dashboard';
   if (localStorage.getItem('testerToken')) return '/tester/dashboard';
@@ -475,8 +484,18 @@ export function switchToAccount(id: string): void {
     return;
   }
 
-  const dest = slot.destination && slot.destination !== '/' ? slot.destination : activeDestination();
+  const dest = resolveSlotDestination(slot);
   window.location.assign(dest || '/auth');
+}
+
+/** Сохранённый destination мог быть /dashboard ещё до фикса PROMOTER. */
+function resolveSlotDestination(slot: SavedAccountSlot): string {
+  if (slot.accountType === 'TENANT_USER') {
+    const role = safeParse<{ role?: string }>(slot.keys?.user || null)?.role;
+    return schoolCabinetHome(role);
+  }
+  if (slot.destination && slot.destination !== '/') return slot.destination;
+  return activeDestination();
 }
 
 /**
@@ -500,9 +519,7 @@ export function logoutCurrentAccount(): string | null {
     localStorage.setItem(key, value);
   }
   upsertFromActiveStorage();
-  return next.destination && next.destination !== '/'
-    ? next.destination
-    : activeDestination() || '/auth';
+  return resolveSlotDestination(next);
 }
 
 /**
@@ -535,7 +552,5 @@ export function fallbackToSchoolAccount(): string | null {
     localStorage.setItem(key, value);
   }
   upsertFromActiveStorage();
-  return school.destination && school.destination !== '/'
-    ? school.destination
-    : '/dashboard';
+  return resolveSlotDestination(school);
 }

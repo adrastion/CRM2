@@ -48,7 +48,10 @@ export function useMultiAccountUnread(opts?: { menuOpen?: boolean }) {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
+    const timer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refresh();
+    }, POLL_MS);
     const onFocus = () => void refresh();
     const onVisibility = () => {
       if (!document.hidden) void refresh();
