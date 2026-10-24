@@ -523,7 +523,8 @@ const Memberships: React.FC = () => {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           sx={{
-            flex: '1 1 200px',
+            flex: { xs: '0 0 auto', sm: '1 1 200px' },
+            width: { xs: '100%', sm: 'auto' },
             maxWidth: { sm: 360 },
             '& .MuiOutlinedInput-root': {
               borderRadius: `${radii.panel}px`,

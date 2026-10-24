@@ -189,12 +189,118 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
     return colors.text;
   };
 
-  const rowCard = (op: FinanceOperation, index: number) => {
+  const opMeta = (op: FinanceOperation) => {
     const visual = visualForType(op.typeCode, String(op.direction));
-    const Icon = visual.Icon;
     const chip = directionChip(op);
     const dt = formatDateTime(op.occurredAt);
     const [datePart, timePart] = dt.split(' ');
+    return { visual, chip, datePart, timePart };
+  };
+
+  const mobileCard = (op: FinanceOperation, index: number) => {
+    const { visual, chip, datePart, timePart } = opMeta(op);
+    const Icon = visual.Icon;
+
+    return (
+      <Box
+        key={op.id}
+        onClick={onRowClick ? () => onRowClick(op) : undefined}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
+          minWidth: 0,
+          maxWidth: '100%',
+          bgcolor: index % 2 === 0 ? '#fff' : '#FAFBFD',
+          borderRadius: '16px',
+          border: '1px solid #EEF1F6',
+          px: 1.25,
+          py: 1.15,
+          cursor: onRowClick ? 'pointer' : 'default',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              borderRadius: '10px',
+              bgcolor: visual.bg,
+              color: visual.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon sx={{ fontSize: 18 }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {renderTitle(op)}
+            {(op.typeName || op.notes) && (
+              <Typography
+                sx={{
+                  mt: 0.25,
+                  fontSize: 11,
+                  color: '#8B93A7',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {op.typeName || String(op.notes || '').replace(/\[[^\]]+\]/g, '').trim()}
+              </Typography>
+            )}
+          </Box>
+          <IconButton
+            size="small"
+            aria-label="Действия"
+            onClick={(e) => openMenu(e, op)}
+            sx={{ color: '#8B93A7', flexShrink: 0 }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
+        </Box>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            flexWrap: 'wrap',
+            minWidth: 0,
+            pl: '44px',
+          }}
+        >
+          <Chip
+            size="small"
+            label={chip.label}
+            sx={{
+              height: 24,
+              fontWeight: 700,
+              fontSize: 11,
+              bgcolor: chip.bg,
+              color: chip.color,
+              borderRadius: '8px',
+            }}
+          />
+          <Typography sx={{ fontSize: 13, fontWeight: 800, color: amountColor(op) }}>
+            {formatMoney(op.amount, true, op.direction)}
+          </Typography>
+          <Box sx={{ textAlign: 'right', ml: 'auto' }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#1B2438' }}>{datePart}</Typography>
+            {timePart && (
+              <Typography sx={{ fontSize: 11, color: '#8B93A7' }}>{timePart}</Typography>
+            )}
+          </Box>
+        </Box>
+      </Box>
+    );
+  };
+
+  const rowCard = (op: FinanceOperation, index: number) => {
+    const { visual, chip, datePart, timePart } = opMeta(op);
+    const Icon = visual.Icon;
 
     return (
       <Box
@@ -284,8 +390,8 @@ const FinanceOperationsTable: React.FC<FinanceOperationsTableProps> = ({
 
   return (
     <>
-      <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.25 }}>
-        {operations.map((op, i) => rowCard(op, i))}
+      <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.25, minWidth: 0, maxWidth: '100%' }}>
+        {operations.map((op, i) => mobileCard(op, i))}
       </Box>
 
       <Box sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>

@@ -408,25 +408,34 @@ const CreateExerciseDialog: React.FC<Props> = ({
             onChange={(e) => setTitle(e.target.value)}
             sx={fieldSx}
           />
-          <FormControl fullWidth required>
-            <InputLabel>Категория</InputLabel>
-            <Select
-              label="Категория"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              displayEmpty
-              sx={{ borderRadius: '10px', fontWeight: 600 }}
-            >
-              <MenuItem value="">
-                <em>Выберите категорию</em>
-              </MenuItem>
-              {EXERCISE_CATEGORIES.map((c) => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box>
+            <Typography sx={{ mb: 0.5, fontSize: 13, fontWeight: 700, color: '#1B2438' }}>
+              Категория *
+            </Typography>
+            <FormControl fullWidth required>
+              <Select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                displayEmpty
+                renderValue={(selected) =>
+                  selected ? (
+                    String(selected)
+                  ) : (
+                    <Typography component="span" sx={{ color: '#8B93A7', fontStyle: 'italic' }}>
+                      Выберите категорию
+                    </Typography>
+                  )
+                }
+                sx={{ borderRadius: '10px', fontWeight: 600 }}
+              >
+                {EXERCISE_CATEGORIES.map((c) => (
+                  <MenuItem key={c} value={c}>
+                    {c}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
           <Box>
             <TextField
               fullWidth
