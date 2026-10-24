@@ -34,6 +34,7 @@ import { formatContactInput, maskPhoneInput } from '../utils/phone';
 /** Шаги единой авторизации. */
 type Step =
   | 'identify'
+  | 'password'
   | 'setup'
   | 'select'
   | 'email_code'
@@ -47,16 +48,17 @@ type Step =
 
 const STEP_ORDER: Record<Step, number> = {
   identify: 0,
-  setup: 1,
-  select: 2,
-  email_code: 3,
-  twofa_code: 4,
-  push_code: 5,
-  qr_wait: 6,
-  forgot_email: 7,
-  forgot_code: 8,
-  forgot_select: 9,
-  forgot_new_password: 10,
+  password: 1,
+  setup: 2,
+  select: 3,
+  email_code: 4,
+  twofa_code: 5,
+  push_code: 6,
+  qr_wait: 7,
+  forgot_email: 8,
+  forgot_code: 9,
+  forgot_select: 10,
+  forgot_new_password: 11,
 };
 
 const Auth: React.FC = () => {
@@ -343,19 +345,15 @@ const Auth: React.FC = () => {
     setErrors({ [mappedField || defaultField || 'form']: message });
   };
 
-  /* -------------- Единый экран: контакт + пароль ------------------------- */
+  /* -------------- Шаг 1: только контакт → identify ----------------------- */
 
-  const submitLoginForm = async () => {
+  const submitIdentify = async () => {
     setErrors({});
     setNotice('');
 
     const raw = contact.trim();
     if (!raw) {
       setErrors({ contact: 'Введите номер телефона или email' });
-      return;
-    }
-    if (!password) {
-      setErrors({ password: 'Введите пароль' });
       return;
     }
 
@@ -365,9 +363,10 @@ const Auth: React.FC = () => {
       const identified = await apiService.identify(raw);
       setIdentifierType(identified.identifierType);
       setIdentifier(identified.identifier);
+      setPassword('');
+      setConfirmPassword('');
 
       if (identified.needsPasswordSetup) {
-        setConfirmPassword('');
         setAcceptTerms(false);
         setAcceptPrivacy(false);
         goToStep('setup');
@@ -375,14 +374,40 @@ const Auth: React.FC = () => {
         return;
       }
 
+      goToStep('password');
+    } catch (err) {
+      handleError(err, 'contact');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* -------------- Шаг 2: ввод существующего пароля ----------------------- */
+
+  const submitPasswordLogin = async () => {
+    setErrors({});
+    setNotice('');
+
+    if (!identifier) {
+      setErrors({ form: 'Сначала укажите телефон или email' });
+      goToStep('identify');
+      return;
+    }
+    if (!password) {
+      setErrors({ password: 'Введите пароль' });
+      return;
+    }
+
+    setLoading(true);
+    try {
       const result = await apiService.unifiedLogin({
-        identifier: identified.identifier,
+        identifier,
         password,
         rememberMe,
       });
       applySession(result);
     } catch (err) {
-      handleError(err, 'contact');
+      handleError(err, 'password');
     } finally {
       setLoading(false);
     }
@@ -672,26 +697,12 @@ const Auth: React.FC = () => {
         placeholder="Email или телефон"
         type="text"
         autoComplete="username"
+        autoFocus
         value={contact}
         onChange={(v) => setContact(formatContactInput(v))}
         error={errors.contact}
-        onEnter={submitLoginForm}
+        onEnter={submitIdentify}
       />
-
-      <PillField
-        name="password"
-        icon={<LockOutlined />}
-        placeholder="Пароль"
-        type="password"
-        autoComplete="current-password"
-        revealable
-        value={password}
-        onChange={setPassword}
-        error={errors.password}
-        onEnter={submitLoginForm}
-      />
-
-      <TermsCheckbox checked={rememberMe} onChange={setRememberMe} label="Запомнить меня" />
 
       {errorBanner}
       {noticeBanner}
@@ -705,8 +716,8 @@ const Auth: React.FC = () => {
           pt: { xs: 1, md: 2 },
         }}
       >
-        <AuthButton onClick={submitLoginForm} loading={loading}>
-          Войти
+        <AuthButton onClick={submitIdentify} loading={loading}>
+          Продолжить
         </AuthButton>
         {!testingMode && (
           <>
@@ -876,7 +887,79 @@ const Auth: React.FC = () => {
     </Box>
   );
 
-  /* ---- Шаг 2а ---- */
+  /* ---- Шаг: существующий пароль ---- */
+  const passwordStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
+      {identifierFieldForNextSteps}
+
+      <PillField
+        name="password"
+        icon={<LockOutlined />}
+        placeholder="Пароль"
+        type="password"
+        autoComplete="current-password"
+        autoFocus
+        revealable
+        value={password}
+        onChange={setPassword}
+        error={errors.password}
+        onEnter={submitPasswordLogin}
+      />
+
+      <TermsCheckbox checked={rememberMe} onChange={setRememberMe} label="Запомнить меня" />
+
+      {errorBanner}
+      {noticeBanner}
+
+      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, pt: { xs: 1, md: 2 } }}>
+        <AuthButton onClick={submitPasswordLogin} loading={loading}>
+          Войти
+        </AuthButton>
+      </Box>
+
+      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={startForgotPassword}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Забыли пароль?
+        </Typography>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => {
+            setPassword('');
+            setErrors({});
+            setNotice('');
+            goToStep('identify');
+          }}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.textHint,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Изменить {identifierType === 'phone' ? 'номер' : 'email'}
+        </Typography>
+      </Box>
+    </Box>
+  );
+
+  /* ---- Шаг: создание пароля (первый вход) ---- */
   const setupStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
       {identifierFieldForNextSteps}
@@ -1162,21 +1245,23 @@ const Auth: React.FC = () => {
   const content =
     step === 'identify'
       ? identifyStep
-      : step === 'setup'
-        ? setupStep
-        : step === 'email_code' || step === 'twofa_code' || step === 'push_code'
-          ? codeStep
-          : step === 'qr_wait'
-            ? qrWaitStep
-            : step === 'forgot_email'
-              ? forgotEmailStep
-              : step === 'forgot_code'
-                ? forgotCodeStep
-                : step === 'forgot_select'
-                  ? forgotSelectStep
-                  : step === 'forgot_new_password'
-                    ? forgotNewPasswordStep
-                    : selectStep;
+      : step === 'password'
+        ? passwordStep
+        : step === 'setup'
+          ? setupStep
+          : step === 'email_code' || step === 'twofa_code' || step === 'push_code'
+            ? codeStep
+            : step === 'qr_wait'
+              ? qrWaitStep
+              : step === 'forgot_email'
+                ? forgotEmailStep
+                : step === 'forgot_code'
+                  ? forgotCodeStep
+                  : step === 'forgot_select'
+                    ? forgotSelectStep
+                    : step === 'forgot_new_password'
+                      ? forgotNewPasswordStep
+                      : selectStep;
 
   return (
     <AuthShell
