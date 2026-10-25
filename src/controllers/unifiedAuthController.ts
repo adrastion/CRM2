@@ -86,6 +86,10 @@ export const setupPassword = asyncHandler(async (req: Request, res: Response<Api
     rememberMe,
     extractSessionMeta(req)
   );
+  if ('requiresEmail2fa' in result && result.requiresEmail2fa) {
+    res.json({ success: true, data: result });
+    return;
+  }
   maybeSetAuthCookies(res, result);
   res.json({ success: true, data: result, message: 'Пароль создан' });
 });

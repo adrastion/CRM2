@@ -95,6 +95,8 @@ const Auth: React.FC = () => {
   const [qrUrl, setQrUrl] = React.useState('');
 
   const [loading, setLoading] = React.useState(false);
+  /** Синхронный гард против дабл-клика до срабатывания setLoading. */
+  const setupSubmitLock = React.useRef(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [notice, setNotice] = React.useState('');
   const [testingMode, setTestingMode] = React.useState(
@@ -333,8 +335,18 @@ const Auth: React.FC = () => {
 
   const handleError = (err: unknown, defaultField?: string) => {
     const { message, field, status } = extractApiError(err);
-    // 409 приходит, когда пароля ещё нет — уводим на создание пароля.
-    if (status === 409) {
+    // Пароль уже есть — с формы создания уводим на обычный ввод.
+    if (/пароль уже создан/i.test(message)) {
+      setErrors({});
+      setConfirmPassword('');
+      setAcceptTerms(false);
+      setAcceptPrivacy(false);
+      goToStep('password');
+      setNotice('Пароль уже создан. Введите его для входа.');
+      return;
+    }
+    // 409 «Пароль ещё не создан» — экран создания пароля (не любой 409).
+    if (status === 409 && /пароль ещё не создан/i.test(message)) {
       setErrors({});
       goToStep('setup');
       setNotice('Пароль ещё не создан. Придумайте пароль для входа.');
@@ -416,6 +428,7 @@ const Auth: React.FC = () => {
   /* --------------------- Создание пароля (первый вход) -------------------- */
 
   const submitSetupPassword = async () => {
+    if (setupSubmitLock.current || loading) return;
     setErrors({});
     const next: Record<string, string> = {};
 
@@ -429,6 +442,7 @@ const Auth: React.FC = () => {
       return;
     }
 
+    setupSubmitLock.current = true;
     setLoading(true);
     try {
       const result = await apiService.setupPassword({
@@ -443,6 +457,7 @@ const Auth: React.FC = () => {
     } catch (err) {
       handleError(err, 'password');
     } finally {
+      setupSubmitLock.current = false;
       setLoading(false);
     }
   };

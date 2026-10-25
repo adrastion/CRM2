@@ -423,7 +423,7 @@ export class UnifiedAuthService {
     password: string,
     rememberMe = false,
     meta?: SessionRequestMeta | null
-  ): Promise<LoginResult> {
+  ): Promise<LoginOr2faResult> {
     if (!password || password.length < 6) {
       throw badRequest('Пароль должен содержать минимум 6 символов', 'password');
     }
@@ -433,19 +433,16 @@ export class UnifiedAuthService {
       throw unauthorized('Аккаунт не найден в базе спортивной школы', 'identifier');
     }
 
-    const alreadyHasPassword = accounts.some((a) => a.hasPassword);
-    if (alreadyHasPassword) {
-      throw badRequest(
-        'Пароль уже создан. Введите существующий пароль для входа.',
-        'password'
-      );
-    }
-
     // Пароль можно создать только для клиентских аккаунтов: у сотрудников
     // пароль выдаётся школой и в базе всегда присутствует.
     const target = accounts.filter((a) => CLIENT_ACCOUNT_TYPES.includes(a.accountType));
     if (target.length === 0) {
       throw badRequest('Для этого аккаунта пароль задаёт администратор школы', 'password');
+    }
+
+    // Уже есть пароль у ученика/родителя — идемпотентно логинимся (повторный submit / гонка).
+    if (target.some((a) => a.hasPassword)) {
+      return this.login(rawIdentifier, password, rememberMe, meta);
     }
 
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
