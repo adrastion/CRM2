@@ -14,6 +14,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Add,
@@ -32,8 +34,7 @@ import {
   SettingsOutlined,
   ViewListOutlined,
 } from '@mui/icons-material';
-import { differenceInYears, format, isToday, isTomorrow } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { differenceInYears, format } from 'date-fns';
 import { List, type RowComponentProps } from 'react-window';
 import { Client } from '../../types';
 import { colors, radii, typography } from '../../theme/tokens';
@@ -43,10 +44,11 @@ import {
   type ClientAccountStatusKey,
 } from '../../utils/clientAccountStatus';
 
-const CLIENT_ROW_H = 64;
+const CLIENT_ROW_H = 78;
+const CLIENT_ROW_H_MOBILE = 96;
 const CLIENT_LIST_MAX_H = 560;
 const CLIENT_GRID_COLS =
-  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(150px,1fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px minmax(100px,0.85fr) 88px';
+  '40px minmax(180px,1.3fr) minmax(150px,1.1fr) minmax(180px,1.15fr) minmax(120px,1fr) minmax(110px,0.95fr) 90px 96px';
 
 export type ClientCategoryTab = 'all' | 'trial' | 'active' | 'inactive' | 'new';
 
@@ -65,6 +67,8 @@ type Props = {
   onGroupClick?: (client: Client) => void;
   onMembershipClick?: (client: Client) => void;
   onDelete?: (clientId: string) => void;
+  onApproveAccount?: (client: Client) => void;
+  onRejectAccount?: (client: Client) => void;
 };
 
 /** Категория для вкладок «Пробные / Активные / Неактивные» (по абонементу/группе). */
@@ -114,7 +118,7 @@ function membershipCategory(c: Client): MembershipCategoryKey {
   return 'inactive';
 }
 
-/** Статус ЛК в таблице: три значения по ТЗ. */
+/** Статус ЛК в таблице: по паролю/подтверждению, не по группе. */
 function registrationStatus(c: Client): Exclude<ClientAccountStatusKey, 'lead'> {
   const s = getClientAccountStatus(c);
   if (s === 'registered') return 'registered';
@@ -167,19 +171,6 @@ function formatBalance(value?: number) {
   return n < 0 ? `−${abs} ₽` : `${abs} ₽`;
 }
 
-function nextLessonLabel(c: Client): { main: string; sub: string; accent?: string } {
-  const nt = (c as any).nextTraining;
-  if (!nt?.startTime) return { main: 'Нет записей', sub: '' };
-  const start = new Date(nt.startTime);
-  const end = nt.endTime ? new Date(nt.endTime) : null;
-  const time = end
-    ? `${format(start, 'HH:mm')}–${format(end, 'HH:mm')}`
-    : format(start, 'HH:mm');
-  if (isToday(start)) return { main: 'Сегодня', sub: time, accent: colors.primary };
-  if (isTomorrow(start)) return { main: 'Завтра', sub: time };
-  return { main: format(start, 'd MMM', { locale: ru }), sub: time };
-}
-
 const REG_STATUS_CHIP: Record<
   Exclude<ClientAccountStatusKey, 'lead'>,
   { label: string; bg: string; fg: string }
@@ -223,7 +214,10 @@ type ClientRowProps = {
   onEdit: (client: Client) => void;
   onGroupClick?: (client: Client) => void;
   onMembershipClick?: (client: Client) => void;
+  onApproveAccount?: (client: Client) => void;
+  onRejectAccount?: (client: Client) => void;
   openRowMenu: (el: HTMLElement, client: Client) => void;
+  mobile?: boolean;
 };
 
 function ClientRow({
@@ -235,16 +229,146 @@ function ClientRow({
   onEdit,
   onGroupClick,
   onMembershipClick,
+  onApproveAccount,
+  onRejectAccount,
   openRowMenu,
+  mobile,
 }: RowComponentProps<ClientRowProps>) {
   const c = clients[index];
   if (!c) return <Box style={style} />;
   const st = REG_STATUS_CHIP[registrationStatus(c)];
   const grp = primaryGroup(c);
   const mem = membershipInfo(c);
-  const next = nextLessonLabel(c);
   const bal = Number(c.balance ?? 0);
+  const awaitingApproval = Boolean(c.hasPassword) && !c.isAccountApproved;
   const age = ageLabel(c);
+
+  if (mobile) {
+    return (
+      <Box
+        style={style}
+        onClick={() => onEdit(c)}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: 0.5,
+          px: 1.25,
+          minWidth: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          borderBottom: '1px solid #F1F3F7',
+          bgcolor: index % 2 === 1 ? '#FAFBFD' : '#fff',
+          cursor: 'pointer',
+          overflow: 'hidden',
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+          <Checkbox
+            size="small"
+            checked={selected.has(c.id)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggleOne(c.id)}
+            sx={{ p: 0.25, flexShrink: 0 }}
+          />
+          <Avatar
+            src={c.photo || undefined}
+            sx={{
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              fontSize: typography.label,
+              fontWeight: 800,
+              bgcolor: '#E8EEFF',
+              color: colors.primary,
+            }}
+          >
+            {initials(c)}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              sx={{
+                fontWeight: 750,
+                fontSize: typography.label,
+                color: '#1B2438',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {fullName(c)}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#8B93A7',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {[c.phone || 'нет телефона', age].filter(Boolean).join(' · ')}
+            </Typography>
+          </Box>
+          <IconButton
+            size="small"
+            sx={{ color: '#8B93A7', flexShrink: 0 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              openRowMenu(e.currentTarget, c);
+            }}
+          >
+            <MoreVert fontSize="small" />
+          </IconButton>
+        </Stack>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ pl: 0.5, minWidth: 0, flexWrap: 'wrap' }}>
+          <Chip
+            size="small"
+            label={st.label}
+            sx={{
+              height: 22,
+              fontWeight: 750,
+              fontSize: 11,
+              bgcolor: st.bg,
+              color: st.fg,
+              borderRadius: '999px',
+              maxWidth: '100%',
+              '& .MuiChip-label': { px: 1 },
+            }}
+          />
+          {awaitingApproval && onApproveAccount && (
+            <Button
+              size="small"
+              variant="contained"
+              color="success"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApproveAccount(c);
+              }}
+              sx={{ textTransform: 'none', minWidth: 0, px: 1, py: 0.15, fontSize: 11, fontWeight: 700 }}
+            >
+              Подтвердить
+            </Button>
+          )}
+          {awaitingApproval && onRejectAccount && (
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRejectAccount(c);
+              }}
+              sx={{ textTransform: 'none', minWidth: 0, px: 1, py: 0.15, fontSize: 11, fontWeight: 700 }}
+            >
+              Отклонить
+            </Button>
+          )}
+        </Stack>
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -332,21 +456,49 @@ function ClientRow({
         </Typography>
       </Box>
 
-      <Chip
-        size="small"
-        label={st.label}
-        sx={{
-          height: 24,
-          fontWeight: 750,
-          fontSize: typography.label,
-          bgcolor: st.bg,
-          color: st.fg,
-          borderRadius: '999px',
-          width: 'fit-content',
-          maxWidth: '100%',
-          '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
-        }}
-      />
+      <Stack spacing={0.5} alignItems="flex-start" minWidth={0} onClick={(e) => e.stopPropagation()}>
+        <Chip
+          size="small"
+          label={st.label}
+          sx={{
+            height: 24,
+            fontWeight: 750,
+            fontSize: typography.label,
+            bgcolor: st.bg,
+            color: st.fg,
+            borderRadius: '999px',
+            width: 'fit-content',
+            maxWidth: '100%',
+            '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
+          }}
+        />
+        {awaitingApproval && (onApproveAccount || onRejectAccount) && (
+          <Stack direction="row" spacing={0.5}>
+            {onApproveAccount && (
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                onClick={() => onApproveAccount(c)}
+                sx={{ textTransform: 'none', minWidth: 0, px: 1, py: 0.25, fontSize: 11, fontWeight: 700 }}
+              >
+                Подтвердить
+              </Button>
+            )}
+            {onRejectAccount && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={() => onRejectAccount(c)}
+                sx={{ textTransform: 'none', minWidth: 0, px: 1, py: 0.25, fontSize: 11, fontWeight: 700 }}
+              >
+                Отклонить
+              </Button>
+            )}
+          </Stack>
+        )}
+      </Stack>
 
       <Box
         onClick={(e) => {
@@ -400,21 +552,6 @@ function ClientRow({
         {formatBalance(bal)}
       </Typography>
 
-      <Box>
-        <Typography
-          sx={{
-            fontSize: typography.label,
-            fontWeight: 750,
-            color: next.accent || (next.main === 'Нет записей' ? '#8B93A7' : '#1B2438'),
-          }}
-        >
-          {next.main}
-        </Typography>
-        {next.sub && (
-          <Typography sx={{ fontSize: typography.label, fontWeight: 600, color: '#8B93A7' }}>{next.sub}</Typography>
-        )}
-      </Box>
-
       <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()}>
         <IconButton size="small" sx={{ color: colors.primary }} onClick={() => onEdit(c)}>
           <CalendarMonthOutlined fontSize="small" />
@@ -446,6 +583,8 @@ const ClientsBoard: React.FC<Props> = ({
   onGroupClick,
   onMembershipClick,
   onDelete,
+  onApproveAccount,
+  onRejectAccount,
 }) => {
   const [search, setSearch] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -458,6 +597,8 @@ const ClientsBoard: React.FC<Props> = ({
   const [moreEl, setMoreEl] = useState<null | HTMLElement>(null);
   const [addEl, setAddEl] = useState<null | HTMLElement>(null);
   const [rowMenu, setRowMenu] = useState<{ el: HTMLElement; client: Client } | null>(null);
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const counts = useMemo(() => {
     let trial = 0;
@@ -911,10 +1052,10 @@ const ClientsBoard: React.FC<Props> = ({
       </Stack>
 
       {/* Table */}
-      <Box sx={{ ...cardSx, overflow: 'auto' }}>
+      <Box sx={{ ...cardSx, overflowX: mobile ? 'hidden' : 'auto', maxWidth: '100%', minWidth: 0 }}>
         <Box
           sx={{
-            display: 'grid',
+            display: mobile ? 'none' : 'grid',
             gridTemplateColumns: CLIENT_GRID_COLS,
             gap: 1,
             px: 1.5,
@@ -933,7 +1074,6 @@ const ClientsBoard: React.FC<Props> = ({
             'Группа / Филиал',
             'Абонемент',
             'Баланс',
-            'Следующее занятие',
             'Действия',
           ].map((h) => (
             <Typography key={h} sx={{ fontSize: typography.label, fontWeight: 800, color: '#8B93A7', letterSpacing: '0.02em' }}>
@@ -943,15 +1083,20 @@ const ClientsBoard: React.FC<Props> = ({
         </Box>
 
         {filtered.length > 0 ? (
-          <Box
+            <Box
             sx={{
-              height: Math.min(filtered.length * CLIENT_ROW_H, CLIENT_LIST_MAX_H),
-              minWidth: 1000,
+              height: Math.min(
+                filtered.length * (mobile ? CLIENT_ROW_H_MOBILE : CLIENT_ROW_H),
+                CLIENT_LIST_MAX_H
+              ),
+              minWidth: mobile ? 0 : 1000,
+              maxWidth: '100%',
             }}
           >
             <List
+              key={mobile ? 'clients-mobile' : 'clients-desktop'}
               rowCount={filtered.length}
-              rowHeight={CLIENT_ROW_H}
+              rowHeight={mobile ? CLIENT_ROW_H_MOBILE : CLIENT_ROW_H}
               rowComponent={ClientRow}
               rowProps={{
                 clients: filtered,
@@ -960,6 +1105,9 @@ const ClientsBoard: React.FC<Props> = ({
                 onEdit,
                 onGroupClick,
                 onMembershipClick,
+                onApproveAccount,
+                onRejectAccount,
+                mobile,
                 openRowMenu: (el, client) => setRowMenu({ el, client }),
               }}
               style={{ height: '100%', width: '100%' }}

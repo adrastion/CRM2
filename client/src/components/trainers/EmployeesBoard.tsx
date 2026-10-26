@@ -13,6 +13,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Add,
@@ -150,6 +152,8 @@ const EmployeesBoard: React.FC<Props> = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addEl, setAddEl] = useState<null | HTMLElement>(null);
   const [rowMenu, setRowMenu] = useState<{ el: HTMLElement; employee: any } | null>(null);
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const counts = useMemo(() => {
     let trainers = 0;
@@ -458,10 +462,10 @@ const EmployeesBoard: React.FC<Props> = ({
         </Stack>
       </Stack>
 
-      <Box sx={{ ...cardSx, overflow: 'auto' }}>
+      <Box sx={{ ...cardSx, overflowX: mobile ? 'hidden' : 'auto', maxWidth: '100%', minWidth: 0 }}>
         <Box
           sx={{
-            display: 'grid',
+            display: mobile ? 'none' : 'grid',
             gridTemplateColumns: gridCols,
             gap: 1,
             px: 1.5,
@@ -509,6 +513,118 @@ const EmployeesBoard: React.FC<Props> = ({
               .join(', ') || '—';
           const active = e.isActive !== false && u.isActive !== false;
           const barColor = workloadColor(workload);
+          const roleLabel = employeeRoleLabel(e) || chip.label;
+
+          if (mobile) {
+            return (
+              <Box
+                key={id}
+                onClick={() => onOpen(e)}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  gap: 0.5,
+                  px: 1.25,
+                  py: 1.1,
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  borderBottom: '1px solid #F1F3F7',
+                  bgcolor: idx % 2 === 1 ? '#FAFBFD' : '#fff',
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+                  <Checkbox
+                    size="small"
+                    checked={selected.has(id)}
+                    onClick={(ev) => ev.stopPropagation()}
+                    onChange={() => toggleOne(id)}
+                    sx={{ p: 0.25, flexShrink: 0 }}
+                  />
+                  <Avatar
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      flexShrink: 0,
+                      fontSize: typography.label,
+                      fontWeight: 800,
+                      bgcolor: '#E8EEFF',
+                      color: colors.primary,
+                    }}
+                  >
+                    {initials(e)}
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: 750,
+                        fontSize: typography.label,
+                        color: '#1B2438',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {fullName(e)}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: '#8B93A7',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {u.phone || u.email || 'нет контакта'}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    sx={{ color: '#8B93A7', flexShrink: 0 }}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      setRowMenu({ el: ev.currentTarget, employee: e });
+                    }}
+                  >
+                    <MoreVert fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ pl: 0.5, minWidth: 0, flexWrap: 'wrap' }}>
+                  <Chip
+                    size="small"
+                    label={roleLabel}
+                    sx={{
+                      height: 22,
+                      fontWeight: 750,
+                      fontSize: 11,
+                      bgcolor: chip.bg,
+                      color: chip.fg,
+                      borderRadius: '999px',
+                      maxWidth: '100%',
+                      '& .MuiChip-label': { px: 1 },
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    label={active ? 'Активен' : 'В отпуске'}
+                    sx={{
+                      height: 22,
+                      fontWeight: 750,
+                      fontSize: 11,
+                      bgcolor: active ? '#12B981' : '#FFEDD5',
+                      color: active ? '#fff' : '#EA580C',
+                      borderRadius: '999px',
+                    }}
+                  />
+                </Stack>
+              </Box>
+            );
+          }
 
           return (
             <Box
@@ -565,7 +681,7 @@ const EmployeesBoard: React.FC<Props> = ({
 
               <Chip
                 size="small"
-                label={employeeRoleLabel(e) || chip.label}
+                label={roleLabel}
                 sx={{
                   height: 24,
                   fontWeight: 750,

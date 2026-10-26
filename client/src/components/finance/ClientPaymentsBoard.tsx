@@ -24,9 +24,11 @@ import {
   Chip,
   IconButton,
   InputAdornment,
+  Menu,
   MenuItem,
   Pagination,
   Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -34,6 +36,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, isBefore, startOfMonth } from 'date-fns';
@@ -140,6 +144,8 @@ const ClientPaymentsBoard: React.FC<Props> = ({
   onMonthChange,
   formatMoney,
 }) => {
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState<Date | null>(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [dateTo, setDateTo] = useState<Date | null>(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
@@ -152,6 +158,16 @@ const ClientPaymentsBoard: React.FC<Props> = ({
   const [pageSize, setPageSize] = useState(20);
   const [sortKey, setSortKey] = useState<'name' | 'accrued' | 'paid' | 'remaining' | 'status'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [rowMenu, setRowMenu] = useState<{
+    el: HTMLElement;
+    row: FinanceMembershipRow & {
+      payStatus: PayStatus;
+      phone: string;
+      groupName: string;
+      avatar: { bg: string; fg: string };
+      key: string;
+    };
+  } | null>(null);
 
   const clientById = useMemo(() => {
     const map = new Map<string, Client>();
@@ -552,6 +568,131 @@ const ClientPaymentsBoard: React.FC<Props> = ({
             <Typography sx={{ p: 4, textAlign: 'center', color: '#8B8C8F' }}>Нет оплат за период</Typography>
           ) : (
             <>
+              {mobile ? (
+                <Box sx={{ overflow: 'hidden', maxWidth: '100%', minWidth: 0 }}>
+                  {pageRows.map((row, idx) => {
+                    const st = statusSx(row.payStatus);
+                    return (
+                      <Box
+                        key={row.key}
+                        onClick={() => onOpenClient(row.clientId)}
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          gap: 0.5,
+                          px: 1.25,
+                          py: 1.1,
+                          minWidth: 0,
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                          borderBottom: '1px solid #F1F3F7',
+                          bgcolor: idx % 2 === 1 ? '#FAFBFD' : '#fff',
+                          cursor: 'pointer',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+                          <Checkbox
+                            size="small"
+                            checked={selected.includes(row.key)}
+                            onClick={(ev) => ev.stopPropagation()}
+                            onChange={(_, c) =>
+                              setSelected((prev) => (c ? [...prev, row.key] : prev.filter((id) => id !== row.key)))
+                            }
+                            sx={{ p: 0.25, flexShrink: 0 }}
+                          />
+                          <Avatar
+                            sx={{
+                              width: 36,
+                              height: 36,
+                              flexShrink: 0,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              bgcolor: row.avatar.bg,
+                              color: row.avatar.fg,
+                            }}
+                          >
+                            {initials(row.clientName)}
+                          </Avatar>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{
+                                fontWeight: 800,
+                                fontSize: 13,
+                                color: '#1B2438',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {row.clientName}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: '#8B93A7',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {[row.phone || null, row.groupName !== '—' ? row.groupName : null]
+                                .filter(Boolean)
+                                .join(' · ') || '—'}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: row.remaining > 0 ? '#F93C65' : '#12B981',
+                              flexShrink: 0,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {formatMoney(row.remaining)}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            sx={{ color: '#8B93A7', flexShrink: 0 }}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setRowMenu({ el: ev.currentTarget, row });
+                            }}
+                          >
+                            <MoreHoriz sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Stack>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          alignItems="center"
+                          sx={{ pl: 0.5, minWidth: 0, flexWrap: 'wrap' }}
+                        >
+                          <Chip
+                            size="small"
+                            label={statusLabel(row.payStatus)}
+                            sx={{
+                              height: 22,
+                              fontWeight: 800,
+                              fontSize: 11,
+                              bgcolor: st.bg,
+                              color: st.fg,
+                              borderRadius: '8px',
+                              '& .MuiChip-label': { px: 1 },
+                            }}
+                          />
+                          <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#8B93A7' }}>
+                            опл. {formatMoney(row.paidAmount)}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ) : (
               <Box sx={{ overflowX: 'auto' }}>
                 <Table size="small" sx={{ minWidth: 980 }}>
                   <TableHead>
@@ -647,6 +788,34 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                   </TableBody>
                 </Table>
               </Box>
+              )}
+
+              <Menu
+                anchorEl={rowMenu?.el}
+                open={Boolean(rowMenu)}
+                onClose={() => setRowMenu(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItem
+                  onClick={() => {
+                    if (rowMenu) onOpenClient(rowMenu.row.clientId);
+                    setRowMenu(null);
+                  }}
+                >
+                  Открыть клиента
+                </MenuItem>
+                {rowMenu?.row.interactive && rowMenu.row.remaining > 0 && (
+                  <MenuItem
+                    onClick={() => {
+                      if (rowMenu) onReceive(rowMenu.row);
+                      setRowMenu(null);
+                    }}
+                  >
+                    Принять оплату
+                  </MenuItem>
+                )}
+              </Menu>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.25, gap: 1, flexWrap: 'wrap' }}>
                 <Typography sx={{ fontSize: 12, color: '#8B8C8F', fontWeight: 600 }}>
                   Показано {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} из {filtered.length}

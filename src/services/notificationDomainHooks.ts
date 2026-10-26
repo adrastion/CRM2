@@ -15,6 +15,44 @@ function personName(parts: Array<string | null | undefined>): string {
   return parts.filter(Boolean).join(' ').trim();
 }
 
+/**
+ * CLIENT/PARENT создал пароль, ждёт подтверждения и в карточке нет email —
+ * уведомить OWNER, ADMIN и TRAINER школы (подтвердить по почте нельзя).
+ */
+export async function notifyPendingWithoutEmail(params: {
+  tenantId: string;
+  accountType: 'CLIENT' | 'PARENT';
+  accountId: string;
+  displayName: string;
+  clientId?: string | null;
+}): Promise<void> {
+  const users = await prisma.user.findMany({
+    where: {
+      tenantId: params.tenantId,
+      isActive: true,
+      role: { in: ['OWNER', 'ADMIN', 'TRAINER'] },
+    },
+    select: { id: true },
+  });
+  const who = params.accountType === 'PARENT' ? 'Родитель' : 'Спортсмен';
+  const url =
+    params.accountType === 'CLIENT'
+      ? `/clients/${params.accountId}`
+      : params.clientId
+        ? `/clients/${params.clientId}`
+        : '/clients';
+  await fanoutNotification({
+    tenantId: params.tenantId,
+    category: 'athlete',
+    type: 'account_pending_no_email',
+    title: `${who} ожидает подтверждения: ${params.displayName || 'без имени'}`,
+    body: 'В карточке не указана почта — подтвердить аккаунт по email нельзя. Подтвердите вручную в кабинете школы.',
+    data: { url, accountType: params.accountType, accountId: params.accountId },
+    eventType: 'athlete_created',
+    recipients: users.map((u) => ({ actorType: 'USER' as const, actorId: u.id })),
+  });
+}
+
 /** Новый спортсмен → OWNER + ADMIN (+ seniors), кроме автора. */
 export async function notifyAthleteCreated(params: {
   tenantId: string;

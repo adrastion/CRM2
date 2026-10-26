@@ -91,18 +91,27 @@ export class EmailVerifyService {
         where: { id: params.accountId },
         data: { emailVerified: true },
       });
-    } else if (params.accountType === 'client') {
+      return { message: 'Email подтверждён', emailVerified: true };
+    }
+
+    // Для ученика/родителя подтверждение email в карточке = доступ в кабинет
+    // (альтернатива ручному одобрению школой).
+    if (params.accountType === 'client') {
       await prisma.client.update({
         where: { id: params.accountId },
-        data: { emailVerified: true },
+        data: { emailVerified: true, isAccountApproved: true },
       });
     } else {
       await prisma.parent.update({
         where: { id: params.accountId },
-        data: { emailVerified: true },
+        data: { emailVerified: true, isAccountApproved: true },
       });
     }
 
-    return { message: 'Email подтверждён', emailVerified: true };
+    return {
+      message: 'Email подтверждён. Доступ к кабинету открыт.',
+      emailVerified: true,
+      isAccountApproved: true,
+    };
   }
 }

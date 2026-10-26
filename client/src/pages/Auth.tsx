@@ -74,6 +74,8 @@ const Auth: React.FC = () => {
   /** Нормализованное значение, которое отправляем на сервер. */
   const [identifier, setIdentifier] = React.useState('');
 
+  const [setupAccounts, setSetupAccounts] = React.useState<PublicAccount[]>([]);
+  const [setupAccountId, setSetupAccountId] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [acceptTerms, setAcceptTerms] = React.useState(false);
@@ -379,10 +381,17 @@ const Auth: React.FC = () => {
       setConfirmPassword('');
 
       if (identified.needsPasswordSetup) {
+        const pending = identified.setupAccounts || [];
+        setSetupAccounts(pending);
+        setSetupAccountId(pending.length === 1 ? pending[0].id : '');
         setAcceptTerms(false);
         setAcceptPrivacy(false);
         goToStep('setup');
-        setNotice('Пароль ещё не создан. Придумайте пароль для входа.');
+        setNotice(
+          pending.length > 1
+            ? 'Выберите, для кого создаёте пароль. У спортсмена и родителя пароли разные.'
+            : 'Пароль ещё не создан. Придумайте пароль для входа.'
+        );
         return;
       }
 
@@ -432,6 +441,12 @@ const Auth: React.FC = () => {
     setErrors({});
     const next: Record<string, string> = {};
 
+    const setupTarget =
+      setupAccounts.find((a) => a.id === setupAccountId) ||
+      (setupAccounts.length === 1 ? setupAccounts[0] : undefined);
+    if (setupAccounts.length > 1 && !setupTarget) {
+      next.form = 'Выберите, для кого создаёте пароль';
+    }
     if (password.length < 6) next.password = 'Пароль должен содержать минимум 6 символов';
     if (confirmPassword !== password) next.confirmPassword = 'Пароли не совпадают';
     if (!acceptTerms) next.acceptTerms = 'Необходимо принять условия соглашения';
@@ -452,6 +467,12 @@ const Auth: React.FC = () => {
         acceptTerms,
         acceptPrivacy,
         rememberMe,
+        ...(setupTarget
+          ? {
+              accountType: setupTarget.accountType as 'CLIENT' | 'PARENT',
+              accountId: setupTarget.id,
+            }
+          : {}),
       });
       applySession(result);
     } catch (err) {
@@ -979,6 +1000,44 @@ const Auth: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
       {identifierFieldForNextSteps}
 
+      {setupAccounts.length > 1 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Typography sx={{ fontSize: typography.label, fontWeight: 700, color: '#1B2438' }}>
+            Для кого пароль
+          </Typography>
+          {setupAccounts.map((a) => {
+            const selected = setupAccountId === a.id;
+            const role = a.accountType === 'PARENT' ? 'Родитель' : 'Спортсмен';
+            return (
+              <Box
+                key={`${a.accountType}:${a.id}`}
+                component="button"
+                type="button"
+                onClick={() => setSetupAccountId(a.id)}
+                sx={{
+                  textAlign: 'left',
+                  border: '1px solid',
+                  borderColor: selected ? colors.primary : '#E6EAF2',
+                  bgcolor: selected ? '#F4F7FF' : '#fff',
+                  borderRadius: '12px',
+                  px: 1.5,
+                  py: 1.25,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{a.displayName}</Typography>
+                <Typography sx={{ fontSize: 12, color: colors.textMuted }}>
+                  {role}
+                  {a.tenant?.name ? ` · ${a.tenant.name}` : ''}
+                  {a.childName ? ` · ${a.childName}` : ''}
+                </Typography>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
       <PillField
         name="new-password"
         icon={<LockOutlined />}
@@ -1025,7 +1084,31 @@ const Auth: React.FC = () => {
         </AuthButton>
       </Box>
 
-      <Box sx={{ textAlign: 'center' }}>
+      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => {
+            setConfirmPassword('');
+            setAcceptTerms(false);
+            setAcceptPrivacy(false);
+            setErrors({});
+            setNotice('');
+            goToStep('password');
+          }}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.primary,
+            fontSize: typography.hint,
+            fontWeight: 600,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          У меня уже есть пароль
+        </Typography>
         <Typography
           component="button"
           type="button"

@@ -191,6 +191,7 @@ describe('Кабинет в ожидании подтверждения', () => 
 
   it('показывает сообщение об ожидании', async () => {
     await mount();
+    expect(container.textContent).toContain('Аккаунт ожидает подтверждения школой');
     expect(container.textContent).toContain('Ожидайте подтверждения от администратора организации');
   });
 

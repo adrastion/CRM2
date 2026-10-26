@@ -85,8 +85,10 @@ export interface IdentifyResult {
   identifier: string;
   /** Найден ли хоть один аккаунт. */
   exists: boolean;
-  /** Ни у одного найденного аккаунта нет пароля — нужен экран «Придумайте пароль». */
+  /** Есть CLIENT/PARENT без пароля — экран «Придумайте пароль» (даже если у другого аккаунта с тем же контактом пароль уже есть). */
   needsPasswordSetup: boolean;
+  /** CLIENT/PARENT без своего пароля — каждый создаёт пароль отдельно. */
+  setupAccounts: PublicAccount[];
   /** Сколько аккаунтов найдено (для отладки и подсказок в интерфейсе). */
   accountsCount: number;
 }
@@ -402,27 +404,35 @@ export class UnifiedAuthService {
       );
     }
 
-    const withPassword = accounts.filter((a) => a.hasPassword);
+    // Создание пароля — если есть хоть один CLIENT/PARENT без пароля.
+    // Иначе родитель/брат с тем же телефоном (уже с паролем) блокирует
+    // регистрацию спортсмена со статусом «Не зарегистрирован» в кабинете школы.
+    const clientSide = accounts.filter((a) => CLIENT_ACCOUNT_TYPES.includes(a.accountType));
+    const setupAccounts = sortAccounts(
+      clientSide.filter((a) => !a.hasPassword).map(toPublicAccount)
+    );
+    const needsPasswordSetup = setupAccounts.length > 0;
 
     return {
       identifierType: type,
       identifier: value,
       exists: true,
-      needsPasswordSetup: withPassword.length === 0,
+      needsPasswordSetup,
+      setupAccounts,
       accountsCount: accounts.length,
     };
   }
 
   /**
-   * Шаг 2 (первый вход): пользователь придумывает пароль.
-   * Пароль записывается всем найденным аккаунтам ученика/родителя,
-   * у которых его ещё нет, — чтобы один идентификатор давал один пароль.
+   * Шаг 2 (первый вход): пользователь придумывает пароль
+   * ровно для одного CLIENT или PARENT. Чужой аккаунт с тем же контактом не трогаем.
    */
   static async setupPassword(
     rawIdentifier: string,
     password: string,
     rememberMe = false,
-    meta?: SessionRequestMeta | null
+    meta?: SessionRequestMeta | null,
+    targetAccount?: { accountType: AccountType; accountId: string } | null
   ): Promise<LoginOr2faResult> {
     if (!password || password.length < 6) {
       throw badRequest('Пароль должен содержать минимум 6 символов', 'password');
@@ -440,33 +450,81 @@ export class UnifiedAuthService {
       throw badRequest('Для этого аккаунта пароль задаёт администратор школы', 'password');
     }
 
-    // Уже есть пароль у ученика/родителя — идемпотентно логинимся (повторный submit / гонка).
-    if (target.some((a) => a.hasPassword)) {
+    const needingSetup = target.filter((a) => !a.hasPassword);
+    // Все CLIENT/PARENT уже с паролем — идемпотентный вход (повторный submit).
+    if (needingSetup.length === 0) {
       return this.login(rawIdentifier, password, rememberMe, meta);
     }
 
+    let chosen = needingSetup;
+    if (targetAccount?.accountId && targetAccount.accountType) {
+      chosen = needingSetup.filter(
+        (a) => a.accountType === targetAccount.accountType && a.id === targetAccount.accountId
+      );
+      if (chosen.length === 0) {
+        throw badRequest('Выберите аккаунт, для которого создаёте пароль', 'password');
+      }
+    } else if (needingSetup.length > 1) {
+      throw badRequest('Выберите, для кого создаёте пароль: спортсмен или родитель', 'password');
+    }
+
+    const account = chosen[0];
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    await prisma.$transaction([
-      prisma.client.updateMany({
-        where: {
-          id: { in: target.filter((a) => a.accountType === 'CLIENT').map((a) => a.id) },
-          password: null,
-        },
+    if (account.accountType === 'CLIENT') {
+      await prisma.client.updateMany({
+        where: { id: account.id, password: null },
         data: { password: hash },
-      }),
-      prisma.parent.updateMany({
-        where: {
-          id: { in: target.filter((a) => a.accountType === 'PARENT').map((a) => a.id) },
-          password: null,
-        },
+      });
+    } else {
+      await prisma.parent.updateMany({
+        where: { id: account.id, password: null },
         data: { password: hash },
-      }),
-    ]);
+      });
+    }
 
-    // Сразу впускаем пользователя: подтверждение школы проверяется уже внутри кабинета.
-    const authenticated = target.map((a) => ({ ...a, hasPassword: true, passwordHash: hash }));
+    void this.notifyIfPendingWithoutEmail(account).catch((err) => {
+      console.error('[auth] notify pending without email failed', err);
+    });
+
+    const authenticated = [{ ...account, hasPassword: true, passwordHash: hash }];
     return this.completeLogin(rawIdentifier, authenticated, rememberMe, meta);
+  }
+
+  /** После создания пароля: нет почты и аккаунт не одобрен — сигнал школе. */
+  private static async notifyIfPendingWithoutEmail(account: AccountCandidate): Promise<void> {
+    if (account.isAccountApproved || !account.tenant?.id) return;
+    const { notifyPendingWithoutEmail } = await import('./notificationDomainHooks');
+
+    if (account.accountType === 'CLIENT') {
+      const row = await prisma.client.findUnique({
+        where: { id: account.id },
+        select: { email: true, isAccountApproved: true, tenantId: true },
+      });
+      if (!row || row.isAccountApproved || (row.email && row.email.trim())) return;
+      await notifyPendingWithoutEmail({
+        tenantId: row.tenantId,
+        accountType: 'CLIENT',
+        accountId: account.id,
+        displayName: account.displayName,
+      });
+      return;
+    }
+
+    if (account.accountType === 'PARENT') {
+      const row = await prisma.parent.findUnique({
+        where: { id: account.id },
+        select: { email: true, isAccountApproved: true, tenantId: true, clientId: true },
+      });
+      if (!row || row.isAccountApproved || (row.email && row.email.trim())) return;
+      await notifyPendingWithoutEmail({
+        tenantId: row.tenantId,
+        accountType: 'PARENT',
+        accountId: account.id,
+        displayName: account.displayName,
+        clientId: row.clientId,
+      });
+    }
   }
 
   /**
@@ -486,6 +544,13 @@ export class UnifiedAuthService {
     const accounts = await this.findAccounts(rawIdentifier);
     if (accounts.length === 0) {
       throw unauthorized(LOGIN_FAILED_MESSAGE, 'identifier');
+    }
+
+    // На создание пароля уводим только если ни у одного CLIENT/PARENT пароля нет.
+    // Если часть уже зарегистрирована — обычный вход по их паролю остаётся доступен.
+    const clientSide = accounts.filter((a) => CLIENT_ACCOUNT_TYPES.includes(a.accountType));
+    if (clientSide.length > 0 && clientSide.every((a) => !a.hasPassword)) {
+      throw new HttpError(409, 'Пароль ещё не создан', { field: 'password' });
     }
 
     const withPassword = accounts.filter((a) => a.hasPassword && a.passwordHash);

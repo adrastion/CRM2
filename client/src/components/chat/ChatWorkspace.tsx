@@ -174,6 +174,8 @@ interface ChatWorkspaceProps {
   };
   /** Открыть тред после загрузки списка (например ?threadId=). */
   initialThreadId?: string | null;
+  /** На xs — на всю высоту экрана без нижней навигации кабинета. */
+  immersiveMobile?: boolean;
 }
 
 const PRESENCE_LABEL: Record<PresenceStatus, string> = {
@@ -275,7 +277,13 @@ function socketToItem(msg: ChatSocketMessage): ChatMessageItem {
 /**
  * Двухколоночный UI чатов: список бесед + лента.
  */
-const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, initialThreadId }) => {
+const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
+  mode,
+  socketToken,
+  self,
+  initialThreadId,
+  immersiveMobile = false,
+}) => {
   const [threads, setThreads] = useState<ChatThreadItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState('');
@@ -1079,10 +1087,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
     <Box
       sx={{
         display: 'flex',
-        height: { xs: 'calc(100vh - 160px)', md: 'calc(100vh - 140px)' },
-        minHeight: 420,
-        border: `1px solid ${colors.divider}`,
-        borderRadius: `${radii.panel}px`,
+        flex: immersiveMobile ? { xs: 1, md: 'none' } : undefined,
+        height: immersiveMobile
+          ? { xs: 'calc(100dvh - 56px)', md: 'calc(100vh - 140px)' }
+          : { xs: 'calc(100vh - 160px)', md: 'calc(100vh - 140px)' },
+        maxHeight: immersiveMobile ? { xs: 'calc(100dvh - 56px)', md: 'none' } : undefined,
+        minHeight: immersiveMobile ? { xs: 0, md: 420 } : 420,
+        border: {
+          xs: immersiveMobile ? 'none' : `1px solid ${colors.divider}`,
+          md: `1px solid ${colors.divider}`,
+        },
+        borderRadius: {
+          xs: immersiveMobile ? 0 : `${radii.panel}px`,
+          md: `${radii.panel}px`,
+        },
         overflow: 'hidden',
         bgcolor: colors.card,
         position: 'relative',
@@ -1263,6 +1281,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
           display: { xs: selected ? 'flex' : 'none', sm: 'flex' },
           flexDirection: 'column',
           minWidth: 0,
+          minHeight: 0,
+          overflow: 'hidden',
           bgcolor: chatTheme.feedBg,
         }}
       >
@@ -1383,7 +1403,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                 flex: 1,
                 overflow: 'auto',
                 px: { xs: 1.25, sm: 2.5 },
-                py: 1.5,
+                pt: 1.5,
+                pb: immersiveMobile ? { xs: '88px', md: 1.5 } : 1.5,
                 background: chatTheme.feedPattern,
               }}
             >
@@ -1688,6 +1709,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             />
             </Box>
 
+            <Box
+              sx={
+                immersiveMobile
+                  ? {
+                      position: { xs: 'fixed', md: 'static' },
+                      left: { xs: 0, md: 'auto' },
+                      right: { xs: 0, md: 'auto' },
+                      bottom: { xs: 0, md: 'auto' },
+                      zIndex: { xs: 40, md: 'auto' },
+                      bgcolor: chatTheme.composerBg,
+                      flexShrink: 0,
+                    }
+                  : { flexShrink: 0 }
+              }
+            >
             {!recorderBusy && (editingId || replyTo) && (
               <Box
                 sx={{
@@ -1768,11 +1804,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
             <Box
               sx={{
                 px: recorderBusy ? 0 : 0.75,
-                py: recorderBusy ? 0 : 0.5,
+                pt: recorderBusy ? 0 : 0.5,
+                pb: recorderBusy
+                  ? 0
+                  : immersiveMobile
+                    ? { xs: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))', md: 0.5 }
+                    : 0.5,
                 display: 'flex',
                 gap: 0.5,
                 alignItems: 'center',
                 width: '100%',
+                flexShrink: 0,
                 bgcolor: chatTheme.composerBg,
                 borderTop: recorderBusy ? 'none' : `1px solid ${colors.divider}`,
                 '& > *:last-child': recorderBusy ? { width: '100%' } : undefined,
@@ -1885,6 +1927,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ mode, socketToken, self, 
                   void uploadMediaFile(file, kind, durationMs);
                 }}
               />
+            </Box>
             </Box>
           </>
         )}

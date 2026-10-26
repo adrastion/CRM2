@@ -503,6 +503,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onLogout={handleLogout}
           onAddAccount={handleAddAccount}
           hideSearch={isPlatformShell}
+          hideMobileBottomNav={
+            location.pathname.startsWith('/chats') ||
+            location.pathname.startsWith('/marketer/chats')
+          }
           searchValue={searchValue}
           onSearchChange={setSearchValue}
           searchResults={searchResults}

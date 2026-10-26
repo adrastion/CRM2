@@ -56,6 +56,8 @@ const setupPasswordSchema = Joi.object({
     'any.required': 'Необходимо согласие на обработку персональных данных',
   }),
   rememberMe: Joi.boolean().default(false),
+  accountType: Joi.string().valid('CLIENT', 'PARENT').optional(),
+  accountId: Joi.string().optional(),
 });
 
 const selectAccountSchema = Joi.object({
@@ -79,12 +81,13 @@ export const identify = asyncHandler(async (req: Request, res: Response<ApiRespo
  * Шаг 2а: первый вход — пользователь придумывает пароль.
  */
 export const setupPassword = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
-  const { identifier, password, rememberMe } = req.body;
+  const { identifier, password, rememberMe, accountType, accountId } = req.body;
   const result = await UnifiedAuthService.setupPassword(
     identifier,
     password,
     rememberMe,
-    extractSessionMeta(req)
+    extractSessionMeta(req),
+    accountType && accountId ? { accountType, accountId } : null
   );
   if ('requiresEmail2fa' in result && result.requiresEmail2fa) {
     res.json({ success: true, data: result });

@@ -100,6 +100,8 @@ interface DashboardShellProps {
   searchDisabled?: boolean;
   /** Полностью скрыть поиск (ЛК клиента). */
   hideSearch?: boolean;
+  /** На xs скрыть нижний бар (Главная/Календарь/…) — полноэкранный контент, напр. чаты. */
+  hideMobileBottomNav?: boolean;
   /** maxWidth поиска на sm/md (кабинет школы — шире). */
   searchMaxWidth?: { sm?: number | string; md?: number | string };
   searchValue?: string;
@@ -128,6 +130,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   onAddAccount,
   searchDisabled,
   hideSearch = false,
+  hideMobileBottomNav = false,
   searchMaxWidth,
   searchValue = '',
   onSearchChange,
@@ -969,7 +972,17 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   ) : null;
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: colors.surface, display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        bgcolor: colors.surface,
+        display: 'flex',
+        flexDirection: 'column',
+        ...(hideMobileBottomNav
+          ? { height: { xs: '100dvh', md: 'auto' }, overflow: { xs: 'hidden', md: 'visible' } }
+          : {}),
+      }}
+    >
       {/* Мобильная шапка: вордмарк + действия (не монтируем вместе с md-шапкой — один NotificationsBell) */}
       {!isMdUp && (
         <Box
@@ -1233,17 +1246,20 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             flex: 1,
             minWidth: 0,
             bgcolor: colors.surface,
-            px: { xs: 2, md: 3 },
-            py: { xs: 2, md: 2.5 },
-            pb: { xs: 11, md: 2.5 },
+            px: hideMobileBottomNav ? { xs: 0, md: 3 } : { xs: 2, md: 3 },
+            py: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 2, md: 2.5 },
+            pb: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 11, md: 2.5 },
             display: 'flex',
             flexDirection: 'column',
-            gap: { xs: 2, md: 2.5 },
+            gap: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 2, md: 2.5 },
+            ...(hideMobileBottomNav
+              ? { flex: 1, minHeight: { xs: 0, md: 'auto' } }
+              : {}),
           }}
         >
           <Box
             sx={{
-              display: 'flex',
+              display: hideMobileBottomNav ? { xs: 'none', md: 'flex' } : 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 2,
@@ -1271,11 +1287,26 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             )}
           </Box>
 
-          <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              ...(hideMobileBottomNav
+                ? {
+                    minHeight: { xs: 0, md: 0 },
+                    height: { xs: 'calc(100dvh - 56px)', md: 'auto' },
+                    display: { xs: 'flex', md: 'block' },
+                    flexDirection: { xs: 'column' },
+                  }
+                : {}),
+            }}
+          >
+            {children}
+          </Box>
 
           <Box
             sx={{
-              display: { xs: 'flex', md: 'none' },
+              display: hideMobileBottomNav ? 'none' : { xs: 'flex', md: 'none' },
               position: 'fixed',
               left: 0,
               right: 0,
@@ -1523,6 +1554,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             </Box>
           )}
 
+          {!hideMobileBottomNav && (
           <Box
             component="footer"
             sx={{
@@ -1570,6 +1602,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               © {new Date().getFullYear()} ПРОФСПОРТСРМ. Все права защищены.
             </Typography>
           </Box>
+          )}
         </Box>
         </Box>
       </Box>

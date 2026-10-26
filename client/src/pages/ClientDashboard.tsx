@@ -153,6 +153,13 @@ const ClientDashboard: React.FC = () => {
     };
   }, [navigate, switchClientId]);
 
+  React.useEffect(() => {
+    if (!data || data.isAccountApproved) return;
+    if (activeKey === 'chats' || activeKey === 'card') {
+      setActiveKey('dashboard');
+    }
+  }, [data, activeKey]);
+
   const handleLogout = () => {
     const nextDestination = logoutCurrentAccount();
     window.location.assign(nextDestination || '/');
@@ -199,6 +206,11 @@ const ClientDashboard: React.FC = () => {
       setEmailVerifiedLocal(true);
       setVerifyCode('');
       setVerifyNotice(result.message || 'Email подтверждён');
+      if (result.isAccountApproved) {
+        localStorage.setItem(CLIENT_APPROVED_KEY, 'true');
+      }
+      const refreshed = await loadDashboard(switchClientId);
+      setData(refreshed);
     } catch (err) {
       setVerifyError(extractApiError(err, 'Неверный код').message);
     } finally {
@@ -274,17 +286,16 @@ const ClientDashboard: React.FC = () => {
     label: item.label,
     icon: <DesignIcon category="nav" name={item.iconName} size={34} />,
     iconName: item.iconName,
-    // Чаты и уведомления доступны и до подтверждения аккаунта
+    // До подтверждения: главная, уведомления, новости, связь с разработчиком.
+    // Чаты и карточка спортсмена недоступны.
     disabled:
       pending &&
-      item.key !== 'chats' &&
       item.key !== 'dashboard' &&
       item.key !== 'notifications' &&
       item.key !== 'news' &&
       item.key !== 'feedback',
     onClick:
       pending &&
-      item.key !== 'chats' &&
       item.key !== 'dashboard' &&
       item.key !== 'notifications' &&
       item.key !== 'news' &&
@@ -350,59 +361,61 @@ const ClientDashboard: React.FC = () => {
       />
     ) : null;
 
+  const emailVerifyPanel = showEmailVerify ? (
+    <Panel title="Подтвердите email">
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
+          {pending
+            ? `Подтвердите ${viewerEmail} кодом из письма — откроется полный доступ к кабинету. Либо дождитесь одобрения школой.`
+            : `На ${viewerEmail} можно отправить код подтверждения.`}
+        </Typography>
+        {verifyNotice && (
+          <Typography sx={{ color: colors.primary, fontSize: typography.hint }}>{verifyNotice}</Typography>
+        )}
+        {verifyError && (
+          <Typography sx={{ color: colors.danger, fontSize: typography.hint }}>{verifyError}</Typography>
+        )}
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            alignItems: 'center',
+          }}
+        >
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleSendVerification}
+            disabled={verifySending}
+            sx={{ textTransform: 'none' }}
+          >
+            {verifySending ? 'Отправка…' : 'Отправить код'}
+          </Button>
+          <TextField
+            size="small"
+            placeholder="Код из письма"
+            value={verifyCode}
+            onChange={(e) => setVerifyCode(e.target.value)}
+            inputProps={{ maxLength: 6, inputMode: 'numeric' }}
+            sx={{ width: 160 }}
+          />
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleVerifyCode}
+            disabled={verifyChecking || verifyCode.trim().length !== 6}
+            sx={{ textTransform: 'none' }}
+          >
+            {verifyChecking ? '…' : 'Подтвердить'}
+          </Button>
+        </Box>
+      </Box>
+    </Panel>
+  ) : null;
+
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 4 } }}>
-      {showEmailVerify && (
-        <Panel title="Подтвердите email">
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            <Typography sx={{ color: colors.textMuted, fontSize: typography.label }}>
-              На {viewerEmail} можно отправить код подтверждения. Вход без подтверждения доступен.
-            </Typography>
-            {verifyNotice && (
-              <Typography sx={{ color: colors.primary, fontSize: typography.hint }}>{verifyNotice}</Typography>
-            )}
-            {verifyError && (
-              <Typography sx={{ color: colors.danger, fontSize: typography.hint }}>{verifyError}</Typography>
-            )}
-            <Box
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 1.5,
-                alignItems: 'center',
-              }}
-            >
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={handleSendVerification}
-                disabled={verifySending}
-                sx={{ textTransform: 'none' }}
-              >
-                {verifySending ? 'Отправка…' : 'Отправить код'}
-              </Button>
-              <TextField
-                size="small"
-                placeholder="Код из письма"
-                value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value)}
-                inputProps={{ maxLength: 6, inputMode: 'numeric' }}
-                sx={{ width: 160 }}
-              />
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleVerifyCode}
-                disabled={verifyChecking || verifyCode.trim().length !== 6}
-                sx={{ textTransform: 'none' }}
-              >
-                {verifyChecking ? '…' : 'Подтвердить'}
-              </Button>
-            </Box>
-          </Box>
-        </Panel>
-      )}
-
       <Box
         sx={{
           display: 'grid',
@@ -615,6 +628,7 @@ const ClientDashboard: React.FC = () => {
       mode="client"
       socketToken={localStorage.getItem('clientToken')}
       self={chatSelf}
+      immersiveMobile
     />
   );
 
@@ -657,8 +671,8 @@ const ClientDashboard: React.FC = () => {
 
   return (
     <DashboardShell
-      pageTitle={pageTitle}
-      pageAction={athleteSwitcher}
+      pageTitle={activeKey === 'chats' ? undefined : pageTitle}
+      pageAction={activeKey === 'chats' ? undefined : athleteSwitcher}
       navItems={navItems}
       activeKey={activeKey}
       userName={data.viewerName}
@@ -667,6 +681,7 @@ const ClientDashboard: React.FC = () => {
       onLogout={handleLogout}
       onAddAccount={handleAddAccount}
       hideSearch
+      hideMobileBottomNav={activeKey === 'chats'}
     >
       <ClientTrainerCardDialog
         open={Boolean(trainerCardId)}
@@ -735,46 +750,58 @@ const ClientDashboard: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      {pending && activeKey !== 'chats' && activeKey !== 'notifications' ? (
-        <Box sx={{ position: 'relative' }}>
-          <Box
-            aria-hidden
-            sx={{
-              pointerEvents: 'none',
-              filter: 'grayscale(0.35)',
-            }}
-          >
-            {mainContent}
-          </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, md: 3 } }}>
+        {emailVerifyPanel}
+        {pending && activeKey !== 'notifications' && activeKey !== 'news' && activeKey !== 'feedback' ? (
+          <Box sx={{ position: 'relative' }}>
+            <Box
+              aria-hidden
+              sx={{
+                pointerEvents: 'none',
+                filter: 'grayscale(0.35)',
+              }}
+            >
+              {mainContent}
+            </Box>
 
-          <Box
-            role="status"
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              px: 2,
-              bgcolor: `${colors.overlay}D9`,
-              borderRadius: `${radii.panel}px`,
-              pointerEvents: 'auto',
-            }}
-          >
-            <HourglassEmpty sx={{ fontSize: 48, color: colors.primary, mb: 1 }} />
-            <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, textAlign: 'center' }}>
-              Аккаунт ожидает подтверждения школой
-            </Typography>
-            <Typography sx={{ fontSize: typography.label, color: colors.textMuted, textAlign: 'center', mt: 1, maxWidth: 420 }}>
-              После одобрения администратором откроется полный доступ к карточке и расписанию.
-              Написать в администрацию можно во вкладке «Чаты».
-            </Typography>
+            <Box
+              role="status"
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                px: 2,
+                bgcolor: `${colors.overlay}D9`,
+                borderRadius: `${radii.panel}px`,
+                pointerEvents: 'auto',
+              }}
+            >
+              <HourglassEmpty sx={{ fontSize: 48, color: colors.primary, mb: 1 }} />
+              <Typography sx={{ fontSize: typography.panelTitle, fontWeight: 700, textAlign: 'center' }}>
+                Аккаунт ожидает подтверждения школой
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: typography.label,
+                  color: colors.textMuted,
+                  textAlign: 'center',
+                  mt: 1,
+                  maxWidth: 420,
+                }}
+              >
+                {showEmailVerify
+                  ? 'Подтвердите email выше или дождитесь одобрения администратором — после этого откроется полный доступ к карточке и расписанию.'
+                  : 'Ожидайте подтверждения от администратора организации. После одобрения откроется полный доступ к карточке и расписанию.'}
+              </Typography>
+            </Box>
           </Box>
-        </Box>
-      ) : (
-        mainContent
-      )}
+        ) : (
+          mainContent
+        )}
+      </Box>
     </DashboardShell>
   );
 };

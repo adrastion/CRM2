@@ -349,6 +349,8 @@ class ApiService {
     acceptTerms: boolean;
     acceptPrivacy: boolean;
     rememberMe?: boolean;
+    accountType?: 'CLIENT' | 'PARENT';
+    accountId?: string;
   }): Promise<UnifiedLoginResponse> {
     const response = await this.api.post<ApiResponse<UnifiedLoginResponse>>(
       '/auth/setup-password',
@@ -599,7 +601,11 @@ class ApiService {
     return response.data.data || {};
   }
 
-  async verifyEmailCode(code: string): Promise<{ emailVerified?: boolean; message?: string }> {
+  async verifyEmailCode(code: string): Promise<{
+    emailVerified?: boolean;
+    isAccountApproved?: boolean;
+    message?: string;
+  }> {
     const response = await this.api.post<ApiResponse>('/auth/email/verify', { code });
     return response.data.data || {};
   }

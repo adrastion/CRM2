@@ -71,7 +71,7 @@ import DeletionScopeDialog, {
 import { colors, radii } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
 import { isPromoter as roleIsPromoter } from '../utils/roles';
-import { getClientAccountStatus } from '../utils/clientAccountStatus';
+import { getClientAccountStatus, isClientLead } from '../utils/clientAccountStatus';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -171,7 +171,7 @@ const Clients: React.FC = () => {
         // Фильтр по статусу: лид / не зарегистрирован / зарегистрирован
         if (filterAccountStatus) {
           const status = getClientAccountStatus(client);
-          if (filterAccountStatus === 'lead' && status !== 'lead') return false;
+          if (filterAccountStatus === 'lead' && !isClientLead(client)) return false;
           if (filterAccountStatus === 'unregistered' && status !== 'unregistered') return false;
           if (
             filterAccountStatus === 'registered' &&
@@ -211,10 +211,9 @@ const Clients: React.FC = () => {
           case 'accountStatus': {
             const rank = (c: Client) => {
               const s = getClientAccountStatus(c);
-              if (s === 'lead') return 0;
-              if (s === 'unregistered') return 1;
-              if (s === 'pending') return 2;
-              return 3;
+              if (s === 'unregistered') return 0;
+              if (s === 'pending') return 1;
+              return 2;
             };
             aValue = rank(a);
             bValue = rank(b);
@@ -1156,6 +1155,8 @@ const Clients: React.FC = () => {
                 setGroupsDialog(true);
               }
         }
+        onApproveAccount={isPromoter ? undefined : handleApproveAccount}
+        onRejectAccount={isPromoter ? undefined : handleRejectAccount}
         onMembershipClick={
           isPromoter
             ? undefined

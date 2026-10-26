@@ -314,9 +314,9 @@ const Schedule: React.FC = () => {
       apiService.listStaffWorkspaceUsers().catch(() => []),
     ]);
     if (signal?.aborted) return;
-    setGroups(groupsRes.data);
-    setTrainers(trainersRes.data);
-    setBranches(branchesRes.data);
+      setGroups(groupsRes.data);
+      setTrainers(trainersRes.data);
+      setBranches(branchesRes.data);
     setHalls(hallsRes.data || []);
     setClients(clientsRes?.data || []);
     setDesktopStaffUsers(
@@ -1788,7 +1788,7 @@ const Schedule: React.FC = () => {
 
         {sectionTab === 'competitions' ? (
           <Suspense fallback={<CircularProgress size={28} sx={{ m: 2 }} />}>
-            <CompetitionsPanel embedded />
+          <CompetitionsPanel embedded />
           </Suspense>
         ) : (
         <>

@@ -95,6 +95,8 @@ export interface IdentifyResponse {
   exists: boolean;
   /** true → показываем экран «Придумайте пароль». */
   needsPasswordSetup: boolean;
+  /** CLIENT/PARENT без своего пароля. */
+  setupAccounts?: PublicAccount[];
   accountsCount: number;
 }
 

@@ -28,6 +28,7 @@ const Chats: React.FC = () => {
       socketToken={token}
       self={{ kind: 'USER', id: user.id }}
       initialThreadId={initialThreadId}
+      immersiveMobile
     />
   );
 };

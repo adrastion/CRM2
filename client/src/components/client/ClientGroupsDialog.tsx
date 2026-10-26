@@ -21,7 +21,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../../services/api';
 import { Client, Group } from '../../types';
-import { getClientAccountStatus } from '../../utils/clientAccountStatus';
+import { isClientLead } from '../../utils/clientAccountStatus';
 
 type Props = {
   open: boolean;
@@ -137,7 +137,7 @@ const ClientGroupsDialog: React.FC<Props> = ({
     ? [localClient.lastName, localClient.firstName, localClient.middleName].filter(Boolean).join(' ')
     : '';
 
-  const isLead = localClient ? getClientAccountStatus(localClient) === 'lead' : false;
+  const isLead = localClient ? isClientLead(localClient) : false;
   const pendingGroup = pendingGroupId ? groups.find((g) => g.id === pendingGroupId) : null;
 
   return (
