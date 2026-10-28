@@ -11,10 +11,24 @@ import {
   downloadNameForKind,
   migrateCertificateValueIfNeeded,
   mimeFromStoragePath,
+  saveCertificateDataUrl,
+  unlinkCertificateIfStored,
   type CertificateKind,
 } from '../utils/clientCertificates';
 
 const PDF_MIME = 'application/pdf';
+const PORTAL_DOC_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+]);
+
+function isAllowedPortalDoc(file: Express.Multer.File): boolean {
+  const name = file.originalname.toLowerCase();
+  if (PORTAL_DOC_MIMES.has(file.mimetype)) return true;
+  return /\.(pdf|jpe?g|png)$/i.test(name);
+}
 
 function parseSignedAt(raw: unknown): Date | null {
   if (raw == null || raw === '') return null;
@@ -528,3 +542,128 @@ export const clientDownloadAddendum = asyncHandler(async (req: ClientRequest, re
   res.setHeader('Content-Disposition', contentDispositionAttachment(addendum.originalName));
   fs.createReadStream(abs).pipe(res);
 });
+
+/**
+ * POST /client-auth/clients/:clientId/contracts — загрузка договора из ЛК (PDF/JPG/PNG ≤ 10 МБ).
+ */
+export const clientUploadContract = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const clientId = String(req.params.clientId);
+    const client = await assertClientAccess(req, clientId);
+    if (!client) {
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ success: false, error: 'Файл не загружен' });
+      return;
+    }
+    if (!isAllowedPortalDoc(file)) {
+      safeUnlink(path.join('client-contracts', client.tenantId, file.filename).replace(/\\/g, '/'));
+      res.status(400).json({ success: false, error: 'Допустимы PDF, JPG и PNG' });
+      return;
+    }
+
+    const title =
+      String(req.body?.title || '').trim() ||
+      decodeUploadOriginalName(file.originalname).replace(/\.(pdf|jpe?g|png)$/i, '') ||
+      'Договор';
+    const storagePath = path.join('client-contracts', client.tenantId, file.filename).replace(/\\/g, '/');
+
+    const contract = await prisma.clientContract.create({
+      data: {
+        tenantId: client.tenantId,
+        clientId: client.id,
+        title,
+        originalName: decodeUploadOriginalName(file.originalname),
+        storagePath,
+        mimeType: file.mimetype || PDF_MIME,
+        sizeBytes: file.size,
+        signedAt: parseSignedAt(req.body?.signedAt),
+        uploadedById: null,
+      },
+      include: { addenda: true },
+    });
+
+    res.status(201).json({ success: true, data: serializeContract(contract) });
+  }
+);
+
+/**
+ * POST /client-auth/clients/:clientId/certificates/:kind — личный документ из ЛК.
+ */
+export const clientUploadCertificate = asyncHandler(
+  async (req: ClientRequest, res: Response<ApiResponse>) => {
+    const clientId = String(req.params.clientId);
+    const kindRaw = String(req.params.kind || '').toLowerCase();
+    const kind: CertificateKind | null =
+      kindRaw === 'birth' || kindRaw === 'medical' ? kindRaw : null;
+    if (!kind) {
+      res.status(400).json({ success: false, error: 'Укажите kind: birth или medical' });
+      return;
+    }
+
+    const access = await assertClientAccess(req, clientId);
+    if (!access) {
+      res.status(404).json({ success: false, error: 'Клиент не найден' });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ success: false, error: 'Файл не загружен' });
+      return;
+    }
+    if (!isAllowedPortalDoc(file)) {
+      if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      res.status(400).json({ success: false, error: 'Допустимы PDF, JPG и PNG' });
+      return;
+    }
+
+    const buffer = file.buffer?.length
+      ? file.buffer
+      : file.path
+        ? fs.readFileSync(file.path)
+        : null;
+    if (file.path && fs.existsSync(file.path)) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!buffer?.length) {
+      res.status(400).json({ success: false, error: 'Пустой файл' });
+      return;
+    }
+
+    const dataUrl = `data:${file.mimetype || 'application/octet-stream'};base64,${buffer.toString('base64')}`;
+
+    const existing = await prisma.client.findUnique({
+      where: { id: access.id },
+      select: { birthCertificate: true, medicalCertificate: true },
+    });
+    const prev =
+      kind === 'birth' ? existing?.birthCertificate : existing?.medicalCertificate;
+    let storagePath: string;
+    try {
+      storagePath = saveCertificateDataUrl(access.tenantId, access.id, kind, dataUrl);
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e?.message || 'Не удалось сохранить файл' });
+      return;
+    }
+    unlinkCertificateIfStored(prev);
+
+    await prisma.client.update({
+      where: { id: access.id },
+      data: kind === 'birth' ? { birthCertificate: storagePath } : { medicalCertificate: storagePath },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { kind, uploaded: true },
+    });
+  }
+);

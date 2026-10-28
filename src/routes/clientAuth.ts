@@ -13,6 +13,7 @@ import {
   getPortalPaymentMethods,
   getPortalPaymentMethodQr,
   submitPortalPaymentReceipt,
+  changePortalPassword,
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
 import { portalReceiptUpload } from '../controllers/paymentMethodController';
@@ -40,12 +41,55 @@ import {
   clientUnpinMessage,
   clientUnreadTotal,
 } from '../controllers/chatController';
+import multer from 'multer';
 import {
   clientListContracts,
   clientDownloadContract,
   clientDownloadAddendum,
   clientDownloadCertificate,
+  clientUploadContract,
+  clientUploadCertificate,
 } from '../controllers/clientContractController';
+import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
+
+const portalDocUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      const tenantId =
+        (req as any).client?.tenantId || (req as any).parent?.tenantId || 'unknown';
+      cb(null, ensureUploadDir('client-contracts', String(tenantId)));
+    },
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname.toLowerCase();
+    const ok =
+      ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(file.mimetype) ||
+      /\.(pdf|jpe?g|png)$/i.test(name);
+    if (!ok) {
+      cb(new Error('Допустимы PDF, JPG и PNG') as any);
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const portalCertUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname.toLowerCase();
+    const ok =
+      ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(file.mimetype) ||
+      /\.(pdf|jpe?g|png)$/i.test(name);
+    if (!ok) {
+      cb(new Error('Допустимы PDF, JPG и PNG') as any);
+      return;
+    }
+    cb(null, true);
+  },
+});
 import { loginRateLimiter } from '../middleware/loginRateLimit';
 import {
   getPortalNotificationPrefs,
@@ -82,6 +126,7 @@ router.post('/parent/find', loginRateLimiter, findParentsForRegistration);
 router.post('/parent/register', loginRateLimiter, registerParent);
 
 // Защищенные маршруты
+router.post('/change-password', authenticateClient, changePortalPassword);
 router.get('/profile', authenticateClient, getClientProfile);
 router.get('/trainings', authenticateClient, getClientTrainings);
 router.get('/athlete-card', authenticateClient, getAthleteCard);
@@ -129,10 +174,38 @@ router.post('/feature-ideas', authenticateClient, attachIdeaActorFromPortal, cre
 
 // Документы (договоры + личные сертификаты)
 router.get('/clients/:clientId/contracts', authenticateClient, clientListContracts);
+router.post(
+  '/clients/:clientId/contracts',
+  authenticateClient,
+  (req, res, next) => {
+    portalDocUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
+        return;
+      }
+      next();
+    });
+  },
+  clientUploadContract
+);
 router.get(
   '/clients/:clientId/certificates/:kind/download',
   authenticateClient,
   clientDownloadCertificate
+);
+router.post(
+  '/clients/:clientId/certificates/:kind',
+  authenticateClient,
+  (req, res, next) => {
+    portalCertUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
+        return;
+      }
+      next();
+    });
+  },
+  clientUploadCertificate
 );
 router.get(
   '/clients/:clientId/contracts/:contractId/download',

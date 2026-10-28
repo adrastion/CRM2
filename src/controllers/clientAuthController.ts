@@ -11,6 +11,7 @@ import {
   createAuthSession,
   extractSessionMeta,
   expiresAtFromTtl,
+  revokeOtherAuthSessions,
 } from '../services/authSessionService';
 
 function normalizePhone(phone: string | null | undefined): string | null {
@@ -1369,7 +1370,24 @@ export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Resp
         ],
       },
       include: {
-        participants: { where: { clientId }, include: { results: true } },
+        participants: {
+          include: {
+            results: true,
+            attendance: true,
+            client: { select: { id: true, firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        trainers: {
+          include: {
+            trainer: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+          take: 3,
+        },
       },
       orderBy: { startDate: 'asc' },
       take: 200,
@@ -1378,6 +1396,8 @@ export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Resp
 
   const fullName = (parts: Array<string | null | undefined>) =>
     parts.filter(Boolean).join(' ').trim();
+
+  const now = Date.now();
 
   return res.json({
     success: true,
@@ -1399,16 +1419,63 @@ export const getClientCalendarPlan = asyncHandler(async (req: Request, res: Resp
           : null,
         type: 'training' as const,
       })),
-      competitions: competitions.map((c) => ({
-        id: c.id,
-        name: c.name,
-        location: c.location,
-        startDate: c.startDate,
-        endDate: c.endDate,
-        registrationDate: c.registrationDate,
-        results: c.participants[0]?.results || [],
-        type: 'competition' as const,
-      })),
+      competitions: competitions.map((c) => {
+        const mine = c.participants.find((p) => p.clientId === clientId);
+        const myResults = mine?.results || [];
+        const attendanceStatus = mine?.attendance?.status || null;
+        const startMs = new Date(c.startDate).getTime();
+        const endMs = new Date(c.endDate || c.startDate).getTime();
+        const regMs = c.registrationDate ? new Date(c.registrationDate).getTime() : null;
+
+        let status: 'participation' | 'applied' | 'planned' | 'calendar' = 'calendar';
+        if (myResults.length > 0 || attendanceStatus === 'PRESENT' || (startMs <= now && endMs >= now)) {
+          status = 'participation';
+        } else if (startMs > now) {
+          status = regMs != null && now >= regMs ? 'applied' : 'planned';
+        } else if (attendanceStatus === 'ABSENT') {
+          status = 'calendar';
+        } else {
+          status = 'participation';
+        }
+
+        const categories = Array.from(
+          new Set(
+            c.participants
+              .flatMap((p) => p.results || [])
+              .map((r) => (r.category || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const organizer =
+          c.trainers
+            .map((t) =>
+              fullName([t.trainer?.user?.lastName, t.trainer?.user?.firstName])
+            )
+            .filter(Boolean)
+            .join(', ') || null;
+
+        return {
+          id: c.id,
+          name: c.name,
+          location: c.location,
+          startDate: c.startDate,
+          endDate: c.endDate,
+          registrationDate: c.registrationDate,
+          status,
+          categories,
+          organizer,
+          results: myResults,
+          participants: c.participants.map((p) => ({
+            id: p.client.id,
+            firstName: p.client.firstName,
+            lastName: p.client.lastName,
+            isMe: p.clientId === clientId,
+          })),
+          participantCount: c.participants.length,
+          type: 'competition' as const,
+        };
+      }),
     },
   });
 });
@@ -1649,5 +1716,91 @@ export const submitPortalPaymentReceipt = asyncHandler(async (req: Request, res:
       claimedAmount,
     },
   });
+});
+
+/**
+ * Смена пароля ученика/родителя в ЛК (текущая сессия сохраняется, остальные завершаются).
+ */
+export const changePortalPassword = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const userType = (req as any).userType as 'client' | 'parent' | undefined;
+  const clientId = (req as any).client?.id as string | undefined;
+  const parentId = (req as any).parent?.id as string | undefined;
+  const authSessionId = (req as any).authSessionId as string | undefined;
+
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      error: 'Укажите текущий и новый пароль',
+    });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: 'Новый пароль должен содержать минимум 6 символов',
+    });
+  }
+  if (currentPassword === newPassword) {
+    return res.status(400).json({
+      success: false,
+      error: 'Новый пароль должен отличаться от текущего',
+    });
+  }
+
+  if (userType === 'client' && clientId) {
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, password: true },
+    });
+    if (!client?.password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Пароль ещё не задан. Завершите регистрацию аккаунта.',
+      });
+    }
+    const ok = await bcrypt.compare(currentPassword, client.password);
+    if (!ok) {
+      return res.status(400).json({ success: false, error: 'Текущий пароль неверен' });
+    }
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { password: hash },
+    });
+    if (authSessionId) {
+      await revokeOtherAuthSessions('CLIENT', clientId, authSessionId);
+    }
+    return res.json({ success: true, data: { message: 'Пароль успешно изменён' } });
+  }
+
+  if (userType === 'parent' && parentId) {
+    const parent = await prisma.parent.findUnique({
+      where: { id: parentId },
+      select: { id: true, password: true },
+    });
+    if (!parent?.password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Пароль ещё не задан. Завершите регистрацию аккаунта.',
+      });
+    }
+    const ok = await bcrypt.compare(currentPassword, parent.password);
+    if (!ok) {
+      return res.status(400).json({ success: false, error: 'Текущий пароль неверен' });
+    }
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await prisma.parent.update({
+      where: { id: parentId },
+      data: { password: hash },
+    });
+    if (authSessionId) {
+      await revokeOtherAuthSessions('PARENT', parentId, authSessionId);
+    }
+    return res.json({ success: true, data: { message: 'Пароль успешно изменён' } });
+  }
+
+  return res.status(401).json({ success: false, error: 'Не авторизован' });
 });
 

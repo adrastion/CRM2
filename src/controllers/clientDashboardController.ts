@@ -51,12 +51,51 @@ function phonesMatchExact(
 }
 
 /** Спортсмены, доступные текущему аккаунту (один номер — несколько детей). */
+type LinkedAthleteRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  birthYear: number | null;
+  groupName: string | null;
+};
+
+const linkedAthleteSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  dateOfBirth: true,
+  groupMemberships: {
+    where: { isActive: true },
+    take: 1,
+    orderBy: { joinedAt: 'desc' as const },
+    select: { group: { select: { name: true } } },
+  },
+} as const;
+
+function mapLinkedAthlete(c: {
+  id: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: Date | null;
+  groupMemberships: Array<{ group: { name: string } }>;
+}): LinkedAthleteRow {
+  const birthYear =
+    c.dateOfBirth && !Number.isNaN(c.dateOfBirth.getTime()) ? c.dateOfBirth.getFullYear() : null;
+  return {
+    id: c.id,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    birthYear,
+    groupName: c.groupMemberships[0]?.group?.name || null,
+  };
+}
+
 async function findLinkedAthletes(
   tenantId: string,
   userType: string | undefined,
   clientAuthId: string | undefined,
   parentAuthId: string | undefined
-): Promise<Array<{ id: string; firstName: string; lastName: string }>> {
+): Promise<LinkedAthleteRow[]> {
   if (userType === 'parent' && parentAuthId) {
     const parent = await prisma.parent.findUnique({
       where: { id: parentAuthId },
@@ -91,11 +130,12 @@ async function findLinkedAthletes(
     ];
     if (clientIds.length === 0) return [];
 
-    return prisma.client.findMany({
+    const rows = await prisma.client.findMany({
       where: { tenantId, id: { in: clientIds }, isActive: true },
-      select: { id: true, firstName: true, lastName: true },
+      select: linkedAthleteSelect,
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
+    return rows.map(mapLinkedAthlete);
   }
 
   if (clientAuthId) {
@@ -108,10 +148,11 @@ async function findLinkedAthletes(
     const phone = normalizePhone(authClient.phone);
     const email = authClient.email?.toLowerCase().trim() || null;
     if (!phone && !email) {
-      return prisma.client.findMany({
+      const rows = await prisma.client.findMany({
         where: { id: clientAuthId, tenantId, isActive: true },
-        select: { id: true, firstName: true, lastName: true },
+        select: linkedAthleteSelect,
       });
+      return rows.map(mapLinkedAthlete);
     }
 
     const phoneTail = phone && phone.length >= 10 ? phone.slice(-10) : phone;
@@ -121,7 +162,7 @@ async function findLinkedAthletes(
 
     const candidates = await prisma.client.findMany({
       where: { tenantId, isActive: true, OR: orConditions },
-      select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+      select: { ...linkedAthleteSelect, phone: true, email: true },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
 
@@ -132,7 +173,7 @@ async function findLinkedAthletes(
           phonesMatchExact(c.phone, phone) ||
           (email && c.email?.toLowerCase().trim() === email)
       )
-      .map(({ id, firstName, lastName }) => ({ id, firstName, lastName }));
+      .map(({ phone: _p, email: _e, ...rest }) => mapLinkedAthlete(rest));
   }
 
   return [];
@@ -343,7 +384,7 @@ export const getClientDashboard = asyncHandler(
         take: 20,
       }),
       prisma.user.findMany({
-        where: { tenantId, isActive: true, role: { in: ['OWNER', 'ADMIN'] } },
+        where: { tenantId, isActive: true, role: 'ADMIN' },
         select: {
           id: true,
           firstName: true,
@@ -357,6 +398,7 @@ export const getClientDashboard = asyncHandler(
       }),
     ]);
 
+    // Владелец в блоке «Персонал» ЛК не показывается — только тренеры и администраторы.
     const staff = [
       ...trainers.map((t) => ({
         id: t.id,
@@ -368,8 +410,8 @@ export const getClientDashboard = asyncHandler(
       })),
       ...admins.map((a) => ({
         id: a.id,
-        role: a.role === 'OWNER' ? ('OWNER' as const) : ('ADMIN' as const),
-        roleLabel: a.role === 'OWNER' ? 'Владелец' : 'Администратор',
+        role: 'ADMIN' as const,
+        roleLabel: 'Администратор',
         name: fullName([a.lastName, a.firstName, a.middleName]),
         phone: a.phone || null,
         email: a.email || null,

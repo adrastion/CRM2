@@ -16,10 +16,10 @@ import {
   CircularProgress,
   Divider,
 } from '@mui/material';
-import { SupportAgent, Brush, Close } from '@mui/icons-material';
+import { SupportAgent, Close } from '@mui/icons-material';
 import { apiService } from '../services/api';
 
-type Channel = 'SUPPORT' | 'DESIGNER';
+type Channel = 'SUPPORT';
 
 const ClientSupportFAB: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -151,7 +151,7 @@ const ClientSupportFAB: React.FC = () => {
     <>
       <Fab
         color="primary"
-        aria-label="Поддержка и дизайн"
+        aria-label="Поддержка"
         onClick={handleOpenMenu}
         sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: (t) => t.zIndex.drawer + 2 }}
       >
@@ -159,8 +159,8 @@ const ClientSupportFAB: React.FC = () => {
       </Fab>
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {step === 'menu' && 'Поддержка и дизайн'}
-          {step === 'new' && (channel === 'SUPPORT' ? 'Написать в техподдержку' : 'Написать дизайнерам')}
+          {step === 'menu' && 'Поддержка'}
+          {step === 'new' && 'Написать в техподдержку'}
           {step === 'chat' && 'Чат'}
           <Button size="small" onClick={handleClose}><Close /></Button>
         </DialogTitle>
@@ -171,7 +171,7 @@ const ClientSupportFAB: React.FC = () => {
           {step === 'menu' && (
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Выберите, кому вы хотите написать, или откройте существующее обращение.
+                Напишите в техподдержку или откройте существующее обращение.
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
                 <Button
@@ -181,14 +181,6 @@ const ClientSupportFAB: React.FC = () => {
                   fullWidth
                 >
                   Техподдержка
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<Brush />}
-                  onClick={() => startNew('DESIGNER')}
-                  fullWidth
-                >
-                  Дизайнеры
                 </Button>
               </Box>
               <Divider sx={{ my: 2 }} />
@@ -200,7 +192,7 @@ const ClientSupportFAB: React.FC = () => {
                 {tickets.map((t) => (
                   <ListItemButton key={t.id} onClick={() => openTicket(t.id)}>
                     <ListItemText
-                      primary={t.subject || (t.channel === 'SUPPORT' ? 'Техподдержка' : 'Дизайн')}
+                      primary={t.subject || 'Техподдержка'}
                       secondary={`${t.channel} · ${t.status}`}
                     />
                     <Chip size="small" label={t.channel} />

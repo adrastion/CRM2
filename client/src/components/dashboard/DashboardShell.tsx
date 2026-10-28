@@ -22,6 +22,8 @@ import {
   HomeOutlined,
   PeopleAltOutlined,
   CalendarMonthOutlined,
+  ChatBubbleOutline,
+  PaymentsOutlined,
   Menu as MenuIcon,
   Add,
   ChevronRight,
@@ -84,6 +86,8 @@ interface DashboardShellProps {
   pageTitle?: string;
   /** Правый слот рядом с заголовком. */
   pageAction?: React.ReactNode;
+  /** Слот в шапке слева от колокольчика (свитчер учеников ЛК). */
+  headerLeading?: React.ReactNode;
   navItems: ShellNavItem[];
   activeKey: string;
   /** Имя и роль в шапке. */
@@ -100,6 +104,11 @@ interface DashboardShellProps {
   searchDisabled?: boolean;
   /** Полностью скрыть поиск (ЛК клиента). */
   hideSearch?: boolean;
+  /**
+   * Кнопка «Нужна помощь?» в сайдбаре / мобильном меню.
+   * По умолчанию: скрыта в ЛК клиента (portal), видна в кабинете школы.
+   */
+  showSupportHelp?: boolean;
   /** На xs скрыть нижний бар (Главная/Календарь/…) — полноэкранный контент, напр. чаты. */
   hideMobileBottomNav?: boolean;
   /** maxWidth поиска на sm/md (кабинет школы — шире). */
@@ -120,6 +129,7 @@ interface DashboardShellProps {
 const DashboardShell: React.FC<DashboardShellProps> = ({
   pageTitle,
   pageAction,
+  headerLeading,
   navItems,
   activeKey,
   userName,
@@ -130,6 +140,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   onAddAccount,
   searchDisabled,
   hideSearch = false,
+  showSupportHelp,
   hideMobileBottomNav = false,
   searchMaxWidth,
   searchValue = '',
@@ -647,6 +658,12 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             <MenuIcon />
           </IconButton>
 
+          {headerLeading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', mr: { xs: 0.25, md: 0.5 } }}>
+              {headerLeading}
+            </Box>
+          ) : null}
+
           {notificationsChannel ? (
             <NotificationsBell channel={notificationsChannel} />
           ) : (
@@ -1052,66 +1069,68 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         >
           <Box sx={{ px: 2, pt: 2, pb: 1.1, flexShrink: 0 }}>{wordmarkLight}</Box>
           <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0, position: 'relative', zIndex: 1 }}>{nav}</Box>
-          <Box
-            component="button"
-            type="button"
-            aria-label="Нужна помощь"
-            onClick={() => {
-              window.dispatchEvent(new Event('crm:open-support'));
-            }}
-            sx={{
-              m: 1.25,
-              mt: 0.35,
-              mb: 1.25,
-              p: 1.15,
-              border: 'none',
-              borderRadius: 14,
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              background: 'rgba(255,255,255,0.08)',
-              color: colors.white,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              flexShrink: 0,
-              position: 'relative',
-              zIndex: 1,
-              '&:hover': { background: 'rgba(255,255,255,0.14)' },
-            }}
-          >
+          {(showSupportHelp ?? !(hideSearch || notificationsChannel === 'portal')) && (
             <Box
+              component="button"
+              type="button"
+              aria-label="Нужна помощь"
+              onClick={() => {
+                window.dispatchEvent(new Event('crm:open-support'));
+              }}
               sx={{
-                width: 34,
-                height: 34,
-                borderRadius: '10px',
-                flexShrink: 0,
+                m: 1.25,
+                mt: 0.35,
+                mb: 1.25,
+                p: 1.15,
+                border: 'none',
+                borderRadius: 14,
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                background: 'rgba(255,255,255,0.08)',
+                color: colors.white,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
-                boxShadow: '0 4px 12px rgba(47, 107, 255, 0.35)',
+                gap: 1,
+                flexShrink: 0,
+                position: 'relative',
+                zIndex: 1,
+                '&:hover': { background: 'rgba(255,255,255,0.14)' },
               }}
             >
-              <HeadsetMicOutlined sx={{ fontSize: 18, color: '#fff' }} />
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: 11, fontWeight: 800, color: colors.white, lineHeight: 1.2 }}>
-                Нужна помощь?
-              </Typography>
-              <Typography
+              <Box
                 sx={{
-                  mt: 0.25,
-                  fontSize: 9,
-                  color: 'rgba(255,255,255,0.68)',
-                  lineHeight: 1.3,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '10px',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                  boxShadow: '0 4px 12px rgba(47, 107, 255, 0.35)',
                 }}
               >
-                Свяжитесь с нашей командой разработчиков
-              </Typography>
+                <HeadsetMicOutlined sx={{ fontSize: 18, color: '#fff' }} />
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: 11, fontWeight: 800, color: colors.white, lineHeight: 1.2 }}>
+                  Нужна помощь?
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.25,
+                    fontSize: 9,
+                    color: 'rgba(255,255,255,0.68)',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  Свяжитесь с нашей командой разработчиков
+                </Typography>
+              </Box>
+              <ArrowForward sx={{ fontSize: 14, opacity: 0.75, flexShrink: 0 }} />
             </Box>
-            <ArrowForward sx={{ fontSize: 14, opacity: 0.75, flexShrink: 0 }} />
-          </Box>
+          )}
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -1188,54 +1207,56 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                   {group.items.map((item) => renderMobileNavItem(item))}
                 </Box>
               ))}
-              <Box
-                component="button"
-                type="button"
-                aria-label="Нужна помощь"
-                onClick={() => {
-                  setMobileNavOpen(false);
-                  window.dispatchEvent(new Event('crm:open-support'));
-                }}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.25,
-                  width: '100%',
-                  p: 1.5,
-                  border: 'none',
-                  borderRadius: 14,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                  background: 'linear-gradient(135deg, #1B2438 0%, #243356 100%)',
-                  color: '#fff',
-                  boxShadow: '0 8px 24px rgba(27, 36, 56, 0.18)',
-                }}
-              >
+              {(showSupportHelp ?? !(hideSearch || notificationsChannel === 'portal')) && (
                 <Box
+                  component="button"
+                  type="button"
+                  aria-label="Нужна помощь"
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    window.dispatchEvent(new Event('crm:open-support'));
+                  }}
                   sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '12px',
-                    flexShrink: 0,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                    gap: 1.25,
+                    width: '100%',
+                    p: 1.5,
+                    border: 'none',
+                    borderRadius: 14,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    textAlign: 'left',
+                    background: 'linear-gradient(135deg, #1B2438 0%, #243356 100%)',
+                    color: '#fff',
+                    boxShadow: '0 8px 24px rgba(27, 36, 56, 0.18)',
                   }}
                 >
-                  <HeadsetMicOutlined sx={{ fontSize: 20, color: '#fff' }} />
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '12px',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                    }}
+                  >
+                    <HeadsetMicOutlined sx={{ fontSize: 20, color: '#fff' }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
+                      Нужна помощь?
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.35 }}>
+                      Свяжитесь с нашей командой разработчиков
+                    </Typography>
+                  </Box>
+                  <ArrowForward sx={{ fontSize: 18, opacity: 0.8 }} />
                 </Box>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
-                    Нужна помощь?
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.35 }}>
-                    Свяжитесь с нашей командой разработчиков
-                  </Typography>
-                </Box>
-                <ArrowForward sx={{ fontSize: 18, opacity: 0.8 }} />
-              </Box>
+              )}
             </Box>
           </Box>
         )}
@@ -1257,35 +1278,37 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               : {}),
           }}
         >
-          <Box
-            sx={{
-              display: hideMobileBottomNav ? { xs: 'none', md: 'flex' } : 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-              flexWrap: 'wrap',
-            }}
-          >
-            {pageTitle && (
-              <Typography
-                component="h1"
-                sx={{
-                  fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
-                  fontWeight: 800,
-                  color: '#1B2438',
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {pageTitle}
-              </Typography>
-            )}
-            {pageAction && (
-              <Box sx={{ width: { xs: '100%', sm: 'auto' }, '& > *': { width: { xs: '100%', sm: 'auto' } } }}>
-                {pageAction}
-              </Box>
-            )}
-          </Box>
+          {(pageTitle || pageAction) && (
+            <Box
+              sx={{
+                display: hideMobileBottomNav ? { xs: 'none', md: 'flex' } : 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                flexWrap: 'wrap',
+              }}
+            >
+              {pageTitle && (
+                <Typography
+                  component="h1"
+                  sx={{
+                    fontSize: { xs: typography.pageTitle.xs, md: typography.pageTitle.md },
+                    fontWeight: 800,
+                    color: '#1B2438',
+                    lineHeight: 1.2,
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  {pageTitle}
+                </Typography>
+              )}
+              {pageAction && (
+                <Box sx={{ width: { xs: '100%', sm: 'auto' }, '& > *': { width: { xs: '100%', sm: 'auto' } } }}>
+                  {pageAction}
+                </Box>
+              )}
+            </Box>
+          )}
 
           <Box
             sx={{
@@ -1322,141 +1345,167 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               alignItems: 'flex-end',
             }}
           >
-            {(
-              [
-                { key: '/dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
-                { key: '/schedule', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
-              ] as const
-            ).map((tab) => {
-              const item = navItems.find((n) => n.key === tab.key);
-              const active = activeKey === tab.key && !mobileNavOpen;
-              return (
-                <Box
-                  key={tab.key}
-                  component="button"
-                  type="button"
-                  disabled={!item || item.disabled}
-                  onClick={() => {
-                    setMobileNavOpen(false);
-                    item?.onClick?.();
-                  }}
-                  sx={{
-                    border: 'none',
-                    bgcolor: 'transparent',
-                    color: active ? colors.primary : colors.textHint,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 0.25,
-                    fontSize: typography.label,
-                    fontWeight: active ? 700 : 500,
-                    cursor: item ? 'pointer' : 'default',
-                    opacity: item ? 1 : 0.4,
-                    minWidth: 56,
-                    pb: 0.25,
-                  }}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </Box>
-              );
-            })}
-
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                minWidth: 64,
-                position: 'relative',
-                top: -14,
-              }}
-            >
-              <Box
-                component="button"
-                type="button"
-                aria-label="Создать"
-                disabled={!createFlows}
-                onClick={() => {
-                  setMobileNavOpen(false);
-                  setCreateSheetOpen(true);
-                }}
-                sx={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: '50%',
-                  border: 'none',
-                  bgcolor: colors.primary,
-                  color: colors.white,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 6px 18px rgba(47, 107, 255, 0.4)',
-                  cursor: createFlows ? 'pointer' : 'default',
-                  opacity: createFlows ? 1 : 0.5,
-                  '&:hover': createFlows ? { bgcolor: colors.primaryDark } : undefined,
-                }}
-              >
-                <Add sx={{ fontSize: 30 }} />
-              </Box>
-            </Box>
-
             {(() => {
-              const clientsItem = navItems.find((n) => n.key === '/clients');
-              const clientsActive = activeKey === '/clients' && !mobileNavOpen;
+              const isPortal = hideSearch || notificationsChannel === 'portal';
+              const leftTabs = isPortal
+                ? ([
+                    { key: 'dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
+                    { key: 'plan', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const)
+                : ([
+                    { key: '/dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
+                    { key: '/schedule', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const);
+              const rightTabs = isPortal
+                ? ([
+                    { key: 'chats', label: 'Чаты', icon: <ChatBubbleOutline sx={{ fontSize: 18 }} /> },
+                    { key: 'payments', label: 'Платежи', icon: <PaymentsOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const)
+                : null;
+
+              const renderTab = (tab: { key: string; label: string; icon: React.ReactNode }) => {
+                const item = navItems.find((n) => n.key === tab.key);
+                const active = activeKey === tab.key && !mobileNavOpen;
+                return (
+                  <Box
+                    key={tab.key}
+                    component="button"
+                    type="button"
+                    disabled={!item || item.disabled}
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      item?.onClick?.();
+                    }}
+                    sx={{
+                      border: 'none',
+                      bgcolor: 'transparent',
+                      color: active ? colors.primary : colors.textHint,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 0.25,
+                      fontSize: typography.label,
+                      fontWeight: active ? 700 : 500,
+                      cursor: item ? 'pointer' : 'default',
+                      opacity: item ? 1 : 0.4,
+                      minWidth: 56,
+                      pb: 0.25,
+                    }}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                  </Box>
+                );
+              };
+
               return (
-                <Box
-                  component="button"
-                  type="button"
-                  disabled={!clientsItem || clientsItem.disabled}
-                  onClick={() => {
-                    setMobileNavOpen(false);
-                    clientsItem?.onClick?.();
-                  }}
-                  sx={{
-                    border: 'none',
-                    bgcolor: 'transparent',
-                    color: clientsActive ? colors.primary : colors.textHint,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 0.25,
-                    fontSize: typography.label,
-                    fontWeight: clientsActive ? 700 : 500,
-                    cursor: clientsItem ? 'pointer' : 'default',
-                    opacity: clientsItem ? 1 : 0.4,
-                    minWidth: 56,
-                    pb: 0.25,
-                  }}
-                >
-                  <PeopleAltOutlined sx={{ fontSize: 18 }} />
-                  Клиенты
-                </Box>
+                <>
+                  {leftTabs.map(renderTab)}
+
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      minWidth: 64,
+                      position: 'relative',
+                      top: -14,
+                    }}
+                  >
+                    <Box
+                      component="button"
+                      type="button"
+                      aria-label="Создать"
+                      disabled={!createFlows}
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        setCreateSheetOpen(true);
+                      }}
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: '50%',
+                        border: 'none',
+                        bgcolor: colors.primary,
+                        color: colors.white,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 6px 18px rgba(47, 107, 255, 0.4)',
+                        cursor: createFlows ? 'pointer' : 'default',
+                        opacity: createFlows ? 1 : 0.5,
+                        '&:hover': createFlows ? { bgcolor: colors.primaryDark } : undefined,
+                      }}
+                    >
+                      <Add sx={{ fontSize: 30 }} />
+                    </Box>
+                  </Box>
+
+                  {rightTabs ? (
+                    rightTabs.map(renderTab)
+                  ) : (
+                    <>
+                      {(() => {
+                        const clientsItem = navItems.find((n) => n.key === '/clients');
+                        const clientsActive = activeKey === '/clients' && !mobileNavOpen;
+                        return (
+                          <Box
+                            component="button"
+                            type="button"
+                            disabled={!clientsItem || clientsItem.disabled}
+                            onClick={() => {
+                              setMobileNavOpen(false);
+                              clientsItem?.onClick?.();
+                            }}
+                            sx={{
+                              border: 'none',
+                              bgcolor: 'transparent',
+                              color: clientsActive ? colors.primary : colors.textHint,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: 0.25,
+                              fontSize: typography.label,
+                              fontWeight: clientsActive ? 700 : 500,
+                              cursor: clientsItem ? 'pointer' : 'default',
+                              opacity: clientsItem ? 1 : 0.4,
+                              minWidth: 56,
+                              pb: 0.25,
+                            }}
+                          >
+                            <PeopleAltOutlined sx={{ fontSize: 18 }} />
+                            Клиенты
+                          </Box>
+                        );
+                      })()}
+
+                      <Box
+                        component="button"
+                        type="button"
+                        onClick={() => setMobileNavOpen((v) => !v)}
+                        sx={{
+                          border: 'none',
+                          bgcolor: 'transparent',
+                          color: mobileNavOpen ? colors.primary : colors.textHint,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 0.25,
+                          fontSize: typography.label,
+                          fontWeight: mobileNavOpen ? 700 : 500,
+                          cursor: 'pointer',
+                          minWidth: 56,
+                          pb: 0.25,
+                        }}
+                      >
+                        <MenuIcon sx={{ fontSize: 18 }} />
+                        Меню
+                      </Box>
+                    </>
+                  )}
+                </>
               );
             })()}
-
-            <Box
-              component="button"
-              type="button"
-              onClick={() => setMobileNavOpen((v) => !v)}
-              sx={{
-                border: 'none',
-                bgcolor: 'transparent',
-                color: mobileNavOpen ? colors.primary : colors.textHint,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 0.25,
-                fontSize: typography.label,
-                fontWeight: mobileNavOpen ? 700 : 500,
-                cursor: 'pointer',
-                minWidth: 56,
-                pb: 0.25,
-              }}
-            >
-              <MenuIcon sx={{ fontSize: 18 }} />
-              Меню
-            </Box>
           </Box>
 
           {createSheetOpen && (

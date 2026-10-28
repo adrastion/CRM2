@@ -244,16 +244,18 @@ const AthleteProfileHeader: React.FC<Props> = ({
               {name || 'Без имени'}
             </Typography>
             <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
-              <Chip
-                size="small"
-                label={ATHLETE_STATUS_LABELS[status] || status}
-                sx={{
-                  bgcolor: 'rgba(0, 182, 155, 0.14)',
-                  color: colors.success,
-                  fontWeight: 700,
-                  borderRadius: `${radii.button}px`,
-                }}
-              />
+              {mode !== 'client' && (
+                <Chip
+                  size="small"
+                  label={ATHLETE_STATUS_LABELS[status] || status}
+                  sx={{
+                    bgcolor: 'rgba(0, 182, 155, 0.14)',
+                    color: colors.success,
+                    fontWeight: 700,
+                    borderRadius: `${radii.button}px`,
+                  }}
+                />
+              )}
               {data.discipline && (
                 <Chip
                   size="small"

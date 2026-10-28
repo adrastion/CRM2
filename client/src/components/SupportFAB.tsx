@@ -17,10 +17,11 @@ import {
 } from '@mui/material';
 import { SupportAgent, Brush, Close, PhoneInTalk } from '@mui/icons-material';
 import { useLocation } from 'react-router-dom';
-import ClientSupportFAB from './ClientSupportFAB';
 import { apiService } from '../services/api';
 import { useDesignerVoiceCall } from '../hooks/useDesignerVoiceCall';
 import { getSupportRequesterToken } from '../utils/supportAuthToken';
+import { useAuth } from '../contexts/AuthContext';
+import { isOwner } from '../utils/roles';
 
 function hasClientSession(): boolean {
   return !!localStorage.getItem('clientToken');
@@ -46,6 +47,7 @@ function isSuperAdminRoute(pathname: string): boolean {
 
 const SupportFAB: React.FC = () => {
   const location = useLocation();
+  const { user } = useAuth();
 
   const hidden = useMemo(() => {
     if (hasSuperAdminSession()) return true;
@@ -59,7 +61,9 @@ const SupportFAB: React.FC = () => {
     return false;
   }, [location.pathname]);
 
-  const showClientSupportFab = !hidden && hasClientSession();
+  const isClientPortal = !hidden && hasClientSession();
+  /** Связь с дизайнерами — только владелец школы (не клиенты и не сотрудники). */
+  const canContactDesigners = !isClientPortal && isOwner(user?.role);
 
   type Channel = 'SUPPORT' | 'DESIGNER';
 
@@ -86,10 +90,10 @@ const SupportFAB: React.FC = () => {
     channel: currentTicket?.channel ?? null,
     mode: 'caller',
     token: supportToken,
-    enabled: open && step === 'chat' && !!selectedId && !showClientSupportFab,
+    enabled: open && step === 'chat' && !!selectedId && canContactDesigners,
     onRecordingReady: async (blob, startedAt) => {
       const id = selectedIdRef.current;
-      if (!id) return;
+      if (!id || isClientPortal) return;
       const fd = new FormData();
       fd.append('file', blob, 'call.webm');
       fd.append('startedAt', startedAt.toISOString());
@@ -101,19 +105,23 @@ const SupportFAB: React.FC = () => {
 
   const loadTickets = useCallback(async () => {
     try {
-      const data = await apiService.requesterListSupportTickets();
-      setTickets(data.tickets || []);
+      const data = isClientPortal
+        ? await apiService.clientListSupportTickets()
+        : await apiService.requesterListSupportTickets();
+      setTickets(data.tickets || data || []);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить обращения');
     }
-  }, []);
+  }, [isClientPortal]);
 
   useEffect(() => {
     if (!(open && step === 'chat' && selectedId)) return;
     const pull = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const data = await apiService.requesterGetSupportTicketMessages(selectedId);
+        const data = isClientPortal
+          ? await apiService.clientGetSupportTicketMessages(selectedId)
+          : await apiService.requesterGetSupportTicketMessages(selectedId);
         const next = data.messages || [];
         setMessages((prev) => {
           if (prev.length === next.length && prev.every((m, i) => m.id === next[i]?.id)) return prev;
@@ -134,23 +142,24 @@ const SupportFAB: React.FC = () => {
       window.clearInterval(t);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [open, step, selectedId]);
+  }, [open, step, selectedId, isClientPortal]);
 
   const handleOpenMenu = useCallback(() => {
+    if (isClientPortal && localStorage.getItem('clientApproved') === 'false') return;
     setError('');
     setStep('menu');
     setChannel(null);
     setOpen(true);
-    loadTickets();
-  }, [loadTickets]);
+    void loadTickets();
+  }, [loadTickets, isClientPortal]);
 
-  // Сайдбар «Нужна помощь?» вместо плавающей кнопки у сотрудников школы
+  // Сайдбар «Нужна помощь?» (школа и ЛК ученика) — без плавающей кнопки
   useEffect(() => {
-    if (hidden || showClientSupportFab) return;
+    if (hidden) return;
     const onOpen = () => handleOpenMenu();
     window.addEventListener('crm:open-support', onOpen);
     return () => window.removeEventListener('crm:open-support', onOpen);
-  }, [hidden, showClientSupportFab, handleOpenMenu]);
+  }, [hidden, handleOpenMenu]);
 
   const startNew = (ch: Channel) => {
     setChannel(ch);
@@ -168,15 +177,23 @@ const SupportFAB: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await apiService.requesterCreateSupportTicket({
-        channel,
-        subject: subject.trim() || undefined,
-        message: firstMessage.trim(),
-      });
+      const data = isClientPortal
+        ? await apiService.clientCreateSupportTicket({
+            channel,
+            subject: subject.trim() || undefined,
+            message: firstMessage.trim(),
+          })
+        : await apiService.requesterCreateSupportTicket({
+            channel,
+            subject: subject.trim() || undefined,
+            message: firstMessage.trim(),
+          });
       setSelectedId(data.ticket.id);
       setCurrentTicket(data.ticket);
       setStep('chat');
-      const m = await apiService.requesterGetSupportTicketMessages(data.ticket.id);
+      const m = isClientPortal
+        ? await apiService.clientGetSupportTicketMessages(data.ticket.id)
+        : await apiService.requesterGetSupportTicketMessages(data.ticket.id);
       setMessages(m.messages || []);
       setCallRecordings(m.callRecordings || []);
       await loadTickets();
@@ -192,7 +209,9 @@ const SupportFAB: React.FC = () => {
     setStep('chat');
     setLoading(true);
     try {
-      const data = await apiService.requesterGetSupportTicketMessages(id);
+      const data = isClientPortal
+        ? await apiService.clientGetSupportTicketMessages(id)
+        : await apiService.requesterGetSupportTicketMessages(id);
       setMessages(data.messages || []);
       setCurrentTicket(data.ticket);
       setCallRecordings(data.callRecordings || []);
@@ -207,9 +226,15 @@ const SupportFAB: React.FC = () => {
     if (!selectedId || !reply.trim()) return;
     setLoading(true);
     try {
-      await apiService.requesterPostSupportMessage(selectedId, reply.trim());
+      if (isClientPortal) {
+        await apiService.clientPostSupportMessage(selectedId, reply.trim());
+      } else {
+        await apiService.requesterPostSupportMessage(selectedId, reply.trim());
+      }
       setReply('');
-      const data = await apiService.requesterGetSupportTicketMessages(selectedId);
+      const data = isClientPortal
+        ? await apiService.clientGetSupportTicketMessages(selectedId)
+        : await apiService.requesterGetSupportTicketMessages(selectedId);
       setMessages(data.messages || []);
       if (data.ticket) setCurrentTicket(data.ticket);
       setCallRecordings(data.callRecordings || []);
@@ -231,16 +256,14 @@ const SupportFAB: React.FC = () => {
     setCallRecordings([]);
   };
 
+  // Плавающая кнопка не показывается: открытие только из «Нужна помощь?» в сайдбаре.
   if (hidden) return null;
-  if (showClientSupportFab) {
-    return <ClientSupportFAB />;
-  }
 
   return (
     <>
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {step === 'menu' && 'Поддержка и дизайн'}
+          {step === 'menu' && (canContactDesigners ? 'Поддержка и дизайн' : 'Поддержка')}
           {step === 'new' && (channel === 'SUPPORT' ? 'Написать в техподдержку' : 'Написать дизайнерам')}
           {step === 'chat' && 'Чат'}
           <Button size="small" onClick={handleClose}><Close /></Button>
@@ -252,7 +275,9 @@ const SupportFAB: React.FC = () => {
           {step === 'menu' && (
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Выберите, кому написать, или откройте существующее обращение.
+                {canContactDesigners
+                  ? 'Выберите, кому написать, или откройте существующее обращение.'
+                  : 'Напишите в техподдержку или откройте существующее обращение.'}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
                 <Button
@@ -263,14 +288,16 @@ const SupportFAB: React.FC = () => {
                 >
                   Техподдержка
                 </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<Brush />}
-                  onClick={() => startNew('DESIGNER')}
-                  fullWidth
-                >
-                  Дизайнеры
-                </Button>
+                {canContactDesigners && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<Brush />}
+                    onClick={() => startNew('DESIGNER')}
+                    fullWidth
+                  >
+                    Дизайнеры
+                  </Button>
+                )}
               </Box>
               <Divider sx={{ my: 2 }} />
               <Typography variant="subtitle2" gutterBottom>Мои обращения</Typography>
@@ -323,7 +350,7 @@ const SupportFAB: React.FC = () => {
                   ))
                 )}
               </Box>
-              {currentTicket?.channel === 'DESIGNER' && (
+              {currentTicket?.channel === 'DESIGNER' && canContactDesigners && (
                 <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
                   <audio ref={voice.remoteAudioRef} hidden />
                   <Typography variant="subtitle2" gutterBottom>

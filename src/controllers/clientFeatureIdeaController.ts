@@ -11,10 +11,11 @@ const ACK_SUBMITTED =
 const ACK_ACCEPTED = 'Ваша идея принята и поставлена в план на обновление';
 const ACK_REJECTED = 'К сожалению, идея не принята';
 
+/** Подписи статусов для UI (макет «Связь с разработчиком»). */
 const PUBLIC_STATUS: Record<ClientFeatureIdeaStatus, string> = {
-  SUBMITTED: 'на рассмотрении',
-  ACCEPTED: 'в плане',
-  REJECTED: 'отклонено',
+  SUBMITTED: 'Рассматривается',
+  ACCEPTED: 'Запланировано',
+  REJECTED: 'Отклонено',
 };
 
 type IdeaActor = {

@@ -7,7 +7,7 @@ import { isSessionVersionValid } from '../utils/sessionVersion';
 import { assertAuthSessionActive } from '../services/authSessionService';
 
 export type SupportRequester =
-  | { kind: 'TENANT_USER'; id: string; email?: string; tenantId: string }
+  | { kind: 'TENANT_USER'; id: string; email?: string; tenantId: string; role: string }
   | { kind: 'MARKETER'; id: string; email?: string; tenantId: string }
   | { kind: 'PROMO_CODE_ADMIN'; id: string; email?: string; tenantId: string };
 
@@ -70,7 +70,7 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
   if (kind === 'TENANT_USER') {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, tenantId: true, isActive: true, sessionVersion: true, email: true },
+      select: { id: true, tenantId: true, isActive: true, sessionVersion: true, email: true, role: true },
     });
     if (
       !user ||
@@ -90,6 +90,7 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
       id: user.id,
       email: user.email,
       tenantId: user.tenantId,
+      role: user.role,
     };
     next();
     return;

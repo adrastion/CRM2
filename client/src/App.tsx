@@ -777,7 +777,7 @@ const AppContent: React.FC = () => {
           path="/feedback"
           element={
             <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
-              <AppLayout pageTitle="Связь с разработчиком">
+              <AppLayout>
                 <Feedback />
               </AppLayout>
             </RoleRoute>
@@ -928,7 +928,7 @@ const AppContent: React.FC = () => {
           path="/marketer/feedback"
           element={
             <ProtectedMarketerRoute>
-              <AppLayout pageTitle="Связь с разработчиком">
+              <AppLayout>
                 <MarketerFeedback />
               </AppLayout>
             </ProtectedMarketerRoute>

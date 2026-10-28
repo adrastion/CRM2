@@ -174,6 +174,13 @@ interface ChatWorkspaceProps {
   };
   /** Открыть тред после загрузки списка (например ?threadId=). */
   initialThreadId?: string | null;
+  /** Открыть/создать тред по ensure (кнопка чата с персоналом в ЛК). */
+  initialEnsurePayload?: {
+    type: string;
+    clientId?: string;
+    trainerId?: string;
+    groupId?: string;
+  } | null;
   /** На xs — на всю высоту экрана без нижней навигации кабинета. */
   immersiveMobile?: boolean;
 }
@@ -282,6 +289,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   socketToken,
   self,
   initialThreadId,
+  initialEnsurePayload = null,
   immersiveMobile = false,
 }) => {
   const [threads, setThreads] = useState<ChatThreadItem[]>([]);
@@ -452,9 +460,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               ? await apiService.clientEnsureChatThread(item.ensurePayload)
               : await apiService.ensurePlatformChatThread(item.ensurePayload);
         threadId = ensured.id;
-        setThreads((prev) =>
-          prev.map((t) => (t.threadKey === item.threadKey ? { ...t, id: threadId } : t))
-        );
+        setThreads((prev) => {
+          const idx = prev.findIndex((t) => t.threadKey === item.threadKey);
+          if (idx >= 0) {
+            return prev.map((t) => (t.threadKey === item.threadKey ? { ...t, id: threadId } : t));
+          }
+          return [
+            {
+              ...item,
+              id: threadId,
+              title: item.title || 'Чат',
+            },
+            ...prev,
+          ];
+        });
       }
       setActiveThreadId(threadId);
       activeThreadIdRef.current = threadId;
@@ -547,13 +566,52 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
 
   const initialOpenedRef = useRef(false);
   useEffect(() => {
-    if (initialOpenedRef.current || loadingList || !initialThreadId || !threads.length) return;
-    const target = threads.find((t) => t.id === initialThreadId);
-    if (target) {
-      initialOpenedRef.current = true;
-      void openThread(target);
+    if (initialOpenedRef.current || loadingList) return;
+
+    if (initialThreadId && threads.length) {
+      const target = threads.find((t) => t.id === initialThreadId);
+      if (target) {
+        initialOpenedRef.current = true;
+        void openThread(target);
+        return;
+      }
     }
-  }, [initialThreadId, loadingList, threads]);
+
+    if (initialEnsurePayload) {
+      const byEnsure = threads.find(
+        (t) =>
+          t.type === initialEnsurePayload.type &&
+          (initialEnsurePayload.trainerId
+            ? t.trainerId === initialEnsurePayload.trainerId
+            : true) &&
+          (initialEnsurePayload.clientId ? t.clientId === initialEnsurePayload.clientId : true) &&
+          (initialEnsurePayload.groupId ? t.groupId === initialEnsurePayload.groupId : true)
+      );
+      if (byEnsure) {
+        initialOpenedRef.current = true;
+        void openThread(byEnsure);
+        return;
+      }
+      // Треда ещё нет в списке (например, тренер вне групп) — создаём и открываем.
+      initialOpenedRef.current = true;
+      void openThread({
+        id: null,
+        type: initialEnsurePayload.type,
+        threadKey: `ensure:${initialEnsurePayload.type}:${initialEnsurePayload.trainerId || ''}:${initialEnsurePayload.clientId || ''}`,
+        title: 'Чат',
+        subtitle: '',
+        clientId: initialEnsurePayload.clientId || null,
+        trainerId: initialEnsurePayload.trainerId || null,
+        groupId: initialEnsurePayload.groupId || null,
+        staffTaskId: null,
+        lastMessageAt: null,
+        lastMessagePreview: null,
+        unreadCount: 0,
+        ensurePayload: initialEnsurePayload,
+        presenceStatus: null,
+      });
+    }
+  }, [initialThreadId, initialEnsurePayload, loadingList, threads]);
 
   const onSocketMessage = useCallback(
     (msg: ChatSocketMessage) => {

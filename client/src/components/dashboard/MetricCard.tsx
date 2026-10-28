@@ -16,6 +16,8 @@ interface MetricCardProps {
   progress?: { value: number; max: number; danger?: boolean } | null;
   /** Дополнительная строка под значением. */
   caption?: string;
+  /** Нижняя ссылка-действие (макет ЛК клиента). */
+  action?: React.ReactNode;
   /** Заглушка: значения скрыты, карточка неактивна. */
   placeholder?: boolean;
   /** Цвет декоративного спарклайна (макет десктоп-панели). */
@@ -63,6 +65,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   trendLabel,
   progress,
   caption,
+  action,
   placeholder,
   designIcon,
   sparkColor = colors.primary,
@@ -268,6 +271,10 @@ const MetricCard: React.FC<MetricCardProps> = ({
         <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
           {caption}
         </Typography>
+      )}
+
+      {action && !placeholder && (
+        <Box sx={{ mt: 'auto', pt: 0.5 }}>{action}</Box>
       )}
     </Box>
   );

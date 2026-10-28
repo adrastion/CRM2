@@ -540,6 +540,15 @@ class ApiService {
     await this.api.post('/auth/change-password', data);
   }
 
+  /** Смена пароля в ЛК ученика/родителя. */
+  async changePortalPassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ message?: string }> {
+    const response = await this.api.post<ApiResponse>('/client-auth/change-password', data);
+    return response.data.data || { message: 'Пароль успешно изменён' };
+  }
+
   async getAuthSessions(): Promise<{
     sessions: Array<{
       id: string;
@@ -3435,6 +3444,37 @@ class ApiService {
   }> {
     const response = await this.api.get<ApiResponse>(
       `/client-auth/clients/${clientId}/contracts`
+    );
+    return response.data.data;
+  }
+
+  async clientUploadContract(
+    clientId: string,
+    file: File,
+    meta?: { title?: string }
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (meta?.title) formData.append('title', meta.title);
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/clients/${clientId}/contracts`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }
+    );
+    return response.data.data;
+  }
+
+  async clientUploadCertificate(
+    clientId: string,
+    kind: 'birth' | 'medical',
+    file: File
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await this.api.post<ApiResponse>(
+      `/client-auth/clients/${clientId}/certificates/${kind}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }
     );
     return response.data.data;
   }

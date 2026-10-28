@@ -6,10 +6,15 @@ import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ClientRequest } from '../middleware/clientAuth';
 import { absoluteUploadPath, contentDispositionAttachment, safeUnlink } from '../utils/fileStorage';
+import type { SupportRequester } from '../middleware/supportRequesterAuth';
 
-/** Клиенты / родители: техподдержка или дизайн (горячая линия). */
+/** Горячая линия: техподдержка; дизайн — только OWNER школы. */
 const CLIENT_TICKET_CHANNELS = ['SUPPORT', 'DESIGNER'] as const;
 type ClientTicketChannel = (typeof CLIENT_TICKET_CHANNELS)[number];
+
+function canContactDesigners(requester: SupportRequester | undefined): boolean {
+  return requester?.kind === 'TENANT_USER' && requester.role === 'OWNER';
+}
 
 /** Внутренний чат дизайнера платформы с супер-админами (не горячая линия). */
 export const DESIGNER_SUPERADMIN_CHANNEL = 'DESIGNER_SUPERADMIN';
@@ -117,7 +122,7 @@ function requesterTicketWhere(
 }
 
 export const requesterCreateSupportTicket = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
-  const requester = req.supportRequester as { kind: string; id: string; tenantId: string } | undefined;
+  const requester = req.supportRequester as SupportRequester | undefined;
   if (!requester?.tenantId) {
     res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
@@ -129,6 +134,10 @@ export const requesterCreateSupportTicket = asyncHandler(async (req: any, res: R
   }
   const ch: ClientTicketChannel =
     channel && isClientChannel(channel) ? channel : 'SUPPORT';
+  if (ch === 'DESIGNER' && !canContactDesigners(requester)) {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
+    return;
+  }
   const ticket = await prisma.supportTicket.create({
     data: {
       tenantId: requester.tenantId,
@@ -148,14 +157,25 @@ export const requesterCreateSupportTicket = asyncHandler(async (req: any, res: R
 });
 
 export const requesterListSupportTickets = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
-  const requester = req.supportRequester as { tenantId: string } | undefined;
+  const requester = req.supportRequester as SupportRequester | undefined;
   if (!requester?.tenantId) {
     res.status(401).json({ success: false, error: 'Не авторизован' });
     return;
   }
   const q = req.query.channel as string | undefined;
-  const channelWhere =
-    q && isClientChannel(q) ? { channel: q as ClientTicketChannel } : { channel: { in: ['SUPPORT', 'DESIGNER'] } };
+  const allowDesigner = canContactDesigners(requester);
+  let channelWhere: { channel: ClientTicketChannel } | { channel: { in: ClientTicketChannel[] } };
+  if (q === 'DESIGNER' && !allowDesigner) {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
+    return;
+  }
+  if (q && isClientChannel(q)) {
+    channelWhere = { channel: q as ClientTicketChannel };
+  } else if (allowDesigner) {
+    channelWhere = { channel: { in: ['SUPPORT', 'DESIGNER'] } };
+  } else {
+    channelWhere = { channel: 'SUPPORT' };
+  }
   const tickets = await prisma.supportTicket.findMany({
     where: {
       tenantId: requester.tenantId,
@@ -171,7 +191,7 @@ export const requesterListSupportTickets = asyncHandler(async (req: any, res: Re
 });
 
 export const requesterGetSupportMessages = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
-  const requester = req.supportRequester as { tenantId: string } | undefined;
+  const requester = req.supportRequester as SupportRequester | undefined;
   const { ticketId } = req.params;
   if (!requester?.tenantId) {
     res.status(401).json({ success: false, error: 'Не авторизован' });
@@ -182,6 +202,10 @@ export const requesterGetSupportMessages = asyncHandler(async (req: any, res: Re
   });
   if (!ticket) {
     res.status(404).json({ success: false, error: 'Обращение не найдено' });
+    return;
+  }
+  if (ticket.channel === 'DESIGNER' && !canContactDesigners(requester)) {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
     return;
   }
   const messages = await prisma.supportTicketMessage.findMany({
@@ -214,7 +238,7 @@ export const requesterGetSupportMessages = asyncHandler(async (req: any, res: Re
 });
 
 export const requesterPostSupportMessage = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
-  const requester = req.supportRequester as { kind: string; tenantId: string } | undefined;
+  const requester = req.supportRequester as SupportRequester | undefined;
   const { ticketId } = req.params;
   const { message } = req.body as { message?: string };
   if (!requester?.tenantId) {
@@ -232,6 +256,10 @@ export const requesterPostSupportMessage = asyncHandler(async (req: any, res: Re
     res.status(404).json({ success: false, error: 'Обращение не найдено или закрыто' });
     return;
   }
+  if (ticket.channel === 'DESIGNER' && !canContactDesigners(requester)) {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
+    return;
+  }
   const msg = await prisma.supportTicketMessage.create({
     data: {
       ticketId,
@@ -247,9 +275,13 @@ export const requesterPostSupportMessage = asyncHandler(async (req: any, res: Re
 });
 
 export const requesterUploadDesignerCallRecording = asyncHandler(async (req: any, res: Response<ApiResponse>) => {
-  const requester = req.supportRequester as { kind: string; id: string; tenantId: string } | undefined;
+  const requester = req.supportRequester as SupportRequester | undefined;
   if (!requester?.tenantId) {
     res.status(401).json({ success: false, error: 'Не авторизован' });
+    return;
+  }
+  if (!canContactDesigners(requester)) {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
     return;
   }
   const file = req.file as Express.Multer.File | undefined;
@@ -301,8 +333,12 @@ export const clientCreateSupportTicket = asyncHandler(async (req: ClientRequest,
     return;
   }
   const { channel, subject, message } = req.body as { channel?: string; subject?: string; message?: string };
-  if (!channel || !isClientChannel(channel)) {
-    res.status(400).json({ success: false, error: 'channel должен быть SUPPORT или DESIGNER' });
+  if (channel === 'DESIGNER') {
+    res.status(403).json({ success: false, error: 'Связь с дизайнерами доступна только владельцу школы' });
+    return;
+  }
+  if (channel && channel !== 'SUPPORT') {
+    res.status(400).json({ success: false, error: 'channel должен быть SUPPORT' });
     return;
   }
   if (!message?.trim()) {
@@ -312,7 +348,7 @@ export const clientCreateSupportTicket = asyncHandler(async (req: ClientRequest,
   const ticket = await prisma.supportTicket.create({
     data: {
       tenantId,
-      channel,
+      channel: 'SUPPORT',
       status: 'WAITING',
       clientId: clientId ?? null,
       parentId: parentId ?? null,
@@ -342,6 +378,7 @@ export const clientListSupportTickets = asyncHandler(async (req: ClientRequest, 
   const tickets = await prisma.supportTicket.findMany({
     where: {
       tenantId,
+      channel: 'SUPPORT',
       OR: [{ clientId: clientId ?? undefined }, { parentId: parentId ?? undefined }],
     },
     orderBy: { updatedAt: 'desc' },
@@ -365,6 +402,7 @@ export const clientGetSupportMessages = asyncHandler(async (req: ClientRequest, 
     where: {
       id: ticketId,
       tenantId,
+      channel: 'SUPPORT',
       OR: [{ clientId: clientId ?? undefined }, { parentId: parentId ?? undefined }],
     },
   });
@@ -397,6 +435,7 @@ export const clientPostSupportMessage = asyncHandler(async (req: ClientRequest, 
     where: {
       id: ticketId,
       tenantId,
+      channel: 'SUPPORT',
       OR: [{ clientId: clientId ?? undefined }, { parentId: parentId ?? undefined }],
     },
   });

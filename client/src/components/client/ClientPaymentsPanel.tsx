@@ -8,6 +8,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -17,9 +20,15 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import {
+  ArrowForward,
+  CalendarMonthOutlined,
+  CreditCard,
+  PaymentsOutlined,
+  ReceiptLongOutlined,
+} from '@mui/icons-material';
 import { apiService } from '../../services/api';
-import Panel from '../dashboard/Panel';
-import { colors, typography } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 
 interface Props {
   clientId?: string;
@@ -54,6 +63,51 @@ const RUB = new Intl.NumberFormat('ru-RU', {
   currency: 'RUB',
   maximumFractionDigits: 0,
 });
+
+const cardSx = {
+  bgcolor: colors.card,
+  borderRadius: `${radii.panel}px`,
+  boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
+  border: '1px solid #EEF1F6',
+} as const;
+
+const filterSelectSx = {
+  minWidth: { xs: '100%', sm: 148 },
+  bgcolor: colors.surface,
+  borderRadius: `${radii.button}px`,
+  fontSize: typography.label,
+  fontWeight: 600,
+  color: colors.textMuted,
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#E6EAF2' },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: colors.primarySoft },
+  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
+  '& .MuiSelect-select': { py: 1.1, px: 1.5 },
+} as const;
+
+const PayNowButton: React.FC<{ onClick: () => void; fullWidth?: boolean }> = ({
+  onClick,
+  fullWidth,
+}) => (
+  <Button
+    variant="contained"
+    endIcon={<ArrowForward sx={{ fontSize: 18 }} />}
+    onClick={onClick}
+    fullWidth={fullWidth}
+    sx={{
+      textTransform: 'none',
+      fontWeight: 700,
+      fontSize: typography.button,
+      borderRadius: `${radii.button}px`,
+      bgcolor: colors.primary,
+      boxShadow: '0 6px 16px rgba(47, 107, 255, 0.28)',
+      px: 2.5,
+      py: 1.15,
+      '&:hover': { bgcolor: colors.primaryDark },
+    }}
+  >
+    Оплатить сейчас
+  </Button>
+);
 
 const QrImg: React.FC<{ methodId: string }> = ({ methodId }) => {
   const [url, setUrl] = React.useState<string | null>(null);
@@ -95,10 +149,31 @@ type PayTarget = {
   method: any | null;
   total: number;
   paymentIds: string[];
-  /** single payment expected amount for receipt default (first id) */
   singlePaymentAmount?: number;
 };
 
+type TypeFilter = 'all' | string;
+type StatusFilter = 'all' | string;
+type PeriodFilter = 'all' | '30d' | '90d' | 'year';
+
+function paymentTypeKey(p: any): string {
+  if (String(p.notes || '').includes('Списание при выдаче')) return 'membership_writeoff';
+  return p.type || 'other';
+}
+
+function inPeriod(iso: string | Date | null | undefined, period: PeriodFilter): boolean {
+  if (period === 'all' || !iso) return true;
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(d.getTime())) return true;
+  const now = Date.now();
+  const ms =
+    period === '30d' ? 30 * 86400000 : period === '90d' ? 90 * 86400000 : 365 * 86400000;
+  return now - d.getTime() <= ms;
+}
+
+/**
+ * Вкладка «Платежи» ЛК ученика — макет Reference LK clients/Платежи.png
+ */
 const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -111,6 +186,9 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   const [claimedAmount, setClaimedAmount] = React.useState('');
   const [receiptFile, setReceiptFile] = React.useState<File | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [typeFilter, setTypeFilter] = React.useState<TypeFilter>('all');
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
+  const [periodFilter, setPeriodFilter] = React.useState<PeriodFilter>('all');
   const amountRef = React.useRef<HTMLInputElement>(null);
 
   const reload = React.useCallback(async () => {
@@ -135,6 +213,23 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   }, [reload]);
 
   const unpaid = payments.filter((p) => p.status === 'pending' || p.status === 'overdue');
+
+  const totalAmount = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const lastPayment = React.useMemo(() => {
+    if (!payments.length) return null;
+    return [...payments].sort((a, b) => {
+      const ta = new Date(a.paidAt || a.createdAt || 0).getTime();
+      const tb = new Date(b.paidAt || b.createdAt || 0).getTime();
+      return tb - ta;
+    })[0];
+  }, [payments]);
+
+  const filtered = payments.filter((p) => {
+    if (typeFilter !== 'all' && paymentTypeKey(p) !== typeFilter) return false;
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    if (!inPeriod(p.paidAt || p.createdAt, periodFilter)) return false;
+    return true;
+  });
 
   const openPayDialog = (target: PayTarget) => {
     setPayTarget(target);
@@ -190,15 +285,6 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
           ? payTarget.total
           : null;
 
-    // For multi-payment top pay we submit one receipt per payment, proportional not supported —
-    // require paying one payment at a time for receipt, OR submit same claimed for each when single pick.
-    // Plan: after pay, attach receipt for specific payment. For top aggregate with multiple IDs,
-    // open receipt step asks amount once and we attach to each unpaid id with that amount only if one id;
-    // if multiple ids in target, ask to pay per row OR submit receipt against each with split.
-    // Simplest UX matching plan: receipt is per payment. For multi total QR view, after "Я оплатил"
-    // if multiple paymentIds, submit receipt for each with claimedAmount = that payment's amount
-    // unless user entered different total — then warn and apply claimedAmount only when 1 payment.
-
     const ids = payTarget.paymentIds;
     if (ids.length === 1) {
       const payment = payments.find((p) => p.id === ids[0]);
@@ -223,7 +309,6 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
       return;
     }
 
-    // Multiple debts, one QR: attach receipt to each unpaid payment with its own amount
     if (amount !== payTarget.total) {
       const ok = window.confirm('Вы уверены, что сумма другая?');
       if (!ok) {
@@ -236,15 +321,12 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
       for (const id of ids) {
         const p = payments.find((x) => x.id === id);
         const per = Number(p?.amount) || 0;
-        // If user claimed different total, put full claimed on first and skip others with zero — better:
-        // use per-payment amount always for multi; claimed total is informational when equals sum.
         await apiService.submitPortalPaymentReceipt(
           id,
           receiptFile,
           amount === payTarget.total ? per : amount,
           clientId
         );
-        // Only attach once if amount differs — attach to first payment only
         if (amount !== payTarget.total) break;
       }
       setPayOpen(false);
@@ -256,98 +338,411 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
     }
   };
 
-  return (
-    <Panel title="Мои платежи">
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress size={32} />
-        </Box>
-      ) : error ? (
-        <Typography sx={{ color: colors.danger, fontSize: typography.label, mb: 1 }}>{error}</Typography>
-      ) : null}
+  const typeLabel = (p: any) =>
+    String(p.notes || '').includes('Списание при выдаче')
+      ? 'Списание абонемента'
+      : `${TYPE_LABELS[p.type] || p.type}${p.isMonthlyPayment ? ' · ежемес.' : ''}`;
 
-      {!loading && unpaid.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Button variant="contained" onClick={handleTopPay}>
-            Оплатить
-          </Button>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            К оплате: {RUB.format(unpaid.reduce((s, p) => s + (Number(p.amount) || 0), 0))}
-          </Typography>
-        </Box>
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography sx={{ fontSize: typography.label, color: colors.textMuted, maxWidth: 720, mt: -0.5 }}>
+        Здесь вы можете оплачивать занятия, абонементы и другие услуги, а также просматривать историю
+        платежей.
+      </Typography>
+
+      {error && (
+        <Typography sx={{ color: colors.danger, fontSize: typography.label }}>{error}</Typography>
       )}
 
-      {!loading && !error && payments.length === 0 ? (
-        <Typography sx={{ fontSize: typography.label, color: colors.textEmpty, py: 2 }}>
-          Вам пока не выставлено ни одного платежа
-        </Typography>
-      ) : !loading && payments.length > 0 ? (
-        <Box sx={{ overflowX: 'auto' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Дата</TableCell>
-                <TableCell>Тип</TableCell>
-                <TableCell>Сумма</TableCell>
-                <TableCell>Статус</TableCell>
-                <TableCell>Группа / тариф</TableCell>
-                <TableCell>Срок оплаты</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {payments.map((p) => {
-                const canPay = p.status === 'pending' || p.status === 'overdue';
-                return (
-                  <TableRow key={p.id} hover>
-                    <TableCell>{formatDate(p.paidAt || p.createdAt)}</TableCell>
-                    <TableCell>
-                      {String(p.notes || '').includes('Списание при выдаче')
-                        ? 'Списание абонемента'
-                        : `${TYPE_LABELS[p.type] || p.type}${p.isMonthlyPayment ? ' · ежемес.' : ''}`}
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>{RUB.format(Number(p.amount) || 0)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={
-                          String(p.notes || '').includes('Списание при выдаче')
-                            ? 'Списание'
-                            : STATUS_LABELS[p.status] || p.status
-                        }
-                        color={
-                          String(p.notes || '').includes('Списание при выдаче')
-                            ? 'default'
-                            : p.status === 'paid'
-                              ? 'success'
-                              : p.status === 'cancelled'
-                                ? 'default'
-                                : p.status === 'awaiting_confirmation'
-                                  ? 'info'
-                                  : 'warning'
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {[p.groupName, p.membershipName, p.branchName].filter(Boolean).join(' · ') || '—'}
-                    </TableCell>
-                    <TableCell>{formatDate(p.dueDate)}</TableCell>
-                    <TableCell align="right">
-                      {canPay && (
-                        <Button size="small" variant="outlined" onClick={() => handleRowPay(p)}>
-                          Оплатить
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress size={32} />
         </Box>
-      ) : null}
+      ) : (
+        <>
+          <Box
+            sx={{
+              ...cardSx,
+              p: { xs: 2.5, md: 3 },
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 3,
+              flexWrap: 'wrap',
+              background: 'linear-gradient(105deg, #EEF4FF 0%, #F7FAFF 45%, #FFFFFF 100%)',
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <Box sx={{ minWidth: 0, flex: '1 1 280px', maxWidth: 520 }}>
+              <Typography
+                sx={{
+                  fontWeight: 800,
+                  fontSize: { xs: 18, md: 22 },
+                  color: colors.text,
+                  mb: 0.75,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Удобная оплата в пару кликов
+              </Typography>
+              <Typography sx={{ fontSize: typography.label, color: colors.textMuted, mb: 2, maxWidth: 420 }}>
+                Оплачивайте занятия, абонементы и другие услуги быстро и безопасно.
+              </Typography>
+              <PayNowButton onClick={handleTopPay} />
+              {unpaid.length > 0 && (
+                <Typography sx={{ mt: 1, fontSize: typography.hint, color: colors.textHint }}>
+                  К оплате: {RUB.format(unpaid.reduce((s, p) => s + (Number(p.amount) || 0), 0))}
+                </Typography>
+              )}
+            </Box>
 
-      {/* Pick method when several QR groups */}
+            <Box
+              aria-hidden
+              sx={{
+                position: 'relative',
+                width: { xs: 120, md: 148 },
+                height: { xs: 96, md: 112 },
+                flexShrink: 0,
+                mr: { md: 1 },
+              }}
+            >
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: '18px',
+                  background: 'linear-gradient(145deg, #5B8CFF 0%, #2F6BFF 55%, #1E4FD6 100%)',
+                  boxShadow: '0 14px 28px rgba(47, 107, 255, 0.28)',
+                  transform: 'rotate(-8deg)',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'flex-start',
+                  p: 1.5,
+                  color: 'rgba(255,255,255,0.9)',
+                }}
+              >
+                <CreditCard sx={{ fontSize: 36 }} />
+              </Box>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  right: -6,
+                  bottom: -4,
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  bgcolor: colors.success,
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  fontSize: 18,
+                  boxShadow: '0 6px 14px rgba(0, 182, 155, 0.35)',
+                }}
+              >
+                ✓
+              </Box>
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+              gap: 2,
+            }}
+          >
+            <Box sx={{ ...cardSx, p: { xs: 2, md: 2.5 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: typography.label, color: colors.textMuted, fontWeight: 600, mb: 1 }}>
+                    Всего платежей
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: typography.metric,
+                      fontWeight: 800,
+                      color: colors.text,
+                      lineHeight: 1.05,
+                      letterSpacing: '-0.02em',
+                      mb: 0.75,
+                    }}
+                  >
+                    {payments.length}
+                  </Typography>
+                  <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
+                    {payments.length === 0
+                      ? 'Общая сумма платежей'
+                      : `Общая сумма: ${RUB.format(totalAmount)}`}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '12px',
+                    bgcolor: '#E8F0FF',
+                    color: colors.primary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <PaymentsOutlined sx={{ fontSize: 24 }} />
+                </Box>
+              </Box>
+            </Box>
+
+            <Box sx={{ ...cardSx, p: { xs: 2, md: 2.5 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: typography.label, color: colors.textMuted, fontWeight: 600, mb: 1 }}>
+                    Последний платеж
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: typography.metric,
+                      fontWeight: 800,
+                      color: colors.text,
+                      lineHeight: 1.05,
+                      letterSpacing: '-0.02em',
+                      mb: 0.75,
+                    }}
+                  >
+                    {lastPayment ? RUB.format(Number(lastPayment.amount) || 0) : '—'}
+                  </Typography>
+                  <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
+                    {lastPayment
+                      ? `${typeLabel(lastPayment)} · ${formatDate(lastPayment.paidAt || lastPayment.createdAt)}`
+                      : 'Здесь появится информация о вашем последнем платеже'}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '12px',
+                    bgcolor: '#F0E8FF',
+                    color: '#8A48D7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <CalendarMonthOutlined sx={{ fontSize: 24 }} />
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+
+          <Box sx={{ ...cardSx, p: { xs: 2, md: 2.5 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: { xs: 'stretch', md: 'center' },
+                justifyContent: 'space-between',
+                gap: 1.5,
+                flexDirection: { xs: 'column', md: 'row' },
+                mb: 2,
+              }}
+            >
+              <Typography sx={{ fontWeight: 800, fontSize: typography.panelTitle, color: colors.text }}>
+                Мои платежи
+              </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  width: { xs: '100%', md: 'auto' },
+                }}
+              >
+                <FormControl size="small">
+                  <Select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    sx={filterSelectSx}
+                  >
+                    <MenuItem value="all">Все типы</MenuItem>
+                    <MenuItem value="membership">Абонемент</MenuItem>
+                    <MenuItem value="monthly">Ежемесячный</MenuItem>
+                    <MenuItem value="monthly_payment">Ежемесячный платёж</MenuItem>
+                    <MenuItem value="single">Разовое</MenuItem>
+                    <MenuItem value="fine">Штраф</MenuItem>
+                    <MenuItem value="other">Другое</MenuItem>
+                    <MenuItem value="membership_writeoff">Списание абонемента</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small">
+                  <Select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    sx={filterSelectSx}
+                  >
+                    <MenuItem value="all">Все статусы</MenuItem>
+                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                      <MenuItem key={k} value={k}>
+                        {v}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small">
+                  <Select
+                    value={periodFilter}
+                    onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+                    sx={filterSelectSx}
+                    startAdornment={
+                      <CalendarMonthOutlined sx={{ fontSize: 18, color: colors.textHint, ml: 1, mr: 0.5 }} />
+                    }
+                  >
+                    <MenuItem value="all">За все время</MenuItem>
+                    <MenuItem value="30d">За 30 дней</MenuItem>
+                    <MenuItem value="90d">За 90 дней</MenuItem>
+                    <MenuItem value="year">За год</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+
+            {filtered.length === 0 ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  py: { xs: 4, md: 5 },
+                  px: 2,
+                }}
+              >
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: 'relative',
+                    width: 88,
+                    height: 88,
+                    mb: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: '18px',
+                      bgcolor: '#E8F0FF',
+                      color: colors.primary,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <ReceiptLongOutlined sx={{ fontSize: 36 }} />
+                  </Box>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 4,
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      bgcolor: colors.danger,
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      fontSize: 14,
+                      boxShadow: '0 4px 10px rgba(249, 60, 101, 0.35)',
+                    }}
+                  >
+                    ✕
+                  </Box>
+                </Box>
+                <Typography sx={{ fontWeight: 800, fontSize: typography.label, color: colors.text, mb: 0.5 }}>
+                  У вас пока нет платежей
+                </Typography>
+                <Typography
+                  sx={{ fontSize: typography.hint, color: colors.textMuted, mb: 2.5, maxWidth: 420 }}
+                >
+                  Когда вы оплатите занятия, абонементы или другие услуги, они появятся здесь.
+                </Typography>
+                <PayNowButton onClick={handleTopPay} />
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Дата</TableCell>
+                      <TableCell>Тип</TableCell>
+                      <TableCell>Сумма</TableCell>
+                      <TableCell>Статус</TableCell>
+                      <TableCell>Группа / тариф</TableCell>
+                      <TableCell>Срок оплаты</TableCell>
+                      <TableCell align="right" />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filtered.map((p) => {
+                      const canPay = p.status === 'pending' || p.status === 'overdue';
+                      return (
+                        <TableRow key={p.id} hover>
+                          <TableCell>{formatDate(p.paidAt || p.createdAt)}</TableCell>
+                          <TableCell>{typeLabel(p)}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{RUB.format(Number(p.amount) || 0)}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={
+                                String(p.notes || '').includes('Списание при выдаче')
+                                  ? 'Списание'
+                                  : STATUS_LABELS[p.status] || p.status
+                              }
+                              color={
+                                String(p.notes || '').includes('Списание при выдаче')
+                                  ? 'default'
+                                  : p.status === 'paid'
+                                    ? 'success'
+                                    : p.status === 'cancelled'
+                                      ? 'default'
+                                      : p.status === 'awaiting_confirmation'
+                                        ? 'info'
+                                        : 'warning'
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {[p.groupName, p.membershipName, p.branchName].filter(Boolean).join(' · ') ||
+                              '—'}
+                          </TableCell>
+                          <TableCell>{formatDate(p.dueDate)}</TableCell>
+                          <TableCell align="right">
+                            {canPay && (
+                              <Button size="small" variant="outlined" onClick={() => handleRowPay(p)}>
+                                Оплатить
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </Box>
+        </>
+      )}
+
       <Dialog open={pickOpen} onClose={() => setPickOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Выберите способ оплаты</DialogTitle>
         <DialogContent>
@@ -450,7 +845,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
           )}
         </DialogActions>
       </Dialog>
-    </Panel>
+    </Box>
   );
 };
 

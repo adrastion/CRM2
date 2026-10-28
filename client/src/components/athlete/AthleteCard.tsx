@@ -29,6 +29,7 @@ import AthletePersonalDocs from './AthletePersonalDocs';
 import AthleteContracts from './AthleteContracts';
 import AthleteParents from './AthleteParents';
 import AthleteCardDesktopView from './AthleteCardDesktopView';
+import AthleteCardClientView from './AthleteCardClientView';
 import ClientGroupsDialog from '../client/ClientGroupsDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { isOwnerOrAdmin } from '../../utils/roles';
@@ -247,7 +248,11 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   };
 
   const save = async () => {
-    if (!data?.id || mode !== 'staff') return;
+    if (!data?.id) return;
+    if (mode !== 'staff') {
+      setSnack('Чтобы изменить данные, обратитесь к администратору школы');
+      return;
+    }
 
     const parentsSource = draft.parents || data.parents || [];
     for (let i = 0; i < parentsSource.length; i += 1) {
@@ -799,33 +804,16 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <AthleteProfileHeader
+    <Box>
+      <AthleteCardClientView
         data={data}
-        mode={mode}
-        editing={editing}
-        draft={draft}
-        onDraftChange={patchDraft}
-        onPhotoChange={(base64) => patchDraft({ photo: base64 })}
-        onTrainerClick={onTrainerClick}
-      />
-      <AthletePersonalCalendar events={events} />
-      <AthleteCompetitionResults results={results} />
-      <AthletePersonalDocs
-        data={data}
-        mode={mode}
-        editing={editing}
-        draft={draft}
-        onDraftChange={patchDraft}
-        access={docsAccess}
-        onFileUpload={(field, base64) => patchDraft({ [field]: base64 })}
-      />
-      <AthleteParents
+        events={events}
+        results={results}
         parents={parents as any}
-        mode={mode}
-        editing={editing}
-        onChange={(next) => patchDraft({ parents: next as any })}
-        onRemoveConfirm={(index) => setRemoveParentIdx(index)}
+        onEdit={startEdit}
+        onTrainerClick={onTrainerClick}
+        onAddParent={startEdit}
+        onUploadDoc={startEdit}
       />
       {sharedDialogs}
     </Box>

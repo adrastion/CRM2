@@ -360,7 +360,13 @@ export interface ClientDashboardData {
   upcomingTrainings: ClientDashboardEvent[];
   monthEvents: ClientDashboardEvent[];
   /** Спортсмены на одном номере — переключатель в шапке. */
-  linkedAthletes?: Array<{ id: string; firstName: string; lastName: string }>;
+  linkedAthletes?: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    birthYear?: number | null;
+    groupName?: string | null;
+  }>;
   activeClientId?: string;
 }
 

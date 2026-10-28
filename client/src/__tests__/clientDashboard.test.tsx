@@ -142,11 +142,13 @@ describe('Подтверждённый кабинет', () => {
     expect(container.textContent).toContain('будет списано');
   });
 
-  it('показывает календарь и расписание недели', async () => {
+  it('показывает календарь, быстрые действия и приветствие', async () => {
     await mount();
     expect(container.textContent).toContain('Календарь событий');
-    expect(container.textContent).toContain('Расписание на неделю');
-    expect(container.textContent).toContain('Плавание');
+    expect(container.textContent).toContain('Быстрые действия');
+    expect(container.textContent).toContain('Спорт делает сильнее!');
+    expect(container.textContent).toContain('Перейти к платежам');
+    expect(container.textContent).not.toContain('Связаться с разработчиком');
   });
 
   it('меню активно, поиск скрыт', async () => {
@@ -182,7 +184,14 @@ describe('Подтверждённый кабинет', () => {
     });
     await mount();
     expect(container.textContent).toContain('Мася');
-    expect(container.textContent).toContain('Вася');
+    const switcher = container.querySelector('button[aria-label="Сменить ученика"]') as HTMLButtonElement | null;
+    expect(switcher).toBeTruthy();
+    await act(async () => {
+      switcher?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.body.textContent).toContain('Вася');
+    expect(document.body.textContent).not.toContain('Добавить ребенка');
+    expect(document.body.textContent).not.toContain('Добавить ребёнка');
   });
 });
 
