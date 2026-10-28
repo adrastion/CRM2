@@ -19,6 +19,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowForward,
@@ -72,7 +74,8 @@ const cardSx = {
 } as const;
 
 const filterSelectSx = {
-  minWidth: { xs: '100%', sm: 148 },
+  flex: { xs: '1 1 calc(50% - 4px)', sm: '0 0 auto' },
+  minWidth: { xs: 0, sm: 148 },
   bgcolor: colors.surface,
   borderRadius: `${radii.button}px`,
   fontSize: typography.label,
@@ -83,6 +86,64 @@ const filterSelectSx = {
   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: colors.primary },
   '& .MuiSelect-select': { py: 1.1, px: 1.5 },
 } as const;
+
+const tableHeadCellSx = {
+  fontWeight: 700,
+  fontSize: 12,
+  color: colors.textMuted,
+  borderColor: '#EEF1F6',
+  whiteSpace: 'nowrap' as const,
+  py: 1.25,
+  px: 1.5,
+};
+
+const tableBodyCellSx = {
+  fontSize: 13,
+  color: colors.text,
+  borderColor: '#EEF1F6',
+  py: 1.35,
+  px: 1.5,
+};
+
+function paymentMetaLine(p: any): string {
+  return [p.groupName, p.membershipName, p.branchName].filter(Boolean).join(' · ') || '—';
+}
+
+function PaymentStatusChip({ payment }: { payment: any }) {
+  const writeoff = String(payment.notes || '').includes('Списание при выдаче');
+  const status = payment.status as string;
+  const label = writeoff ? 'Списание' : STATUS_LABELS[status] || status;
+
+  const sx: {
+    fontWeight: number;
+    fontSize: number;
+    height: number;
+    borderRadius: string;
+    bgcolor: string;
+    color: string;
+  } = {
+    fontWeight: 700,
+    fontSize: 11,
+    height: 24,
+    borderRadius: '8px',
+    bgcolor: colors.surface,
+    color: colors.textMuted,
+  };
+  if (!writeoff) {
+    if (status === 'paid') {
+      sx.bgcolor = 'rgba(0, 182, 155, 0.12)';
+      sx.color = colors.success;
+    } else if (status === 'awaiting_confirmation') {
+      sx.bgcolor = 'rgba(47, 107, 255, 0.12)';
+      sx.color = colors.primary;
+    } else if (status === 'overdue' || status === 'pending') {
+      sx.bgcolor = 'rgba(249, 60, 101, 0.1)';
+      sx.color = colors.danger;
+    }
+  }
+
+  return <Chip size="small" label={label} sx={sx} />;
+}
 
 const PayNowButton: React.FC<{ onClick: () => void; fullWidth?: boolean }> = ({
   onClick,
@@ -175,6 +236,8 @@ function inPeriod(iso: string | Date | null | undefined, period: PeriodFilter): 
  * Вкладка «Платежи» ЛК ученика — макет Reference LK clients/Платежи.png
  */
 const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [payments, setPayments] = React.useState<any[]>([]);
@@ -344,7 +407,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
       : `${TYPE_LABELS[p.type] || p.type}${p.isMonthlyPayment ? ' · ежемес.' : ''}`;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', minWidth: 0 }}>
       <Typography sx={{ fontSize: typography.label, color: colors.textMuted, maxWidth: 720, mt: -0.5 }}>
         Здесь вы можете оплачивать занятия, абонементы и другие услуги, а также просматривать историю
         платежей.
@@ -561,7 +624,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                   width: { xs: '100%', md: 'auto' },
                 }}
               >
-                <FormControl size="small">
+                <FormControl size="small" sx={{ flex: { xs: '1 1 calc(50% - 4px)', md: '0 0 auto' }, minWidth: 0 }}>
                   <Select
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
@@ -577,7 +640,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                     <MenuItem value="membership_writeoff">Списание абонемента</MenuItem>
                   </Select>
                 </FormControl>
-                <FormControl size="small">
+                <FormControl size="small" sx={{ flex: { xs: '1 1 calc(50% - 4px)', md: '0 0 auto' }, minWidth: 0 }}>
                   <Select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
@@ -591,7 +654,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl size="small">
+                <FormControl size="small" sx={{ flex: { xs: '1 1 100%', md: '0 0 auto' }, minWidth: 0 }}>
                   <Select
                     value={periodFilter}
                     onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
@@ -677,18 +740,138 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                 </Typography>
                 <PayNowButton onClick={handleTopPay} />
               </Box>
+            ) : isMobile ? (
+              <Stack spacing={1.25} sx={{ width: '100%', minWidth: 0 }}>
+                {filtered.map((p) => {
+                  const canPay = p.status === 'pending' || p.status === 'overdue';
+                  const meta = paymentMetaLine(p);
+                  return (
+                    <Box
+                      key={p.id}
+                      sx={{
+                        bgcolor: colors.surface,
+                        borderRadius: `${radii.button}px`,
+                        border: '1px solid #EEF1F6',
+                        p: 1.5,
+                        minWidth: 0,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                          mb: 0.75,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: colors.textMuted,
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          {formatDate(p.paidAt || p.createdAt)}
+                        </Typography>
+                        <PaymentStatusChip payment={p} />
+                      </Box>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                          mb: 0.5,
+                          minWidth: 0,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: colors.text,
+                            minWidth: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {typeLabel(p)}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontSize: 15,
+                            fontWeight: 800,
+                            color: colors.text,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {RUB.format(Number(p.amount) || 0)}
+                        </Typography>
+                      </Box>
+                      <Typography
+                        sx={{
+                          fontSize: 12,
+                          color: colors.textMuted,
+                          lineHeight: 1.4,
+                          mb: 0.35,
+                          overflow: 'hidden',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {meta}
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, color: colors.textHint, mb: canPay ? 1.25 : 0 }}>
+                        Срок оплаты: {formatDate(p.dueDate)}
+                      </Typography>
+                      {canPay && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          fullWidth
+                          onClick={() => handleRowPay(p)}
+                          sx={{
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            fontSize: typography.button,
+                            borderRadius: `${radii.button}px`,
+                            bgcolor: colors.primary,
+                            boxShadow: 'none',
+                            py: 0.9,
+                            '&:hover': { bgcolor: colors.primaryDark },
+                          }}
+                        >
+                          Оплатить
+                        </Button>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Stack>
             ) : (
-              <Box sx={{ overflowX: 'auto' }}>
-                <Table size="small">
+              <Box sx={{ width: '100%', minWidth: 0, overflowX: 'auto' }}>
+                <Table
+                  size="small"
+                  sx={{
+                    minWidth: 640,
+                    tableLayout: 'fixed',
+                    '& .MuiTableCell-root': { verticalAlign: 'middle' },
+                  }}
+                >
                   <TableHead>
                     <TableRow>
-                      <TableCell>Дата</TableCell>
-                      <TableCell>Тип</TableCell>
-                      <TableCell>Сумма</TableCell>
-                      <TableCell>Статус</TableCell>
-                      <TableCell>Группа / тариф</TableCell>
-                      <TableCell>Срок оплаты</TableCell>
-                      <TableCell align="right" />
+                      <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Дата</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '14%' }}>Тип</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Сумма</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '14%' }}>Статус</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '24%' }}>Группа / тариф</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Срок оплаты</TableCell>
+                      <TableCell sx={{ ...tableHeadCellSx, width: '12%' }} align="right" />
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -696,38 +879,38 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                       const canPay = p.status === 'pending' || p.status === 'overdue';
                       return (
                         <TableRow key={p.id} hover>
-                          <TableCell>{formatDate(p.paidAt || p.createdAt)}</TableCell>
-                          <TableCell>{typeLabel(p)}</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>{RUB.format(Number(p.amount) || 0)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={
-                                String(p.notes || '').includes('Списание при выдаче')
-                                  ? 'Списание'
-                                  : STATUS_LABELS[p.status] || p.status
-                              }
-                              color={
-                                String(p.notes || '').includes('Списание при выдаче')
-                                  ? 'default'
-                                  : p.status === 'paid'
-                                    ? 'success'
-                                    : p.status === 'cancelled'
-                                      ? 'default'
-                                      : p.status === 'awaiting_confirmation'
-                                        ? 'info'
-                                        : 'warning'
-                              }
-                            />
+                          <TableCell sx={tableBodyCellSx}>{formatDate(p.paidAt || p.createdAt)}</TableCell>
+                          <TableCell sx={tableBodyCellSx}>{typeLabel(p)}</TableCell>
+                          <TableCell sx={{ ...tableBodyCellSx, fontWeight: 700 }}>
+                            {RUB.format(Number(p.amount) || 0)}
                           </TableCell>
-                          <TableCell>
-                            {[p.groupName, p.membershipName, p.branchName].filter(Boolean).join(' · ') ||
-                              '—'}
+                          <TableCell sx={tableBodyCellSx}>
+                            <PaymentStatusChip payment={p} />
                           </TableCell>
-                          <TableCell>{formatDate(p.dueDate)}</TableCell>
-                          <TableCell align="right">
+                          <TableCell
+                            sx={{
+                              ...tableBodyCellSx,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {paymentMetaLine(p)}
+                          </TableCell>
+                          <TableCell sx={tableBodyCellSx}>{formatDate(p.dueDate)}</TableCell>
+                          <TableCell sx={tableBodyCellSx} align="right">
                             {canPay && (
-                              <Button size="small" variant="outlined" onClick={() => handleRowPay(p)}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleRowPay(p)}
+                                sx={{
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  borderRadius: `${radii.button}px`,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 Оплатить
                               </Button>
                             )}

@@ -20,20 +20,26 @@ import { currentSessionDestination, hasAnySession } from '../utils/authSession';
 
 export type PublicNavVariant = 'overlay' | 'solid';
 
+export type PublicLandingAnchor = { label: string; onClick: () => void };
+
 interface PublicSiteNavProps {
   /** overlay — поверх героя; solid — обычная белая шапка */
   variant?: PublicNavVariant;
-  /** Показывать пункт «Возможности» (якорь на лендинге) */
+  /** Якоря лендинга (Школам / Ученикам) вместо пункта «Главная» */
+  landingAnchors?: PublicLandingAnchor[];
+  /** @deprecated используйте landingAnchors */
   showFeatures?: boolean;
+  /** @deprecated используйте landingAnchors */
   onFeaturesClick?: () => void;
 }
 
 /**
- * Единая шапка публичных страниц: главная → тарифы → контакты → вход/регистрация.
+ * Единая шапка публичных страниц: главная / якоря → тарифы → контакты → вход/регистрация.
  * На узких экранах вторичные ссылки уходят в меню, чтобы «Регистрация» не уезжала за край.
  */
 const PublicSiteNav: React.FC<PublicSiteNavProps> = ({
   variant = 'solid',
+  landingAnchors,
   showFeatures = false,
   onFeaturesClick,
 }) => {
@@ -61,9 +67,16 @@ const PublicSiteNav: React.FC<PublicSiteNavProps> = ({
 
   const linkActive = (path: string) => location.pathname === path;
 
+  const anchors: PublicLandingAnchor[] =
+    landingAnchors && landingAnchors.length > 0
+      ? landingAnchors
+      : showFeatures
+        ? [{ label: 'Возможности', onClick: () => onFeaturesClick?.() }]
+        : [];
+
   const secondaryLinks: Array<{ label: string; onClick: () => void; active?: boolean }> = [
-    ...(showFeatures
-      ? [{ label: 'Возможности', onClick: () => onFeaturesClick?.() }]
+    ...(anchors.length > 0
+      ? anchors
       : [{ label: 'Главная', onClick: () => navigate('/'), active: linkActive('/') }]),
     { label: 'Тарифы', onClick: () => navigate('/pricing'), active: linkActive('/pricing') },
     { label: 'Контакты', onClick: () => navigate('/contacts'), active: linkActive('/contacts') },

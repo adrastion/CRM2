@@ -12,54 +12,49 @@ import shotClients from '../assets/landing-shot-clients.webp';
 import shotSchedule from '../assets/landing-shot-schedule.webp';
 import shotFinance from '../assets/landing-shot-finance.webp';
 
-const MODULES = [
+const SCHOOL_FEATURES = [
   {
-    title: 'Панель управления',
-    text: 'Метрики школы, быстрые действия и обзор дня на одном экране.',
+    id: 'clients',
+    title: 'Клиенты от лида до постоянного ученика',
+    text: 'Воронка, пробные занятия и полная карточка спортсмена с группами и платежами.',
+    points: ['Статусы лидов', 'Пробные занятия', 'История по ученику'],
+    shot: shotClients,
+    alt: 'Раздел «Клиенты» в кабинете ПРОФСПОРТСРМ',
   },
   {
-    title: 'Клиенты и лиды',
-    text: 'Воронка, пробные занятия и полная карточка спортсмена.',
+    id: 'schedule',
+    title: 'Расписание без путаницы в чатах',
+    text: 'Календарь связывает группы, тренеров и филиалы. При конфликте с соревнованиями — предложение замены.',
+    points: ['Группы и залы', 'Замена тренера', 'События школы'],
+    shot: shotSchedule,
+    alt: 'Календарный план в кабинете ПРОФСПОРТСРМ',
   },
   {
-    title: 'Сотрудники',
-    text: 'Тренеры и администраторы; работа одного специалиста в нескольких школах.',
+    id: 'finance',
+    title: 'Абонементы, оплаты и зарплата вместе',
+    text: 'Выдача абонементов, платежи, журнал операций и начисление зарплаты по схемам школы.',
+    points: ['Абонементы', 'Журнал операций', 'Зарплата тренеров'],
+    shot: shotFinance,
+    alt: 'Финансы в кабинете ПРОФСПОРТСРМ',
   },
+] as const;
+
+const CLIENT_POINTS = [
   {
-    title: 'Группы и филиалы',
-    text: 'Составы, залы и филиалы с привязкой к расписанию.',
+    title: 'Панель и неделя',
+    text: 'Ближайшие занятия, метрики и быстрые действия на одном экране.',
   },
   {
     title: 'Календарный план',
-    text: 'Занятия, соревнования и события; подсказки по замене тренера.',
+    text: 'Тренировки и соревнования — в понятном виде для ученика и родителя.',
   },
   {
-    title: 'Посещаемость',
-    text: 'Отметки на занятии и выгрузка в Excel по нужным срезам.',
+    title: 'Платежи и документы',
+    text: 'Абонементы, оплаты и нужные бумаги всегда под рукой.',
   },
   {
-    title: 'Абонементы и финансы',
-    text: 'Выдача, оплаты, начисления и журнал всех операций.',
-  },
-  {
-    title: 'Зарплата тренеров',
-    text: 'Гибкие схемы начисления и прозрачный учёт выплат.',
-  },
-  {
-    title: 'Чаты',
-    text: 'Переписка школы с непрочитанными в реальном времени.',
-  },
-  {
-    title: 'Нормативы',
-    text: 'Шаблоны для групп и результаты учеников.',
-  },
-  {
-    title: 'База знаний',
-    text: 'Инструкции и FAQ прямо в кабинете сотрудников.',
-  },
-  {
-    title: 'Единый вход',
-    text: 'Один логин для ролей и переключение сохранённых аккаунтов.',
+    title: 'Настройки',
+    text: 'Уведомления и смена пароля в личном кабинете.',
   },
 ] as const;
 
@@ -73,35 +68,8 @@ const ROLES = [
     text: 'Свои группы, посещаемость и раздел «Мой заработок».',
   },
   {
-    title: 'Клиент / родитель',
-    text: 'Кабинет спортсмена: занятия, абонементы, связь со школой.',
-  },
-] as const;
-
-const CAPABILITIES = [
-  {
-    id: 'clients',
-    title: 'Клиенты от лида до постоянного ученика',
-    text: 'Ведите воронку, назначайте пробные и держите карточку спортсмена с группами и платежами.',
-    points: ['Статусы лидов', 'Пробные занятия', 'История по ученику'],
-    shot: shotClients,
-    alt: 'Скрин раздела «Клиенты» в кабинете ПРОФСПОРТСРМ',
-  },
-  {
-    id: 'schedule',
-    title: 'Расписание без путаницы в чатах',
-    text: 'Календарь связывает группы, тренеров и филиалы. При конфликте с соревнованиями — предложение замены.',
-    points: ['Группы и залы', 'Замена тренера', 'События школы'],
-    shot: shotSchedule,
-    alt: 'Скрин раздела «Календарный план» в кабинете ПРОФСПОРТСРМ',
-  },
-  {
-    id: 'finance',
-    title: 'Абонементы, оплаты и зарплата вместе',
-    text: 'Выдача абонементов, платежи, журнал операций и начисление зарплаты по схемам школы.',
-    points: ['Абонементы', 'Журнал операций', 'Начисление зарплаты'],
-    shot: shotFinance,
-    alt: 'Скрин раздела «Финансы» в кабинете ПРОФСПОРТСРМ',
+    title: 'Клиент и родитель',
+    text: 'Личный кабинет: занятия, платежи, документы и связь со школой.',
   },
 ] as const;
 
@@ -137,6 +105,13 @@ const fadeUp = {
   },
 };
 
+const ctaHover = {
+  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+  },
+};
+
 /** Реальный скрин кабинета в рамке. */
 const ShotFrame: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
   <Box
@@ -168,11 +143,15 @@ const ShotFrame: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
   </Box>
 );
 
+const scrollToId = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 const Landing: React.FC = () => {
   const navigate = useNavigate();
   const loggedIn = hasAnySession();
 
-  const goPrimary = () => {
+  const goSchoolPrimary = () => {
     if (loggedIn) {
       navigate(currentSessionDestination() || '/dashboard');
       return;
@@ -180,12 +159,12 @@ const Landing: React.FC = () => {
     navigate('/register');
   };
 
-  const scrollToFeatures = () => {
-    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const scrollToStart = () => {
-    document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const goLogin = () => {
+    if (loggedIn) {
+      navigate(currentSessionDestination() || '/dashboard');
+      return;
+    }
+    navigate('/auth');
   };
 
   return (
@@ -200,8 +179,10 @@ const Landing: React.FC = () => {
     >
       <PublicSiteNav
         variant="overlay"
-        showFeatures
-        onFeaturesClick={scrollToFeatures}
+        landingAnchors={[
+          { label: 'Школам', onClick: () => scrollToId('schools') },
+          { label: 'Ученикам', onClick: () => scrollToId('clients') },
+        ]}
       />
 
       {/* Герой */}
@@ -265,10 +246,10 @@ const Landing: React.FC = () => {
               color: colors.white,
               lineHeight: 1.2,
               mb: 1.75,
-              maxWidth: 520,
+              maxWidth: 540,
             }}
           >
-            CRM для спортивных школ и секций
+            Одна платформа для школы и кабинета ученика
           </Typography>
 
           <Typography
@@ -280,22 +261,23 @@ const Landing: React.FC = () => {
               lineHeight: 1.55,
             }}
           >
-            Клиенты, расписание, абонементы, посещаемость и зарплата — в одном кабинете под вашу школу.
+            Сотрудники ведут клиентов, расписание и финансы. Ученики и родители — занятия, платежи и документы.
           </Typography>
 
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             <Button
               variant="contained"
               size="large"
-              onClick={goPrimary}
+              onClick={goSchoolPrimary}
               sx={{
                 px: 3.5,
                 py: 1.4,
                 fontWeight: 800,
                 fontSize: 15,
+                textTransform: 'none',
                 bgcolor: colors.primary,
                 boxShadow: '0 12px 32px rgba(72, 128, 255, 0.45)',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                ...ctaHover,
                 '&:hover': {
                   bgcolor: colors.primaryDark,
                   transform: 'translateY(-2px)',
@@ -303,62 +285,44 @@ const Landing: React.FC = () => {
                 },
               }}
             >
-              {loggedIn ? 'Открыть кабинет' : 'Начать — регистрация'}
+              {loggedIn ? 'Открыть кабинет' : 'Подключить школу'}
             </Button>
             <Button
               variant="outlined"
               size="large"
-              onClick={scrollToStart}
+              onClick={goLogin}
               sx={{
                 px: 3.5,
                 py: 1.4,
                 fontWeight: 700,
                 fontSize: 15,
+                textTransform: 'none',
                 color: colors.white,
                 borderColor: 'rgba(255,255,255,0.65)',
+                ...ctaHover,
                 '&:hover': {
                   borderColor: colors.white,
                   bgcolor: 'rgba(255,255,255,0.1)',
+                  transform: 'translateY(-2px)',
                 },
               }}
             >
-              Как подключиться
+              {loggedIn ? 'В кабинет' : 'Войти'}
             </Button>
           </Box>
         </Container>
       </Box>
 
-      {/* Скрин панели под героем */}
+      {/* Два пути */}
       <Box
+        id="audience"
         component="section"
         sx={{
-          py: { xs: 4, md: 6 },
-          bgcolor: colors.surface,
+          py: { xs: 7, md: 9 },
+          bgcolor: colors.white,
+          scrollMarginTop: 72,
           borderBottom: `1px solid ${colors.divider}`,
         }}
-      >
-        <Container maxWidth="lg">
-          <Typography
-            sx={{
-              fontSize: 13,
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              color: colors.primary,
-              mb: 2,
-            }}
-          >
-            Так выглядит кабинет
-          </Typography>
-          <ShotFrame src={shotDashboard} alt="Скрин панели управления ПРОФСПОРТСРМ" />
-        </Container>
-      </Box>
-
-      {/* Связка CTA */}
-      <Box
-        id="start"
-        component="section"
-        sx={{ py: { xs: 7, md: 9 }, bgcolor: colors.white, scrollMarginTop: 72 }}
       >
         <Container maxWidth="lg">
           <Typography
@@ -371,7 +335,425 @@ const Landing: React.FC = () => {
               letterSpacing: '-0.02em',
             }}
           >
-            Простой путь без сюрпризов
+            Выберите свой путь
+          </Typography>
+          <Typography
+            sx={{
+              color: colors.textMuted,
+              mb: 5,
+              maxWidth: 520,
+              fontSize: typography.field,
+              lineHeight: 1.55,
+            }}
+          >
+            Школа подключается через регистрацию. Ученик и родитель входят в личный кабинет.
+          </Typography>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+              gap: { xs: 4, md: 0 },
+              borderTop: `1px solid ${colors.divider}`,
+              pt: 4,
+            }}
+          >
+            <Box
+              sx={{
+                pr: { md: 5 },
+                borderRight: { md: `1px solid ${colors.divider}` },
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.1em',
+                  color: colors.primary,
+                  mb: 1.5,
+                }}
+              >
+                ДЛЯ ШКОЛЫ
+              </Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: 22, color: colors.text, mb: 1.25 }}>
+                Кабинет сотрудников
+              </Typography>
+              <Typography sx={{ color: colors.textMuted, fontSize: 15, lineHeight: 1.55, mb: 3, maxWidth: 400 }}>
+                Клиенты, расписание, абонементы, посещаемость, зарплата и чаты — в одном месте.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+                <Button
+                  variant="contained"
+                  onClick={goSchoolPrimary}
+                  sx={{ fontWeight: 700, textTransform: 'none', ...ctaHover }}
+                >
+                  {loggedIn ? 'В кабинет' : 'Регистрация'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate('/pricing')}
+                  sx={{ fontWeight: 700, textTransform: 'none' }}
+                >
+                  Тарифы
+                </Button>
+              </Box>
+            </Box>
+
+            <Box sx={{ pl: { md: 5 } }}>
+              <Typography
+                sx={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.1em',
+                  color: colors.primary,
+                  mb: 1.5,
+                }}
+              >
+                ДЛЯ УЧЕНИКА И РОДИТЕЛЯ
+              </Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: 22, color: colors.text, mb: 1.25 }}>
+                Личный кабинет
+              </Typography>
+              <Typography sx={{ color: colors.textMuted, fontSize: 15, lineHeight: 1.55, mb: 3, maxWidth: 400 }}>
+                Расписание, соревнования, платежи, документы и связь со школой — без лишних чатов.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25 }}>
+                <Button
+                  variant="contained"
+                  onClick={goLogin}
+                  sx={{ fontWeight: 700, textTransform: 'none', ...ctaHover }}
+                >
+                  {loggedIn ? 'Открыть' : 'Войти в кабинет'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => scrollToId('clients')}
+                  sx={{ fontWeight: 700, textTransform: 'none' }}
+                >
+                  Что внутри
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Школам */}
+      <Box
+        id="schools"
+        component="section"
+        sx={{
+          py: { xs: 7, md: 10 },
+          bgcolor: colors.surface,
+          scrollMarginTop: 72,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Typography
+            component="h2"
+            sx={{
+              fontSize: { xs: 26, md: 34 },
+              fontWeight: 800,
+              color: colors.text,
+              mb: 1.25,
+              letterSpacing: '-0.02em',
+              maxWidth: 560,
+            }}
+          >
+            Для школы — всё необходимое
+          </Typography>
+          <Typography
+            sx={{
+              color: colors.textMuted,
+              mb: 5,
+              maxWidth: 520,
+              fontSize: typography.field,
+              lineHeight: 1.55,
+            }}
+          >
+            Три опоры ежедневной работы: люди, расписание и деньги.
+          </Typography>
+        </Container>
+
+        {SCHOOL_FEATURES.map((block, index) => {
+          const photoLeft = index % 2 === 1;
+          return (
+            <Box
+              key={block.id}
+              sx={{
+                position: 'relative',
+                minHeight: { xs: 480, md: 520 },
+                display: 'flex',
+                alignItems: 'center',
+                overflow: 'hidden',
+                mb: index < SCHOOL_FEATURES.length - 1 ? { xs: 3, md: 4 } : 0,
+                backgroundImage: `url(${sectionDesk})`,
+                backgroundSize: 'cover',
+                backgroundPosition: photoLeft ? '30% center' : '70% center',
+              }}
+            >
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: photoLeft
+                    ? `linear-gradient(270deg, rgba(245,246,250,0.97) 0%, rgba(245,246,250,0.92) 48%, rgba(245,246,250,0.35) 78%, transparent 100%)`
+                    : `linear-gradient(90deg, rgba(245,246,250,0.97) 0%, rgba(245,246,250,0.92) 48%, rgba(245,246,250,0.35) 78%, transparent 100%)`,
+                }}
+              />
+              <Container
+                maxWidth="lg"
+                sx={{
+                  position: 'relative',
+                  zIndex: 1,
+                  py: { xs: 5, md: 7 },
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '1fr 1.15fr' },
+                  gap: { xs: 4, md: 5 },
+                  alignItems: 'center',
+                }}
+              >
+                <Box sx={{ order: { xs: 1, md: photoLeft ? 2 : 1 } }}>
+                  <Typography
+                    component="h3"
+                    sx={{
+                      fontSize: { xs: 22, md: 28 },
+                      fontWeight: 800,
+                      color: colors.text,
+                      mb: 1.5,
+                      letterSpacing: '-0.02em',
+                      maxWidth: 440,
+                    }}
+                  >
+                    {block.title}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      color: colors.textMuted,
+                      fontSize: 15,
+                      lineHeight: 1.55,
+                      mb: 2.5,
+                      maxWidth: 440,
+                    }}
+                  >
+                    {block.text}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {block.points.map((point) => (
+                      <Box key={point} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor: colors.primary,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
+                          {point}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+                <Box sx={{ order: { xs: 2, md: photoLeft ? 1 : 2 }, width: '100%' }}>
+                  <ShotFrame src={block.shot} alt={block.alt} />
+                </Box>
+              </Container>
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Ученикам и родителям */}
+      <Box
+        id="clients"
+        component="section"
+        sx={{
+          py: { xs: 7, md: 10 },
+          bgcolor: colors.white,
+          scrollMarginTop: 72,
+          borderBottom: `1px solid ${colors.divider}`,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1.1fr' },
+              gap: { xs: 4, md: 6 },
+              alignItems: 'center',
+            }}
+          >
+            <Box>
+              <Typography
+                sx={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.1em',
+                  color: colors.primary,
+                  mb: 1.5,
+                }}
+              >
+                ЛИЧНЫЙ КАБИНЕТ
+              </Typography>
+              <Typography
+                component="h2"
+                sx={{
+                  fontSize: { xs: 26, md: 34 },
+                  fontWeight: 800,
+                  color: colors.text,
+                  mb: 1.5,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Для ученика и родителя — ясный кабинет
+              </Typography>
+              <Typography
+                sx={{
+                  color: colors.textMuted,
+                  mb: 4,
+                  maxWidth: 460,
+                  fontSize: typography.field,
+                  lineHeight: 1.55,
+                }}
+              >
+                Обновлённый личный кабинет: панель недели, календарный план, платежи, документы и настройки.
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 3,
+                  mb: 4,
+                  borderTop: `1px solid ${colors.divider}`,
+                  pt: 3,
+                }}
+              >
+                {CLIENT_POINTS.map((item) => (
+                  <Box key={item.title}>
+                    <Typography sx={{ fontWeight: 800, fontSize: 16, color: colors.text, mb: 0.75 }}>
+                      {item.title}
+                    </Typography>
+                    <Typography sx={{ color: colors.textMuted, fontSize: 14, lineHeight: 1.55 }}>
+                      {item.text}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              <Button
+                variant="contained"
+                size="large"
+                onClick={goLogin}
+                sx={{ fontWeight: 800, textTransform: 'none', px: 3, ...ctaHover }}
+              >
+                {loggedIn ? 'Открыть кабинет' : 'Войти в личный кабинет'}
+              </Button>
+            </Box>
+
+            <Box>
+              <ShotFrame src={shotDashboard} alt="Панель управления ПРОФСПОРТСРМ" />
+            </Box>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Роли */}
+      <Box
+        component="section"
+        sx={{
+          py: { xs: 7, md: 9 },
+          bgcolor: colors.white,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Typography
+            component="h2"
+            sx={{
+              fontSize: { xs: 26, md: 32 },
+              fontWeight: 800,
+              color: colors.text,
+              mb: 1,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Для каждой роли — свой доступ
+          </Typography>
+          <Typography
+            sx={{
+              color: colors.textMuted,
+              mb: 5,
+              maxWidth: 500,
+              fontSize: 15,
+              lineHeight: 1.5,
+            }}
+          >
+            Данные школ изолированы. Один вход — разные уровни прав.
+          </Typography>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+              gap: { xs: 4, md: 0 },
+              borderTop: `1px solid ${colors.divider}`,
+              pt: 4,
+            }}
+          >
+            {ROLES.map((role, index) => (
+              <Box
+                key={role.title}
+                sx={{
+                  px: { md: index === 0 ? 0 : 4 },
+                  borderLeft: {
+                    md: index === 0 ? 'none' : `1px solid ${colors.divider}`,
+                  },
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: 48,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: colors.primarySoft,
+                    mb: 1.5,
+                  }}
+                >
+                  {String(index + 1).padStart(2, '0')}
+                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 18, color: colors.text, mb: 1 }}>
+                  {role.title}
+                </Typography>
+                <Typography sx={{ color: colors.textMuted, fontSize: 14, lineHeight: 1.55 }}>
+                  {role.text}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Старт */}
+      <Box
+        id="start"
+        component="section"
+        sx={{ py: { xs: 7, md: 9 }, bgcolor: colors.surface, scrollMarginTop: 72 }}
+      >
+        <Container maxWidth="lg">
+          <Typography
+            component="h2"
+            sx={{
+              fontSize: { xs: 26, md: 34 },
+              fontWeight: 800,
+              color: colors.text,
+              mb: 1.25,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Как подключить школу
           </Typography>
           <Typography
             sx={{
@@ -382,7 +764,7 @@ const Landing: React.FC = () => {
               lineHeight: 1.55,
             }}
           >
-            Регистрация → тарифы → контакты. На каждом шаге те же разделы в меню — ничего не прячется.
+            Регистрация → тарифы → контакты. На каждом шаге те же разделы в меню.
           </Typography>
 
           <Box
@@ -436,257 +818,7 @@ const Landing: React.FC = () => {
         </Container>
       </Box>
 
-      {/* Модули */}
-      <Box
-        id="features"
-        component="section"
-        sx={{
-          py: { xs: 7, md: 10 },
-          bgcolor: colors.white,
-          scrollMarginTop: 72,
-          backgroundImage: `
-            radial-gradient(ellipse 60% 40% at 100% 0%, rgba(72,128,255,0.1), transparent 55%),
-            radial-gradient(ellipse 50% 35% at 0% 100%, rgba(13,75,215,0.06), transparent 50%)
-          `,
-        }}
-      >
-        <Container maxWidth="lg">
-          <Typography
-            component="h2"
-            sx={{
-              fontSize: { xs: 26, md: 34 },
-              fontWeight: 800,
-              color: colors.text,
-              mb: 1.25,
-              letterSpacing: '-0.02em',
-              maxWidth: 560,
-            }}
-          >
-            Весь кабинет школы — по делу
-          </Typography>
-          <Typography
-            sx={{
-              color: colors.textMuted,
-              mb: 5,
-              maxWidth: 520,
-              fontSize: typography.field,
-              lineHeight: 1.55,
-            }}
-          >
-            Разделы, которыми пользуются каждый день: от панели и клиентов до финансов и чатов.
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
-              borderTop: `1px solid ${colors.divider}`,
-            }}
-          >
-            {MODULES.map((item, index) => (
-              <Box
-                key={item.title}
-                sx={{
-                  py: 3,
-                  pr: { md: 3 },
-                  pl: { md: index % 3 === 0 ? 0 : 3 },
-                  borderBottom: `1px solid ${colors.divider}`,
-                  borderRight: {
-                    md: index % 3 === 2 ? 'none' : `1px solid ${colors.divider}`,
-                  },
-                  transition: 'background-color 0.2s ease',
-                  '&:hover': { bgcolor: 'rgba(72,128,255,0.04)' },
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: 11,
-                    fontWeight: 800,
-                    letterSpacing: '0.1em',
-                    color: colors.primary,
-                    mb: 1,
-                  }}
-                >
-                  {String(index + 1).padStart(2, '0')}
-                </Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: 17, color: colors.text, mb: 0.75 }}>
-                  {item.title}
-                </Typography>
-                <Typography sx={{ color: colors.textMuted, fontSize: 14, lineHeight: 1.55 }}>
-                  {item.text}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Container>
-      </Box>
-
-      {/* Сценарии со скринами */}
-      {CAPABILITIES.map((block, index) => {
-        const photoLeft = index % 2 === 1;
-        return (
-          <Box
-            key={block.id}
-            component="section"
-            sx={{
-              position: 'relative',
-              minHeight: { xs: 520, md: 560 },
-              display: 'flex',
-              alignItems: 'center',
-              overflow: 'hidden',
-              backgroundImage: `url(${sectionDesk})`,
-              backgroundSize: 'cover',
-              backgroundPosition: photoLeft ? '30% center' : '70% center',
-            }}
-          >
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                background: photoLeft
-                  ? `linear-gradient(270deg, rgba(245,246,250,0.97) 0%, rgba(245,246,250,0.92) 48%, rgba(245,246,250,0.35) 78%, transparent 100%)`
-                  : `linear-gradient(90deg, rgba(245,246,250,0.97) 0%, rgba(245,246,250,0.92) 48%, rgba(245,246,250,0.35) 78%, transparent 100%)`,
-              }}
-            />
-            <Container
-              maxWidth="lg"
-              sx={{
-                position: 'relative',
-                zIndex: 1,
-                py: { xs: 6, md: 8 },
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1.15fr' },
-                gap: { xs: 4, md: 5 },
-                alignItems: 'center',
-              }}
-            >
-              <Box sx={{ order: { xs: 1, md: photoLeft ? 2 : 1 } }}>
-                <Typography
-                  component="h2"
-                  sx={{
-                    fontSize: { xs: 24, md: 30 },
-                    fontWeight: 800,
-                    color: colors.text,
-                    mb: 1.5,
-                    letterSpacing: '-0.02em',
-                    maxWidth: 440,
-                  }}
-                >
-                  {block.title}
-                </Typography>
-                <Typography
-                  sx={{
-                    color: colors.textMuted,
-                    fontSize: 15,
-                    lineHeight: 1.55,
-                    mb: 2.5,
-                    maxWidth: 440,
-                  }}
-                >
-                  {block.text}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {block.points.map((point) => (
-                    <Box key={point} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                      <Box
-                        sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: colors.primary,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
-                        {point}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-              <Box sx={{ order: { xs: 2, md: photoLeft ? 1 : 2 }, width: '100%' }}>
-                <ShotFrame src={block.shot} alt={block.alt} />
-              </Box>
-            </Container>
-          </Box>
-        );
-      })}
-
-      {/* Роли */}
-      <Box
-        component="section"
-        sx={{
-          py: { xs: 7, md: 9 },
-          bgcolor: colors.white,
-          borderTop: `1px solid ${colors.divider}`,
-        }}
-      >
-        <Container maxWidth="lg">
-          <Typography
-            component="h2"
-            sx={{
-              fontSize: { xs: 26, md: 32 },
-              fontWeight: 800,
-              color: colors.text,
-              mb: 1,
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Для каждой роли — свой кабинет
-          </Typography>
-          <Typography
-            sx={{
-              color: colors.textMuted,
-              mb: 5,
-              maxWidth: 500,
-              fontSize: 15,
-              lineHeight: 1.5,
-            }}
-          >
-            Данные школ изолированы. Один вход — разные уровни доступа.
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-              gap: { xs: 4, md: 0 },
-            }}
-          >
-            {ROLES.map((role, index) => (
-              <Box
-                key={role.title}
-                sx={{
-                  px: { md: index === 0 ? 0 : 4 },
-                  borderLeft: {
-                    md: index === 0 ? 'none' : `1px solid ${colors.divider}`,
-                  },
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: 48,
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    color: colors.primarySoft,
-                    mb: 1.5,
-                  }}
-                >
-                  {String(index + 1).padStart(2, '0')}
-                </Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: 18, color: colors.text, mb: 1 }}>
-                  {role.title}
-                </Typography>
-                <Typography sx={{ color: colors.textMuted, fontSize: 14, lineHeight: 1.55 }}>
-                  {role.text}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Container>
-      </Box>
-
-      {/* CTA */}
+      {/* Финальный CTA */}
       <Box
         component="section"
         sx={{
@@ -716,7 +848,7 @@ const Landing: React.FC = () => {
               letterSpacing: '-0.02em',
             }}
           >
-            Соберите школу в одном кабинете
+            Школа и кабинет ученика — в одной системе
           </Typography>
           <Typography
             sx={{
@@ -726,13 +858,13 @@ const Landing: React.FC = () => {
               lineHeight: 1.55,
             }}
           >
-            Дальше по цепочке: регистрация, выбор тарифа или вопрос в контактах.
+            Подключите школу или войдите в личный кабинет.
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}>
             <Button
               variant="contained"
               size="large"
-              onClick={goPrimary}
+              onClick={goSchoolPrimary}
               sx={{
                 bgcolor: colors.white,
                 color: colors.primaryDark,
@@ -740,10 +872,32 @@ const Landing: React.FC = () => {
                 px: 3.5,
                 py: 1.35,
                 textTransform: 'none',
-                '&:hover': { bgcolor: colors.primarySoft },
+                ...ctaHover,
+                '&:hover': { bgcolor: colors.primarySoft, transform: 'translateY(-2px)' },
               }}
             >
-              {loggedIn ? 'В кабинет' : '1. Регистрация'}
+              {loggedIn ? 'В кабинет' : 'Подключить школу'}
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={goLogin}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.75)',
+                color: colors.white,
+                fontWeight: 700,
+                px: 3.5,
+                py: 1.35,
+                textTransform: 'none',
+                ...ctaHover,
+                '&:hover': {
+                  borderColor: colors.white,
+                  bgcolor: 'rgba(255,255,255,0.1)',
+                  transform: 'translateY(-2px)',
+                },
+              }}
+            >
+              {loggedIn ? 'Открыть' : 'Войти'}
             </Button>
             <Button
               variant="outlined"
@@ -762,26 +916,7 @@ const Landing: React.FC = () => {
                 },
               }}
             >
-              2. Тарифы
-            </Button>
-            <Button
-              variant="outlined"
-              size="large"
-              onClick={() => navigate('/contacts')}
-              sx={{
-                borderColor: 'rgba(255,255,255,0.75)',
-                color: colors.white,
-                fontWeight: 700,
-                px: 3.5,
-                py: 1.35,
-                textTransform: 'none',
-                '&:hover': {
-                  borderColor: colors.white,
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                },
-              }}
-            >
-              3. Контакты
+              Тарифы
             </Button>
           </Box>
         </Container>
