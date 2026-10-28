@@ -10,11 +10,7 @@ import {
 import {
   ArrowForward,
   ArticleOutlined,
-  CampaignOutlined,
   Download,
-  PhoneIphoneOutlined,
-  SecurityOutlined,
-  SystemUpdateAltOutlined,
 } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import {
@@ -23,61 +19,9 @@ import {
   PlatformNewsEntry,
 } from '../PlatformNewsFeed';
 import { colors, radii, typography } from '../../theme/tokens';
-
-type NewsTag = 'new' | 'important' | 'security' | 'update';
-
-const TAG_META: Record<
-  NewsTag,
-  { label: string; bg: string; color: string; Icon: React.ElementType; artBg: string }
-> = {
-  new: {
-    label: 'НОВОЕ',
-    bg: '#E8F0FF',
-    color: '#2F6BFF',
-    Icon: PhoneIphoneOutlined,
-    artBg: 'linear-gradient(145deg, #E8F0FF 0%, #D6E4FF 100%)',
-  },
-  important: {
-    label: 'ВАЖНОЕ',
-    bg: '#F3EEFF',
-    color: '#7C5CFC',
-    Icon: CampaignOutlined,
-    artBg: 'linear-gradient(145deg, #F3EEFF 0%, #E8E0FF 100%)',
-  },
-  security: {
-    label: 'БЕЗОПАСНОСТЬ',
-    bg: '#E6F8F3',
-    color: '#00B69B',
-    Icon: SecurityOutlined,
-    artBg: 'linear-gradient(145deg, #E6F8F3 0%, #D4F3EA 100%)',
-  },
-  update: {
-    label: 'ОБНОВЛЕНИЕ',
-    bg: '#E8F8F2',
-    color: '#12B76A',
-    Icon: SystemUpdateAltOutlined,
-    artBg: 'linear-gradient(145deg, #E8F8F2 0%, #D4F3E5 100%)',
-  },
-};
+import { inferNewsTag, TAG_META } from '../news/newsTags';
 
 const BODY_PREVIEW = 140;
-
-const isRecent = (createdAt: string) => {
-  const ageMs = Date.now() - new Date(createdAt).getTime();
-  return ageMs >= 0 && ageMs < 7 * 24 * 60 * 60 * 1000;
-};
-
-const inferTag = (entry: PlatformNewsEntry): NewsTag => {
-  const t = `${entry.title || ''} ${entry.body || ''}`.toLowerCase();
-  if (/2fa|двухфактор|защит|безопасност|парол|qr.?код|код из письм|push/.test(t)) {
-    return 'security';
-  }
-  if (/техническ|работ|обслуживан|недоступ|перерыв|миграц|важно|срочн|ошибк/.test(t)) {
-    return 'important';
-  }
-  if (isRecent(entry.createdAt)) return 'new';
-  return 'update';
-};
 
 async function openBlob(loader: () => Promise<Blob>) {
   const blob = await loader();
@@ -171,7 +115,7 @@ const ClientNewsPanel: React.FC = () => {
         </Box>
       ) : (
         entries.map((entry) => {
-          const tag = inferTag(entry);
+          const tag = inferNewsTag(entry);
           const meta = TAG_META[tag];
           const Icon = meta.Icon;
           const expanded = Boolean(expandedIds[entry.id]);

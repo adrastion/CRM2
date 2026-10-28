@@ -142,7 +142,7 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
         ? new Date(month.getFullYear() - 1, 0, 1)
         : view === 'week'
           ? startOfWeek(month)
-          : new Date(month.getFullYear(), month.getMonth(), 1);
+        : new Date(month.getFullYear(), month.getMonth(), 1);
     const to =
       section === 'competitions'
         ? new Date(month.getFullYear() + 2, 0, 1)
@@ -153,7 +153,7 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
               e.setDate(s.getDate() + 7);
               return e;
             })()
-          : new Date(month.getFullYear(), month.getMonth() + 1, 1);
+        : new Date(month.getFullYear(), month.getMonth() + 1, 1);
     (async () => {
       try {
         const data = await apiService.getClientCalendarPlan({
@@ -230,7 +230,7 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
   }, [month]);
 
   const goToday = () => {
-    const now = new Date();
+        const now = new Date();
     setMonth(now);
     setSelectedDay(toIso(now));
   };
@@ -752,9 +752,9 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
             </Button>
           </Box>
 
-          <Box
-            sx={{
-              display: 'grid',
+        <Box
+          sx={{
+            display: 'grid',
               gridTemplateColumns: { xs: '1fr', lg: '1.55fr 1fr' },
               gap: { xs: 2, md: 2.5 },
               alignItems: 'stretch',
@@ -929,7 +929,7 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
                   transform: 'rotate(-20deg)',
                 }}
               />
-            </Box>
+        </Box>
             <Typography sx={{ fontWeight: 800, fontSize: { xs: 18, md: 20 }, color: colors.text, mb: 0.75 }}>
               Мои соревнования
             </Typography>
@@ -965,7 +965,7 @@ const ClientCalendarPlan: React.FC<Props> = ({ clientId }) => {
               }}
             >
               <PeopleAltOutlined sx={{ fontSize: 22 }} />
-            </Box>
+                          </Box>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 800, fontSize: typography.label, color: colors.text, mb: 0.5 }}>
                 Как попасть на соревнование?

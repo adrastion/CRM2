@@ -4449,6 +4449,7 @@ class ApiService {
     title: string;
     body: string;
     audienceRoles?: string[];
+    tag?: string;
     image?: File | null;
     file?: File | null;
   }): Promise<any> {
@@ -4458,6 +4459,7 @@ class ApiService {
         title: data.title,
         body: data.body,
         audienceRoles: data.audienceRoles || [],
+        tag: data.tag,
       });
       return response.data.data;
     }
@@ -4466,6 +4468,7 @@ class ApiService {
     form.append('body', data.body);
     // Всегда передаём массив, в т.ч. [] — «только супер-админы»
     form.append('audienceRoles', JSON.stringify(data.audienceRoles || []));
+    if (data.tag) form.append('tag', data.tag);
     if (data.image) form.append('image', data.image);
     if (data.file) form.append('file', data.file);
     const response = await this.api.post<ApiResponse>('/platform/changelog', form, {
@@ -4480,6 +4483,7 @@ class ApiService {
       title?: string;
       body?: string;
       audienceRoles?: string[];
+      tag?: string;
       image?: File | null;
       file?: File | null;
       clearImage?: boolean;
@@ -4492,6 +4496,7 @@ class ApiService {
         title: data.title,
         body: data.body,
         audienceRoles: data.audienceRoles,
+        tag: data.tag,
         clearImage: data.clearImage || undefined,
         clearFile: data.clearFile || undefined,
       });
@@ -4503,6 +4508,7 @@ class ApiService {
     if (data.audienceRoles !== undefined) {
       form.append('audienceRoles', JSON.stringify(data.audienceRoles));
     }
+    if (data.tag !== undefined) form.append('tag', data.tag);
     if (data.clearImage) form.append('clearImage', 'true');
     if (data.clearFile) form.append('clearFile', 'true');
     if (data.image) form.append('image', data.image);

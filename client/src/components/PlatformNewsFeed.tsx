@@ -19,6 +19,8 @@ export interface PlatformNewsEntry {
   title: string;
   body: string;
   createdAt: string;
+  /** new | important | security | update */
+  tag?: string | null;
   imageUrl?: string | null;
   fileUrl?: string | null;
   audienceRoles?: string[];

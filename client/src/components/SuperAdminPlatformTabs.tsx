@@ -15,6 +15,7 @@ import {
   FormControlLabel,
   FormGroup,
   IconButton,
+  MenuItem,
   Paper,
   TextField,
   Typography,
@@ -24,9 +25,19 @@ import ChatWorkspace from './chat/ChatWorkspace';
 import { ROLE_LABELS_NEWS } from './PlatformNewsFeed';
 import { apiService } from '../services/api';
 import { useSuperAdminAuth } from '../contexts/SuperAdminAuthContext';
+import { colors, radii, typography } from '../theme/tokens';
+import {
+  inferNewsTag,
+  NEWS_TAGS,
+  NewsTag,
+  parseNewsTag,
+  TAG_META,
+} from './news/newsTags';
 
 /** Роли аудитории новости (SUPER_ADMIN всегда видит всё — в выбор не входит). */
 const AUDIENCE_OPTIONS = Object.keys(ROLE_LABELS_NEWS).filter((r) => r !== 'SUPER_ADMIN');
+
+const BODY_PREVIEW = 140;
 
 /** Пустой список = новость только для супер-админов (они видят всё без записи в audience). */
 function normalizeAudience(roles?: string[] | null): string[] {
@@ -38,11 +49,117 @@ interface ChangelogEntry {
   title: string;
   body: string;
   createdAt: string;
+  tag?: string | null;
   audienceRoles?: string[];
   imageUrl?: string | null;
   fileUrl?: string | null;
   createdBy?: { firstName?: string; lastName?: string; email?: string };
 }
+
+const NewsCardPreview: React.FC<{
+  title: string;
+  body: string;
+  tag: NewsTag;
+  imagePreviewUrl?: string | null;
+}> = ({ title, body, tag, imagePreviewUrl }) => {
+  const meta = TAG_META[tag];
+  const Icon = meta.Icon;
+  const preview =
+    body.length > BODY_PREVIEW ? `${body.slice(0, BODY_PREVIEW).trim()}…` : body || 'Текст новости…';
+
+  return (
+    <Box
+      sx={{
+        bgcolor: colors.card,
+        borderRadius: `${radii.panel}px`,
+        boxShadow: '0 4px 18px rgba(32, 34, 36, 0.06)',
+        border: '1px solid #EEF1F6',
+        p: 2,
+        display: 'flex',
+        flexDirection: { xs: 'column', sm: 'row' },
+        gap: 2,
+        alignItems: 'flex-start',
+      }}
+    >
+      <Box
+        sx={{
+          width: { xs: '100%', sm: 120 },
+          minWidth: { sm: 120 },
+          height: { xs: 110, sm: 110 },
+          borderRadius: '14px',
+          background: meta.artBg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}
+      >
+        {imagePreviewUrl ? (
+          <Box
+            component="img"
+            src={imagePreviewUrl}
+            alt=""
+            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              borderRadius: '14px',
+              bgcolor: colors.card,
+              color: meta.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 20px rgba(27, 36, 56, 0.08)',
+            }}
+          >
+            <Icon sx={{ fontSize: 28 }} />
+          </Box>
+        )}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Chip
+          size="small"
+          label={meta.label}
+          sx={{
+            height: 24,
+            mb: 1,
+            fontWeight: 800,
+            fontSize: 11,
+            letterSpacing: '0.04em',
+            borderRadius: `${radii.pill}px`,
+            bgcolor: meta.bg,
+            color: meta.color,
+          }}
+        />
+        <Typography
+          sx={{
+            fontWeight: 800,
+            fontSize: 16,
+            color: colors.text,
+            lineHeight: 1.3,
+            mb: 0.75,
+          }}
+        >
+          {title.trim() || 'Заголовок новости'}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: typography.label,
+            color: colors.textMuted,
+            lineHeight: 1.55,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {preview}
+        </Typography>
+      </Box>
+    </Box>
+  );
+};
 
 const SaNewsImage: React.FC<{ id: string; hasImage: boolean }> = ({ id, hasImage }) => {
   const [url, setUrl] = useState<string | null>(null);
@@ -119,12 +236,14 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
   const [editing, setEditing] = useState<ChangelogEntry | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [tag, setTag] = useState<NewsTag>('update');
   const [audienceRoles, setAudienceRoles] = useState<string[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [clearImage, setClearImage] = useState(false);
   const [clearFile, setClearFile] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [existingImagePreview, setExistingImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -154,10 +273,35 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     return () => URL.revokeObjectURL(url);
   }, [imageFile]);
 
+  useEffect(() => {
+    if (!editing?.imageUrl || imageFile || clearImage) {
+      setExistingImagePreview(null);
+      return;
+    }
+    let revoked: string | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const blob = await apiService.downloadPlatformNewsImageBlob(editing.id, 'sa');
+        if (cancelled) return;
+        const u = URL.createObjectURL(blob);
+        revoked = u;
+        setExistingImagePreview(u);
+      } catch {
+        if (!cancelled) setExistingImagePreview(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [editing?.id, editing?.imageUrl, imageFile, clearImage]);
+
   const openCreate = () => {
     setEditing(null);
     setTitle('');
     setBody('');
+    setTag('update');
     setAudienceRoles([]);
     setImageFile(null);
     setDocFile(null);
@@ -170,6 +314,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setEditing(entry);
     setTitle(entry.title);
     setBody(entry.body);
+    setTag(parseNewsTag(entry.tag) || inferNewsTag(entry));
     setAudienceRoles(normalizeAudience(entry.audienceRoles));
     setImageFile(null);
     setDocFile(null);
@@ -196,6 +341,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           title: title.trim(),
           body: body.trim(),
           audienceRoles,
+          tag,
           image: imageFile,
           file: docFile,
           clearImage,
@@ -206,6 +352,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           title: title.trim(),
           body: body.trim(),
           audienceRoles,
+          tag,
           image: imageFile,
           file: docFile,
         });
@@ -257,9 +404,28 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           <Paper key={e.id} sx={{ p: 2, mb: 2 }}>
             <Box display="flex" justifyContent="space-between" alignItems="flex-start">
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="h6" fontWeight={700}>
-                  {e.title}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                  {(() => {
+                    const t = inferNewsTag(e);
+                    const meta = TAG_META[t];
+                    return (
+                      <Chip
+                        size="small"
+                        label={meta.label}
+                        sx={{
+                          height: 22,
+                          fontWeight: 800,
+                          fontSize: 11,
+                          bgcolor: meta.bg,
+                          color: meta.color,
+                        }}
+                      />
+                    );
+                  })()}
+                  <Typography variant="h6" fontWeight={700}>
+                    {e.title}
+                  </Typography>
+                </Box>
                 <Typography variant="caption" color="text.secondary">
                   {new Date(e.createdAt).toLocaleString('ru-RU')}
                   {e.createdBy
@@ -314,12 +480,40 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>{editing ? 'Редактировать новость' : 'Новая новость'}</DialogTitle>
         <DialogContent>
+          <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>
+            Как увидят пользователи
+          </Typography>
+          <Box sx={{ mb: 2.5 }}>
+            <NewsCardPreview
+              title={title}
+              body={body}
+              tag={tag}
+              imagePreviewUrl={
+                clearImage ? null : imagePreview || existingImagePreview
+              }
+            />
+          </Box>
+          <TextField
+            select
+            fullWidth
+            label="Метка"
+            value={tag}
+            onChange={(ev) => setTag(ev.target.value as NewsTag)}
+            sx={{ mb: 2 }}
+            helperText="Отображается на карточке в личном кабинете"
+          >
+            {NEWS_TAGS.map((t) => (
+              <MenuItem key={t} value={t}>
+                {TAG_META[t].label}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField
             fullWidth
             label="Заголовок"
             value={title}
             onChange={(ev) => setTitle(ev.target.value)}
-            sx={{ mt: 1, mb: 2 }}
+            sx={{ mb: 2 }}
           />
           <TextField
             fullWidth

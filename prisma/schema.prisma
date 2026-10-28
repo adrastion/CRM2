@@ -1719,6 +1719,8 @@ model PlatformChangelogEntry {
   body           String     @db.Text
   /// Роли аудитории: SUPER_ADMIN, TESTER, OWNER, ADMIN, TRAINER, PROMOTER, CLIENT, PARENT, MARKETER, PLATFORM_STAFF, …
   audienceRoles  String[]   @default([])
+  /// Метка карточки ЛК: new | important | security | update
+  tag            String?
   imageUrl       String?
   fileUrl        String?
   createdById    String

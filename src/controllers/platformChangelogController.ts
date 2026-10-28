@@ -33,6 +33,14 @@ export const platformNewsUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
+const NEWS_TAGS = new Set(['new', 'important', 'security', 'update']);
+
+function parseNewsTag(raw: unknown): string | null {
+  if (raw == null || raw === '') return null;
+  const v = String(raw).trim().toLowerCase();
+  return NEWS_TAGS.has(v) ? v : null;
+}
+
 function parseAudienceRoles(raw: unknown): string[] {
   let list: string[] = [];
   if (Array.isArray(raw)) {
@@ -97,6 +105,7 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
 
   // Пустой список = только супер-админы (они видят все новости без записи в audience)
   const audienceRoles = parseAudienceRoles(req.body?.audienceRoles);
+  const tag = parseNewsTag(req.body?.tag) || 'update';
 
   const files = req.files as
     | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
@@ -115,6 +124,7 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
       title,
       body,
       audienceRoles,
+      tag,
       imageUrl,
       fileUrl,
       createdById: superAdmin.id,
@@ -161,6 +171,17 @@ export const updatePlatformChangelog = asyncHandler(async (req: Request, res: Re
   if (req.body?.audienceRoles !== undefined) {
     // Пустой список = только супер-админы
     data.audienceRoles = parseAudienceRoles(req.body.audienceRoles);
+  }
+  if (req.body?.tag !== undefined) {
+    const tag = parseNewsTag(req.body.tag);
+    if (req.body.tag !== '' && req.body.tag != null && !tag) {
+      res.status(400).json({
+        success: false,
+        error: 'Метка: new, important, security или update',
+      });
+      return;
+    }
+    data.tag = tag;
   }
 
   const files = req.files as
