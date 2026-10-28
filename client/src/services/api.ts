@@ -3193,6 +3193,38 @@ class ApiService {
     return response.data;
   }
 
+  async downloadSchoolImportTemplate(): Promise<Blob> {
+    const response = await this.api.get('/admin-dashboard/school-import/template', {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async importSchoolExcel(
+    tenantId: string,
+    file: File
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    data?: {
+      tenantId: string;
+      tenantName: string;
+      created: Record<string, number>;
+      errors: Array<{ sheet: string; row: number; message: string }>;
+      staffPasswords: Array<{ email: string; password: string; role: string }>;
+    };
+  }> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post(`/admin-dashboard/school-import/${tenantId}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 180000,
+      validateStatus: (s) => s < 500,
+    });
+    return response.data;
+  }
+
   async exportMarketers(): Promise<Blob> {
     const response = await this.api.get('/admin-dashboard/export/marketers', {
       responseType: 'blob',

@@ -863,8 +863,8 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                     '& .MuiTableCell-root': { verticalAlign: 'middle' },
                   }}
                 >
-                  <TableHead>
-                    <TableRow>
+            <TableHead>
+              <TableRow>
                       <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Дата</TableCell>
                       <TableCell sx={{ ...tableHeadCellSx, width: '14%' }}>Тип</TableCell>
                       <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Сумма</TableCell>
@@ -872,13 +872,13 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                       <TableCell sx={{ ...tableHeadCellSx, width: '24%' }}>Группа / тариф</TableCell>
                       <TableCell sx={{ ...tableHeadCellSx, width: '12%' }}>Срок оплаты</TableCell>
                       <TableCell sx={{ ...tableHeadCellSx, width: '12%' }} align="right" />
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
+              </TableRow>
+            </TableHead>
+            <TableBody>
                     {filtered.map((p) => {
                       const canPay = p.status === 'pending' || p.status === 'overdue';
                       return (
-                        <TableRow key={p.id} hover>
+                <TableRow key={p.id} hover>
                           <TableCell sx={tableBodyCellSx}>{formatDate(p.paidAt || p.createdAt)}</TableCell>
                           <TableCell sx={tableBodyCellSx}>{typeLabel(p)}</TableCell>
                           <TableCell sx={{ ...tableBodyCellSx, fontWeight: 700 }}>
@@ -896,12 +896,12 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                             }}
                           >
                             {paymentMetaLine(p)}
-                          </TableCell>
+                  </TableCell>
                           <TableCell sx={tableBodyCellSx}>{formatDate(p.dueDate)}</TableCell>
                           <TableCell sx={tableBodyCellSx} align="right">
                             {canPay && (
                               <Button
-                                size="small"
+                      size="small"
                                 variant="outlined"
                                 onClick={() => handleRowPay(p)}
                                 sx={{
@@ -914,14 +914,14 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
                                 Оплатить
                               </Button>
                             )}
-                          </TableCell>
-                        </TableRow>
+                  </TableCell>
+                </TableRow>
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
           </Box>
         </>
       )}

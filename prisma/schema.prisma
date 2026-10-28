@@ -65,6 +65,7 @@ model Tenant {
   workoutTemplates        WorkoutTemplate[]
   trainingCycles          TrainingCycle[]
   schoolPaymentMethods    SchoolPaymentMethod[]
+  schoolImportLogs        SchoolImportLog[]
 
   @@map("tenants")
 }
@@ -1622,6 +1623,22 @@ model AdminAuditLog {
   @@map("admin_audit_logs")
 }
 
+/// Журнал импортов данных школы из Excel (акция SA).
+model SchoolImportLog {
+  id           String     @id @default(cuid())
+  tenantId     String
+  superAdminId String?
+  success      Boolean
+  summary      String     @db.Text // JSON: counts / errors
+  createdAt    DateTime   @default(now())
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([superAdminId, createdAt])
+  @@map("school_import_logs")
+}
+
 model SuperAdmin {
   id                 String                       @id @default(cuid())
   email              String                       @unique
@@ -1656,6 +1673,7 @@ model SuperAdmin {
   platformPublications PlatformPublication[] @relation("PlatformPublicationAuthor")
   marketerClosingDocs  MarketerClosingDoc[]  @relation("MarketerClosingDocUploader")
   reviewedFeatureIdeas ClientFeatureIdea[]   @relation("FeatureIdeaReviewer")
+  schoolImportLogs     SchoolImportLog[]
 
   @@map("super_admins")
 }

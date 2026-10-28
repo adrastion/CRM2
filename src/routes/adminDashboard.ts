@@ -156,6 +156,11 @@ import {
   authenticatePlatformViewer,
   requirePlatformWrite,
 } from '../middleware/superAdminAuth';
+import {
+  downloadSchoolImportTemplate,
+  importSchoolExcel,
+  schoolImportUpload,
+} from '../controllers/adminSchoolImportController';
 
 const devNotesUploadDir = ensureUploadDir('dev-notes');
 const devNotesUpload = multer({
@@ -262,6 +267,23 @@ router.post('/tenants/:tenantId/link-tester', linkTenantOwnerAsTester);
 router.delete('/tenants/:tenantId/link-tester', unlinkTenantOwnerTester);
 router.get('/tenants/:tenantId/deletion-impact', requirePlatformWrite, getTenantDeletionImpactHandler);
 router.delete('/tenants/:tenantId', requirePlatformWrite, deleteTenant);
+
+// Импорт данных школы из Excel (акция SA) — только пустая школа
+router.get('/school-import/template', downloadSchoolImportTemplate);
+router.post(
+  '/school-import/:tenantId',
+  requirePlatformWrite,
+  (req, res, next) => {
+    schoolImportUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки файла' });
+        return;
+      }
+      next();
+    });
+  },
+  importSchoolExcel
+);
 
 // Массовое обновление аккаунтов
 router.post('/tenants/bulk', bulkUpdateTenants);

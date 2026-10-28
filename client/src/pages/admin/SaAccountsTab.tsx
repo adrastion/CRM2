@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Alert,
   Box,
   Typography,
   Paper,
@@ -13,6 +14,13 @@ import {
   Button,
   CircularProgress,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import {
   Settings,
@@ -21,7 +29,31 @@ import {
   AdminPanelSettings,
   LinkOff,
   BugReport,
+  UploadFile,
 } from '@mui/icons-material';
+import { apiService } from '../../services/api';
+
+type ImportResult = {
+  tenantName: string;
+  created: Record<string, number>;
+  errors: Array<{ sheet: string; row: number; message: string }>;
+  staffPasswords: Array<{ email: string; password: string; role: string }>;
+  success: boolean;
+  errorMessage?: string;
+};
+
+const CREATED_LABELS: Record<string, string> = {
+  branches: 'Филиалы',
+  halls: 'Залы',
+  staff: 'Сотрудники',
+  trainers: 'Тренеры',
+  groups: 'Группы',
+  memberships: 'Абонементы',
+  membershipGroups: 'Абонементы↔группы',
+  clients: 'Ученики',
+  groupMemberships: 'Ученики↔группы',
+  clientMemberships: 'Ученики↔абонементы',
+};
 
 export type SaAccountsTabProps = {
   allTenants: any[];
@@ -58,13 +90,105 @@ const SaAccountsTab: React.FC<SaAccountsTabProps> = ({
   onUnlinkTenantTester,
   onOpenDeleteTenantDialog,
 }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [importTenant, setImportTenant] = React.useState<any | null>(null);
+  const [importBusy, setImportBusy] = React.useState(false);
+  const [importResult, setImportResult] = React.useState<ImportResult | null>(null);
+  const [templateBusy, setTemplateBusy] = React.useState(false);
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadTemplate = async () => {
+    setTemplateBusy(true);
+    try {
+      const blob = await apiService.downloadSchoolImportTemplate();
+      downloadBlob(blob, 'template_school_import.xlsx');
+    } catch (e: any) {
+      window.alert(e?.response?.data?.error || 'Не удалось скачать шаблон');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const openImportDialog = (tenant: any) => {
+    setImportResult(null);
+    setImportTenant(tenant);
+  };
+
+  const closeImportDialog = () => {
+    if (importBusy) return;
+    setImportTenant(null);
+    setImportResult(null);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !importTenant) return;
+    setImportBusy(true);
+    setImportResult(null);
+    try {
+      const res = await apiService.importSchoolExcel(importTenant.id, file);
+      const data = res.data;
+      setImportResult({
+        success: Boolean(res.success),
+        tenantName: data?.tenantName || importTenant.name,
+        created: data?.created || {},
+        errors: data?.errors || [],
+        staffPasswords: data?.staffPasswords || [],
+        errorMessage: res.error || (!res.success ? 'Импорт не выполнен' : undefined),
+      });
+    } catch (err: any) {
+      const payload = err?.response?.data;
+      setImportResult({
+        success: false,
+        tenantName: importTenant.name,
+        created: payload?.data?.created || {},
+        errors: payload?.data?.errors || [],
+        staffPasswords: [],
+        errorMessage: payload?.error || err?.message || 'Ошибка импорта',
+      });
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const downloadStaffPasswords = async () => {
+    if (!importResult?.staffPasswords?.length) return;
+    const XLSX = await import('xlsx');
+    const rows = importResult.staffPasswords.map((s) => ({
+      Email: s.email,
+      Роль: s.role,
+      'Временный пароль': s.password,
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Пароли');
+    XLSX.writeFile(wb, `staff_passwords_${importResult.tenantName || 'school'}.xlsx`);
+  };
+
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
         <Typography variant="h5" fontWeight="bold">
           Все аккаунты
         </Typography>
-        <Box display="flex" gap={2}>
+        <Box display="flex" gap={2} flexWrap="wrap">
+          <Button
+            variant="outlined"
+            startIcon={templateBusy ? <CircularProgress size={16} /> : <GetApp />}
+            onClick={handleDownloadTemplate}
+            disabled={templateBusy}
+          >
+            Шаблон заполнения школы
+          </Button>
           <Button variant="outlined" startIcon={<GetApp />} onClick={onExportTenants}>
             Экспорт в Excel
           </Button>
@@ -207,6 +331,16 @@ const SaAccountsTab: React.FC<SaAccountsTabProps> = ({
                         >
                           <Settings />
                         </IconButton>
+                        {canWrite && (
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => openImportDialog(tenant)}
+                            title="Импорт Excel (пустая школа)"
+                          >
+                            <UploadFile fontSize="small" />
+                          </IconButton>
+                        )}
                         {tenant.ownerId && !tenant.isSuperAdminLinked && (
                           <IconButton
                             size="small"
@@ -271,6 +405,101 @@ const SaAccountsTab: React.FC<SaAccountsTabProps> = ({
           </TableContainer>
         </Paper>
       )}
+
+      <Dialog open={Boolean(importTenant)} onClose={closeImportDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Импорт Excel — {importTenant?.name || ''}</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Импорт только в пустую школу (нет филиалов, групп, учеников, абонементов и сотрудников кроме
+            OWNER). Расписание занятий не импортируется.
+          </Alert>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            hidden
+            onChange={handleFileChange}
+          />
+          {importBusy ? (
+            <Box display="flex" alignItems="center" gap={2} py={2}>
+              <CircularProgress size={28} />
+              <Typography>Импортируем данные…</Typography>
+            </Box>
+          ) : importResult ? (
+            <Box>
+              {importResult.success ? (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  Импорт выполнен для «{importResult.tenantName}»
+                </Alert>
+              ) : (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {importResult.errorMessage || 'Импорт не выполнен'}
+                </Alert>
+              )}
+              {Object.keys(importResult.created || {}).length > 0 && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Создано
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {Object.entries(importResult.created)
+                      .filter(([, n]) => Number(n) > 0)
+                      .map(([k, n]) => `${CREATED_LABELS[k] || k}: ${n}`)
+                      .join(' · ') || '—'}
+                  </Typography>
+                </Box>
+              )}
+              {importResult.errors?.length > 0 && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Ошибки ({importResult.errors.length})
+                  </Typography>
+                  <List dense sx={{ maxHeight: 220, overflow: 'auto', bgcolor: 'action.hover', borderRadius: 1 }}>
+                    {importResult.errors.slice(0, 50).map((err, idx) => (
+                      <ListItem key={`${err.sheet}-${err.row}-${idx}`} disableGutters sx={{ px: 1.5 }}>
+                        <ListItemText
+                          primary={err.message}
+                          secondary={`${err.sheet}${err.row ? `, строка ${err.row}` : ''}`}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+              {importResult.staffPasswords?.length > 0 && (
+                <Alert severity="info">
+                  Сохраните временные пароли сотрудников — повторно их не показать.
+                </Alert>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Выберите заполненный файл шаблона (.xlsx).
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {importResult?.staffPasswords?.length ? (
+            <Button onClick={downloadStaffPasswords} startIcon={<GetApp />}>
+              Скачать пароли
+            </Button>
+          ) : null}
+          {!importResult?.success && !importBusy && (
+            <Button
+              variant="contained"
+              onClick={() => fileInputRef.current?.click()}
+              startIcon={<UploadFile />}
+            >
+              Выбрать файл
+            </Button>
+          )}
+          <Button onClick={closeImportDialog} disabled={importBusy}>
+            Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
