@@ -1,4 +1,4 @@
-﻿-- CreateTable
+-- CreateTable
 CREATE TABLE "school_import_logs" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
