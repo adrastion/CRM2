@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppLayout from './Layout/AppLayout';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
+import PageLoader from './PageLoader';
 
 /**
  * Политика: в AppLayout для авторизованных, без оболочки для гостей.
@@ -10,7 +11,7 @@ const PrivacyPolicyWrapper: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return null;
+    return <PageLoader />;
   }
 
   const accessBlocked =

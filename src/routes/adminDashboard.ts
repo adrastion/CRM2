@@ -83,6 +83,13 @@ import {
 import multer from 'multer';
 import { ensureUploadDir, uniqueUploadFilename } from '../utils/fileStorage';
 import {
+  getMobileApkMeta,
+  uploadMobileApk,
+  updateMobileApkLabel,
+  deleteMobileApk,
+  downloadMobileApk,
+} from '../controllers/mobileApkController';
+import {
   getLogFileInfo,
   readLogFile,
   downloadLogFile,
@@ -211,6 +218,28 @@ const marketerLegalUpload = multer({
         .endsWith('.pdf');
     if (!ok) {
       cb(new Error('Допускаются только PDF'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const mobileApkUploadDir = ensureUploadDir('mobile-app');
+const mobileApkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, mobileApkUploadDir),
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname || 'app.apk')),
+  }),
+  limits: { fileSize: 250 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const name = String(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const ok =
+      name.endsWith('.apk') ||
+      mime === 'application/vnd.android.package-archive' ||
+      mime === 'application/octet-stream';
+    if (!ok) {
+      cb(new Error('Допускаются только APK'));
       return;
     }
     cb(null, true);
@@ -422,6 +451,13 @@ router.post(
   uploadMarketerLegalDocAdmin
 );
 router.get('/marketer-legal-docs/:key/file', downloadMarketerLegalDocAdmin);
+
+/** APK мобильного приложения — только SA, без публичной выдачи пользователям */
+router.get('/mobile-apk', getMobileApkMeta);
+router.post('/mobile-apk', mobileApkUpload.single('file'), uploadMobileApk);
+router.put('/mobile-apk/label', updateMobileApkLabel);
+router.delete('/mobile-apk', deleteMobileApk);
+router.get('/mobile-apk/file', downloadMobileApk);
 
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);

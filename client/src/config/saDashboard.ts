@@ -17,6 +17,7 @@ export const SA_SECTIONS = [
   'maintenance',
   'notifications',
   'sandbox',
+  'mobile-app',
   'legal',
   'audit',
 ] as const;
@@ -84,6 +85,7 @@ export const SA_NAV_GROUPS: SaNavGroup[] = [
       { section: 'maintenance', label: 'Техобслуживание', iconName: 'settings' },
       { section: 'notifications', label: 'Уведомления', iconName: 'earnings' },
       { section: 'sandbox', label: 'Тестовые кабинеты', iconName: 'staff' },
+      { section: 'mobile-app', label: 'Мобильное приложение', iconName: 'knowledge-base' },
     ],
   },
   {

@@ -2757,6 +2757,78 @@ class ApiService {
     return response.data.data;
   }
 
+  async adminGetMobileApk(): Promise<{
+    hasFile: boolean;
+    originalName: string | null;
+    size: number | null;
+    label: string | null;
+    uploadedAt: string | null;
+  }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/mobile-apk');
+    return response.data.data;
+  }
+
+  async adminUploadMobileApk(
+    file: File,
+    label?: string
+  ): Promise<{
+    hasFile: boolean;
+    originalName: string | null;
+    size: number | null;
+    label: string | null;
+    uploadedAt: string | null;
+  }> {
+    const form = new FormData();
+    form.append('file', file);
+    if (label) form.append('label', label);
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/mobile-apk', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async adminUpdateMobileApkLabel(label: string | null): Promise<{
+    hasFile: boolean;
+    originalName: string | null;
+    size: number | null;
+    label: string | null;
+    uploadedAt: string | null;
+  }> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/mobile-apk/label', {
+      label,
+    });
+    return response.data.data;
+  }
+
+  async adminDeleteMobileApk(): Promise<{
+    hasFile: boolean;
+    originalName: string | null;
+    size: number | null;
+    label: string | null;
+    uploadedAt: string | null;
+  }> {
+    const response = await this.api.delete<ApiResponse>('/admin-dashboard/mobile-apk');
+    return response.data.data;
+  }
+
+  async adminDownloadMobileApk(): Promise<void> {
+    const response = await this.api.get('/admin-dashboard/mobile-apk/file', {
+      responseType: 'blob',
+    });
+    const disposition = String(response.headers['content-disposition'] || '');
+    const match = /filename="?([^"]+)"?/i.exec(disposition);
+    const fileName = match?.[1] || 'profsport.apk';
+    const blob = response.data as Blob;
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
   async getPublicMarketerLegalDocs(): Promise<{
     packVersion: string;
     documents: Array<{

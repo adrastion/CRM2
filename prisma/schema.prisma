@@ -1687,6 +1687,12 @@ model SuperAdminSettings {
   supportAutoReplyBody    String?
   /// Минут без heartbeat = сотрудник поддержки офлайн
   supportOnlineMinutes    Int     @default(10)
+  /// APK мобильного приложения (только кабинет SA; пользователям не отдаётся)
+  mobileApkPath           String?
+  mobileApkOriginalName   String?
+  mobileApkSize           Int?
+  mobileApkLabel          String?
+  mobileApkUploadedAt     DateTime?
   /// Лимит удаления сообщений в платформенных чатах (минуты; 0 = без ограничения)
   platformChatMessageDeleteLimitMinutes Int @default(15)
   /// Запланированное включение режима технических работ

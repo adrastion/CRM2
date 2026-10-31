@@ -370,8 +370,14 @@ server {
         root /var/www/martial-arts-crm/client/build;
         index index.html;
         try_files $uri $uri/ /index.html;
-        
-        # Кэширование статических файлов
+
+        # index.html нельзя кэшировать: иначе мобильные вкладки
+        # тянут старый HTML → битые hashed JS-chunks → белый экран
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        # Кэширование статических файлов (hashed assets)
         location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";

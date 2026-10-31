@@ -1,8 +1,8 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { createAppTheme } from './theme/muiTheme';
-import { CssBaseline, Box, CircularProgress } from '@mui/material';
+import { CssBaseline } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MarketerAuthProvider, useMarketerAuth } from './contexts/MarketerAuthContext';
 import { PromoCodeAdminAuthProvider, usePromoCodeAdminAuth } from './contexts/PromoCodeAdminAuthContext';
@@ -22,8 +22,10 @@ import { currentSessionDestination, hasAnySession } from './utils/authSession';
 import { schoolCabinetHome } from './utils/accountSwitcher';
 import SwitchAccountFromPush from './components/SwitchAccountFromPush';
 import SpellcheckProvider from './spellcheck/SpellcheckProvider';
+import PageLoader from './components/PageLoader';
+import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 
-// Lazy load pages for better performance
+// Lazy load pages for better performance (с retry при обрыве chunk на мобильных)
 const Landing = lazy(() => import('./pages/Landing'));
 const Auth = lazy(() => import('./pages/Auth'));
 const DeviceApprove = lazy(() => import('./pages/DeviceApprove'));
@@ -78,18 +80,6 @@ const TrainingPlan = lazy(() => import('./pages/TrainingPlan'));
 const TesterDashboard = lazy(() => import('./pages/TesterDashboard'));
 
 const appTheme = createAppTheme();
-
-// Loading component
-const PageLoader: React.FC = () => (
-  <Box
-    display="flex"
-    justifyContent="center"
-    alignItems="center"
-    minHeight="100vh"
-  >
-    <CircularProgress />
-  </Box>
-);
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
