@@ -368,10 +368,10 @@ model Parent {
 model EmailOtp {
   id          String   @id @default(cuid())
   email       String
-  /// verify | reset | login | 2fa
+  /// verify | reset | login | 2fa | marketer_payout_pep
   purpose     String
   codeHash    String
-  /// user | client | parent — для verify; для reset может быть null до выбора аккаунта
+  /// user | client | parent | marketer — для verify/pep; для reset может быть null до выбора аккаунта
   accountType String?
   accountId   String?
   expiresAt   DateTime
@@ -1103,32 +1103,175 @@ model TrainerBranch {
 }
 
 model Marketer {
-  id                   String             @id @default(cuid())
-  name                 String
-  email                String             @unique
-  password             String
-  phone                String?
-  type                 String
-  isActive             Boolean            @default(true)
+  id                       String             @id @default(cuid())
+  name                     String
+  email                    String             @unique
+  password                 String
+  phone                    String?
+  type                     String
+  isActive                 Boolean            @default(true)
   /// Платформенный маркетолог: null (не привязан к школе)
-  tenantId             String?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  balance              Decimal            @default(0)
-  commissionPercentage Decimal            @default(10)
-  adminTransactions    AdminTransaction[]
-  tenant               Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  promoCodes           PromoCode[]
-  referralLinks        ReferralLink[]
-  referredTenants      TenantMarketer[]
-  leads                MarketerLead[]
-  tasks                MarketerTask[]
-  commissionLedger     MarketerCommissionLedger[]
-  closingDocs          MarketerClosingDoc[]
-  chatThreads          MarketerChatThread[]
-  plannedExpenses      PlannedExpense[]
+  tenantId                 String?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  balance                  Decimal            @default(0)
+  commissionPercentage     Decimal            @default(10)
+  /// Банковские реквизиты для выплат
+  bankName                 String?
+  bankBik                  String?
+  bankAccount              String?
+  bankRecipient            String?
+  /// Профиль / онбординг
+  firstName                String?
+  lastName                 String?
+  inn                      String?
+  /// UNKNOWN | NPD | OTHER
+  taxStatus                String             @default("UNKNOWN")
+  taxStatusConfirmedAt     DateTime?
+  offerAcceptedAt          DateTime?
+  offerDocVersion          String?
+  pepAcceptedAt            DateTime?
+  pepDocVersion            String?
+  pdnAcceptedAt            DateTime?
+  pdnDocVersion            String?
+  programRulesAcceptedAt   DateTime?
+  programRulesDocVersion   String?
+  onboardingCompletedAt    DateTime?
+  /// Кто пригласил в команду (1 уровень)
+  invitedById              String?
+  /// Уникальный токен ссылки /join/:token
+  inviteToken              String?            @unique
+  adminTransactions        AdminTransaction[]
+  tenant                   Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  invitedBy                Marketer?          @relation("MarketerInvites", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitees                 Marketer[]         @relation("MarketerInvites")
+  promoCodes               PromoCode[]
+  referralLinks            ReferralLink[]
+  referredTenants          TenantMarketer[]
+  leads                    MarketerLead[]
+  tasks                    MarketerTask[]
+  commissionLedger         MarketerCommissionLedger[]
+  closingDocs              MarketerClosingDoc[]
+  chatThreads              MarketerChatThread[]
+  plannedExpenses          PlannedExpense[]
+  payoutRequests           MarketerPayoutRequest[]
+  activityPeriods          MarketerActivityPeriod[]
+  supportTickets           SupportTicket[]
 
+  @@index([invitedById])
   @@map("marketers")
+}
+
+/// Период активности маркетолога (цель: 3 первых оплаты за 90 дней)
+model MarketerActivityPeriod {
+  id              String                         @id @default(cuid())
+  marketerId      String
+  startsAt        DateTime
+  endsAt          DateTime
+  targetCount     Int                            @default(3)
+  qualifiedCount  Int                            @default(0)
+  /// OPEN | PASSED | FAILED
+  status          String                         @default("OPEN")
+  closedAt        DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+  marketer        Marketer                       @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  qualifications  MarketerActivityQualification[]
+  exclusions      MarketerActivityExclusion[]
+
+  @@unique([marketerId, startsAt])
+  @@index([marketerId, status, endsAt])
+  @@map("marketer_activity_periods")
+}
+
+model MarketerActivityQualification {
+  id        String                 @id @default(cuid())
+  periodId  String
+  tenantId  String
+  paidAt    DateTime
+  paymentId String?
+  createdAt DateTime               @default(now())
+  period    MarketerActivityPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, tenantId])
+  @@index([tenantId])
+  @@map("marketer_activity_qualifications")
+}
+
+model MarketerActivityExclusion {
+  id        String                 @id @default(cuid())
+  periodId  String
+  tenantId  String
+  rank      Int
+  lostAt    DateTime               @default(now())
+  createdAt DateTime               @default(now())
+  period    MarketerActivityPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, tenantId])
+  @@index([tenantId])
+  @@map("marketer_activity_exclusions")
+}
+
+/// Заявка маркетолога на вывод средств
+model MarketerPayoutRequest {
+  id              String                 @id @default(cuid())
+  marketerId      String
+  amount          Decimal
+  /// AWAITING_SIGNATURE | PROCESSING | PAID | REJECTED | CANCELLED
+  status          String                 @default("AWAITING_SIGNATURE")
+  bankName        String
+  bankBik         String
+  bankAccount     String
+  bankRecipient   String
+  signedAt        DateTime?
+  paidAt          DateTime?
+  /// Дедлайн выплаты: signedAt + dueBusinessDays рабочих дней
+  dueAt           DateTime?
+  rejectReason    String?
+  dueBusinessDays Int                    @default(7)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  marketer        Marketer               @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  document        MarketerPayoutDocument?
+  npdReceipt      MarketerNpdReceipt?
+
+  @@index([marketerId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([dueAt])
+  @@map("marketer_payout_requests")
+}
+
+/// Закрывающий акт заявки + журнал ПЭП
+model MarketerPayoutDocument {
+  id             String                @id @default(cuid())
+  payoutId       String                @unique
+  title          String
+  fileUrl        String
+  contentHash    String
+  signerEmail    String?
+  codeSentAt     DateTime?
+  signedAt       DateTime?
+  signIp         String?
+  signUserAgent  String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  payout         MarketerPayoutRequest @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  @@map("marketer_payout_documents")
+}
+
+/// Чек НПД после выплаты
+model MarketerNpdReceipt {
+  id           String                @id @default(cuid())
+  payoutId     String                @unique
+  fileUrl      String
+  originalName String?
+  uploadedAt   DateTime              @default(now())
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  payout       MarketerPayoutRequest @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  @@map("marketer_npd_receipts")
 }
 
 /// Лид маркетолога (контакты в БД есть, в API маркетологу — только маски)
@@ -1219,20 +1362,23 @@ model MarketerClosingDoc {
 }
 
 model MarketerCommissionLedger {
-  id          String   @id @default(cuid())
-  marketerId  String
-  tenantId    String?
+  id             String   @id @default(cuid())
+  marketerId     String
+  tenantId       String?
   /// ACCRUAL | PAYOUT
-  kind        String
-  amount      Decimal
-  occurredAt  DateTime @default(now())
-  notes       String?
-  externalKey String?
-  createdAt   DateTime @default(now())
-  marketer    Marketer @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  kind           String
+  /// PERSONAL | REFERRAL (для ACCRUAL; PAYOUT — PERSONAL)
+  commissionType String   @default("PERSONAL")
+  amount         Decimal
+  occurredAt     DateTime @default(now())
+  notes          String?
+  externalKey    String?
+  createdAt      DateTime @default(now())
+  marketer       Marketer @relation(fields: [marketerId], references: [id], onDelete: Cascade)
 
   @@unique([marketerId, externalKey])
   @@index([marketerId, occurredAt])
+  @@index([marketerId, commissionType])
   @@index([tenantId])
   @@map("marketer_commission_ledger")
 }
@@ -1467,15 +1613,22 @@ model SubscriptionPayment {
 }
 
 model TenantMarketer {
-  id                   String   @id @default(cuid())
-  tenantId             String   @unique
-  marketerId           String
-  commissionPercentage Decimal  @default(10)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  marketer             Marketer @relation(fields: [marketerId], references: [id], onDelete: Cascade)
-  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                       String    @id @default(cuid())
+  tenantId                 String    @unique
+  marketerId               String
+  commissionPercentage     Decimal   @default(10)
+  /// Первая квалифицирующая оплата (amount > 0) после привязки
+  firstPaidAt              DateTime?
+  commissionRightActive    Boolean   @default(true)
+  commissionRightLostAt    DateTime?
+  /// ACTIVITY_PERIOD_FAIL | MANUAL | ...
+  commissionRightLostReason String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  marketer                 Marketer  @relation(fields: [marketerId], references: [id], onDelete: Cascade)
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@index([marketerId, firstPaidAt])
   @@map("tenant_marketers")
 }
 
@@ -1509,6 +1662,14 @@ model SuperAdminSettings {
   /// Политика конфиденциальности / обработки ПДн
   privacyPolicyText   String?
   privacyUpdatedAt    DateTime?
+  /// Версия комплекта PDF-договоров маркетолога (онбординг / согласия)
+  marketerLegalPackVersion String @default("2026-10-30-draft")
+  marketerLegalPackUpdatedAt DateTime?
+  /// Глобальный автоответ техподдержки (если у акции нет своего)
+  supportAutoReplyEnabled Boolean @default(false)
+  supportAutoReplyBody    String?
+  /// Минут без heartbeat = сотрудник поддержки офлайн
+  supportOnlineMinutes    Int     @default(10)
   /// Лимит удаления сообщений в платформенных чатах (минуты; 0 = без ограничения)
   platformChatMessageDeleteLimitMinutes Int @default(15)
   /// Запланированное включение режима технических работ
@@ -2172,12 +2333,15 @@ model PlatformStaffUser {
   mustChangePassword Boolean              @default(true)
   passwordChangedAt DateTime?
   lastLogin        DateTime?
+  /// Heartbeat при запросах API (онлайн для эскалации SA)
+  lastSeenAt       DateTime?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   assignedTickets  SupportTicket[]        @relation("TicketAssignedStaff")
   messages         SupportTicketMessage[]
   callRecordings   DesignerCallRecording[]
 
+  @@index([role, isActive, lastSeenAt])
   @@map("platform_staff_users")
 }
 
@@ -2185,42 +2349,67 @@ model SupportTicket {
   id              String                  @id @default(cuid())
   tenantId        String
   channel         String // SUPPORT | DESIGNER (клиенты) | DESIGNER_SUPERADMIN (дизайнер ↔ супер-админы)
+  /// GENERAL | QUICK_SETUP
+  kind            String                  @default("GENERAL")
   status          String                  @default("OPEN") // OPEN | WAITING | ASSIGNED | CLOSED
   clientId        String?
   parentId        String?
+  /// Обращение из кабинета маркетолога (платформенного или школьного).
+  marketerId      String?
   assignedStaffId String?
   subject         String?
+  /// Когда школа/клиент последний раз открывали переписку (для непрочитанных).
+  requesterLastReadAt DateTime?
+  /// Когда SA / platform staff последний раз открывали переписку.
+  staffLastReadAt DateTime?
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   closedAt        DateTime?
   tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client          Client?                 @relation("ClientSupportTickets", fields: [clientId], references: [id], onDelete: Cascade)
   parent          Parent?                 @relation("ParentSupportTickets", fields: [parentId], references: [id], onDelete: Cascade)
+  marketer        Marketer?               @relation(fields: [marketerId], references: [id], onDelete: Cascade)
   assignedStaff   PlatformStaffUser?      @relation("TicketAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
   messages        SupportTicketMessage[]
   callRecordings  DesignerCallRecording[]
 
   @@index([tenantId, channel, status])
   @@index([channel, status])
+  @@index([marketerId, status])
   @@map("support_tickets")
 }
 
 model SupportTicketMessage {
-  id                   String             @id @default(cuid())
+  id                   String                          @id @default(cuid())
   ticketId             String
-  authorType           String // client | parent | platform_staff | super_admin
+  authorType           String // client | parent | platform_staff | super_admin | tenant_user
   body                 String
   authorClientId       String?
   authorParentId       String?
   authorStaffId        String?
   authorSuperAdminId   String?
-  createdAt            DateTime           @default(now())
-  ticket               SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorStaff          PlatformStaffUser? @relation(fields: [authorStaffId], references: [id], onDelete: SetNull)
-  authorSuperAdmin     SuperAdmin?        @relation(fields: [authorSuperAdminId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                        @default(now())
+  ticket               SupportTicket                   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorStaff          PlatformStaffUser?              @relation(fields: [authorStaffId], references: [id], onDelete: SetNull)
+  authorSuperAdmin     SuperAdmin?                     @relation(fields: [authorSuperAdminId], references: [id], onDelete: SetNull)
+  attachments          SupportTicketMessageAttachment[]
 
   @@index([ticketId, createdAt])
   @@map("support_ticket_messages")
+}
+
+model SupportTicketMessageAttachment {
+  id           String               @id @default(cuid())
+  messageId    String
+  originalName String
+  mimeType     String
+  size         Int
+  storagePath  String
+  createdAt    DateTime             @default(now())
+  message      SupportTicketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("support_ticket_message_attachments")
 }
 
 model SupportKnowledgeArticle {
@@ -2228,12 +2417,104 @@ model SupportKnowledgeArticle {
   title     String
   body      String
   category  String?
+  /// school | marketer | client | all
+  audience  String   @default("all")
+  /// Подпись в FAQ виджета
+  hint      String?
+  /// Тема обращения при клике в FAQ
+  topic     String?
+  /// Ключ иконки: business | groups | wallet | build | settings | event | membership | person
+  iconKey   String?
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([isActive, audience, sortOrder])
   @@map("support_knowledge_articles")
+}
+
+/// Быстрые ответы для SA / SUPPORT в composer.
+model SupportCannedReply {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("support_canned_replies")
+}
+
+/// Промо-кнопки в виджете поддержки (напр. «Быстрая настройка»). Управляются из SA.
+model SupportPromo {
+  id             String   @id @default(cuid())
+  /// Стабильный ключ для системных: quick_setup
+  key            String?  @unique
+  title          String
+  description    String
+  badgeLabel     String?
+  buttonLabel    String
+  /// GENERAL | QUICK_SETUP
+  ticketKind     String   @default("GENERAL")
+  ticketSubject  String?
+  defaultMessage String?
+  /// school | marketer | client | all
+  audience       String   @default("school")
+  /// ALL | NEW — показывать всем или только новым аккаунтам
+  accountScope   String   @default("ALL")
+  /// Для NEW: сколько дней с создания аккаунта считать «новым»
+  newAccountDays Int      @default(30)
+  autoReplyEnabled Boolean @default(false)
+  autoReplyBody    String?
+  isActive       Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  autoReplyAttachments SupportAutoReplyAttachment[]
+
+  @@index([isActive, audience, sortOrder])
+  @@map("support_promos")
+}
+
+/// Файлы шаблона автоответа: глобальный (promoId=null) или привязанный к акции.
+model SupportAutoReplyAttachment {
+  id           String        @id @default(cuid())
+  /// null = глобальный автоответ SA
+  promoId      String?
+  originalName String
+  mimeType     String
+  size         Int
+  storagePath  String
+  createdAt    DateTime      @default(now())
+  promo        SupportPromo? @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@index([promoId])
+  @@map("support_auto_reply_attachments")
+}
+
+/// PDF-договоры / согласия маркетолога (управляются из кабинета SA)
+model MarketerLegalDocument {
+  id           String   @id @default(cuid())
+  /// Стабильный ключ: agency | personal-data | nda | npd-payouts
+  key          String   @unique
+  title        String
+  /// Имя файла в URL (например agency-agreement.pdf)
+  fileName     String
+  mimeType     String   @default("application/pdf")
+  size         Int
+  storagePath  String
+  /// Версия конкретного файла (дата загрузки)
+  version      String
+  sortOrder    Int      @default(0)
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@map("marketer_legal_documents")
 }
 
 /// Записи видеозвонков дизайнер–клиент; хранятся 14 суток (expiresAt), затем удаляются кроном

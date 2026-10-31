@@ -1,7 +1,13 @@
 import { Request } from 'express';
 import { prisma } from '../lib/prisma';
 
-export type AuthActorType = 'USER' | 'CLIENT' | 'PARENT' | 'SUPER_ADMIN' | 'TESTER';
+export type AuthActorType =
+  | 'USER'
+  | 'CLIENT'
+  | 'PARENT'
+  | 'SUPER_ADMIN'
+  | 'TESTER'
+  | 'MARKETER';
 
 export type SessionRequestMeta = {
   ipAddress?: string | null;

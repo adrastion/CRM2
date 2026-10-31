@@ -271,7 +271,7 @@ export const getMarketerStats = asyncHandler(async (req: AuthenticatedRequest, r
 
 /** Публичная саморегистрация маркетолога (платформа). */
 export const registerMarketer = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
-  const { name, email, password, phone, type } = req.body || {};
+  const { name, email, password, phone, type, inviteToken, ref } = req.body || {};
   const normalizedEmail = String(email || '')
     .trim()
     .toLowerCase();
@@ -286,19 +286,50 @@ export const registerMarketer = asyncHandler(async (req: Request, res: Response<
     return;
   }
 
+  const inviteRef = String(inviteToken || ref || '').trim();
+  let invitedById: string | null = null;
+  if (inviteRef) {
+    const inviter = await prisma.marketer.findFirst({
+      where: { inviteToken: inviteRef, isActive: true },
+      select: { id: true },
+    });
+    if (inviter) invitedById = inviter.id;
+  }
+
+  const { MarketerCabinetService } = await import('../services/marketerCabinetService');
+  let ownToken = MarketerCabinetService.generateInviteToken();
+
   const hashedPassword = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
-  const marketer = await prisma.marketer.create({
-    data: {
-      name: String(name).trim(),
-      email: normalizedEmail,
-      password: hashedPassword,
-      phone: phone ? String(phone).trim() : null,
-      type: marketerType,
-      isActive: true,
-      tenantId: null,
-      commissionPercentage: 10,
-    },
-  });
+  let marketer;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      marketer = await prisma.marketer.create({
+        data: {
+          name: String(name).trim(),
+          email: normalizedEmail,
+          password: hashedPassword,
+          phone: phone ? String(phone).trim() : null,
+          type: marketerType,
+          isActive: true,
+          tenantId: null,
+          commissionPercentage: 10,
+          invitedById,
+          inviteToken: ownToken,
+        },
+      });
+      break;
+    } catch (e: any) {
+      if (e?.code === 'P2002' && attempt < 4) {
+        ownToken = MarketerCabinetService.generateInviteToken();
+        continue;
+      }
+      throw e;
+    }
+  }
+  if (!marketer) {
+    res.status(500).json({ success: false, error: 'Не удалось создать аккаунт' });
+    return;
+  }
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {

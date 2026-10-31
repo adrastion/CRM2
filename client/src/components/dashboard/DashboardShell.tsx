@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Badge,
   Box,
   IconButton,
   InputBase,
@@ -19,6 +20,7 @@ import {
   NotificationsNone,
   Check,
   PersonAddAlt1,
+  PersonOutlined,
   HomeOutlined,
   PeopleAltOutlined,
   CalendarMonthOutlined,
@@ -100,6 +102,8 @@ interface DashboardShellProps {
   onLogout: () => void;
   /** Добавить ещё один аккаунт (очистить активную сессию, оставить реестр). */
   onAddAccount?: () => void;
+  /** Открыть профиль текущего пользователя (пункт в меню аккаунта). */
+  onProfileClick?: () => void;
   /** Поисковая строка отключена (например, в режиме ожидания подтверждения). */
   searchDisabled?: boolean;
   /** Полностью скрыть поиск (ЛК клиента). */
@@ -111,6 +115,14 @@ interface DashboardShellProps {
   showSupportHelp?: boolean;
   /** На xs скрыть нижний бар (Главная/Календарь/…) — полноэкранный контент, напр. чаты. */
   hideMobileBottomNav?: boolean;
+  /**
+   * Вариант оболочки. `marketer` — светлый сайдбар и IA из макета кабинета маркетолога.
+   */
+  shellVariant?: 'default' | 'marketer';
+  /** Хлебные крошки в шапке (для marketer вместо поиска). */
+  breadcrumb?: string;
+  /** Кастомные вкладки нижней мобильной навигации (ключ = navItems.key). */
+  mobileBottomTabs?: Array<{ key: string; label: string; icon?: React.ReactNode }>;
   /** maxWidth поиска на sm/md (кабинет школы — шире). */
   searchMaxWidth?: { sm?: number | string; md?: number | string };
   searchValue?: string;
@@ -138,10 +150,14 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   notificationsChannel = null,
   onLogout,
   onAddAccount,
+  onProfileClick,
   searchDisabled,
   hideSearch = false,
   showSupportHelp,
   hideMobileBottomNav = false,
+  shellVariant = 'default',
+  breadcrumb,
+  mobileBottomTabs,
   searchMaxWidth,
   searchValue = '',
   onSearchChange,
@@ -153,11 +169,22 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   const navigate = useNavigate();
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
+  const isMarketerShell = shellVariant === 'marketer';
   const createFlows = useCreateFlowsOptional();
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [createSheetOpen, setCreateSheetOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [supportUnread, setSupportUnread] = React.useState(0);
+
+  React.useEffect(() => {
+    const onUnread = (e: Event) => {
+      const count = Number((e as CustomEvent).detail?.count) || 0;
+      setSupportUnread(count);
+    };
+    window.addEventListener('crm:support-unread', onUnread as EventListener);
+    return () => window.removeEventListener('crm:support-unread', onUnread as EventListener);
+  }, []);
   const [savedAccounts, setSavedAccounts] = React.useState<SavedAccountSlot[]>([]);
   const [activeAccountId, setActiveAccountId] = React.useState<string | null>(null);
   const [slotAccess, setSlotAccess] = React.useState<Record<string, boolean>>({});
@@ -360,13 +387,13 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               component="div"
               sx={{
                 px: 1,
-                pt: 1.15,
+                pt: isMarketerShell ? 1.75 : 1.15,
                 pb: 0.35,
-                fontSize: 9,
+                fontSize: isMarketerShell ? 10 : 9,
                 fontWeight: 700,
-                letterSpacing: '0.04em',
+                letterSpacing: isMarketerShell ? '1.5px' : '0.04em',
                 textTransform: 'uppercase',
-                color: colors.sidebarMuted,
+                color: isMarketerShell ? '#98a4b9' : colors.sidebarMuted,
                 userSelect: 'none',
               }}
             >
@@ -396,29 +423,52 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               position: 'relative',
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              gap: isMarketerShell ? 1.5 : 1,
               width: '100%',
               border: 'none',
               textAlign: 'left',
               fontFamily: 'inherit',
               cursor: interactive ? 'pointer' : 'default',
-              px: 1.25,
-              py: 0.78,
-              borderRadius: 10,
-              bgcolor: active ? undefined : 'transparent',
-              background: active ? NAV_ACTIVE_GRADIENT : 'transparent',
-              color: active ? colors.white : item.disabled ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.82)',
+              px: isMarketerShell ? 1.5 : 1.25,
+              py: isMarketerShell ? 1.05 : 0.78,
+              borderRadius: isMarketerShell ? '10px' : 10,
+              bgcolor: active
+                ? isMarketerShell
+                  ? '#eaf2ff'
+                  : undefined
+                : 'transparent',
+              background: active && !isMarketerShell ? NAV_ACTIVE_GRADIENT : undefined,
+              color: isMarketerShell
+                ? active
+                  ? '#1753db'
+                  : item.disabled
+                    ? colors.textHint
+                    : '#53647e'
+                : active
+                  ? colors.white
+                  : item.disabled
+                    ? 'rgba(255,255,255,0.35)'
+                    : 'rgba(255,255,255,0.82)',
               opacity: item.disabled ? 0.7 : 1,
-              boxShadow: active ? '0 5px 14px rgba(47, 107, 255, 0.3)' : 'none',
+              boxShadow: active && !isMarketerShell ? '0 5px 14px rgba(47, 107, 255, 0.3)' : 'none',
+              fontWeight: active ? 800 : isMarketerShell ? 550 : 500,
               transition: 'background 160ms ease, color 160ms ease, box-shadow 160ms ease',
               '&:hover':
                 interactive && !active
-                  ? { bgcolor: colors.sidebarSoft, color: colors.white }
+                  ? isMarketerShell
+                    ? { bgcolor: '#f5f8ff', color: '#1753db' }
+                    : { bgcolor: colors.sidebarSoft, color: colors.white }
                   : undefined,
               '& img': {
                 flexShrink: 0,
-                filter: active ? undefined : 'brightness(0) invert(1)',
-                opacity: active ? 1 : 0.78,
+                filter: isMarketerShell
+                  ? active
+                    ? 'none'
+                    : undefined
+                  : active
+                    ? undefined
+                    : 'brightness(0) invert(1)',
+                opacity: active ? 1 : isMarketerShell ? 0.7 : 0.78,
               },
             }}
           >
@@ -447,7 +497,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                   minWidth: 18,
                   height: 18,
                   px: item.badge > 9 ? 0.6 : 0,
-                  borderRadius: 999,
+                  borderRadius: '999px',
                   bgcolor: active ? 'rgba(255,255,255,0.95)' : 'rgba(0, 182, 155, 0.28)',
                   color: active ? colors.primary : '#5DFFC8',
                   fontSize: 10,
@@ -466,28 +516,49 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   );
 
   /** Порядок и состав групп — макет 30. Остальные ссылки — в «Справка». */
-  const MOBILE_NAV_GROUPS: Array<{ title: string; keys: string[] }> = [
-    {
-      title: 'Организация',
-      keys: ['/dashboard', '/clients', '/trainers', '/groups'],
-    },
-    {
-      title: 'Работа и планирование',
-      keys: ['/chats', '/staff-workspace', '/schedule', '/training-plan'],
-    },
-    {
-      title: 'Платежи и система',
-      keys: ['/memberships', '/finance', '/settings'],
-    },
-  ];
-  const MOBILE_EXTRA_KEYS = [
-    '/faq',
-    '/news',
-    '/feedback',
-    '/pricing',
-    '/trainer/profile',
-    '/trainer/earnings',
-  ];
+  const MOBILE_NAV_GROUPS: Array<{ title: string; keys: string[] }> = isMarketerShell
+    ? [
+        {
+          title: 'Рабочее пространство',
+          keys: [
+            '/marketer/dashboard',
+            '/marketer/clients',
+            '/marketer/team',
+            '/marketer/finance',
+            '/marketer/documents',
+            '/marketer/activity',
+            '/marketer/invite',
+          ],
+        },
+        {
+          title: 'Настройки',
+          keys: ['/marketer/profile', '/marketer/onboarding'],
+        },
+      ]
+    : [
+        {
+          title: 'Организация',
+          keys: ['/dashboard', '/clients', '/trainers', '/groups'],
+        },
+        {
+          title: 'Работа и планирование',
+          keys: ['/chats', '/staff-workspace', '/schedule', '/training-plan'],
+        },
+        {
+          title: 'Платежи и система',
+          keys: ['/memberships', '/finance', '/settings'],
+        },
+      ];
+  const MOBILE_EXTRA_KEYS = isMarketerShell
+    ? []
+    : [
+        '/faq',
+        '/news',
+        '/feedback',
+        '/pricing',
+        '/trainer/profile',
+        '/trainer/earnings',
+      ];
 
   const mobileLinkItems = navItems.filter((item) => item.variant !== 'header');
   const byKey = new Map(mobileLinkItems.map((item) => [item.key, item]));
@@ -512,7 +583,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
   }
   const leftoverMobile = mobileLinkItems.filter((item) => !usedMobileKeys.has(item.key));
   if (extraItems.length || leftoverMobile.length) {
-    mobileGroups.push({ title: 'Справка', items: [...extraItems, ...leftoverMobile] });
+    mobileGroups.push({ title: isMarketerShell ? 'Ещё' : 'Справка', items: [...extraItems, ...leftoverMobile] });
   }
 
   const renderMobileNavItem = (item: ShellNavItem) => {
@@ -585,7 +656,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               minWidth: 22,
               height: 22,
               px: item.badge! > 9 ? 0.65 : 0,
-              borderRadius: 999,
+              borderRadius: '999px',
               bgcolor: 'rgba(0, 182, 155, 0.16)',
               color: colors.success,
               fontSize: 11,
@@ -728,9 +799,9 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                 fontWeight: 700,
                 position: 'relative',
               }}
-            >
-              {userName.slice(0, 1).toUpperCase() || '—'}
-              {otherAccountsUnread > 0 && (
+              >
+                {(isMarketerShell ? 'М' : userName.slice(0, 1).toUpperCase()) || '—'}
+                {otherAccountsUnread > 0 && (
                 <Box
                   aria-label={`Непрочитанные на других аккаунтах: ${otherAccountsUnread}`}
                   sx={{
@@ -768,7 +839,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {userName}
+                {isMarketerShell ? 'Маркетолог' : userName}
               </Typography>
               <Typography sx={{ fontSize: typography.hint, color: colors.textHint }}>
                 {userRole}
@@ -860,6 +931,19 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
         );
       })}
       {savedAccounts.length > 0 && <Divider />}
+      {onProfileClick && (
+        <MenuItem
+          onClick={() => {
+            setMenuAnchor(null);
+            onProfileClick();
+          }}
+        >
+          <ListItemIcon>
+            <PersonOutlined fontSize="small" />
+          </ListItemIcon>
+          Мой профиль
+        </MenuItem>
+      )}
       {onAddAccount && (
         <MenuItem
           onClick={() => {
@@ -935,7 +1019,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             flexShrink: 0,
             px: 0.65,
             py: 0.25,
-            borderRadius: 1,
+            borderRadius: '4px',
             border: `1px solid ${colors.divider}`,
             bgcolor: colors.card,
             fontSize: 9,
@@ -1028,11 +1112,12 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Box
           sx={{
-            width: sizes.sidebarWidth,
+            width: isMarketerShell ? 236 : sizes.sidebarWidth,
             flexShrink: 0,
             display: { xs: 'none', md: 'flex' },
             flexDirection: 'column',
-            background: SIDEBAR_GRADIENT,
+            background: isMarketerShell ? colors.card : SIDEBAR_GRADIENT,
+            borderRight: isMarketerShell ? '1px solid #e6ecf5' : 'none',
             position: 'sticky',
             top: 0,
             alignSelf: 'flex-start',
@@ -1040,97 +1125,182 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             maxHeight: '100vh',
             overflow: 'hidden',
             isolation: 'isolate',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              zIndex: -1,
-              left: -95,
-              right: -75,
-              bottom: -115,
-              height: 285,
-              borderRadius: '50%',
-              background:
-                'radial-gradient(ellipse at 52% 24%, rgba(55,111,255,0.6) 0 18%, rgba(30,70,170,0.6) 19% 34%, rgba(16,41,88,0.2) 35% 52%, transparent 53%)',
-              transform: 'rotate(-12deg)',
-            },
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              zIndex: -1,
-              width: 185,
-              height: 110,
-              right: -72,
-              bottom: 62,
-              borderRadius: '50%',
-              border: '22px solid rgba(50,105,245,0.24)',
-              transform: 'rotate(-20deg)',
-            },
+            ...(isMarketerShell
+              ? {}
+              : {
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    zIndex: -1,
+                    left: -95,
+                    right: -75,
+                    bottom: -115,
+                    height: 285,
+                    borderRadius: '50%',
+                    background:
+                      'radial-gradient(ellipse at 52% 24%, rgba(55,111,255,0.6) 0 18%, rgba(30,70,170,0.6) 19% 34%, rgba(16,41,88,0.2) 35% 52%, transparent 53%)',
+                    transform: 'rotate(-12deg)',
+                  },
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute',
+                    zIndex: -1,
+                    width: 185,
+                    height: 110,
+                    right: -72,
+                    bottom: 62,
+                    borderRadius: '50%',
+                    border: '22px solid rgba(50,105,245,0.24)',
+                    transform: 'rotate(-20deg)',
+                  },
+                }),
           }}
         >
-          <Box sx={{ px: 2, pt: 2, pb: 1.1, flexShrink: 0 }}>{wordmarkLight}</Box>
+          <Box sx={{ px: 2, pt: 2, pb: isMarketerShell ? 2 : 1.1, flexShrink: 0 }}>
+            {isMarketerShell ? wordmark : wordmarkLight}
+          </Box>
           <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0, position: 'relative', zIndex: 1 }}>{nav}</Box>
-          {(showSupportHelp ?? !(hideSearch || notificationsChannel === 'portal')) && (
-            <Box
-              component="button"
-              type="button"
-              aria-label="Нужна помощь"
-              onClick={() => {
-                window.dispatchEvent(new Event('crm:open-support'));
-              }}
-              sx={{
-                m: 1.25,
-                mt: 0.35,
-                mb: 1.25,
-                p: 1.15,
-                border: 'none',
-                borderRadius: 14,
-                textAlign: 'left',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                background: 'rgba(255,255,255,0.08)',
-                color: colors.white,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                flexShrink: 0,
-                position: 'relative',
-                zIndex: 1,
-                '&:hover': { background: 'rgba(255,255,255,0.14)' },
-              }}
-            >
+          {(showSupportHelp ?? !(hideSearch || notificationsChannel === 'portal')) &&
+            (isMarketerShell ? (
               <Box
+                component="button"
+                type="button"
+                aria-label="Обратиться в техподдержку"
+                onClick={() => {
+                  window.dispatchEvent(new Event('crm:open-support'));
+                }}
                 sx={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: '10px',
-                  flexShrink: 0,
+                  m: 1.25,
+                  mt: 0.35,
+                  mb: 1.25,
+                  p: 1.15,
+                  border: '1px solid #e8f0fd',
+                  borderRadius: '12px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  background: '#f4f8ff',
+                  color: colors.text,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
-                  boxShadow: '0 4px 12px rgba(47, 107, 255, 0.35)',
+                  gap: 1,
+                  flexShrink: 0,
+                  position: 'relative',
+                  zIndex: 1,
+                  '&:hover': {
+                    background: '#eaf2ff',
+                  },
                 }}
               >
-                <HeadsetMicOutlined sx={{ fontSize: 18, color: '#fff' }} />
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: 11, fontWeight: 800, color: colors.white, lineHeight: 1.2 }}>
-                  Нужна помощь?
-                </Typography>
-                <Typography
+                <Badge
+                  color="error"
+                  badgeContent={supportUnread > 9 ? '9+' : supportUnread}
+                  invisible={supportUnread <= 0}
+                  overlap="circular"
                   sx={{
-                    mt: 0.25,
-                    fontSize: 9,
-                    color: 'rgba(255,255,255,0.68)',
-                    lineHeight: 1.3,
+                    '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, top: 2, right: 2 },
                   }}
                 >
-                  Свяжитесь с нашей командой разработчиков
-                </Typography>
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '10px',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                      boxShadow: '0 4px 12px rgba(47, 107, 255, 0.35)',
+                    }}
+                  >
+                    <HeadsetMicOutlined sx={{ fontSize: 18, color: '#fff' }} />
+                  </Box>
+                </Badge>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: colors.text, lineHeight: 1.2 }}>
+                    Нужна помощь?
+                  </Typography>
+                  <Typography sx={{ mt: 0.25, fontSize: 9, color: '#73839a', lineHeight: 1.3 }}>
+                    Напишите в техподдержку — ответим по кабинету и выплатам
+                  </Typography>
+                </Box>
+                <ArrowForward sx={{ fontSize: 14, opacity: 0.75, flexShrink: 0, color: '#245bd8' }} />
               </Box>
-              <ArrowForward sx={{ fontSize: 14, opacity: 0.75, flexShrink: 0 }} />
-            </Box>
-          )}
+            ) : (
+              <Box
+                component="button"
+                type="button"
+                aria-label="Нужна помощь"
+                onClick={() => {
+                  window.dispatchEvent(new Event('crm:open-support'));
+                }}
+                sx={{
+                  m: 1.25,
+                  mt: 0.35,
+                  mb: 1.25,
+                  p: 1.15,
+                  border: 'none',
+                  borderRadius: 14,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: colors.white,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  flexShrink: 0,
+                  position: 'relative',
+                  zIndex: 1,
+                  '&:hover': {
+                    background: 'rgba(255,255,255,0.14)',
+                  },
+                }}
+              >
+                <Badge
+                  color="error"
+                  badgeContent={supportUnread > 9 ? '9+' : supportUnread}
+                  invisible={supportUnread <= 0}
+                  overlap="circular"
+                  sx={{
+                    '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, top: 2, right: 2 },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '10px',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                      boxShadow: '0 4px 12px rgba(47, 107, 255, 0.35)',
+                    }}
+                  >
+                    <HeadsetMicOutlined sx={{ fontSize: 18, color: '#fff' }} />
+                  </Box>
+                </Badge>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: colors.white, lineHeight: 1.2 }}>
+                    Нужна помощь?
+                  </Typography>
+                  <Typography
+                    sx={{
+                      mt: 0.25,
+                      fontSize: 9,
+                      color: 'rgba(255,255,255,0.68)',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Свяжитесь с нашей командой разработчиков
+                  </Typography>
+                </Box>
+                <ArrowForward sx={{ fontSize: 14, opacity: 0.75, flexShrink: 0 }} />
+              </Box>
+            ))}
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -1141,17 +1311,31 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1.5,
-                px: 2.5,
-                py: 0.75,
-                minHeight: 48,
+                px: isMarketerShell ? 4.5 : 2.5,
+                py: isMarketerShell ? 1.25 : 0.75,
+                minHeight: isMarketerShell ? 64 : 48,
                 bgcolor: colors.card,
-                borderBottom: `1px solid ${colors.divider}`,
+                borderBottom: `1px solid ${isMarketerShell ? '#e6ecf5' : colors.divider}`,
                 position: 'sticky',
                 top: 0,
                 zIndex: 20,
               }}
             >
-              {searchField}
+              {isMarketerShell && breadcrumb ? (
+                <Typography sx={{ fontSize: 12, color: '#a4aec0' }}>
+                  {breadcrumb === 'Мой профиль' || breadcrumb === 'Подключение к программе'
+                    ? 'Рабочее пространство'
+                    : 'Кабинет маркетолога'}{' '}
+                  <Box component="span" sx={{ color: '#a4aec0', mx: 0.75 }}>
+                    ›
+                  </Box>
+                  <Box component="b" sx={{ color: '#405371', fontWeight: 700 }}>
+                    {breadcrumb}
+                  </Box>
+                </Typography>
+              ) : (
+                searchField
+              )}
               <Box sx={{ flex: 1, minWidth: 8 }} aria-hidden />
               <Box sx={{ flexShrink: 0, ml: 'auto' }}>{renderHeaderActions()}</Box>
             </Box>
@@ -1223,7 +1407,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     width: '100%',
                     p: 1.5,
                     border: 'none',
-                    borderRadius: 14,
+                    borderRadius: isMarketerShell ? '10px' : 14,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     textAlign: 'left',
@@ -1232,20 +1416,27 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                     boxShadow: '0 8px 24px rgba(27, 36, 56, 0.18)',
                   }}
                 >
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '12px',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
-                    }}
+                  <Badge
+                    color="error"
+                    badgeContent={supportUnread > 9 ? '9+' : supportUnread}
+                    invisible={supportUnread <= 0}
+                    overlap="circular"
                   >
-                    <HeadsetMicOutlined sx={{ fontSize: 20, color: '#fff' }} />
-                  </Box>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '12px',
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(145deg, #4B8BFF 0%, #2F6BFF 100%)',
+                      }}
+                    >
+                      <HeadsetMicOutlined sx={{ fontSize: 20, color: '#fff' }} />
+                    </Box>
+                  </Badge>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
                       Нужна помощь?
@@ -1266,10 +1457,16 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
           sx={{
             flex: 1,
             minWidth: 0,
-            bgcolor: colors.surface,
-            px: hideMobileBottomNav ? { xs: 0, md: 3 } : { xs: 2, md: 3 },
-            py: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 2, md: 2.5 },
-            pb: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 11, md: 2.5 },
+            bgcolor: isMarketerShell ? '#f4f7fb' : colors.surface,
+            px: hideMobileBottomNav
+              ? { xs: 0, md: isMarketerShell ? 4.5 : 3 }
+              : { xs: 2, md: isMarketerShell ? 4.5 : 3 },
+            py: hideMobileBottomNav
+              ? { xs: 0, md: isMarketerShell ? 3.5 : 2.5 }
+              : { xs: 2, md: isMarketerShell ? 3.5 : 2.5 },
+            pb: hideMobileBottomNav
+              ? { xs: 0, md: isMarketerShell ? 3.5 : 2.5 }
+              : { xs: 11, md: isMarketerShell ? 3.5 : 2.5 },
             display: 'flex',
             flexDirection: 'column',
             gap: hideMobileBottomNav ? { xs: 0, md: 2.5 } : { xs: 2, md: 2.5 },
@@ -1278,7 +1475,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
               : {}),
           }}
         >
-          {(pageTitle || pageAction) && (
+          {!isMarketerShell && (pageTitle || pageAction) && (
             <Box
               sx={{
                 display: hideMobileBottomNav ? { xs: 'none', md: 'flex' } : 'flex',
@@ -1346,24 +1543,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
             }}
           >
             {(() => {
-              const isPortal = hideSearch || notificationsChannel === 'portal';
-              const leftTabs = isPortal
-                ? ([
-                    { key: 'dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
-                    { key: 'plan', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
-                  ] as const)
-                : ([
-                    { key: '/dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
-                    { key: '/schedule', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
-                  ] as const);
-              const rightTabs = isPortal
-                ? ([
-                    { key: 'chats', label: 'Чаты', icon: <ChatBubbleOutline sx={{ fontSize: 18 }} /> },
-                    { key: 'payments', label: 'Платежи', icon: <PaymentsOutlined sx={{ fontSize: 18 }} /> },
-                  ] as const)
-                : null;
-
-              const renderTab = (tab: { key: string; label: string; icon: React.ReactNode }) => {
+              const renderTab = (tab: { key: string; label: string; icon?: React.ReactNode }) => {
                 const item = navItems.find((n) => n.key === tab.key);
                 const active = activeKey === tab.key && !mobileNavOpen;
                 return (
@@ -1384,7 +1564,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: 0.25,
-                      fontSize: typography.label,
+                      fontSize: { xs: 9, sm: typography.label },
                       fontWeight: active ? 700 : 500,
                       cursor: item ? 'pointer' : 'default',
                       opacity: item ? 1 : 0.4,
@@ -1392,11 +1572,32 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                       pb: 0.25,
                     }}
                   >
-                    {tab.icon}
+                    {tab.icon || <HomeOutlined sx={{ fontSize: 18 }} />}
                     {tab.label}
                   </Box>
                 );
               };
+
+              if (mobileBottomTabs && mobileBottomTabs.length > 0) {
+                return <>{mobileBottomTabs.map(renderTab)}</>;
+              }
+
+              const isPortal = hideSearch || notificationsChannel === 'portal';
+              const leftTabs = isPortal
+                ? ([
+                    { key: 'dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
+                    { key: 'plan', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const)
+                : ([
+                    { key: '/dashboard', label: 'Главная', icon: <HomeOutlined sx={{ fontSize: 18 }} /> },
+                    { key: '/schedule', label: 'Календарь', icon: <CalendarMonthOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const);
+              const rightTabs = isPortal
+                ? ([
+                    { key: 'chats', label: 'Чаты', icon: <ChatBubbleOutline sx={{ fontSize: 18 }} /> },
+                    { key: 'payments', label: 'Платежи', icon: <PaymentsOutlined sx={{ fontSize: 18 }} /> },
+                  ] as const)
+                : null;
 
               return (
                 <>
@@ -1541,7 +1742,7 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
                   sx={{
                     width: 40,
                     height: 4,
-                    borderRadius: 999,
+                    borderRadius: '999px',
                     bgcolor: colors.divider,
                     mx: 'auto',
                     mb: 1.5,

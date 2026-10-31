@@ -321,7 +321,11 @@ export class AuthService {
   /**
    * Login marketer
    */
-  static async marketerLogin(email: string, password: string) {
+  static async marketerLogin(
+    email: string,
+    password: string,
+    meta?: SessionRequestMeta | null
+  ) {
     // Приводим email к нижнему регистру для поиска
     const normalizedEmail = email.trim().toLowerCase();
     
@@ -354,16 +358,24 @@ export class AuthService {
     if (!jwtSecret) {
       throw new Error('JWT_SECRET не настроен');
     }
-    
+    const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+    const authSession = await createAuthSession({
+      actorType: 'MARKETER',
+      actorId: marketer.id,
+      expiresAt: expiresAtFromTtl(expiresIn),
+      meta,
+    });
+
     const token = jwt.sign(
       {
         userId: marketer.id,
         email: marketer.email,
         type: 'MARKETER',
-        tenantId: marketer.tenantId
+        tenantId: marketer.tenantId,
+        jti: authSession.id,
       },
       jwtSecret,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as jwt.SignOptions
+      { expiresIn } as jwt.SignOptions
     );
 
     return {
@@ -387,6 +399,26 @@ export class AuthService {
     };
   }
 
+  static async changeMarketerPassword(
+    marketerId: string,
+    currentPassword: string,
+    newPassword: string
+  ) {
+    const marketer = await prisma.marketer.findUnique({ where: { id: marketerId } });
+    if (!marketer) throw new Error('Маркетолог не найден');
+    const ok = await bcrypt.compare(currentPassword, marketer.password);
+    if (!ok) throw new Error('Неверный текущий пароль');
+    if (String(newPassword || '').length < 6) {
+      throw new Error('Пароль должен содержать минимум 6 символов');
+    }
+    const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await prisma.marketer.update({
+      where: { id: marketerId },
+      data: { password: hashed },
+    });
+    return { ok: true };
+  }
+
   /**
    * Единый вход для всех ролей кроме клиентов (владелец/админ/тренер, маркетолог, админ промокодов, супер-админ, персонал платформы).
    */
@@ -404,7 +436,7 @@ export class AuthService {
     }
 
     try {
-      const result = await this.marketerLogin(email, password);
+      const result = await this.marketerLogin(email, password, meta);
       return { accountType: 'MARKETER' as const, ...result };
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : '';

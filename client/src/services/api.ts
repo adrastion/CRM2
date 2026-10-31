@@ -2489,7 +2489,11 @@ class ApiService {
     return response.data.data;
   }
 
-  async getMarketerClients(): Promise<{ leads: any[]; schools: any[] }> {
+  async getMarketerClients(): Promise<{
+    leads: any[];
+    schools: any[];
+    adLink?: { code: string; path: string } | null;
+  }> {
     const response = await this.api.get<ApiResponse>('/marketers/me/clients');
     return response.data.data || { leads: [], schools: [] };
   }
@@ -2556,6 +2560,98 @@ class ApiService {
     return response.data.data;
   }
 
+  async updateMarketerBankDetails(data: {
+    bankName: string;
+    bankBik: string;
+    bankAccount: string;
+    bankRecipient: string;
+  }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/marketers/me/bank-details', data);
+    return response.data.data;
+  }
+
+  async createMarketerPayout(amount: number): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/payouts', { amount });
+    return response.data.data;
+  }
+
+  async cancelMarketerPayout(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/marketers/me/payouts/${id}/cancel`);
+    return response.data.data;
+  }
+
+  async sendMarketerPayoutSignCode(id: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/marketers/me/payouts/${id}/send-sign-code`);
+    return response.data.data;
+  }
+
+  async confirmMarketerPayoutSign(id: string, code: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(`/marketers/me/payouts/${id}/confirm-sign`, {
+      code,
+    });
+    return response.data.data;
+  }
+
+  async downloadMarketerPayoutDocumentBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/payouts/${id}/document`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async uploadMarketerNpdReceipt(id: string, file: File): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post<ApiResponse>(`/marketers/me/payouts/${id}/npd-receipt`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async downloadMarketerNpdReceiptBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/payouts/${id}/npd-receipt`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async adminListMarketerPayouts(status?: string): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-payouts', {
+      params: status ? { status } : undefined,
+    });
+    return response.data.data || [];
+  }
+
+  async adminMarkMarketerPayoutPaid(id: string, note?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/marketer-payouts/${id}/mark-paid`,
+      { note }
+    );
+    return response.data.data;
+  }
+
+  async adminRejectMarketerPayout(id: string, reason?: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/marketer-payouts/${id}/reject`,
+      { reason }
+    );
+    return response.data.data;
+  }
+
+  async adminDownloadMarketerPayoutDocumentBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/admin-dashboard/marketer-payouts/${id}/document`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async adminDownloadMarketerNpdReceiptBlob(id: string): Promise<Blob> {
+    const response = await this.api.get(`/admin-dashboard/marketer-payouts/${id}/npd-receipt`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
   async getMarketerPublications(): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/marketers/me/publications');
     return response.data.data || [];
@@ -2609,6 +2705,69 @@ class ApiService {
     const response = await this.api.post<ApiResponse>('/admin-dashboard/marketer-closing-docs', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data.data;
+  }
+
+  async adminListMarketerLegalDocs(): Promise<{
+    packVersion: string;
+    packUpdatedAt: string | null;
+    documents: Array<{
+      key: string;
+      title: string;
+      fileName: string;
+      sortOrder: number;
+      onboarding: boolean;
+      url: string;
+      id: string | null;
+      size: number | null;
+      version: string | null;
+      updatedAt: string | null;
+      uploadedById: string | null;
+      hasFile: boolean;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-legal-docs');
+    return response.data.data;
+  }
+
+  async adminUploadMarketerLegalDoc(
+    key: string,
+    file: File
+  ): Promise<{
+    packVersion: string;
+    document: {
+      key: string;
+      title: string;
+      fileName: string;
+      size: number;
+      version: string;
+      updatedAt: string;
+      url: string;
+      onboarding: boolean;
+      hasFile: boolean;
+    };
+  }> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await this.api.post<ApiResponse>(
+      `/admin-dashboard/marketer-legal-docs/${encodeURIComponent(key)}`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data.data;
+  }
+
+  async getPublicMarketerLegalDocs(): Promise<{
+    packVersion: string;
+    documents: Array<{
+      key: string;
+      title: string;
+      version: string;
+      url: string;
+      onboarding: boolean;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/legal/marketer');
     return response.data.data;
   }
 
@@ -2756,8 +2915,82 @@ class ApiService {
     password: string;
     phone?: string;
     type?: string;
+    inviteToken?: string;
+    ref?: string;
   }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/auth/marketer/register', data);
+    return response.data.data;
+  }
+
+  async getMarketerTeam(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/team');
+    return response.data.data;
+  }
+
+  async getMarketerActivity(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/activity');
+    return response.data.data;
+  }
+
+  async getMarketerProfile(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/profile');
+    return response.data.data;
+  }
+
+  async changeMarketerPassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ message?: string }> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/change-password', data);
+    return response.data.data || { message: 'Пароль успешно изменён' };
+  }
+
+  async getMarketerNotificationPrefs(): Promise<NotificationPrefs> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/notification-prefs');
+    return response.data.data;
+  }
+
+  async updateMarketerNotificationPrefs(
+    data: Partial<NotificationPrefs>
+  ): Promise<NotificationPrefs> {
+    const response = await this.api.put<ApiResponse>('/marketers/me/notification-prefs', data);
+    return response.data.data;
+  }
+
+  async updateMarketerProfile(data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string | null;
+    inn?: string | null;
+    taxStatus?: string;
+    confirmNpd?: boolean;
+  }): Promise<any> {
+    const response = await this.api.patch<ApiResponse>('/marketers/me/profile', data);
+    return response.data.data;
+  }
+
+  async getMarketerOnboarding(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/onboarding');
+    return response.data.data;
+  }
+
+  async acceptMarketerOnboarding(data: {
+    offer?: boolean;
+    pep?: boolean;
+    pdn?: boolean;
+    programRules?: boolean;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/marketers/me/onboarding/accept', data);
+    return response.data.data;
+  }
+
+  async getMarketerInvite(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/marketers/me/invite');
+    return response.data.data;
+  }
+
+  async resolveMarketerInvite(token: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/marketers/invite/${encodeURIComponent(token)}`);
     return response.data.data;
   }
 
@@ -3907,9 +4140,67 @@ class ApiService {
     return response.data.data;
   }
 
-  // Клиент: техподдержка / дизайн
-  async clientCreateSupportTicket(body: { channel: 'SUPPORT' | 'DESIGNER'; subject?: string; message: string }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/client-auth/support/tickets', body);
+  // Клиент: техподдержка (SUPPORT)
+  async clientGetSupportConfig(): Promise<{
+    quickSetupPromoEnabled: boolean;
+    promos?: Array<{
+      id: string;
+      key: string | null;
+      title: string;
+      description: string;
+      badgeLabel: string | null;
+      buttonLabel: string;
+      ticketKind: string;
+      ticketSubject: string | null;
+      defaultMessage: string | null;
+      audience: string;
+      accountScope?: string;
+      newAccountDays?: number;
+    }>;
+    faq?: Array<{
+      id: string;
+      title: string;
+      hint: string | null;
+      topic: string | null;
+      iconKey: string | null;
+      sortOrder: number;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/support/config');
+    return response.data.data;
+  }
+
+  async clientSupportUnreadSummary(): Promise<{ unreadTotal: number }> {
+    const response = await this.api.get<ApiResponse>('/client-auth/support/unread-summary');
+    return response.data.data;
+  }
+
+  async clientCreateSupportTicket(body: {
+    channel?: 'SUPPORT';
+    subject?: string;
+    message: string;
+    kind?: 'GENERAL' | 'QUICK_SETUP';
+    promoId?: string;
+    files?: File[];
+  }): Promise<any> {
+    if (body.files?.length) {
+      const fd = new FormData();
+      if (body.subject) fd.append('subject', body.subject);
+      fd.append('message', body.message);
+      fd.append('channel', 'SUPPORT');
+      if (body.kind) fd.append('kind', body.kind);
+      if (body.promoId) fd.append('promoId', body.promoId);
+      body.files.forEach((f) => fd.append('files', f));
+      const response = await this.api.post<ApiResponse>('/client-auth/support/tickets', fd);
+      return response.data.data;
+    }
+    const response = await this.api.post<ApiResponse>('/client-auth/support/tickets', {
+      channel: 'SUPPORT',
+      subject: body.subject,
+      message: body.message,
+      kind: body.kind,
+      promoId: body.promoId,
+    });
     return response.data.data;
   }
 
@@ -3923,22 +4214,105 @@ class ApiService {
     return response.data.data;
   }
 
-  async clientPostSupportMessage(ticketId: string, message: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/client-auth/support/tickets/${ticketId}/messages`, { message });
+  async clientPostSupportMessage(ticketId: string, message: string, files?: File[]): Promise<any> {
+    if (files?.length) {
+      const fd = new FormData();
+      fd.append('message', message);
+      files.forEach((f) => fd.append('files', f));
+      const response = await this.api.post<ApiResponse>(`/client-auth/support/tickets/${ticketId}/messages`, fd);
+      return response.data.data;
+    }
+    const response = await this.api.post<ApiResponse>(`/client-auth/support/tickets/${ticketId}/messages`, {
+      message,
+    });
     return response.data.data;
   }
 
-  // Non-client support (tenant users / marketers / promo admins)
+  clientSupportAttachmentUrl(attachmentId: string): string {
+    return `/api/client-auth/support/attachments/${attachmentId}`;
+  }
+
+  async clientDownloadSupportAttachmentBlob(
+    attachmentId: string
+  ): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+    const response = await this.api.get(`/client-auth/support/attachments/${attachmentId}`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const mimeType =
+      (response.headers['content-type'] as string) ||
+      response.data?.type ||
+      'application/octet-stream';
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `file-${attachmentId}`);
+    return { blob: response.data, filename, mimeType };
+  }
+
+  // Non-client support (tenant users)
+  async requesterGetSupportConfig(): Promise<{
+    quickSetupPromoEnabled: boolean;
+    promos?: Array<{
+      id: string;
+      key: string | null;
+      title: string;
+      description: string;
+      badgeLabel: string | null;
+      buttonLabel: string;
+      ticketKind: string;
+      ticketSubject: string | null;
+      defaultMessage: string | null;
+      audience: string;
+      accountScope?: string;
+      newAccountDays?: number;
+    }>;
+    faq?: Array<{
+      id: string;
+      title: string;
+      hint: string | null;
+      topic: string | null;
+      iconKey: string | null;
+      sortOrder: number;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/support/config');
+    return response.data.data;
+  }
+
+  async requesterSupportUnreadSummary(): Promise<{ unreadTotal: number }> {
+    const response = await this.api.get<ApiResponse>('/support/unread-summary');
+    return response.data.data;
+  }
+
   async requesterCreateSupportTicket(body: {
-    channel?: 'SUPPORT' | 'DESIGNER';
+    channel?: 'SUPPORT';
     subject?: string;
     message: string;
+    kind?: 'GENERAL' | 'QUICK_SETUP';
+    promoId?: string;
+    files?: File[];
   }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/support/tickets', body);
+    if (body.files?.length) {
+      const fd = new FormData();
+      if (body.subject) fd.append('subject', body.subject);
+      fd.append('message', body.message);
+      fd.append('channel', 'SUPPORT');
+      if (body.kind) fd.append('kind', body.kind);
+      if (body.promoId) fd.append('promoId', body.promoId);
+      body.files.forEach((f) => fd.append('files', f));
+      const response = await this.api.post<ApiResponse>('/support/tickets', fd);
+      return response.data.data;
+    }
+    const response = await this.api.post<ApiResponse>('/support/tickets', {
+      channel: 'SUPPORT',
+      subject: body.subject,
+      message: body.message,
+      kind: body.kind,
+      promoId: body.promoId,
+    });
     return response.data.data;
   }
 
-  async requesterListSupportTickets(params?: { channel?: 'SUPPORT' | 'DESIGNER' }): Promise<any> {
+  async requesterListSupportTickets(params?: { channel?: 'SUPPORT' }): Promise<any> {
     const response = await this.api.get<ApiResponse>('/support/tickets', { params });
     return response.data.data;
   }
@@ -3948,9 +4322,36 @@ class ApiService {
     return response.data.data;
   }
 
-  async requesterPostSupportMessage(ticketId: string, message: string): Promise<any> {
+  async requesterPostSupportMessage(ticketId: string, message: string, files?: File[]): Promise<any> {
+    if (files?.length) {
+      const fd = new FormData();
+      fd.append('message', message);
+      files.forEach((f) => fd.append('files', f));
+      const response = await this.api.post<ApiResponse>(`/support/tickets/${ticketId}/messages`, fd);
+      return response.data.data;
+    }
     const response = await this.api.post<ApiResponse>(`/support/tickets/${ticketId}/messages`, { message });
     return response.data.data;
+  }
+
+  requesterSupportAttachmentUrl(attachmentId: string): string {
+    return `/api/support/attachments/${attachmentId}`;
+  }
+
+  async requesterDownloadSupportAttachmentBlob(
+    attachmentId: string
+  ): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+    const response = await this.api.get(`/support/attachments/${attachmentId}`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const mimeType =
+      (response.headers['content-type'] as string) ||
+      response.data?.type ||
+      'application/octet-stream';
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `file-${attachmentId}`);
+    return { blob: response.data, filename, mimeType };
   }
 
   async requesterUploadDesignerRecording(ticketId: string, formData: FormData): Promise<any> {
@@ -3967,8 +4368,17 @@ class ApiService {
     await this.api.post<ApiResponse>('/platform-staff/auth/change-password', { currentPassword, newPassword });
   }
 
-  async platformStaffListTickets(params?: { status?: string; channel?: string }): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/platform-staff/tickets', { params });
+  async platformStaffListTickets(params?: {
+    status?: string;
+    channel?: string;
+    waitingReply?: boolean;
+  }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/platform-staff/tickets', {
+      params: {
+        ...params,
+        waitingReply: params?.waitingReply ? '1' : undefined,
+      },
+    });
     return response.data.data;
   }
 
@@ -3977,9 +4387,33 @@ class ApiService {
     return response.data.data;
   }
 
+  async platformStaffCloseTicket(ticketId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/platform-staff/tickets/${ticketId}/close`,
+      {}
+    );
+    return response.data.data;
+  }
+
   async platformStaffGetMessages(ticketId: string): Promise<any> {
     const response = await this.api.get<ApiResponse>(`/platform-staff/tickets/${ticketId}/messages`);
     return response.data.data;
+  }
+
+  async platformStaffDownloadSupportAttachmentBlob(
+    attachmentId: string
+  ): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+    const response = await this.api.get(`/platform-staff/attachments/${attachmentId}`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const mimeType =
+      (response.headers['content-type'] as string) ||
+      response.data?.type ||
+      'application/octet-stream';
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `file-${attachmentId}`);
+    return { blob: response.data, filename, mimeType };
   }
 
   async platformStaffPostMessage(ticketId: string, message: string): Promise<any> {
@@ -3999,8 +4433,29 @@ class ApiService {
     return response.data.data;
   }
 
-  async superAdminListSupportTickets(params?: { channel?: string; tenantId?: string }): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/super-admin/support/tickets', { params });
+  async superAdminListSupportTickets(params?: {
+    channel?: string;
+    tenantId?: string;
+    status?: string;
+    kind?: string;
+    q?: string;
+    waitingReply?: boolean;
+  }): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/tickets', {
+      params: {
+        ...params,
+        waitingReply: params?.waitingReply ? '1' : undefined,
+      },
+    });
+    return response.data.data;
+  }
+
+  async superAdminSupportUnreadTotal(): Promise<{
+    unreadTotal: number;
+    waitingReply: number;
+    supportOnline: boolean;
+  }> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/tickets/unread-total');
     return response.data.data;
   }
 
@@ -4009,9 +4464,62 @@ class ApiService {
     return response.data.data;
   }
 
-  async superAdminPostSupportMessage(ticketId: string, message: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/super-admin/support/tickets/${ticketId}/messages`, { message });
+  async superAdminCloseSupportTicket(ticketId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/super-admin/support/tickets/${ticketId}/close`,
+      {}
+    );
     return response.data.data;
+  }
+
+  async superAdminReopenSupportTicket(ticketId: string): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      `/super-admin/support/tickets/${ticketId}/reopen`,
+      {}
+    );
+    return response.data.data;
+  }
+
+  async superAdminPostSupportMessage(
+    ticketId: string,
+    message: string,
+    files?: File[]
+  ): Promise<any> {
+    if (files?.length) {
+      const fd = new FormData();
+      fd.append('message', message);
+      files.forEach((f) => fd.append('files', f));
+      const response = await this.api.post<ApiResponse>(
+        `/super-admin/support/tickets/${ticketId}/messages`,
+        fd
+      );
+      return response.data.data;
+    }
+    const response = await this.api.post<ApiResponse>(
+      `/super-admin/support/tickets/${ticketId}/messages`,
+      { message }
+    );
+    return response.data.data;
+  }
+
+  superAdminSupportAttachmentUrl(attachmentId: string): string {
+    return `/api/super-admin/support/attachments/${attachmentId}`;
+  }
+
+  async superAdminDownloadSupportAttachmentBlob(
+    attachmentId: string
+  ): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+    const response = await this.api.get(
+      `/super-admin/support/attachments/${attachmentId}`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    const mimeType =
+      (response.headers['content-type'] as string) ||
+      response.data?.type ||
+      'application/octet-stream';
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `file-${attachmentId}`);
+    return { blob: response.data, filename, mimeType };
   }
 
   async superAdminListDesignerRecordings(): Promise<any> {
@@ -4040,9 +4548,206 @@ class ApiService {
     return response.data.data;
   }
 
-  async superAdminCreateSupportKnowledge(payload: { title: string; body: string; category?: string; sortOrder?: number }): Promise<any> {
+  async superAdminCreateSupportKnowledge(payload: {
+    title: string;
+    body: string;
+    category?: string;
+    sortOrder?: number;
+    audience?: string;
+    hint?: string | null;
+    topic?: string | null;
+    iconKey?: string | null;
+    isActive?: boolean;
+  }): Promise<any> {
     const response = await this.api.post<ApiResponse>('/super-admin/support/knowledge', payload);
     return response.data.data;
+  }
+
+  async superAdminUpdateSupportKnowledge(
+    id: string,
+    payload: Partial<{
+      title: string;
+      body: string;
+      category: string | null;
+      sortOrder: number;
+      audience: string;
+      hint: string | null;
+      topic: string | null;
+      iconKey: string | null;
+      isActive: boolean;
+    }>
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/super-admin/support/knowledge/${id}`, payload);
+    return response.data.data;
+  }
+
+  async superAdminDeleteSupportKnowledge(id: string): Promise<void> {
+    await this.api.delete(`/super-admin/support/knowledge/${id}`);
+  }
+
+  async superAdminListCannedReplies(): Promise<{ replies: any[] }> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/canned-replies');
+    return response.data.data;
+  }
+
+  async superAdminCreateCannedReply(payload: {
+    title: string;
+    body: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/super-admin/support/canned-replies', payload);
+    return response.data.data;
+  }
+
+  async superAdminUpdateCannedReply(
+    id: string,
+    payload: Partial<{ title: string; body: string; sortOrder: number; isActive: boolean }>
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/super-admin/support/canned-replies/${id}`,
+      payload
+    );
+    return response.data.data;
+  }
+
+  async superAdminDeleteCannedReply(id: string): Promise<void> {
+    await this.api.delete(`/super-admin/support/canned-replies/${id}`);
+  }
+
+  async superAdminListSupportPromos(): Promise<{ promos: any[] }> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/promos');
+    return response.data.data;
+  }
+
+  async superAdminCreateSupportPromo(payload: {
+    title: string;
+    description: string;
+    buttonLabel: string;
+    badgeLabel?: string | null;
+    ticketKind?: 'GENERAL' | 'QUICK_SETUP';
+    ticketSubject?: string | null;
+    defaultMessage?: string | null;
+    audience?: 'school' | 'marketer' | 'client' | 'all';
+    accountScope?: 'ALL' | 'NEW';
+    newAccountDays?: number;
+    autoReplyEnabled?: boolean;
+    autoReplyBody?: string | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/super-admin/support/promos', payload);
+    return response.data.data;
+  }
+
+  async superAdminUpdateSupportPromo(
+    id: string,
+    payload: Partial<{
+      title: string;
+      description: string;
+      buttonLabel: string;
+      badgeLabel: string | null;
+      ticketKind: 'GENERAL' | 'QUICK_SETUP';
+      ticketSubject: string | null;
+      defaultMessage: string | null;
+      audience: 'school' | 'marketer' | 'client' | 'all';
+      accountScope: 'ALL' | 'NEW';
+      newAccountDays: number;
+      autoReplyEnabled: boolean;
+      autoReplyBody: string | null;
+      isActive: boolean;
+      sortOrder: number;
+    }>
+  ): Promise<any> {
+    const response = await this.api.put<ApiResponse>(`/super-admin/support/promos/${id}`, payload);
+    return response.data.data;
+  }
+
+  async superAdminDeleteSupportPromo(id: string): Promise<void> {
+    await this.api.delete(`/super-admin/support/promos/${id}`);
+  }
+
+  async superAdminReorderSupportPromos(ids: string[]): Promise<{ promos: any[] }> {
+    const response = await this.api.put<ApiResponse>('/super-admin/support/promos/reorder', { ids });
+    return response.data.data;
+  }
+
+  async superAdminGetSupportAutoReplySettings(): Promise<{
+    supportAutoReplyEnabled: boolean;
+    supportAutoReplyBody: string | null;
+    supportOnlineMinutes: number;
+    attachments?: Array<{
+      id: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+      createdAt: string;
+    }>;
+  }> {
+    const response = await this.api.get<ApiResponse>('/super-admin/support/auto-reply-settings');
+    return response.data.data;
+  }
+
+  async superAdminUpdateSupportAutoReplySettings(payload: {
+    supportAutoReplyEnabled?: boolean;
+    supportAutoReplyBody?: string | null;
+    supportOnlineMinutes?: number;
+  }): Promise<{
+    supportAutoReplyEnabled: boolean;
+    supportAutoReplyBody: string | null;
+    supportOnlineMinutes: number;
+    attachments?: Array<{
+      id: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+      createdAt: string;
+    }>;
+  }> {
+    const response = await this.api.put<ApiResponse>(
+      '/super-admin/support/auto-reply-settings',
+      payload
+    );
+    return response.data.data;
+  }
+
+  async superAdminUploadAutoReplyAttachment(
+    file: File,
+    promoId?: string | null
+  ): Promise<{
+    attachment: {
+      id: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+      createdAt: string;
+      promoId: string | null;
+    };
+  }> {
+    const form = new FormData();
+    form.append('file', file);
+    if (promoId) form.append('promoId', promoId);
+    const response = await this.api.post<ApiResponse>(
+      '/super-admin/support/auto-reply-attachments',
+      form
+    );
+    return response.data.data;
+  }
+
+  async superAdminDeleteAutoReplyAttachment(id: string): Promise<void> {
+    await this.api.delete(`/super-admin/support/auto-reply-attachments/${id}`);
+  }
+
+  async superAdminDownloadAutoReplyAttachmentBlob(
+    id: string
+  ): Promise<{ blob: Blob; filename: string }> {
+    const response = await this.api.get(`/super-admin/support/auto-reply-attachments/${id}`, {
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const disposition = response.headers['content-disposition'] as string | undefined;
+    const filename = parseContentDispositionFilename(disposition, `file-${id}`);
+    return { blob: response.data, filename };
   }
 
   async superAdminListPlatformStaffUsers(): Promise<any[]> {

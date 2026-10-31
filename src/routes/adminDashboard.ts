@@ -45,6 +45,14 @@ import {
   downloadPlatformPublicationImageAdmin,
   downloadPlatformPublicationFileAdmin,
   downloadMarketerClosingDocAdmin,
+  listMarketerLegalDocsAdmin,
+  uploadMarketerLegalDocAdmin,
+  downloadMarketerLegalDocAdmin,
+  listMarketerPayoutsAdmin,
+  markMarketerPayoutPaidAdmin,
+  rejectMarketerPayoutAdmin,
+  downloadMarketerPayoutDocumentAdmin,
+  downloadMarketerNpdReceiptAdmin,
 } from '../controllers/adminDashboardController';
 import {
   listDevNotes,
@@ -188,6 +196,27 @@ const marketerDocsUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
 });
 
+const marketerLegalUploadDir = ensureUploadDir('marketer-legal');
+const marketerLegalUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, marketerLegalUploadDir),
+    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname || 'doc.pdf')),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      file.mimetype === 'application/pdf' ||
+      String(file.originalname || '')
+        .toLowerCase()
+        .endsWith('.pdf');
+    if (!ok) {
+      cb(new Error('Допускаются только PDF'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
 const router = Router();
 
 /* ------------------------------------------------------------------ */
@@ -236,6 +265,11 @@ router.delete('/expenses/:id', deleteExpense);
 // Выплата маркетологу
 router.post('/marketers/pay', payMarketer);
 router.get('/marketers/stats', getMarketerStats);
+router.get('/marketer-payouts', listMarketerPayoutsAdmin);
+router.post('/marketer-payouts/:id/mark-paid', markMarketerPayoutPaidAdmin);
+router.post('/marketer-payouts/:id/reject', rejectMarketerPayoutAdmin);
+router.get('/marketer-payouts/:id/document', downloadMarketerPayoutDocumentAdmin);
+router.get('/marketer-payouts/:id/npd-receipt', downloadMarketerNpdReceiptAdmin);
 
 // Платформенный CRUD маркетологов / промо / рефералок (без выбора школы)
 router.get('/platform/marketers', listPlatformMarketers);
@@ -380,6 +414,14 @@ router.get('/marketer-publications/:id/file', downloadPlatformPublicationFileAdm
 router.get('/marketer-closing-docs', listMarketerClosingDocsAdmin);
 router.post('/marketer-closing-docs', marketerDocsUpload.single('file'), createMarketerClosingDocAdmin);
 router.get('/marketer-closing-docs/:id/file', downloadMarketerClosingDocAdmin);
+
+router.get('/marketer-legal-docs', listMarketerLegalDocsAdmin);
+router.post(
+  '/marketer-legal-docs/:key',
+  marketerLegalUpload.single('file'),
+  uploadMarketerLegalDocAdmin
+);
+router.get('/marketer-legal-docs/:key/file', downloadMarketerLegalDocAdmin);
 
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);

@@ -194,6 +194,41 @@ class EmailService {
     });
   }
 
+  /** Код ПЭП для подписания акта на вывод средств маркетолога. */
+  async sendMarketerPayoutSignCodeEmail(
+    email: string,
+    data: { firstName?: string; code: string; amount: number }
+  ): Promise<void> {
+    const name = data.firstName ? `, ${data.firstName}` : '';
+    const amountStr = new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      minimumFractionDigits: 2,
+    }).format(data.amount || 0);
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>Код подписания выплаты</title></head>
+      <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333">
+        <div style="max-width:560px;margin:0 auto;padding:24px">
+          <h2>Подписание закрывающего документа</h2>
+          <p>Здравствуйте${name}!</p>
+          <p>Код для подтверждения заявки на вывод <b>${amountStr}</b>:</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:6px">${data.code}</p>
+          <p>Код действует 10 минут. Если вы не запрашивали вывод, проигнорируйте письмо.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    const text = `Здравствуйте${name}!\n\nКод подписания выплаты ${amountStr}: ${data.code}\nДействует 10 минут.`;
+    await this.sendEmail({
+      to: email,
+      subject: 'Код подписания выплаты — ПрофСпортСРМ',
+      html,
+      text,
+    });
+  }
+
   /**
    * Send welcome email
    */

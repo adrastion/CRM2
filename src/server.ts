@@ -476,6 +476,19 @@ httpServer.listen(PORT, () => {
     timezone: process.env.TZ || 'Europe/Moscow',
   });
   console.log('⏰ Scheduled maintenance check (every minute)');
+
+  cron.schedule('25 * * * *', async () => {
+    try {
+      const { MarketerActivityService } = await import('./services/marketerActivityService');
+      const n = await MarketerActivityService.closeDuePeriods();
+      if (n > 0) console.log(`[Cron] Closed ${n} marketer activity period(s)`);
+    } catch (error) {
+      console.error('[Cron] Error closing marketer activity periods:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Marketer activity period close (hourly at :25)');
 });
 
 export default app;

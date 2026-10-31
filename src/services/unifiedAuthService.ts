@@ -982,7 +982,7 @@ export class UnifiedAuthService {
 
         session = {
           accountType: 'MARKETER',
-          token: signPlain({
+          token: await signTracked('MARKETER', marketer.id, {
             userId: marketer.id,
             email: marketer.email,
             type: 'MARKETER',

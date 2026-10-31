@@ -13,7 +13,7 @@ import {
   Alert,
   Link as MuiLink,
 } from '@mui/material';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { applyUnifiedSession } from '../utils/authSession';
 import PublicSiteNav from '../components/PublicSiteNav';
@@ -21,6 +21,8 @@ import PasswordField from '../components/common/PasswordField';
 
 const MarketerRegister: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteRef = searchParams.get('ref') || searchParams.get('inviteToken') || '';
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -41,14 +43,15 @@ const MarketerRegister: React.FC = () => {
         email: form.email.trim().toLowerCase(),
         name: form.name.trim(),
         phone: form.phone.trim() || undefined,
+        inviteToken: inviteRef || undefined,
       });
-      const destination = applyUnifiedSession({
+      applyUnifiedSession({
         accountType: 'MARKETER',
         token: data.token,
         marketer: data.marketer,
         tenant: data.tenant,
       } as any);
-      navigate(destination || '/marketer/dashboard', { replace: true });
+      navigate('/marketer/onboarding', { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Не удалось зарегистрироваться');
     } finally {
@@ -67,6 +70,11 @@ const MarketerRegister: React.FC = () => {
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             Платформенный аккаунт. После регистрации вы сразу попадёте в панель.
           </Typography>
+          {inviteRef && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Регистрация по приглашению в команду (код {inviteRef}).
+            </Alert>
+          )}
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}

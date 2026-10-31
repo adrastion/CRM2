@@ -120,6 +120,7 @@ function isPublicAlwaysAllowlisted(req: Request): boolean {
   if (method === 'GET' && url === '/api/maintenance/access') return true;
   if (method === 'GET' && url === '/api/legal/terms') return true;
   if (method === 'GET' && url === '/api/legal/privacy') return true;
+  if (method === 'GET' && url.startsWith('/api/legal/marketer')) return true;
   if (method === 'POST' && url === '/api/site-analytics/ping') return true;
   if (method === 'GET' && url === '/api/auth/csrf') return true;
 

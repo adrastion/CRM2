@@ -10,6 +10,7 @@ import { SuperAdminAuthProvider, useSuperAdminAuth } from './contexts/SuperAdmin
 import { TesterAuthProvider, useTesterAuth } from './contexts/TesterAuthContext';
 import { PlatformStaffAuthProvider, usePlatformStaffAuth } from './contexts/PlatformStaffAuthContext';
 import AppLayout from './components/Layout/AppLayout';
+import MarketerWorkspaceGate from './components/marketer/MarketerWorkspaceGate';
 import InteractiveOnboarding from './components/InteractiveOnboarding';
 import { apiService } from './services/api';
 import SupportFAB from './components/SupportFAB';
@@ -50,13 +51,16 @@ const MarketerRegister = lazy(() => import('./pages/MarketerRegister'));
 const MarketerDashboard = lazy(() => import('./pages/marketer/MarketerDashboard'));
 const MarketerClients = lazy(() => import('./pages/marketer/MarketerClients'));
 const MarketerClientCard = lazy(() => import('./pages/marketer/MarketerClientCard'));
-const MarketerTasks = lazy(() => import('./pages/marketer/MarketerTasks'));
-const MarketerCalendar = lazy(() => import('./pages/marketer/MarketerCalendar'));
-const MarketerChats = lazy(() => import('./pages/marketer/MarketerChats'));
 const MarketerFinance = lazy(() => import('./pages/marketer/MarketerFinance'));
-const MarketerAds = lazy(() => import('./pages/marketer/MarketerAds'));
+const MarketerTeam = lazy(() => import('./pages/marketer/MarketerTeam'));
+const MarketerActivity = lazy(() => import('./pages/marketer/MarketerActivity'));
+const MarketerProfile = lazy(() => import('./pages/marketer/MarketerProfile'));
+const MarketerOnboarding = lazy(() => import('./pages/marketer/MarketerOnboarding'));
+const MarketerDocuments = lazy(() => import('./pages/marketer/MarketerDocuments'));
+const MarketerInvite = lazy(() => import('./pages/marketer/MarketerInvite'));
 const MarketerNews = lazy(() => import('./pages/marketer/MarketerNews'));
-const MarketerFeedback = lazy(() => import('./pages/marketer/MarketerFeedback'));
+const MarketerSettings = lazy(() => import('./pages/marketer/MarketerSettings'));
+const MarketerJoin = lazy(() => import('./pages/MarketerJoin'));
 const News = lazy(() => import('./pages/News'));
 const Feedback = lazy(() => import('./pages/Feedback'));
 const ReferralLanding = lazy(() => import('./pages/ReferralLanding'));
@@ -833,13 +837,16 @@ const AppContent: React.FC = () => {
         />
         <Route path="/marketer/login" element={<Navigate to="/auth" replace />} />
         <Route path="/marketer/register" element={<MarketerRegister />} />
+        <Route path="/join/:token" element={<MarketerJoin />} />
         <Route path="/marketer/panel" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route
           path="/marketer/dashboard"
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerDashboard />
+                <MarketerWorkspaceGate>
+                  <MarketerDashboard />
+                </MarketerWorkspaceGate>
               </AppLayout>
             </ProtectedMarketerRoute>
           }
@@ -849,7 +856,53 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerClients />
+                <MarketerWorkspaceGate>
+                  <MarketerClients />
+                </MarketerWorkspaceGate>
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/team"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerWorkspaceGate>
+                  <MarketerTeam />
+                </MarketerWorkspaceGate>
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/activity"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerWorkspaceGate>
+                  <MarketerActivity />
+                </MarketerWorkspaceGate>
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/profile"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerProfile />
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/onboarding"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerOnboarding />
               </AppLayout>
             </ProtectedMarketerRoute>
           }
@@ -859,37 +912,9 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerClientCard />
-              </AppLayout>
-            </ProtectedMarketerRoute>
-          }
-        />
-        <Route
-          path="/marketer/tasks"
-          element={
-            <ProtectedMarketerRoute>
-              <AppLayout>
-                <MarketerTasks />
-              </AppLayout>
-            </ProtectedMarketerRoute>
-          }
-        />
-        <Route
-          path="/marketer/calendar"
-          element={
-            <ProtectedMarketerRoute>
-              <AppLayout>
-                <MarketerCalendar />
-              </AppLayout>
-            </ProtectedMarketerRoute>
-          }
-        />
-        <Route
-          path="/marketer/chats"
-          element={
-            <ProtectedMarketerRoute>
-              <AppLayout>
-                <MarketerChats />
+                <MarketerWorkspaceGate>
+                  <MarketerClientCard />
+                </MarketerWorkspaceGate>
               </AppLayout>
             </ProtectedMarketerRoute>
           }
@@ -899,17 +924,33 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerFinance />
+                <MarketerWorkspaceGate>
+                  <MarketerFinance />
+                </MarketerWorkspaceGate>
               </AppLayout>
             </ProtectedMarketerRoute>
           }
         />
         <Route
-          path="/marketer/ads"
+          path="/marketer/documents"
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerAds />
+                <MarketerWorkspaceGate>
+                  <MarketerDocuments />
+                </MarketerWorkspaceGate>
+              </AppLayout>
+            </ProtectedMarketerRoute>
+          }
+        />
+        <Route
+          path="/marketer/invite"
+          element={
+            <ProtectedMarketerRoute>
+              <AppLayout>
+                <MarketerWorkspaceGate>
+                  <MarketerInvite />
+                </MarketerWorkspaceGate>
               </AppLayout>
             </ProtectedMarketerRoute>
           }
@@ -918,22 +959,29 @@ const AppContent: React.FC = () => {
           path="/marketer/news"
           element={
             <ProtectedMarketerRoute>
-              <AppLayout pageTitle="Новости">
-                <MarketerNews />
+              <AppLayout>
+                <MarketerWorkspaceGate>
+                  <MarketerNews />
+                </MarketerWorkspaceGate>
               </AppLayout>
             </ProtectedMarketerRoute>
           }
         />
         <Route
-          path="/marketer/feedback"
+          path="/marketer/settings"
           element={
             <ProtectedMarketerRoute>
               <AppLayout>
-                <MarketerFeedback />
+                <MarketerSettings />
               </AppLayout>
             </ProtectedMarketerRoute>
           }
         />
+        <Route path="/marketer/tasks" element={<Navigate to="/marketer/dashboard" replace />} />
+        <Route path="/marketer/calendar" element={<Navigate to="/marketer/dashboard" replace />} />
+        <Route path="/marketer/chats" element={<Navigate to="/marketer/dashboard" replace />} />
+        <Route path="/marketer/ads" element={<Navigate to="/marketer/dashboard" replace />} />
+        <Route path="/marketer/feedback" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route path="/ref/:code" element={<ReferralLanding />} />
         <Route path="/promo-code-admin/login" element={<Navigate to="/auth" replace />} />
         <Route

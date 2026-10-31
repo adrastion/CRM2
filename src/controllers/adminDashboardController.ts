@@ -1208,6 +1208,91 @@ export const payMarketer = asyncHandler(async (req: AuthenticatedRequest, res: R
   });
 });
 
+/** Очередь заявок на вывод маркетологов (по умолчанию PROCESSING). */
+export const listMarketerPayoutsAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const data = await MarketerPayoutService.listAdminPayouts(status);
+    res.json({ success: true, data });
+  }
+);
+
+/** Отметить заявку выплаченной (баланс уже удержан при создании). */
+export const markMarketerPayoutPaidAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const superAdmin = (req as any).superAdmin;
+    const data = await MarketerPayoutService.markPaid(
+      String(req.params.id),
+      superAdmin?.id,
+      typeof req.body?.note === 'string' ? req.body.note : undefined
+    );
+    await createAuditLog({
+      superAdminId: superAdmin?.id,
+      action: 'marketer_payout_paid',
+      entityType: 'marketer_payout',
+      entityId: String(req.params.id),
+      description: `Заявка на вывод отмечена выплаченной`,
+      newValue: data,
+      ipAddress: getIpAddress(req),
+      userAgent: getUserAgent(req),
+    });
+    res.json({ success: true, data });
+  }
+);
+
+/** Отклонить заявку и вернуть сумму на баланс. */
+export const rejectMarketerPayoutAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const superAdmin = (req as any).superAdmin;
+    const data = await MarketerPayoutService.reject(
+      String(req.params.id),
+      typeof req.body?.reason === 'string' ? req.body.reason : undefined
+    );
+    await createAuditLog({
+      superAdminId: superAdmin?.id,
+      action: 'marketer_payout_rejected',
+      entityType: 'marketer_payout',
+      entityId: String(req.params.id),
+      description: `Заявка на вывод отклонена`,
+      newValue: data,
+      ipAddress: getIpAddress(req),
+      userAgent: getUserAgent(req),
+    });
+    res.json({ success: true, data });
+  }
+);
+
+/** Скачать акт заявки на вывод (SA). */
+export const downloadMarketerPayoutDocumentAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const doc = await MarketerPayoutService.getDocumentPathAdmin(String(req.params.id));
+    const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (!isStoredUploadPath(doc.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, doc.fileUrl, { downloadName: `${doc.title || 'act'}.pdf` });
+  }
+);
+
+/** Скачать чек НПД по заявке (SA). */
+export const downloadMarketerNpdReceiptAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const doc = await MarketerPayoutService.getNpdReceiptPath(null, String(req.params.id));
+    const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (!isStoredUploadPath(doc.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, doc.fileUrl, { downloadName: doc.title || 'npd-receipt' });
+  }
+);
+
 /**
  * Выдача тарифа аккаунту супер-админом.
  *
@@ -3248,5 +3333,62 @@ export const downloadMarketerClosingDocAdmin = asyncHandler(
       return;
     }
     sendStoredUpload(res, doc.fileUrl);
+  }
+);
+
+export const listMarketerLegalDocsAdmin = asyncHandler(
+  async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    const data = await MarketerLegalDocumentService.listAdmin();
+    res.json({ success: true, data });
+  }
+);
+
+export const uploadMarketerLegalDocAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const key = String(req.params.key || '');
+    const uploaded = (req as any).file as Express.Multer.File | undefined;
+    if (!uploaded) {
+      res.status(400).json({ success: false, error: 'Прикрепите PDF-файл' });
+      return;
+    }
+    const superAdmin = (req as any).superAdmin;
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    try {
+      const data = await MarketerLegalDocumentService.replace(
+        key,
+        {
+          path: uploaded.path,
+          originalname: uploaded.originalname,
+          mimetype: uploaded.mimetype,
+          size: uploaded.size,
+        },
+        superAdmin?.id
+      );
+      res.json({ success: true, data });
+    } catch (e: any) {
+      const status = e?.statusCode || e?.status || 400;
+      res.status(status).json({ success: false, error: e?.message || 'Не удалось заменить документ' });
+    }
+  }
+);
+
+export const downloadMarketerLegalDocAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const key = String(req.params.key || '');
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    try {
+      const file = await MarketerLegalDocumentService.resolveAbsolutePath(key);
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${file.fileName.replace(/"/g, '_')}"`
+      );
+      const fs = await import('fs');
+      fs.createReadStream(file.abs).pipe(res);
+    } catch (e: any) {
+      const status = e?.statusCode || e?.status || 404;
+      res.status(status).json({ success: false, error: e?.message || 'Документ не найден' });
+    }
   }
 );

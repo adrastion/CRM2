@@ -135,6 +135,29 @@ export const getPublicPrivacy = asyncHandler(async (_req: Request, res: Response
   res.json({ success: true, data });
 });
 
+export const listPublicMarketerLegalDocs = asyncHandler(
+  async (_req: Request, res: Response<ApiResponse>) => {
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    const data = await MarketerLegalDocumentService.listPublic();
+    res.json({ success: true, data });
+  }
+);
+
+export const downloadPublicMarketerLegalDoc = asyncHandler(async (req: Request, res: Response) => {
+  const key = String(req.params.key || '');
+  const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+  try {
+    const file = await MarketerLegalDocumentService.resolveAbsolutePath(key);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${file.fileName.replace(/"/g, '_')}"`);
+    const fs = await import('fs');
+    fs.createReadStream(file.abs).pipe(res);
+  } catch (e: any) {
+    const status = e?.statusCode || e?.status || 404;
+    res.status(status).json({ success: false, error: e?.message || 'Документ не найден' });
+  }
+});
+
 export const getPublicAccessStatusHandler = asyncHandler(
   async (_req: Request, res: Response<ApiResponse>) => {
     const data = await getPublicAccessStatus();

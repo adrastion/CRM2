@@ -6,8 +6,10 @@ import { authenticatePlatformStaff } from '../middleware/platformStaffAuth';
 import {
   staffListTickets,
   staffClaimTicket,
+  staffCloseTicket,
   staffGetTicketMessages,
   staffPostTicketMessage,
+  staffGetSupportAttachment,
   staffListKnowledge,
   staffRegisterCallRecording,
 } from '../controllers/supportTicketController';
@@ -36,8 +38,10 @@ router.use(authenticatePlatformStaff);
 
 router.get('/tickets', staffListTickets);
 router.post('/tickets/:ticketId/claim', staffClaimTicket);
+router.post('/tickets/:ticketId/close', staffCloseTicket);
 router.get('/tickets/:ticketId/messages', staffGetTicketMessages);
 router.post('/tickets/:ticketId/messages', staffPostTicketMessage);
+router.get('/attachments/:attachmentId', staffGetSupportAttachment);
 router.get('/knowledge', staffListKnowledge);
 router.post('/recordings', upload.single('file'), staffRegisterCallRecording);
 

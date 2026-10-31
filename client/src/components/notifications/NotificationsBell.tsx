@@ -232,7 +232,19 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
 
   type Row =
     | { kind: 'aggregate'; key: string; category: string; title: string; body?: string; at: string | null; url?: string; unread: boolean; count: number }
-    | { kind: 'item'; key: string; category: string; type: string; title: string; body?: string | null; at: string; url?: string; unread: boolean; id: string };
+    | {
+        kind: 'item';
+        key: string;
+        category: string;
+        type: string;
+        title: string;
+        body?: string | null;
+        at: string;
+        url?: string;
+        openSupport?: boolean;
+        unread: boolean;
+        id: string;
+      };
 
   const rows: Row[] = useMemo(() => {
     const list: Row[] = [];
@@ -261,6 +273,7 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
         body: item.body,
         at: item.createdAt,
         url: typeof item.data?.url === 'string' ? item.data.url : undefined,
+        openSupport: item.data?.openSupport === true,
         unread: !item.readAt,
       });
     }
@@ -294,12 +307,19 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
     void load({ silent: true });
   };
 
-  const go = async (url: string | undefined, opts?: { category?: string; ids?: string[]; all?: boolean }) => {
+  const go = async (
+    url: string | undefined,
+    opts?: { category?: string; ids?: string[]; all?: boolean; openSupport?: boolean }
+  ) => {
     if (opts) await markRead(opts);
     else if (url) {
       /* just navigate */
     }
     setAnchor(null);
+    if (opts?.openSupport) {
+      window.dispatchEvent(new Event('crm:open-support'));
+      return;
+    }
     if (url) {
       if (channel === 'portal' && url === '/client/dashboard') {
         navigate('/client/dashboard');
@@ -540,7 +560,10 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
                     if (row.kind === 'aggregate') {
                       void go(row.url, { category: row.category });
                     } else {
-                      void go(row.url, { ids: [row.id] });
+                      void go(row.url, {
+                        ids: [row.id],
+                        openSupport: row.openSupport,
+                      });
                     }
                   }}
                   sx={{

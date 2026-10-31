@@ -5,10 +5,11 @@ import { asyncHandler } from './errorHandler';
 import { prisma } from '../lib/prisma';
 import { isSessionVersionValid } from '../utils/sessionVersion';
 import { assertAuthSessionActive } from '../services/authSessionService';
+import { resolvePlatformInternalTenantId } from '../services/supportTicketHelpers';
 
 export type SupportRequester =
   | { kind: 'TENANT_USER'; id: string; email?: string; tenantId: string; role: string }
-  | { kind: 'MARKETER'; id: string; email?: string; tenantId: string }
+  | { kind: 'MARKETER'; id: string; email?: string; tenantId: string; marketerId: string }
   | { kind: 'PROMO_CODE_ADMIN'; id: string; email?: string; tenantId: string };
 
 export type SupportRequesterRequest = {
@@ -54,8 +55,7 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
   }
 
   const userId = decoded.userId;
-  const tenantId = decoded.tenantId;
-  if (!userId || !tenantId) {
+  if (!userId) {
     res.status(401).json({ success: false, error: 'Неподдерживаемый токен для обращений в поддержку' });
     return;
   }
@@ -66,6 +66,36 @@ export const authenticateSupportRequester = asyncHandler(async (req: any, res: R
       : decoded.type === 'PROMO_CODE_ADMIN'
         ? 'PROMO_CODE_ADMIN'
         : 'TENANT_USER';
+
+  if (kind === 'MARKETER') {
+    const marketer = await prisma.marketer.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, isActive: true, tenantId: true },
+    });
+    if (!marketer || !marketer.isActive) {
+      res.status(401).json({ success: false, error: 'Недействительный или неактивный маркетолог' });
+      return;
+    }
+    const tenantId =
+      marketer.tenantId ||
+      (typeof decoded.tenantId === 'string' && decoded.tenantId) ||
+      (await resolvePlatformInternalTenantId());
+    (req as SupportRequesterRequest).supportRequester = {
+      kind: 'MARKETER',
+      id: marketer.id,
+      marketerId: marketer.id,
+      email: marketer.email,
+      tenantId,
+    };
+    next();
+    return;
+  }
+
+  const tenantId = decoded.tenantId;
+  if (!tenantId || typeof tenantId !== 'string') {
+    res.status(401).json({ success: false, error: 'Неподдерживаемый токен для обращений в поддержку' });
+    return;
+  }
 
   if (kind === 'TENANT_USER') {
     const user = await prisma.user.findUnique({

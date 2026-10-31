@@ -68,7 +68,7 @@ const AuthImage: React.FC<{ id: string; hasImage: boolean; active: boolean }> = 
         maxHeight: 420,
         height: 'auto',
         objectFit: 'contain',
-        borderRadius: 1,
+        borderRadius: '8px',
         bgcolor: 'action.hover',
       }}
     />

@@ -51,6 +51,7 @@ const TENANT_UPLOAD_SEGMENTS = [
   'exercise-media',
   'payment-qr',
   'chat-media',
+  'support-attachments',
 ] as const;
 
 export function removeTenantUploadFiles(tenantId: string): void {
@@ -86,8 +87,7 @@ export function decodeUploadOriginalName(raw: string): string {
   }
 }
 
-/** Content-Disposition с ASCII fallback + UTF-8 filename* для кириллицы. */
-export function contentDispositionAttachment(originalName: string): string {
+function contentDispositionFilenameParts(originalName: string): { ascii: string; utf8: string } {
   const utf8 = decodeUploadOriginalName(originalName);
   const ext = path.extname(utf8) || '';
   const asciiBase = utf8
@@ -99,5 +99,17 @@ export function contentDispositionAttachment(originalName: string): string {
     .replace(/\s+/g, '_')
     .slice(0, 80);
   const ascii = `${asciiBase || 'file'}${ext || ''}`.replace(/["\\]/g, '_');
+  return { ascii, utf8 };
+}
+
+/** Content-Disposition с ASCII fallback + UTF-8 filename* для кириллицы. */
+export function contentDispositionAttachment(originalName: string): string {
+  const { ascii, utf8 } = contentDispositionFilenameParts(originalName);
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(utf8)}`;
+}
+
+/** Inline-версия для просмотра изображений/PDF в браузере (без кириллицы в raw header). */
+export function contentDispositionInline(originalName: string): string {
+  const { ascii, utf8 } = contentDispositionFilenameParts(originalName);
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(utf8)}`;
 }

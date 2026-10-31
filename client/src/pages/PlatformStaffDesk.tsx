@@ -14,12 +14,17 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  FormControlLabel,
+  Switch,
+  Stack,
+  Badge,
 } from '@mui/material';
 import { usePlatformStaffAuth } from '../contexts/PlatformStaffAuthContext';
 import { apiService } from '../services/api';
 import { useDesignerVoiceCall } from '../hooks/useDesignerVoiceCall';
 import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
 import ActiveSessionsPanel from '../components/auth/ActiveSessionsPanel';
+import SupportAttachmentBubble from '../components/support/SupportAttachmentBubble';
 
 const PlatformStaffDesk: React.FC = () => {
   const { staff, logout } = usePlatformStaffAuth();
@@ -30,12 +35,15 @@ const PlatformStaffDesk: React.FC = () => {
   const [knowledge, setKnowledge] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [waitingReplyOnly, setWaitingReplyOnly] = useState(false);
   const readOnly = staff?.role === 'SECURITY';
 
   const loadTickets = useCallback(async () => {
-    const data = await apiService.platformStaffListTickets();
+    const data = await apiService.platformStaffListTickets({
+      waitingReply: staff?.role === 'SUPPORT' ? waitingReplyOnly || undefined : undefined,
+    });
     setTickets(data.tickets || []);
-  }, []);
+  }, [waitingReplyOnly, staff?.role]);
 
   const loadKnowledge = useCallback(async () => {
     if (staff?.role === 'SUPPORT' || staff?.role === 'SECURITY') {
@@ -48,7 +56,8 @@ const PlatformStaffDesk: React.FC = () => {
     setSelectedId(id);
     const data = await apiService.platformStaffGetMessages(id);
     setMessages(data.messages || []);
-  }, []);
+    void loadTickets();
+  }, [loadTickets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +73,9 @@ const PlatformStaffDesk: React.FC = () => {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [loadTickets, loadKnowledge]);
 
   const selectedTicket = tickets.find((t) => t.id === selectedId) ?? null;
@@ -80,7 +91,6 @@ const PlatformStaffDesk: React.FC = () => {
     onRecordingReady: async () => {},
   });
 
-  // У дизайнера по умолчанию открыт чат с супер-админами (не горячая линия)
   useEffect(() => {
     if (staff?.role !== 'DESIGNER' || tickets.length === 0 || selectedId) return;
     const liaison = tickets.find((t) => t.channel === 'DESIGNER_SUPERADMIN');
@@ -88,7 +98,7 @@ const PlatformStaffDesk: React.FC = () => {
   }, [staff?.role, tickets, selectedId, selectTicket]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) return undefined;
     const pull = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
@@ -123,12 +133,25 @@ const PlatformStaffDesk: React.FC = () => {
     }
   };
 
+  const closeTicket = async () => {
+    if (!selectedId || readOnly) return;
+    try {
+      await apiService.platformStaffCloseTicket(selectedId);
+      await loadTickets();
+      const data = await apiService.platformStaffGetMessages(selectedId);
+      setMessages(data.messages || []);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось закрыть');
+    }
+  };
+
   const send = async () => {
     if (!selectedId || !reply.trim() || readOnly) return;
     await apiService.platformStaffPostMessage(selectedId, reply.trim());
     setReply('');
     const data = await apiService.platformStaffGetMessages(selectedId);
     setMessages(data.messages || []);
+    await loadTickets();
   };
 
   const showEmptyQueue =
@@ -143,11 +166,16 @@ const PlatformStaffDesk: React.FC = () => {
           {staff?.role === 'SUPPORT' && 'Техподдержка'}
           {staff?.role === 'DESIGNER' && 'Дизайнеры'}
           {staff?.role === 'SECURITY' && 'Служба безопасности (только просмотр)'}
-          {' — '}{staff?.firstName} {staff?.lastName}
+          {' — '}
+          {staff?.firstName} {staff?.lastName}
         </Typography>
         <Button onClick={logout}>Выйти</Button>
       </Box>
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
 
       <Box sx={{ mb: 2, maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Email2faSettingsToggle />
@@ -155,11 +183,15 @@ const PlatformStaffDesk: React.FC = () => {
       </Box>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
       ) : showEmptyQueue ? (
         <Paper sx={{ p: 6, textAlign: 'center' }}>
           <CircularProgress sx={{ mb: 2 }} />
-          <Typography variant="h6" gutterBottom>Ожидаем обращений</Typography>
+          <Typography variant="h6" gutterBottom>
+            Ожидаем обращений
+          </Typography>
           <Typography color="text.secondary">
             {staff?.role === 'SUPPORT'
               ? 'Когда клиент напишет в техподдержку, обращение появится в списке слева.'
@@ -171,10 +203,14 @@ const PlatformStaffDesk: React.FC = () => {
           {(staff?.role === 'SUPPORT' || staff?.role === 'SECURITY') && (
             <Grid item xs={12} md={3}>
               <Paper sx={{ p: 2, maxHeight: 480, overflow: 'auto' }}>
-                <Typography variant="subtitle2" gutterBottom>База знаний</Typography>
+                <Typography variant="subtitle2" gutterBottom>
+                  База знаний
+                </Typography>
                 <Divider sx={{ mb: 1 }} />
                 {knowledge.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">Статьи не добавлены (суперадмин)</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Статьи не добавлены (суперадмин)
+                  </Typography>
                 )}
                 {knowledge.map((a) => (
                   <Box key={a.id} sx={{ mb: 2 }}>
@@ -187,25 +223,71 @@ const PlatformStaffDesk: React.FC = () => {
               </Paper>
             </Grid>
           )}
-          <Grid item xs={12} md={staff?.role === 'DESIGNER' ? 4 : (staff?.role === 'SUPPORT' || staff?.role === 'SECURITY') ? 3 : 12}>
+          <Grid
+            item
+            xs={12}
+            md={
+              staff?.role === 'DESIGNER'
+                ? 4
+                : staff?.role === 'SUPPORT' || staff?.role === 'SECURITY'
+                  ? 3
+                  : 12
+            }
+          >
             <Paper sx={{ p: 0, maxHeight: 480, overflow: 'auto' }}>
-              <Typography variant="subtitle2" sx={{ p: 2, pb: 0 }}>Обращения</Typography>
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ p: 2, pb: 0 }}
+              >
+                <Typography variant="subtitle2">Обращения</Typography>
+                {staff?.role === 'SUPPORT' && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={waitingReplyOnly}
+                        onChange={(_, v) => setWaitingReplyOnly(v)}
+                      />
+                    }
+                    label={<Typography variant="caption">Ждут ответа</Typography>}
+                  />
+                )}
+              </Stack>
               <List dense>
                 {tickets.map((t) => (
-                  <ListItemButton key={t.id} selected={selectedId === t.id} onClick={() => selectTicket(t.id)}>
+                  <ListItemButton
+                    key={t.id}
+                    selected={selectedId === t.id}
+                    onClick={() => selectTicket(t.id)}
+                  >
                     <ListItemText
                       primary={
-                        t.channel === 'DESIGNER_SUPERADMIN'
-                          ? 'Супер-администраторы'
-                          : t.subject || t.tenant?.name || t.id.slice(0, 8)
+                        <Stack direction="row" spacing={0.75} alignItems="center">
+                          <span>
+                            {t.channel === 'DESIGNER_SUPERADMIN'
+                              ? 'Супер-администраторы'
+                              : t.subject || t.tenant?.name || t.id.slice(0, 8)}
+                          </span>
+                          {(t.unreadCount > 0 || t.needsReply) && (
+                            <Badge
+                              color="error"
+                              badgeContent={t.unreadCount || '!'}
+                              sx={{ '& .MuiBadge-badge': { position: 'static', transform: 'none' } }}
+                            />
+                          )}
+                        </Stack>
                       }
                       secondary={
                         t.channel === 'DESIGNER_SUPERADMIN'
                           ? 'Внутренний чат · не горячая линия'
-                          : `${t.channel} · ${t.status}`
+                          : `${t.channel} · ${t.statusLabel || t.status}${
+                              t.lastMessage?.body ? ` · ${t.lastMessage.body.slice(0, 40)}` : ''
+                            }`
                       }
                     />
-                    <Chip size="small" label={t.status} />
+                    <Chip size="small" label={t.statusLabel || t.status} />
                   </ListItemButton>
                 ))}
               </List>
@@ -217,18 +299,38 @@ const PlatformStaffDesk: React.FC = () => {
                 <Typography color="text.secondary">Выберите обращение</Typography>
               ) : (
                 <>
-                  {!readOnly && selectedTicket?.channel !== 'DESIGNER_SUPERADMIN' && (
-                    <Button size="small" onClick={claim} sx={{ mb: 1 }}>Взять в работу</Button>
-                  )}
-                  <Box sx={{ maxHeight: 220, overflow: 'auto', mb: 2 }}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+                    {!readOnly && selectedTicket?.channel !== 'DESIGNER_SUPERADMIN' && (
+                      <Button size="small" onClick={claim}>
+                        Взять в работу
+                      </Button>
+                    )}
+                    {!readOnly &&
+                      selectedTicket?.channel !== 'DESIGNER_SUPERADMIN' &&
+                      selectedTicket?.status !== 'CLOSED' && (
+                        <Button size="small" color="inherit" onClick={() => void closeTicket()}>
+                          Закрыть
+                        </Button>
+                      )}
+                  </Stack>
+                  <Box sx={{ maxHeight: 280, overflow: 'auto', mb: 2 }}>
                     {messages.map((m) => (
                       <Box key={m.id} sx={{ mb: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                        <Typography variant="caption">{m.authorType}</Typography>
-                        <Typography variant="body2">{m.body}</Typography>
+                        <Typography variant="caption">
+                          {m.isAutoReply ? 'Автоответ' : m.authorType}
+                        </Typography>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                          {m.body}
+                        </Typography>
+                        {(m.attachments || []).map((a: any) => (
+                          <Box key={a.id} sx={{ mt: 0.75 }}>
+                            <SupportAttachmentBubble mode="platformStaff" attachment={a} />
+                          </Box>
+                        ))}
                       </Box>
                     ))}
                   </Box>
-                  {!readOnly && (
+                  {!readOnly && selectedTicket?.status !== 'CLOSED' && (
                     <>
                       <TextField
                         fullWidth
@@ -238,7 +340,12 @@ const PlatformStaffDesk: React.FC = () => {
                         onChange={(e) => setReply(e.target.value)}
                         placeholder="Ответ..."
                       />
-                      <Button sx={{ mt: 1 }} variant="contained" onClick={send} disabled={!reply.trim()}>
+                      <Button
+                        sx={{ mt: 1 }}
+                        variant="contained"
+                        onClick={send}
+                        disabled={!reply.trim()}
+                      >
                         Отправить
                       </Button>
                     </>
@@ -250,10 +357,13 @@ const PlatformStaffDesk: React.FC = () => {
                         Входящий голосовой звонок от клиента
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Когда пользователь нажмёт «Начать звонок», примите звонок в браузере (микрофон). Запись разговора сохраняется у клиента автоматически.
+                        Когда пользователь нажмёт «Начать звонок», примите звонок в браузере
+                        (микрофон). Запись разговора сохраняется у клиента автоматически.
                       </Typography>
                       {designerVoice.error && (
-                        <Alert severity="error" sx={{ mb: 1 }}>{designerVoice.error}</Alert>
+                        <Alert severity="error" sx={{ mb: 1 }}>
+                          {designerVoice.error}
+                        </Alert>
                       )}
                       <Button
                         size="small"

@@ -236,7 +236,15 @@ export class SubscriptionService {
   /**
    * Начисление комиссии маркетологу за покупку подписки
    */
-  static async addCommissionToMarketer(tenantId: string, paymentAmount: number) {
+  static async addCommissionToMarketer(
+    tenantId: string,
+    paymentAmount: number,
+    opts?: {
+      paymentId?: string | null;
+      /** Фактически уплаченная сумма для 3/3 (0₽-промо не квалифицирует). */
+      activityAmount?: number;
+    }
+  ) {
     // Находим связь tenant -> marketer
     const tenantMarketer = await prisma.tenantMarketer.findUnique({
       where: { tenantId },
@@ -250,32 +258,67 @@ export class SubscriptionService {
       return null;
     }
 
-    // Рассчитываем комиссию (используем процент из связи, если указан, иначе из маркетолога)
-    const commissionPercentage = Number(tenantMarketer.commissionPercentage || tenantMarketer.marketer.commissionPercentage);
+    const commissionPercentage = Number(
+      tenantMarketer.commissionPercentage || tenantMarketer.marketer.commissionPercentage
+    );
     const commissionAmount = (paymentAmount * commissionPercentage) / 100;
+    let newBalance = Number(tenantMarketer.marketer.balance);
 
-    // Начисляем комиссию маркетологу
-    const updatedMarketer = await prisma.marketer.update({
-      where: { id: tenantMarketer.marketerId },
-      data: {
-        balance: {
-          increment: commissionAmount,
-        },
-      },
-    });
+    // Личная комиссия только при активном праве (3/3)
+    if (tenantMarketer.commissionRightActive && commissionAmount > 0) {
+      const updatedMarketer = await prisma.marketer.update({
+        where: { id: tenantMarketer.marketerId },
+        data: { balance: { increment: commissionAmount } },
+      });
+      newBalance = Number(updatedMarketer.balance);
 
-    const externalKey = `sub_commission:${tenantId}:${Date.now()}:${commissionAmount}`;
-    try {
-      const { MarketerCabinetService } = await import('./marketerCabinetService');
-      await MarketerCabinetService.recordCommissionAccrual({
+      const externalKey = opts?.paymentId
+        ? `sub_commission:${opts.paymentId}`
+        : `sub_commission:${tenantId}:${Date.now()}:${commissionAmount}`;
+      try {
+        const { MarketerCabinetService } = await import('./marketerCabinetService');
+        await MarketerCabinetService.recordCommissionAccrual({
+          marketerId: tenantMarketer.marketerId,
+          tenantId,
+          amount: commissionAmount,
+          notes: `Комиссия ${commissionPercentage}% с оплаты ${paymentAmount}`,
+          externalKey,
+          commissionType: 'PERSONAL',
+        });
+      } catch (err) {
+        console.error('[MarketerLedger] accrual failed:', err);
+      }
+    } else if (!tenantMarketer.commissionRightActive) {
+      console.log('Personal commission skipped: right lost', {
         marketerId: tenantMarketer.marketerId,
         tenantId,
-        amount: commissionAmount,
-        notes: `Комиссия ${commissionPercentage}% с оплаты ${paymentAmount}`,
-        externalKey,
+      });
+    }
+
+    // Реферальные 5% пригласившему — независимо от 3/3 invitee
+    try {
+      await this.addReferralCommissionToInviter({
+        inviteeMarketerId: tenantMarketer.marketerId,
+        tenantId,
+        paymentAmount,
       });
     } catch (err) {
-      console.error('[MarketerLedger] accrual failed:', err);
+      console.error('[MarketerLedger] referral accrual failed:', err);
+    }
+
+    // Учёт первой оплаты в периоде активности
+    try {
+      const activityAmount =
+        opts?.activityAmount !== undefined ? opts.activityAmount : paymentAmount;
+      const { MarketerActivityService } = await import('./marketerActivityService');
+      await MarketerActivityService.recordFirstPaymentIfNeeded({
+        marketerId: tenantMarketer.marketerId,
+        tenantId,
+        amount: activityAmount,
+        paymentId: opts?.paymentId,
+      });
+    } catch (err) {
+      console.error('[MarketerActivity] record first payment failed:', err);
     }
 
     console.log('Commission added to marketer:', {
@@ -284,14 +327,61 @@ export class SubscriptionService {
       paymentAmount,
       commissionPercentage,
       commissionAmount,
-      newBalance: Number(updatedMarketer.balance),
+      newBalance,
+      rightActive: tenantMarketer.commissionRightActive,
     });
 
     return {
       marketerId: tenantMarketer.marketerId,
-      commissionAmount,
+      commissionAmount: tenantMarketer.commissionRightActive ? commissionAmount : 0,
       commissionPercentage,
-      newBalance: Number(updatedMarketer.balance),
+      newBalance,
+    };
+  }
+
+  /**
+   * Разовая реферальная комиссия 5% пригласившему маркетологу
+   * с первой оплаты подписки школы приглашённого (1 уровень).
+   */
+  static async addReferralCommissionToInviter(params: {
+    inviteeMarketerId: string;
+    tenantId: string;
+    paymentAmount: number;
+  }) {
+    const invitee = await prisma.marketer.findUnique({
+      where: { id: params.inviteeMarketerId },
+      select: { id: true, name: true, invitedById: true },
+    });
+    if (!invitee?.invitedById) return null;
+
+    const externalKey = `referral5:${invitee.id}:${params.tenantId}`;
+    const already = await prisma.marketerCommissionLedger.findFirst({
+      where: { marketerId: invitee.invitedById, externalKey },
+    });
+    if (already) return null;
+
+    const referralAmount = Math.round(((params.paymentAmount * 5) / 100) * 100) / 100;
+    if (referralAmount <= 0) return null;
+
+    await prisma.marketer.update({
+      where: { id: invitee.invitedById },
+      data: { balance: { increment: referralAmount } },
+    });
+
+    const { MarketerCabinetService } = await import('./marketerCabinetService');
+    await MarketerCabinetService.recordCommissionAccrual({
+      marketerId: invitee.invitedById,
+      tenantId: params.tenantId,
+      amount: referralAmount,
+      notes: `Реферальные 5% (команда): первая оплата школы от ${invitee.name}`,
+      externalKey,
+      commissionType: 'REFERRAL',
+    });
+
+    return {
+      inviterId: invitee.invitedById,
+      inviteeId: invitee.id,
+      amount: referralAmount,
     };
   }
 
@@ -509,8 +599,8 @@ export class SubscriptionService {
         if (validatedPromoCode.marketerId) {
           await this.linkTenantToMarketer(tenantId, validatedPromoCode.marketerId);
 
-          // Начисляем комиссию маркетологу за бесплатную подписку через промокод
-          await this.addCommissionToMarketer(tenantId, listPrice);
+          // Комиссия с listPrice; 0₽-промо не идёт в счётчик 3/3
+          await this.addCommissionToMarketer(tenantId, listPrice, { activityAmount: 0 });
         }
 
         console.log('Promo code applied for free subscription:', {
@@ -833,7 +923,10 @@ export class SubscriptionService {
             ? parseFloat(payment.metadata.originalAmount) 
             : Number(subscriptionPayment.amount);
           
-          await this.addCommissionToMarketer(tenantId, originalAmount);
+          await this.addCommissionToMarketer(tenantId, originalAmount, {
+            paymentId: subscriptionPayment.id,
+            activityAmount: originalAmount,
+          });
           const refCode = payment.metadata?.refCode || payment.metadata?.referralCode;
           if (refCode) {
             try {

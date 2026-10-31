@@ -3,18 +3,15 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
-  List,
-  ListItem,
-  ListItemText,
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -22,6 +19,14 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import { apiService } from '../../services/api';
+import { colors } from '../../theme/tokens';
+
+const cardSx = {
+  bgcolor: colors.card,
+  borderRadius: '12px',
+  border: '1px solid #e6edf5',
+  boxShadow: '0 5px 20px rgba(29,59,105,.025)',
+} as const;
 
 const MarketerClientCard: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -29,10 +34,12 @@ const MarketerClientCard: React.FC = () => {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [dueAt, setDueAt] = useState<Date | null>(new Date());
   const [saving, setSaving] = useState(false);
+  const [comment, setComment] = useState('');
 
   const load = async () => {
     if (!id) return;
@@ -83,33 +90,15 @@ const MarketerClientCard: React.FC = () => {
   if (error && !client) return <Alert severity="error">{error}</Alert>;
   if (!client) return null;
 
+  const titleName =
+    client.tenantName || client.notes || client.displayCode || 'Организация';
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ru}>
-      <Box>
-        <Button component={RouterLink} to="/marketer/clients" sx={{ textTransform: 'none', mb: 1 }}>
-          ← К клиентам
+      <Box sx={{ width: '100%', maxWidth: 1100, pb: 2 }}>
+        <Button component={RouterLink} to="/marketer/clients" sx={{ textTransform: 'none', fontWeight: 700, mb: 1.5, px: 0 }}>
+          ← К организациям
         </Button>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>
-              {client.displayCode}
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
-              <Chip size="small" label={client.kind === 'lead' ? 'Лид' : 'Школа'} />
-              {client.kind === 'school' && (
-                <Chip
-                  size="small"
-                  color={client.status === 'active' ? 'success' : 'default'}
-                  label={client.status === 'active' ? 'Активное' : 'Бесплатное'}
-                />
-              )}
-              {client.kind === 'lead' && <Chip size="small" label={client.status} />}
-            </Stack>
-          </Box>
-          <Button variant="contained" onClick={() => setOpen(true)} sx={{ textTransform: 'none' }}>
-            Создать задачу
-          </Button>
-        </Stack>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -117,28 +106,134 @@ const MarketerClientCard: React.FC = () => {
           </Alert>
         )}
 
-        <Typography sx={{ color: 'text.secondary', mb: 2 }}>
-          {[client.maskedName, client.maskedEmail, client.maskedPhone].filter(Boolean).join(' · ') ||
-            'Контакты скрыты'}
-          {client.notes ? ` · ${client.notes}` : ''}
-          {client.planType ? ` · тариф ${client.planType}` : ''}
-        </Typography>
+        <Box sx={{ ...cardSx, p: { xs: 2, md: 2.75 }, mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography sx={{ fontSize: 12, color: '#7c8aa2', mb: 0.75 }}>Карточка организации</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: { xs: 22, md: 26 }, color: '#13213a' }}>
+                {titleName}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.25 }}>
+                <Box
+                  sx={{
+                    px: 1.1,
+                    py: 0.5,
+                    borderRadius: '6px',
+                    fontSize: 11,
+                    fontWeight: 750,
+                    bgcolor: '#eaf2ff',
+                    color: '#3167ce',
+                  }}
+                >
+                  {client.kind === 'lead' ? 'Лид / переговоры' : client.status === 'active' ? 'Оплачивает' : 'Пробный период'}
+                </Box>
+                {client.planType && (
+                  <Box sx={{ px: 1.1, py: 0.5, borderRadius: '6px', fontSize: 11, fontWeight: 750, bgcolor: '#f7f9fd', color: '#52647d' }}>
+                    Тариф: {client.planType}
+                  </Box>
+                )}
+                {client.riskRank && client.commissionRightActive !== false && (
+                  <Box sx={{ px: 1.1, py: 0.5, borderRadius: '6px', fontSize: 11, fontWeight: 750, bgcolor: '#fff5de', color: '#b07a19' }}>
+                    Комиссия под риском #{client.riskRank}
+                  </Box>
+                )}
+                {client.commissionRightActive === false && (
+                  <Box sx={{ px: 1.1, py: 0.5, borderRadius: '6px', fontSize: 11, fontWeight: 750, bgcolor: '#fdecea', color: '#c0392b' }}>
+                    Право на комиссию утрачено
+                  </Box>
+                )}
+              </Box>
+              <Typography sx={{ mt: 1.5, fontSize: 13, color: '#71819a', wordBreak: 'break-word' }}>
+                {[client.maskedName, client.maskedEmail, client.maskedPhone].filter(Boolean).join(' · ') ||
+                  'Контакты скрыты маской'}
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              onClick={() => setOpen(true)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 750,
+                borderRadius: '8px',
+                bgcolor: '#2463ed',
+                alignSelf: { sm: 'flex-start' },
+                '&:hover': { bgcolor: '#124fcf' },
+              }}
+            >
+              Создать задачу
+            </Button>
+          </Box>
+        </Box>
 
-        <Typography sx={{ fontWeight: 600, mb: 1 }}>Задачи</Typography>
-        <List dense>
-          {tasks.map((t) => (
-            <ListItem key={t.id}>
-              <ListItemText
-                primary={t.title}
-                secondary={`${t.kind} · ${t.status}${t.dueAt ? ` · ${new Date(t.dueAt).toLocaleString('ru-RU')}` : ''}`}
+        <Box sx={{ ...cardSx, p: { xs: 1.5, md: 2 } }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{
+              mb: 2,
+              minHeight: 40,
+              '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 40 },
+            }}
+          >
+            <Tab label="Комментарии" />
+            <Tab label={`Задачи (${tasks.length})`} />
+          </Tabs>
+
+          {tab === 0 && (
+            <Box>
+              <Typography sx={{ fontSize: 13, color: '#71819a', mb: 1.5, lineHeight: 1.6 }}>
+                {client.notes || 'Заметок пока нет. Добавьте задачу или обновите лид из списка организаций.'}
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                minRows={3}
+                placeholder="Черновик комментария (локально на сессию)"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
               />
-            </ListItem>
-          ))}
-          {tasks.length === 0 && <Typography color="text.secondary">Задач нет</Typography>}
-        </List>
+              <Typography sx={{ fontSize: 11, color: '#94a1b3', mt: 1 }}>
+                Сохранение комментариев в API — через заметку лида / задачи. Здесь — рабочий черновик.
+              </Typography>
+            </Box>
+          )}
+
+          {tab === 1 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+              {tasks.length === 0 ? (
+                <Typography sx={{ color: '#8c9bb0', py: 2, textAlign: 'center' }}>Задач пока нет</Typography>
+              ) : (
+                tasks.map((t) => (
+                  <Box
+                    key={t.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: '8px',
+                      bgcolor: '#f7f9fd',
+                      border: '1px solid #eef2f7',
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 750, color: '#23344f' }}>{t.title}</Typography>
+                    <Typography sx={{ fontSize: 12, color: '#71819a', mt: 0.5 }}>
+                      {t.kind} · {t.status}
+                      {t.dueAt ? ` · до ${new Date(t.dueAt).toLocaleString('ru-RU')}` : ''}
+                    </Typography>
+                  </Box>
+                ))
+              )}
+            </Box>
+          )}
+        </Box>
 
         <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
-          <DialogTitle>Задача по клиенту</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>Задача по организации</DialogTitle>
           <DialogContent>
             <TextField
               fullWidth
@@ -161,8 +256,8 @@ const MarketerClientCard: React.FC = () => {
             <Button
               variant="contained"
               disabled={saving || !title.trim()}
-              onClick={createTask}
-              sx={{ textTransform: 'none' }}
+              onClick={() => void createTask()}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
             >
               Создать
             </Button>

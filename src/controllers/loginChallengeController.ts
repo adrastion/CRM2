@@ -182,6 +182,7 @@ function toAuthActor(accountType: AccountType): AuthActorType | null {
   if (accountType === 'PARENT') return 'PARENT';
   if (accountType === 'SUPER_ADMIN') return 'SUPER_ADMIN';
   if (accountType === 'TESTER') return 'TESTER';
+  if (accountType === 'MARKETER') return 'MARKETER';
   return null;
 }
 

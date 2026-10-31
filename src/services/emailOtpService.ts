@@ -3,8 +3,8 @@ import { prisma } from '../lib/prisma';
 import { badRequest } from '../utils/httpError';
 import { normalizeEmail } from '../utils/identifier';
 
-export type OtpPurpose = 'verify' | 'reset' | 'login' | '2fa';
-export type OtpAccountType = 'user' | 'client' | 'parent';
+export type OtpPurpose = 'verify' | 'reset' | 'login' | '2fa' | 'marketer_payout_pep';
+export type OtpAccountType = 'user' | 'client' | 'parent' | 'marketer';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -16,6 +16,26 @@ function hashCode(code: string): string {
 
 function generateCode(): string {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+function scopedOtpWhere(params: {
+  email: string;
+  purpose: OtpPurpose;
+  accountType?: OtpAccountType | null;
+  accountId?: string | null;
+}) {
+  if (
+    (params.purpose === 'verify' || params.purpose === 'marketer_payout_pep') &&
+    params.accountType &&
+    params.accountId
+  ) {
+    return {
+      purpose: params.purpose,
+      accountType: params.accountType,
+      accountId: params.accountId,
+    };
+  }
+  return { email: params.email, purpose: params.purpose };
 }
 
 export class EmailOtpService {
@@ -32,14 +52,7 @@ export class EmailOtpService {
     const email = normalizeEmail(params.email);
     if (!email) throw badRequest('Укажите корректный email', 'email');
 
-    const where =
-      params.purpose === 'verify' && params.accountType && params.accountId
-        ? {
-            purpose: params.purpose,
-            accountType: params.accountType,
-            accountId: params.accountId,
-          }
-        : { email, purpose: params.purpose };
+    const where = scopedOtpWhere({ ...params, email });
 
     const recent = await prisma.emailOtp.findFirst({
       where,
@@ -85,14 +98,7 @@ export class EmailOtpService {
     if (!email) throw badRequest('Укажите корректный email', 'email');
     if (!/^\d{6}$/.test(code)) throw badRequest('Введите 6-значный код', 'code');
 
-    const where =
-      params.purpose === 'verify' && params.accountType && params.accountId
-        ? {
-            purpose: params.purpose,
-            accountType: params.accountType,
-            accountId: params.accountId,
-          }
-        : { email, purpose: params.purpose };
+    const where = scopedOtpWhere({ ...params, email });
 
     const otp = await prisma.emailOtp.findFirst({
       where,
@@ -126,9 +132,15 @@ export class EmailOtpService {
   }
 
   /** Удаляет активные OTP (например, если письмо не удалось отправить). */
-  static async invalidate(params: { email: string; purpose: OtpPurpose }): Promise<void> {
+  static async invalidate(params: {
+    email: string;
+    purpose: OtpPurpose;
+    accountType?: OtpAccountType | null;
+    accountId?: string | null;
+  }): Promise<void> {
     const email = normalizeEmail(params.email);
     if (!email) return;
-    await prisma.emailOtp.deleteMany({ where: { email, purpose: params.purpose } });
+    const where = scopedOtpWhere({ ...params, email });
+    await prisma.emailOtp.deleteMany({ where });
   }
 }

@@ -194,7 +194,7 @@ export const unifiedStaffLogin = asyncHandler(async (req: Request, res: Response
  */
 export const marketerLogin = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
-  const result = await AuthService.marketerLogin(email, password);
+  const result = await AuthService.marketerLogin(email, password, extractSessionMeta(req));
   maybeSetAuthCookies(res, result);
   res.json({
     success: true,

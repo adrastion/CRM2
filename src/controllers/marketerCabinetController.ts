@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest, ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { MarketerCabinetService } from '../services/marketerCabinetService';
+import { AuthService } from '../services/authService';
 import { badRequest } from '../utils/httpError';
 import { prisma } from '../lib/prisma';
 
@@ -143,6 +144,66 @@ export const getMarketerFinance = asyncHandler(
   }
 );
 
+export const getMarketerTeam = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await MarketerCabinetService.getTeam(requireMarketerId(req));
+    res.json({ success: true, data });
+  }
+);
+
+export const getMarketerActivity = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await MarketerCabinetService.getActivity(requireMarketerId(req));
+    res.json({ success: true, data });
+  }
+);
+
+export const getMarketerProfile = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerProfileService } = await import('../services/marketerProfileService');
+    const data = await MarketerProfileService.getProfile(requireMarketerId(req));
+    res.json({ success: true, data });
+  }
+);
+
+export const updateMarketerProfile = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerProfileService } = await import('../services/marketerProfileService');
+    const data = await MarketerProfileService.updateProfile(requireMarketerId(req), req.body || {});
+    res.json({ success: true, data });
+  }
+);
+
+export const getMarketerOnboarding = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerProfileService } = await import('../services/marketerProfileService');
+    const data = await MarketerProfileService.getOnboarding(requireMarketerId(req));
+    res.json({ success: true, data });
+  }
+);
+
+export const acceptMarketerOnboarding = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerProfileService } = await import('../services/marketerProfileService');
+    const data = await MarketerProfileService.acceptOnboarding(requireMarketerId(req), req.body || {});
+    res.json({ success: true, data });
+  }
+);
+
+export const getMarketerInvite = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await MarketerCabinetService.getInviteInfo(requireMarketerId(req));
+    res.json({ success: true, data });
+  }
+);
+
+export const resolveMarketerInvitePublic = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const data = await MarketerCabinetService.resolveInviteToken(String(req.params.token || ''));
+    res.json({ success: true, data });
+  }
+);
+
 export const listMarketerPublications = asyncHandler(
   async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const data = await MarketerCabinetService.listPublications();
@@ -226,5 +287,128 @@ export const downloadMarketerClosingDoc = asyncHandler(
       return;
     }
     sendStoredUpload(res, doc.fileUrl);
+  }
+);
+
+export const updateMarketerBankDetails = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const data = await MarketerPayoutService.updateBankDetails(requireMarketerId(req), req.body || {});
+    res.json({ success: true, data });
+  }
+);
+
+export const createMarketerPayout = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const data = await MarketerPayoutService.createPayout(requireMarketerId(req), req.body?.amount);
+    res.status(201).json({ success: true, data });
+  }
+);
+
+export const cancelMarketerPayout = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const data = await MarketerPayoutService.cancelPayout(
+      requireMarketerId(req),
+      String(req.params.id)
+    );
+    res.json({ success: true, data });
+  }
+);
+
+export const sendMarketerPayoutSignCode = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const data = await MarketerPayoutService.sendSignCode(
+      requireMarketerId(req),
+      String(req.params.id)
+    );
+    res.json({ success: true, data });
+  }
+);
+
+export const confirmMarketerPayoutSign = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const data = await MarketerPayoutService.confirmSign(
+      requireMarketerId(req),
+      String(req.params.id),
+      String(req.body?.code || ''),
+      {
+        ip: String(req.ip || req.headers['x-forwarded-for'] || ''),
+        userAgent: String(req.headers['user-agent'] || ''),
+      }
+    );
+    res.json({ success: true, data });
+  }
+);
+
+export const downloadMarketerPayoutDocument = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const doc = await MarketerPayoutService.getDocumentPath(
+      requireMarketerId(req),
+      String(req.params.id)
+    );
+    const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (!isStoredUploadPath(doc.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, doc.fileUrl, { downloadName: `${doc.title || 'act'}.pdf` });
+  }
+);
+
+export const uploadMarketerNpdReceipt = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) {
+      res.status(400).json({ success: false, error: 'Файл не загружен' });
+      return;
+    }
+    const data = await MarketerPayoutService.uploadNpdReceipt(
+      requireMarketerId(req),
+      String(req.params.id),
+      file
+    );
+    res.json({ success: true, data });
+  }
+);
+
+export const downloadMarketerNpdReceipt = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const doc = await MarketerPayoutService.getNpdReceiptPath(
+      requireMarketerId(req),
+      String(req.params.id)
+    );
+    const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
+    if (!isStoredUploadPath(doc.fileUrl)) {
+      res.status(404).json({ success: false, error: 'Некорректный путь' });
+      return;
+    }
+    sendStoredUpload(res, doc.fileUrl, { downloadName: doc.title || 'npd-receipt' });
+  }
+);
+
+export const changeMarketerPassword = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ success: false, error: 'Укажите текущий и новый пароль' });
+      return;
+    }
+    try {
+      await AuthService.changeMarketerPassword(
+        requireMarketerId(req),
+        String(currentPassword),
+        String(newPassword)
+      );
+      res.json({ success: true, data: { message: 'Пароль успешно изменён' } });
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e?.message || 'Не удалось сменить пароль' });
+    }
   }
 );

@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { GetApp } from '@mui/icons-material';
 import PlatformMarketersCrud from '../../components/admin/PlatformMarketersCrud';
+import MarketerPayoutQueue from '../../components/admin/MarketerPayoutQueue';
 
 export type SaMarketersTabProps = {
   marketerStats: any;
@@ -37,6 +38,7 @@ const SaMarketersTab: React.FC<SaMarketersTabProps> = ({
       <Typography variant="h5" fontWeight="bold" mb={2}>
         Платформенное управление
       </Typography>
+      <MarketerPayoutQueue />
       <Paper sx={{ p: 2, mb: 4 }}>
         <PlatformMarketersCrud mode="sa" />
       </Paper>

@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
+import {
+  AccountBalanceWalletOutlined,
+  CheckCircleOutline,
+  HomeOutlined,
+  PeopleAltOutlined,
+  BusinessOutlined,
+  PersonOutline,
+} from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSuperAdminAuth } from '../../contexts/SuperAdminAuthContext';
@@ -14,6 +22,7 @@ import { logoutCurrentAccount, prepareAddAccount } from '../../utils/accountSwit
 import { NavIconName } from '../../assets/icons/registry';
 import { apiService } from '../../services/api';
 import { useChatUnreadBadge } from '../../hooks/useChatUnreadBadge';
+import { useMarketerCabinetReady } from '../../hooks/useMarketerCabinetReady';
 import { canAccessAdminNav } from '../../utils/roles';
 import {
   SA_NAV_GROUPS,
@@ -86,6 +95,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
 
   const isMarketerRoute = location.pathname.startsWith('/marketer/');
   const isPromoCodeAdminRoute = location.pathname.startsWith('/admin/promo-codes');
+  const marketerCabinet = useMarketerCabinetReady(isMarketerRoute);
+  /** Пока статус неизвестен или онбординг не завершён — рабочее пространство недоступно. */
+  const marketerLocked = isMarketerRoute && (marketerCabinet.loading || !marketerCabinet.complete);
   /** Кабинеты вне школьной сессии — без школьных уведомлений/поиска/баннеров. */
   const isNonSchoolShell = isMarketerRoute || isPromoCodeAdminRoute;
 
@@ -99,6 +111,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   });
   const [devNotesUnread, setDevNotesUnread] = useState(0);
   const [saNotifUnread, setSaNotifUnread] = useState(0);
+  const [supportHubUnread, setSupportHubUnread] = useState(0);
 
   const [visibleTabs, setVisibleTabs] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem('visibleTabs');
@@ -142,19 +155,22 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     if (!isSuperAdminRoute) {
       setDevNotesUnread(0);
       setSaNotifUnread(0);
+      setSupportHubUnread(0);
       return;
     }
     let cancelled = false;
     const pull = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const [notes, notifs] = await Promise.all([
+        const [notes, notifs, support] = await Promise.all([
           apiService.getDevNotesUnreadCount(),
           apiService.getSaNotifications(),
+          apiService.superAdminSupportUnreadTotal().catch(() => ({ unreadTotal: 0 })),
         ]);
         if (cancelled) return;
         setDevNotesUnread(notes);
         setSaNotifUnread(notifs.filter((n: { readAt?: string | null }) => !n.readAt).length);
+        setSupportHubUnread(Number(support?.unreadTotal) || 0);
       } catch {
         /* сессия могла истечь */
       }
@@ -297,6 +313,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           label: 'Support Hub',
           iconName: 'knowledge-base' as NavIconName,
           onClick: () => navigate('/admin/support-hub'),
+          ...(supportHubUnread > 0 ? { badge: supportHubUnread } : {}),
         },
       ]
     : isTesterRoute
@@ -309,62 +326,102 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           },
         ]
       : isMarketerRoute
-        ? [
+        ? ([
+            {
+              key: 'group:marketer-workspace',
+              label: 'Рабочее пространство',
+              variant: 'header' as const,
+            },
             {
               key: '/marketer/dashboard',
-              label: 'Панель управления',
-              iconName: 'dashboard',
-              onClick: () => navigate('/marketer/dashboard'),
+              label: 'Главная',
+              iconName: 'dashboard' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/dashboard'),
             },
             {
               key: '/marketer/clients',
-              label: 'Клиенты',
-              iconName: 'clients',
-              onClick: () => navigate('/marketer/clients'),
+              label: 'Мои организации',
+              iconName: 'branches' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/clients'),
             },
             {
-              key: '/marketer/tasks',
-              label: 'Задачи',
-              iconName: 'knowledge-base',
-              onClick: () => navigate('/marketer/tasks'),
-            },
-            {
-              key: '/marketer/calendar',
-              label: 'Календарь',
-              iconName: 'schedule',
-              onClick: () => navigate('/marketer/calendar'),
-            },
-            {
-              key: '/marketer/chats',
-              label: 'Чаты',
-              iconName: 'chats',
-              onClick: () => navigate('/marketer/chats'),
+              key: '/marketer/team',
+              label: 'Моя команда',
+              iconName: 'staff' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/team'),
             },
             {
               key: '/marketer/finance',
-              label: 'Финансы',
-              iconName: 'finance',
-              onClick: () => navigate('/marketer/finance'),
+              label: 'Финансы и выплаты',
+              iconName: 'finance' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/finance'),
             },
             {
-              key: '/marketer/ads',
-              label: 'Реклама',
-              iconName: 'tariffs',
-              onClick: () => navigate('/marketer/ads'),
+              key: '/marketer/documents',
+              label: 'Документы',
+              iconName: 'knowledge-base' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/documents'),
+            },
+            {
+              key: '/marketer/activity',
+              label: 'Моя активность',
+              iconName: 'schedule' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/activity'),
+            },
+            {
+              key: '/marketer/invite',
+              label: 'Пригласить маркетолога',
+              iconName: 'clients' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/invite'),
             },
             {
               key: '/marketer/news',
               label: 'Новости',
-              iconName: 'issued-tariffs',
-              onClick: () => navigate('/marketer/news'),
+              iconName: 'issued-tariffs' as const,
+              disabled: marketerLocked,
+              onClick: marketerLocked ? undefined : () => navigate('/marketer/news'),
             },
             {
-              key: '/marketer/feedback',
-              label: 'Связь с разработчиком',
-              iconName: 'chats',
-              onClick: () => navigate('/marketer/feedback'),
+              key: 'group:marketer-settings',
+              label: 'Аккаунт',
+              variant: 'header' as const,
             },
-          ]
+            {
+              key: '/marketer/profile',
+              label: 'Мой профиль',
+              icon: (
+                <Box
+                  sx={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    border: '1.8px solid currentColor',
+                    flexShrink: 0,
+                  }}
+                />
+              ),
+              onClick: () => navigate('/marketer/profile'),
+            },
+            {
+              key: '/marketer/settings',
+              label: 'Настройки',
+              iconName: 'settings' as const,
+              onClick: () => navigate('/marketer/settings'),
+            },
+            {
+              key: '/marketer/onboarding',
+              label: 'Подключение к программе',
+              icon: <CheckCircleOutline sx={{ fontSize: 18 }} />,
+              onClick: () => navigate('/marketer/onboarding'),
+            },
+          ] as ShellNavItem[])
         : isPromoCodeAdminRoute
           ? [
               {
@@ -446,12 +503,27 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     : isTesterRoute
       ? 'Тестировщик'
       : isMarketerRoute
-        ? 'Маркетолог'
+        ? 'Личный кабинет'
         : isPromoCodeAdminRoute
           ? 'Админ промокодов'
       : canAccessAdminNav(user) && user?.role === 'TRAINER'
         ? 'Старший тренер'
         : ROLE_LABELS[user?.role || ''] || tenant?.name || '';
+
+  const marketerActiveKey = (() => {
+    const p = location.pathname;
+    if (p.startsWith('/marketer/profile')) return '/marketer/profile';
+    if (p.startsWith('/marketer/settings')) return '/marketer/settings';
+    if (p.startsWith('/marketer/onboarding')) return '/marketer/onboarding';
+    if (p.startsWith('/marketer/clients')) return '/marketer/clients';
+    if (p.startsWith('/marketer/team')) return '/marketer/team';
+    if (p.startsWith('/marketer/finance')) return '/marketer/finance';
+    if (p.startsWith('/marketer/documents')) return '/marketer/documents';
+    if (p.startsWith('/marketer/activity')) return '/marketer/activity';
+    if (p.startsWith('/marketer/invite')) return '/marketer/invite';
+    if (p.startsWith('/marketer/news')) return '/marketer/news';
+    return '/marketer/dashboard';
+  })();
 
   const activeKey = isSuperAdminRoute
     ? location.pathname.startsWith('/admin/support-hub')
@@ -460,19 +532,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
     : isTesterRoute
       ? '/tester/dashboard'
       : isMarketerRoute
-        ? location.pathname.startsWith('/marketer/clients')
-          ? '/marketer/clients'
-          : location.pathname.startsWith('/marketer/tasks')
-            ? '/marketer/tasks'
-            : location.pathname.startsWith('/marketer/calendar')
-              ? '/marketer/calendar'
-              : location.pathname.startsWith('/marketer/chats')
-                ? '/marketer/chats'
-                : location.pathname.startsWith('/marketer/finance')
-                  ? '/marketer/finance'
-                  : location.pathname.startsWith('/marketer/ads')
-                    ? '/marketer/ads'
-                    : '/marketer/dashboard'
+        ? marketerActiveKey
         : isPromoCodeAdminRoute
           ? '/admin/promo-codes'
       : location.pathname.startsWith('/schedule')
@@ -485,10 +545,26 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         ? 'Support Hub'
         : SA_SECTION_TITLES[saSection] || 'Панель супер-админа')
     : isMarketerRoute
-      ? pageTitle || 'Панель маркетолога'
+      ? pageTitle || undefined
       : isPromoCodeAdminRoute
         ? pageTitle || 'Промокоды'
         : pageTitle;
+
+  const marketerBreadcrumb = (() => {
+    if (!isMarketerRoute) return undefined;
+    const p = location.pathname;
+    if (p.startsWith('/marketer/clients')) return 'Мои организации';
+    if (p.startsWith('/marketer/team')) return 'Моя команда';
+    if (p.startsWith('/marketer/finance')) return 'Финансы и выплаты';
+    if (p.startsWith('/marketer/documents')) return 'Документы';
+    if (p.startsWith('/marketer/activity')) return 'Моя активность';
+    if (p.startsWith('/marketer/invite')) return 'Пригласить маркетолога';
+    if (p.startsWith('/marketer/news')) return 'Новости';
+    if (p.startsWith('/marketer/profile')) return 'Мой профиль';
+    if (p.startsWith('/marketer/settings')) return 'Настройки';
+    if (p.startsWith('/marketer/onboarding')) return 'Подключение к программе';
+    return 'Главная';
+  })();
 
   return (
     <Box>
@@ -503,9 +579,49 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onLogout={handleLogout}
           onAddAccount={handleAddAccount}
           hideSearch={isPlatformShell}
-          hideMobileBottomNav={
-            location.pathname.startsWith('/chats') ||
-            location.pathname.startsWith('/marketer/chats')
+          showSupportHelp={isMarketerRoute ? true : undefined}
+          onProfileClick={isMarketerRoute ? () => navigate('/marketer/profile') : undefined}
+          shellVariant={isMarketerRoute ? 'marketer' : 'default'}
+          breadcrumb={marketerBreadcrumb}
+          hideMobileBottomNav={location.pathname.startsWith('/chats')}
+          mobileBottomTabs={
+            isMarketerRoute
+              ? marketerLocked
+                ? [
+                    {
+                      key: '/marketer/profile',
+                      label: 'Профиль',
+                      icon: <PersonOutline sx={{ fontSize: 18 }} />,
+                    },
+                    {
+                      key: '/marketer/onboarding',
+                      label: 'Подключение',
+                      icon: <CheckCircleOutline sx={{ fontSize: 18 }} />,
+                    },
+                  ]
+                : [
+                    {
+                      key: '/marketer/dashboard',
+                      label: 'Главная',
+                      icon: <HomeOutlined sx={{ fontSize: 18 }} />,
+                    },
+                    {
+                      key: '/marketer/clients',
+                      label: 'Организации',
+                      icon: <BusinessOutlined sx={{ fontSize: 18 }} />,
+                    },
+                    {
+                      key: '/marketer/team',
+                      label: 'Команда',
+                      icon: <PeopleAltOutlined sx={{ fontSize: 18 }} />,
+                    },
+                    {
+                      key: '/marketer/finance',
+                      label: 'Финансы',
+                      icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />,
+                    },
+                  ]
+              : undefined
           }
           searchValue={searchValue}
           onSearchChange={setSearchValue}

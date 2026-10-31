@@ -5,7 +5,8 @@ export type NotificationActorType =
   | 'CLIENT'
   | 'PARENT'
   | 'SUPER_ADMIN'
-  | 'TESTER';
+  | 'TESTER'
+  | 'MARKETER';
 
 export type NotificationEventType =
   | 'chat_message'

@@ -18,12 +18,33 @@ import {
 import { authenticateClient } from '../middleware/clientAuth';
 import { portalReceiptUpload } from '../controllers/paymentMethodController';
 import { getClientDashboard, getClientTrainerCard, getPortalMembershipCatalog, changePortalMembership } from '../controllers/clientDashboardController';
+import multer from 'multer';
 import {
   clientCreateSupportTicket,
   clientListSupportTickets,
   clientGetSupportMessages,
   clientPostSupportMessage,
+  clientGetSupportAttachment,
+  clientSupportUnreadSummary,
+  getSupportConfig,
 } from '../controllers/supportTicketController';
+import {
+  ensureSupportAttachmentUploadDir,
+  SUPPORT_ATTACHMENT_MAX_BYTES,
+  SUPPORT_ATTACHMENT_MAX_FILES,
+  supportAttachmentFilename,
+} from '../services/supportTicketHelpers';
+
+const clientSupportUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, ensureSupportAttachmentUploadDir()),
+    filename: (_req, file, cb) => cb(null, supportAttachmentFilename(file.originalname)),
+  }),
+  limits: {
+    fileSize: SUPPORT_ATTACHMENT_MAX_BYTES,
+    files: SUPPORT_ATTACHMENT_MAX_FILES,
+  },
+});
 import {
   chatMediaUpload,
   clientEnsureThread,
@@ -218,11 +239,24 @@ router.get(
   clientDownloadAddendum
 );
 
-// Техподдержка / дизайн (клиент или родитель)
-router.post('/support/tickets', authenticateClient, clientCreateSupportTicket);
+// Техподдержка (единственный канал SUPPORT)
+router.get('/support/config', authenticateClient, getSupportConfig);
+router.get('/support/unread-summary', authenticateClient, clientSupportUnreadSummary);
+router.post(
+  '/support/tickets',
+  authenticateClient,
+  clientSupportUpload.array('files', SUPPORT_ATTACHMENT_MAX_FILES),
+  clientCreateSupportTicket
+);
 router.get('/support/tickets', authenticateClient, clientListSupportTickets);
 router.get('/support/tickets/:ticketId/messages', authenticateClient, clientGetSupportMessages);
-router.post('/support/tickets/:ticketId/messages', authenticateClient, clientPostSupportMessage);
+router.post(
+  '/support/tickets/:ticketId/messages',
+  authenticateClient,
+  clientSupportUpload.array('files', SUPPORT_ATTACHMENT_MAX_FILES),
+  clientPostSupportMessage
+);
+router.get('/support/attachments/:attachmentId', authenticateClient, clientGetSupportAttachment);
 
 // Внутришкольные чаты
 router.get('/chats/threads', authenticateClient, clientListThreads);

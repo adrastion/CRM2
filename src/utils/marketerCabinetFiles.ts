@@ -27,7 +27,11 @@ export function isHttpUrl(value?: string | null): boolean {
 
 export function isStoredUploadPath(value?: string | null): boolean {
   if (!value || isHttpUrl(value)) return false;
-  return value.startsWith('marketer-cabinet/') || value.startsWith('platform-news/');
+  return (
+    value.startsWith('marketer-cabinet/') ||
+    value.startsWith('platform-news/') ||
+    value.startsWith('marketer-legal/')
+  );
 }
 
 export function sendStoredUpload(

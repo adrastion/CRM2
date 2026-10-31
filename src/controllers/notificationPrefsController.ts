@@ -137,6 +137,32 @@ export const getTesterNotificationPrefs = asyncHandler(
   }
 );
 
+export const getMarketerNotificationPrefs = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const marketer = (req as any).marketer;
+    if (!marketer?.id) {
+      res.status(401).json({ success: false, error: 'Не авторизован' });
+      return;
+    }
+    const data = await getOrCreateNotificationPrefs('MARKETER', marketer.id);
+    res.json({ success: true, data });
+  }
+);
+
+export const updateMarketerNotificationPrefs = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const marketer = (req as any).marketer;
+    if (!marketer?.id) {
+      res.status(401).json({ success: false, error: 'Не авторизован' });
+      return;
+    }
+    const data = await updateNotificationPrefs('MARKETER', marketer.id, parseUpdate(req.body), {
+      allowSchedule: false,
+    });
+    res.json({ success: true, data });
+  }
+);
+
 export const updateTesterNotificationPrefs = asyncHandler(
   async (req: Request, res: Response<ApiResponse>) => {
     const tester = (req as any).tester;

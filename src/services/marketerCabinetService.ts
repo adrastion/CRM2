@@ -54,11 +54,17 @@ async function serializeSchoolClient(
   row: {
     tenantId: string;
     createdAt: Date;
+    firstPaidAt?: Date | null;
+    commissionRightActive?: boolean;
+    commissionRightLostAt?: Date | null;
+    commissionRightLostReason?: string | null;
     tenant: {
       id: string;
+      name?: string | null;
       subscription: { planType: string; status: string } | null;
     };
-  }
+  },
+  riskRank: number | null = null
 ) {
   const planType = row.tenant.subscription?.planType || 'FREE';
   const subStatus = row.tenant.subscription?.status || 'active';
@@ -68,10 +74,12 @@ async function serializeSchoolClient(
     where: { marketerId, convertedTenantId: row.tenantId },
     select: { id: true, displayCode: true },
   });
+  const tenantName = row.tenant.name || schoolLabelFromId(row.tenantId);
   return {
     id: row.tenantId,
     kind: 'school' as const,
     displayCode: schoolLabelFromId(row.tenantId),
+    tenantName,
     maskedName: null as string | null,
     maskedEmail: null as string | null,
     maskedPhone: null as string | null,
@@ -81,6 +89,11 @@ async function serializeSchoolClient(
     linkedAt: row.createdAt,
     leadId: linkedLead?.id || null,
     leadDisplayCode: linkedLead?.displayCode || null,
+    firstPaidAt: row.firstPaidAt || null,
+    commissionRightActive: row.commissionRightActive !== false,
+    commissionRightLostAt: row.commissionRightLostAt || null,
+    commissionRightLostReason: row.commissionRightLostReason || null,
+    riskRank,
   };
 }
 
@@ -193,6 +206,117 @@ export class MarketerCabinetService {
       else freeSchools += 1;
     }
 
+    let activity: any = null;
+    try {
+      const { MarketerActivityService } = await import('./marketerActivityService');
+      activity = await MarketerActivityService.getCompactActivity(marketerId);
+    } catch (e) {
+      console.error('[MarketerActivity] dashboard compact failed:', e);
+    }
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const [accruedThisMonthAgg, accruedPrevMonthAgg, teamCount, referralEarnedAgg, openLeads, inviteToken] =
+      await Promise.all([
+        prisma.marketerCommissionLedger.aggregate({
+          where: { marketerId, kind: 'ACCRUAL', occurredAt: { gte: monthStart } },
+          _sum: { amount: true },
+        }),
+        prisma.marketerCommissionLedger.aggregate({
+          where: {
+            marketerId,
+            kind: 'ACCRUAL',
+            occurredAt: { gte: prevMonthStart, lt: monthStart },
+          },
+          _sum: { amount: true },
+        }),
+        prisma.marketer.count({ where: { invitedById: marketerId } }),
+        prisma.marketerCommissionLedger.aggregate({
+          where: { marketerId, kind: 'ACCRUAL', commissionType: 'REFERRAL' },
+          _sum: { amount: true },
+        }),
+        prisma.marketerLead.findMany({
+          where: { marketerId, status: { in: ['NEW', 'IN_PROGRESS'] } },
+          orderBy: { updatedAt: 'desc' },
+          take: 8,
+        }),
+        this.ensureInviteToken(marketerId),
+      ]);
+
+    const accruedThisMonth = Number(accruedThisMonthAgg._sum.amount || 0);
+    const accruedPrevMonth = Number(accruedPrevMonthAgg._sum.amount || 0);
+    const momDeltaPct =
+      accruedPrevMonth > 0
+        ? Math.round(((accruedThisMonth - accruedPrevMonth) / accruedPrevMonth) * 100)
+        : accruedThisMonth > 0
+          ? 100
+          : 0;
+
+    const schoolRecent = schools
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map((s) => {
+        const plan = s.tenant.subscription?.planType || 'FREE';
+        const paid = isPaidPlan(plan) && (s.tenant.subscription?.status || 'active') === 'active';
+        const name = s.tenant.name || schoolLabelFromId(s.tenantId);
+        const initials = name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0]?.toUpperCase() || '')
+          .join('')
+          .slice(0, 2);
+        return {
+          id: s.tenantId,
+          kind: 'school' as const,
+          name,
+          initials: initials || 'СК',
+          subtitle: new Date(s.createdAt).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+          }),
+          status: paid ? ('paid' as const) : ('test' as const),
+          statusLabel: paid ? 'Оплачено' : 'Тестовый период',
+          plan: paid ? plan : plan === 'FREE' ? 'Не выбран' : plan,
+          lastAction: paid ? 'Подписка активна' : 'Уточнить решение',
+          updatedAt: s.createdAt,
+        };
+      });
+
+    const leadRecent = openLeads.map((l) => {
+      const name = (l.notes || '').trim() || `Лид ${l.displayCode}`;
+      const initials = name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase() || '')
+        .join('')
+        .slice(0, 2);
+      return {
+        id: l.id,
+        kind: 'lead' as const,
+        name,
+        initials: initials || 'ЛД',
+        subtitle: new Date(l.updatedAt).toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+        }),
+        status: 'work' as const,
+        statusLabel: 'Переговоры',
+        plan: 'Не выбран',
+        lastAction: 'Связаться с клубом',
+        updatedAt: l.updatedAt,
+      };
+    });
+
+    const recentOrgs = [...schoolRecent, ...leadRecent]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, 4)
+      .map(({ updatedAt: _u, ...rest }) => rest);
+
+    const inProgressOrgs = freeSchools + openLeads.length;
+
     return {
       clients: {
         total: leads + schools.length,
@@ -201,6 +325,23 @@ export class MarketerCabinetService {
         active: activeSchools,
         free: freeSchools,
       },
+      home: {
+        orgsInBase: leads + schools.length,
+        orgsEarning: activeSchools,
+        orgsInProgress: inProgressOrgs,
+        balance: Number(marketer?.balance || 0),
+        accruedThisMonth,
+        momDeltaPct,
+        teamCount,
+        referralEarned: Number(referralEarnedAgg._sum.amount || 0),
+        recentOrgs,
+        invite: { path: `/join/${inviteToken}`, token: inviteToken },
+        adLink: (() => {
+          const primary = referralLinks.find((l) => l.isActive) || referralLinks[0];
+          return primary ? { code: primary.code, path: `/ref/${primary.code}` } : null;
+        })(),
+      },
+      activity,
       balance: Number(marketer?.balance || 0),
       commissionPercentage: Number(marketer?.commissionPercentage || 0),
       promoCodes: promoCodes.map((p) => ({
@@ -242,7 +383,7 @@ export class MarketerCabinetService {
   }
 
   static async listClients(marketerId: string) {
-    const [leads, schools] = await Promise.all([
+    const [leads, schools, adLinkRow] = await Promise.all([
       prisma.marketerLead.findMany({
         where: { marketerId },
         orderBy: { updatedAt: 'desc' },
@@ -252,14 +393,21 @@ export class MarketerCabinetService {
         include: { tenant: { include: { subscription: true } } },
         orderBy: { createdAt: 'desc' },
       }),
+      this.ensureAdvertisingLink(marketerId),
     ]);
 
+    const { MarketerActivityService } = await import('./marketerActivityService');
+    const riskRanks = await MarketerActivityService.getRiskRanks(marketerId);
+
     const schoolRows = await Promise.all(
-      schools.map((s) => serializeSchoolClient(marketerId, s))
+      schools.map((s) =>
+        serializeSchoolClient(marketerId, s, riskRanks.get(s.tenantId) || null)
+      )
     );
     return {
       leads: leads.map(serializeLead),
       schools: schoolRows,
+      adLink: adLinkRow ? { code: adLinkRow.code, path: `/ref/${adLinkRow.code}` } : null,
     };
   }
 
@@ -284,10 +432,21 @@ export class MarketerCabinetService {
       where: { marketerId, tenantId: id },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
     });
+    const { MarketerActivityService } = await import('./marketerActivityService');
+    const riskRanks = await MarketerActivityService.getRiskRanks(marketerId);
     return {
-      client: await serializeSchoolClient(marketerId, link),
+      client: await serializeSchoolClient(
+        marketerId,
+        link,
+        riskRanks.get(link.tenantId) || null
+      ),
       tasks,
     };
+  }
+
+  static async getActivity(marketerId: string) {
+    const { MarketerActivityService } = await import('./marketerActivityService');
+    return MarketerActivityService.getActivity(marketerId);
   }
 
   static async createLead(
@@ -602,15 +761,28 @@ export class MarketerCabinetService {
   }
 
   static async getFinance(marketerId: string) {
-    const [marketer, items] = await Promise.all([
+    const [marketer, items, payouts] = await Promise.all([
       prisma.marketer.findUnique({
         where: { id: marketerId },
-        select: { balance: true, commissionPercentage: true },
+        select: {
+          balance: true,
+          commissionPercentage: true,
+          bankName: true,
+          bankBik: true,
+          bankAccount: true,
+          bankRecipient: true,
+        },
       }),
       prisma.marketerCommissionLedger.findMany({
         where: { marketerId },
         orderBy: { occurredAt: 'desc' },
         take: 200,
+      }),
+      prisma.marketerPayoutRequest.findMany({
+        where: { marketerId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: { document: true, npdReceipt: true },
       }),
     ]);
     const accrued = items
@@ -619,11 +791,19 @@ export class MarketerCabinetService {
     const paidOut = items
       .filter((i) => i.kind === 'PAYOUT')
       .reduce((s, i) => s + Number(i.amount), 0);
+    const inProcess = payouts
+      .filter((p) => p.status === 'PROCESSING' || p.status === 'AWAITING_SIGNATURE')
+      .reduce((s, p) => s + Number(p.amount), 0);
+
+    const { MarketerPayoutService } = await import('./marketerPayoutService');
     return {
       balance: Number(marketer?.balance || 0),
       commissionPercentage: Number(marketer?.commissionPercentage || 0),
       accrued,
       paidOut,
+      inProcess,
+      bank: marketer ? MarketerPayoutService.maskBank(marketer) : null,
+      payouts: payouts.map((p) => MarketerPayoutService.serializePayout(p)),
       items: items.map((i) => ({
         ...i,
         amount: Number(i.amount),
@@ -654,6 +834,7 @@ export class MarketerCabinetService {
     notes?: string;
     externalKey: string;
     occurredAt?: Date;
+    commissionType?: 'PERSONAL' | 'REFERRAL';
   }) {
     try {
       await prisma.marketerCommissionLedger.create({
@@ -661,6 +842,7 @@ export class MarketerCabinetService {
           marketerId: params.marketerId,
           tenantId: params.tenantId,
           kind: 'ACCRUAL',
+          commissionType: params.commissionType || 'PERSONAL',
           amount: params.amount,
           notes: params.notes || null,
           externalKey: params.externalKey,
@@ -671,6 +853,150 @@ export class MarketerCabinetService {
       if (e?.code === 'P2002') return; // idempotent
       throw e;
     }
+  }
+
+  static generateInviteToken(): string {
+    return `MKT-${randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+
+  static async ensureInviteToken(marketerId: string): Promise<string> {
+    const existing = await prisma.marketer.findUnique({
+      where: { id: marketerId },
+      select: { inviteToken: true },
+    });
+    if (existing?.inviteToken) return existing.inviteToken;
+
+    for (let i = 0; i < 5; i++) {
+      const token = this.generateInviteToken();
+      try {
+        await prisma.marketer.update({
+          where: { id: marketerId },
+          data: { inviteToken: token },
+        });
+        return token;
+      } catch (e: any) {
+        if (e?.code === 'P2002') continue;
+        throw e;
+      }
+    }
+    throw badRequest('Не удалось создать токен приглашения');
+  }
+
+  static async resolveInviteToken(token: string) {
+    const t = String(token || '').trim();
+    if (!t) throw badRequest('Укажите токен приглашения');
+    const inviter = await prisma.marketer.findFirst({
+      where: { inviteToken: t, isActive: true },
+      select: { id: true, name: true, inviteToken: true },
+    });
+    if (!inviter) throw notFound('Приглашение не найдено или недействительно');
+    return {
+      token: inviter.inviteToken,
+      inviterName: inviter.name,
+      rule: '5% от первой оплаченной подписки каждой школы приглашённого маркетолога (1 уровень)',
+    };
+  }
+
+  static async getInviteInfo(marketerId: string) {
+    const token = await this.ensureInviteToken(marketerId);
+    return {
+      token,
+      path: `/join/${token}`,
+      rulePercent: 5,
+      levels: 1,
+    };
+  }
+
+  static async getTeam(marketerId: string) {
+    const token = await this.ensureInviteToken(marketerId);
+    const invitees = await prisma.marketer.findMany({
+      where: { invitedById: marketerId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        isActive: true,
+        referredTenants: {
+          select: {
+            tenantId: true,
+            tenant: { select: { id: true, name: true, subdomain: true } },
+          },
+        },
+      },
+    });
+
+    const inviteeIds = invitees.map((i) => i.id);
+    const referralAccruals = inviteeIds.length
+      ? await prisma.marketerCommissionLedger.findMany({
+          where: {
+            marketerId,
+            kind: 'ACCRUAL',
+            commissionType: 'REFERRAL',
+          },
+          orderBy: { occurredAt: 'desc' },
+          take: 50,
+        })
+      : [];
+
+    const paidTenantKeys = new Set(
+      referralAccruals
+        .map((a) => a.externalKey || '')
+        .filter((k) => k.startsWith('referral5:'))
+        .map((k) => {
+          // referral5:${inviteeId}:${tenantId}
+          const parts = k.split(':');
+          return parts.length >= 3 ? `${parts[1]}:${parts[2]}` : '';
+        })
+        .filter(Boolean)
+    );
+
+    const members = invitees.map((m) => {
+      const clubs = m.referredTenants.length;
+      const paidClubs = m.referredTenants.filter((rt) =>
+        paidTenantKeys.has(`${m.id}:${rt.tenantId}`)
+      ).length;
+      const earned = referralAccruals
+        .filter((a) => (a.externalKey || '').startsWith(`referral5:${m.id}:`))
+        .reduce((s, a) => s + Number(a.amount), 0);
+      return {
+        id: m.id,
+        name: m.name,
+        joinedAt: m.createdAt,
+        isActive: m.isActive,
+        status: clubs === 0 ? 'new' : 'active',
+        clubsTotal: clubs,
+        clubsPaid: paidClubs,
+        earnedReferral: earned,
+        clubs: m.referredTenants.map((rt) => ({
+          id: rt.tenantId,
+          label: rt.tenant?.name || schoolLabelFromId(rt.tenantId),
+          paid: paidTenantKeys.has(`${m.id}:${rt.tenantId}`),
+        })),
+      };
+    });
+
+    const stats = {
+      marketersInTeam: members.length,
+      clubsTotal: members.reduce((s, m) => s + m.clubsTotal, 0),
+      clubsPaid: members.reduce((s, m) => s + m.clubsPaid, 0),
+      referralEarnedLifetime: referralAccruals.reduce((s, a) => s + Number(a.amount), 0),
+    };
+
+    return {
+      invite: { token, path: `/join/${token}` },
+      stats,
+      members,
+      recentAccruals: referralAccruals.slice(0, 20).map((a) => ({
+        id: a.id,
+        amount: Number(a.amount),
+        notes: a.notes,
+        tenantId: a.tenantId,
+        schoolLabel: a.tenantId ? schoolLabelFromId(a.tenantId) : null,
+        occurredAt: a.occurredAt,
+        externalKey: a.externalKey,
+      })),
+    };
   }
 
   static async recordCommissionPayout(params: {

@@ -35,6 +35,10 @@ export const authenticatePlatformStaff = asyncHandler(async (
     return;
   }
   (req as any).platformStaff = staff;
+  // Heartbeat для статуса «онлайн» (эскалация SA при офлайне поддержки)
+  void prisma.platformStaffUser
+    .update({ where: { id: staff.id }, data: { lastSeenAt: new Date() } })
+    .catch(() => undefined);
   next();
 });
 

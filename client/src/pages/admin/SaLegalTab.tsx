@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Tab, Tabs } from '@mui/material';
 import SuperAdminTermsTab from '../SuperAdminTermsTab';
 import SuperAdminPrivacyTab from '../SuperAdminPrivacyTab';
+import SaMarketerLegalDocsTab from './SaMarketerLegalDocsTab';
 import type { SaLegalTab as LegalTabKey } from '../../config/saDashboard';
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
   onTabChange: (tab: LegalTabKey) => void;
 };
 
-/** Соглашение + политика ПДн. */
+/** Соглашение + политика ПДн + PDF-договоры маркетологов. */
 const SaLegalTab: React.FC<Props> = ({ tab, onTabChange }) => {
   return (
     <Box>
@@ -20,8 +21,11 @@ const SaLegalTab: React.FC<Props> = ({ tab, onTabChange }) => {
       >
         <Tab value="terms" label="Соглашение" />
         <Tab value="privacy" label="Политика ПДн" />
+        <Tab value="marketer-docs" label="Договоры маркетологов" />
       </Tabs>
-      {tab === 'terms' ? <SuperAdminTermsTab /> : <SuperAdminPrivacyTab />}
+      {tab === 'terms' && <SuperAdminTermsTab />}
+      {tab === 'privacy' && <SuperAdminPrivacyTab />}
+      {tab === 'marketer-docs' && <SaMarketerLegalDocsTab />}
     </Box>
   );
 };

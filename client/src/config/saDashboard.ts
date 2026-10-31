@@ -25,7 +25,7 @@ export type SaSection = (typeof SA_SECTIONS)[number];
 
 export type SaMetricsTab = 'analytics' | 'kpi';
 export type SaMonitoringTab = 'server' | 'traffic';
-export type SaLegalTab = 'terms' | 'privacy';
+export type SaLegalTab = 'terms' | 'privacy' | 'marketer-docs';
 
 export type SaTab = SaMetricsTab | SaMonitoringTab | SaLegalTab;
 
@@ -182,7 +182,7 @@ export function resolveSaTab(section: SaSection, tab: SaTab | undefined): SaTab 
     return tab === 'traffic' || tab === 'server' ? tab : 'server';
   }
   if (section === 'legal') {
-    return tab === 'privacy' || tab === 'terms' ? tab : 'terms';
+    return tab === 'privacy' || tab === 'terms' || tab === 'marketer-docs' ? tab : 'terms';
   }
   return def;
 }
