@@ -623,6 +623,23 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+/// FCM-токены мобильного приложения (Android / iOS).
+model MobileDeviceToken {
+  id          String   @id @default(cuid())
+  /// USER | CLIENT | PARENT | SUPER_ADMIN
+  actorType   String
+  actorId     String
+  token       String
+  platform    String?
+  accountType String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([token])
+  @@index([actorType, actorId])
+  @@map("mobile_device_tokens")
+}
+
 /// Предпочтения уведомлений (чаты, changelog, расписание доставки, категории).
 model NotificationPreference {
   id                   String   @id @default(cuid())

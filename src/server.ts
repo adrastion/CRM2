@@ -54,6 +54,7 @@ import supportRequesterRoutes from './routes/supportRequesterRoutes';
 import searchRoutes from './routes/search';
 import chatRoutes from './routes/chat';
 import platformRoutes from './routes/platform';
+import mobileFcmRoutes from './routes/mobileFcm';
 import maintenanceRoutes from './routes/maintenance';
 import legalRoutes from './routes/legal';
 import siteAnalyticsRoutes from './routes/siteAnalytics';
@@ -238,6 +239,7 @@ app.use('/api/super-admin/support', superAdminSupportRoutes);
 app.use('/api/support', supportRequesterRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/mobile/fcm', mobileFcmRoutes);
 
 // Error handling middleware
 app.use(notFound);
