@@ -62,7 +62,6 @@ import {
   clientUnpinMessage,
   clientUnreadTotal,
 } from '../controllers/chatController';
-import multer from 'multer';
 import {
   clientListContracts,
   clientDownloadContract,
