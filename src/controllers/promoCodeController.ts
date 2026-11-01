@@ -247,7 +247,8 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
   if (usageLimit !== undefined) updateData.usageLimit = usageLimit;
   if (validFrom !== undefined) updateData.validFrom = new Date(validFrom);
   if (validUntil !== undefined) updateData.validUntil = validUntil ? new Date(validUntil) : null;
-  if (marketerId !== undefined && scope.kind !== 'marketer') updateData.marketerId = marketerId || null;
+  // После early-return для marketer остаются только sa/pca
+  if (marketerId !== undefined) updateData.marketerId = marketerId || null;
   if (isActive !== undefined) updateData.isActive = isActive;
 
   const promoCode = await prisma.promoCode.update({

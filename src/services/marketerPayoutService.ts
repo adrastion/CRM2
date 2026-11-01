@@ -389,7 +389,7 @@ export class MarketerPayoutService {
     const wantSigned =
       version === 'signed' || (version === 'auto' && Boolean(doc.signedAt || doc.signedFileUrl));
 
-    if (!wantSigned || version === 'draft') {
+    if (!wantSigned) {
       return { fileUrl: doc.fileUrl, title: doc.title, version: 'draft' as const };
     }
 
