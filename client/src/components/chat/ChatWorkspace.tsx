@@ -8,7 +8,9 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Fab,
   IconButton,
+  InputAdornment,
   List as MuiList,
   ListItemButton,
   ListItemText,
@@ -19,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AddComment,
   ArrowBack,
   AttachFile,
   Close,
@@ -30,6 +33,7 @@ import {
   People,
   PushPin,
   Reply,
+  Search,
   Send,
   Visibility,
   VisibilityOff,
@@ -37,16 +41,19 @@ import {
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
-import { colors, radii, typography } from '../../theme/tokens';
+import { colors, radii } from '../../theme/tokens';
 import ChatMediaBubble from './ChatMediaBubble';
 import ChatVoiceRecorder from './ChatVoiceRecorder';
 import {
+  chatAuthorNameColor,
+  chatAvatarColors,
   chatInitials,
   chatTheme,
   dayKey,
   formatChatListTime,
   formatChatTime,
   formatDaySeparator,
+  threadTypeLabel,
 } from './chatTheme';
 import {
   encodeMentionsForSend,
@@ -229,14 +236,15 @@ function PresenceDot({ status, size = 8 }: { status: PresenceStatus; size?: numb
 }
 
 function ChatAvatar({ title, size = 44 }: { title: string; size?: number }) {
+  const { bg, fg } = chatAvatarColors(title);
   return (
     <Avatar
       sx={{
         width: size,
         height: size,
-        bgcolor: chatTheme.avatarBg,
-        color: chatTheme.avatarText,
-        fontSize: size > 40 ? 15 : 13,
+        bgcolor: bg,
+        color: fg,
+        fontSize: size > 40 ? 15 : size >= 32 ? 13 : 11,
         fontWeight: 700,
         flexShrink: 0,
       }}
@@ -244,6 +252,14 @@ function ChatAvatar({ title, size = 44 }: { title: string; size?: number }) {
       {chatInitials(title)}
     </Avatar>
   );
+}
+
+function participantsCountLabel(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} участник`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} участника`;
+  return `${n} участников`;
 }
 
 function previewLabel(kind: string | undefined, body: string): string {
@@ -318,6 +334,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const [pins, setPins] = useState<ChatPinItem[]>([]);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [participantsCount, setParticipantsCount] = useState<number | null>(null);
+  const [threadMenuAnchor, setThreadMenuAnchor] = useState<HTMLElement | null>(null);
+  const [inThreadSearchOpen, setInThreadSearchOpen] = useState(false);
+  const [inThreadSearch, setInThreadSearch] = useState('');
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatQuery, setNewChatQuery] = useState('');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [activeMentions, setActiveMentions] = useState<MentionRef[]>([]);
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; msg: ChatMessageItem } | null>(
@@ -441,6 +463,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     setActiveMentions([]);
   };
 
+  const loadParticipantsForThread = async (threadId: string) => {
+    try {
+      const list =
+        mode === 'staff'
+          ? await apiService.getChatParticipants(threadId)
+          : mode === 'client'
+            ? await apiService.clientGetChatParticipants(threadId)
+            : await apiService.getPlatformChatParticipants(threadId);
+      setParticipants(list || []);
+      setParticipantsCount((list || []).length);
+    } catch {
+      setParticipants([]);
+      setParticipantsCount(null);
+    }
+  };
+
   const openThread = async (item: ChatThreadItem) => {
     persistFeedScroll(activeThreadIdRef.current);
     cancelEdit();
@@ -450,6 +488,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     setLoadingMessages(true);
     setMessages([]);
     setPins([]);
+    setParticipants([]);
+    setParticipantsCount(null);
+    setInThreadSearchOpen(false);
+    setInThreadSearch('');
+    setNewChatOpen(false);
     pendingOpenScrollRef.current = true;
     prevMessagesLenRef.current = 0;
     nearBottomRef.current = true;
@@ -514,6 +557,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         prev.map((t) => (t.threadKey === item.threadKey ? { ...t, unreadCount: 0 } : t))
       );
       if (mode === 'staff' || mode === 'client') dispatchChatUnreadRefresh();
+      void loadParticipantsForThread(threadId!);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось открыть чат');
       setHasMoreMessages(false);
@@ -990,17 +1034,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const openParticipants = async () => {
     if (!activeThreadId) return;
     setParticipantsOpen(true);
-    try {
-      const list =
-        mode === 'staff'
-          ? await apiService.getChatParticipants(activeThreadId)
-          : mode === 'client'
-            ? await apiService.clientGetChatParticipants(activeThreadId)
-            : await apiService.getPlatformChatParticipants(activeThreadId);
-      setParticipants(list || []);
-    } catch {
-      setParticipants([]);
-    }
+    setThreadMenuAnchor(null);
+    await loadParticipantsForThread(activeThreadId);
   };
 
   const canDeleteMessage = (m: ChatMessageItem) => {
@@ -1144,6 +1179,25 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
 
   const selected = threads.find((t) => t.threadKey === selectedKey);
 
+  const newChatCandidates = useMemo(() => {
+    const q = newChatQuery.trim().toLowerCase();
+    return threads
+      .filter((t) => !TASK_TYPES.has(t.type))
+      .filter((t) => {
+        if (!q) return true;
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.subtitle || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const aEmpty = hasConversation(a) ? 1 : 0;
+        const bEmpty = hasConversation(b) ? 1 : 0;
+        if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+        return a.title.localeCompare(b.title, 'ru');
+      });
+  }, [threads, newChatQuery]);
+
   return (
     <Box
       sx={{
@@ -1169,16 +1223,30 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     >
       <Box
         sx={{
-          width: { xs: selected ? 0 : '100%', sm: 340 },
+          width: { xs: selected ? 0 : '100%', sm: 360 },
           display: { xs: selected ? 'none' : 'flex', sm: 'flex' },
           flexDirection: 'column',
           borderRight: `1px solid ${colors.divider}`,
-          minWidth: { sm: 300 },
+          minWidth: { sm: 320 },
           bgcolor: colors.card,
+          position: 'relative',
         }}
       >
-        <Box sx={{ px: 1.5, pt: 1.25, pb: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+        <Box sx={{ px: 1.75, pt: 1.5, pb: 1, display: 'flex', flexDirection: 'column', gap: 1.1 }}>
+          <Typography sx={{ fontSize: { xs: 22, sm: 20 }, fontWeight: 800, lineHeight: 1.2, color: colors.text }}>
+            Чаты
+          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'nowrap',
+              gap: 0.65,
+              overflowX: 'auto',
+              pb: 0.15,
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
+          >
             {categoryTabs.map((tab) => {
               const active = category === tab.id;
               return (
@@ -1188,13 +1256,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                   size="small"
                   onClick={() => setCategory(tab.id)}
                   sx={{
-                    height: 26,
-                    fontSize: typography.hint,
-                    fontWeight: active ? 700 : 500,
-                    bgcolor: active ? colors.primary : colors.surface,
-                    color: active ? '#fff' : colors.text,
+                    height: 30,
+                    flexShrink: 0,
+                    fontSize: 13,
+                    fontWeight: active ? 700 : 600,
+                    bgcolor: active ? colors.primary : '#F3F5F9',
+                    color: active ? '#fff' : '#5A6275',
+                    borderRadius: '10px',
                     '&:hover': {
-                      bgcolor: active ? colors.primaryDark : colors.rowAlt,
+                      bgcolor: active ? colors.primaryDark : '#E8ECF3',
                     },
                   }}
                 />
@@ -1204,37 +1274,42 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
           <TextField
             fullWidth
             size="small"
-            placeholder={
-              category === 'all' || category === 'personal'
-                ? 'Поиск (в т.ч. без переписки)'
-                : 'Поиск'
-            }
+            placeholder="Поиск чатов (в т.ч. без переписки)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ fontSize: 18, color: colors.textHint }} />
+                </InputAdornment>
+              ),
+            }}
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                bgcolor: colors.surface,
+                bgcolor: '#F3F5F9',
                 fontSize: 14,
+                '& fieldset': { borderColor: 'transparent' },
+                '&:hover fieldset': { borderColor: colors.divider },
+                '&.Mui-focused fieldset': { borderColor: colors.primarySoft },
               },
             }}
           />
         </Box>
-        <Divider />
         {loadingList ? (
           <Box display="flex" justifyContent="center" p={3}>
             <CircularProgress size={28} />
           </Box>
         ) : (
-          <MuiList dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
+          <MuiList dense disablePadding sx={{ overflow: 'auto', flex: 1, px: 1, pb: 8 }}>
             {filteredThreads.length === 0 ? (
               <Typography color="text.secondary" sx={{ p: 2 }}>
                 Нет доступных бесед
               </Typography>
             ) : (
-              filteredThreads.map((t, index) => {
+              filteredThreads.map((t) => {
                 const active = t.threadKey === selectedKey;
-                const pastel = ['#EEF4FF', '#F3EEFF', '#EEF9F6', '#FFF4F0', '#F5F6FA'][index % 5];
+                const typeLabel = threadTypeLabel(t.type);
                 return (
                   <ListItemButton
                     key={t.threadKey}
@@ -1243,19 +1318,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                     sx={{
                       alignItems: 'flex-start',
                       gap: 1.25,
-                      py: 1.15,
-                      px: 1.5,
-                      mx: 1,
-                      my: 0.5,
-                      borderRadius: `${radii.panel}px`,
-                      borderLeft: t.type === 'STAFF_TASK' ? `3px solid ${colors.primary}` : '3px solid transparent',
-                      bgcolor: active ? colors.primarySoft : pastel,
-                      '&.Mui-selected': { bgcolor: colors.primarySoft },
-                      '&.Mui-selected:hover': { bgcolor: colors.primarySoft },
-                      '&:hover': { bgcolor: active ? colors.primarySoft : colors.card },
+                      py: 1.2,
+                      px: 1.35,
+                      mb: 0.65,
+                      borderRadius: '14px',
+                      border: `1px solid ${active ? 'transparent' : chatTheme.listCardBorder}`,
+                      bgcolor: active ? chatTheme.listSelected : colors.card,
+                      boxShadow: active ? 'none' : '0 1px 2px rgba(32,34,36,0.03)',
+                      '&.Mui-selected': { bgcolor: chatTheme.listSelected },
+                      '&.Mui-selected:hover': { bgcolor: chatTheme.listSelected },
+                      '&:hover': { bgcolor: active ? chatTheme.listSelected : chatTheme.listHover },
                     }}
                   >
-                    <Box sx={{ position: 'relative', mt: 0.25 }}>
+                    <Box sx={{ position: 'relative', mt: 0.15 }}>
                       <ChatAvatar title={t.title} />
                       {t.presenceStatus ? (
                         <Box sx={{ position: 'absolute', right: 0, bottom: 0 }}>
@@ -1266,9 +1341,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Box display="flex" alignItems="center" gap={0.75} justifyContent="space-between">
                         <Typography
-                          fontWeight={t.unreadCount ? 700 : 600}
+                          fontWeight={t.unreadCount ? 800 : 700}
                           noWrap
-                          sx={{ fontSize: 14.5, flex: 1, minWidth: 0 }}
+                          sx={{ fontSize: 14.5, flex: 1, minWidth: 0, color: colors.text }}
                         >
                           {t.title}
                         </Typography>
@@ -1279,33 +1354,36 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                           {formatChatListTime(t.lastMessageAt)}
                         </Typography>
                       </Box>
-                      <Box display="flex" alignItems="center" gap={0.75} mt={0.25}>
-                        <Typography
-                          noWrap
-                          sx={{
-                            flex: 1,
-                            minWidth: 0,
-                            fontSize: 13,
-                            color: t.unreadCount ? colors.text : colors.textHint,
-                            fontWeight: t.unreadCount ? 500 : 400,
-                          }}
-                        >
-                          {t.lastMessagePreview
-                            ? formatMentionsForDisplay(t.lastMessagePreview)
-                            : t.subtitle || 'Нет сообщений'}
-                        </Typography>
-                        {t.type === 'STAFF_TASK' && (
-                          <Chip
-                            size="small"
-                            label="Задача"
+                      <Box display="flex" alignItems="flex-start" gap={0.75} mt={0.2}>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography
+                            noWrap
                             sx={{
-                              height: 20,
-                              fontSize: 10,
-                              bgcolor: colors.primarySoft,
-                              color: colors.primaryDark,
+                              fontSize: 13,
+                              color: t.unreadCount ? colors.text : colors.textHint,
+                              fontWeight: t.unreadCount ? 500 : 400,
                             }}
-                          />
-                        )}
+                          >
+                            {t.lastMessagePreview
+                              ? formatMentionsForDisplay(t.lastMessagePreview)
+                              : t.subtitle || 'Нет сообщений'}
+                          </Typography>
+                          {typeLabel && (
+                            <Chip
+                              size="small"
+                              label={typeLabel}
+                              sx={{
+                                mt: 0.55,
+                                height: 20,
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                bgcolor: chatTheme.typeChipBg,
+                                color: chatTheme.typeChipText,
+                                borderRadius: '6px',
+                              }}
+                            />
+                          )}
+                        </Box>
                         {t.unreadCount > 0 && (
                           <Box
                             sx={{
@@ -1321,6 +1399,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                               alignItems: 'center',
                               justifyContent: 'center',
                               flexShrink: 0,
+                              mt: 0.15,
                             }}
                           >
                             {t.unreadCount > 99 ? '99+' : t.unreadCount}
@@ -1333,8 +1412,28 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               })
             )}
           </MuiList>
-              )}
-            </Box>
+        )}
+        <Fab
+          color="primary"
+          size="medium"
+          onClick={() => {
+            setNewChatQuery('');
+            setNewChatOpen(true);
+          }}
+          sx={{
+            position: 'absolute',
+            right: 16,
+            bottom: 16,
+            bgcolor: chatTheme.fab,
+            boxShadow: '0 8px 20px rgba(47, 107, 255, 0.35)',
+            '&:hover': { bgcolor: colors.primaryDark },
+            display: { xs: selected ? 'none' : 'flex', sm: 'flex' },
+          }}
+          title="Новый чат"
+        >
+          <AddComment />
+        </Fab>
+      </Box>
 
       <Box
         sx={{
@@ -1384,6 +1483,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                   setActiveThreadId(null);
                   activeThreadIdRef.current = null;
                   setMessages([]);
+                  setParticipantsCount(null);
                   cancelEdit();
                 }}
                 title="К списку"
@@ -1399,29 +1499,87 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                 ) : null}
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography fontWeight={700} noWrap sx={{ fontSize: 15, lineHeight: 1.25 }}>
+                <Typography fontWeight={800} noWrap sx={{ fontSize: 15.5, lineHeight: 1.25 }}>
                   {selected.title}
                 </Typography>
                 <Typography variant="caption" noWrap sx={{ color: colors.textHint, display: 'block' }}>
-                  {selected.presenceStatus
-                    ? PRESENCE_LABEL[selected.presenceStatus]
-                    : selected.subtitle}
+                  {participantsCount != null
+                    ? participantsCountLabel(participantsCount)
+                    : selected.presenceStatus
+                      ? PRESENCE_LABEL[selected.presenceStatus]
+                      : selected.subtitle || ' '}
                 </Typography>
               </Box>
-              {canViewDeleted && (
-                <IconButton
-                  size="small"
-                  title={showDeletedContent ? 'Скрыть удалённые' : 'Показать удалённые'}
-                  onClick={() => setShowDeletedContent((v) => !v)}
-                  color={showDeletedContent ? 'primary' : 'default'}
-                >
-                  {showDeletedContent ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
-                </IconButton>
-              )}
-              <IconButton size="small" onClick={() => void openParticipants()} title="Участники">
-                <People fontSize="small" />
+              <IconButton
+                size="small"
+                title="Поиск в чате"
+                onClick={() => setInThreadSearchOpen((v) => !v)}
+                color={inThreadSearchOpen ? 'primary' : 'default'}
+                sx={{ color: inThreadSearchOpen ? colors.primary : colors.textHint }}
+              >
+                <Search fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                title="Вложение"
+                disabled={sending || !activeThreadId || Boolean(editingId)}
+                onClick={() => fileInputRef.current?.click()}
+                sx={{ color: colors.textHint }}
+              >
+                <AttachFile fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                title="Ещё"
+                onClick={(e) => setThreadMenuAnchor(e.currentTarget)}
+                sx={{ color: colors.textHint }}
+              >
+                <MoreVert fontSize="small" />
               </IconButton>
             </Box>
+            {inThreadSearchOpen && (
+              <Box sx={{ px: 1.5, py: 0.75, borderBottom: `1px solid ${colors.divider}`, bgcolor: colors.card }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  autoFocus
+                  placeholder="Поиск по сообщениям…"
+                  value={inThreadSearch}
+                  onChange={(e) => setInThreadSearch(e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 999,
+                      bgcolor: '#F3F5F9',
+                      fontSize: 14,
+                    },
+                  }}
+                />
+              </Box>
+            )}
+            <Menu
+              anchorEl={threadMenuAnchor}
+              open={Boolean(threadMenuAnchor)}
+              onClose={() => setThreadMenuAnchor(null)}
+            >
+              <MenuItem onClick={() => void openParticipants()}>
+                <People fontSize="small" sx={{ mr: 1 }} /> Участники
+              </MenuItem>
+              {canViewDeleted && (
+                <MenuItem
+                  onClick={() => {
+                    setShowDeletedContent((v) => !v);
+                    setThreadMenuAnchor(null);
+                  }}
+                >
+                  {showDeletedContent ? (
+                    <VisibilityOff fontSize="small" sx={{ mr: 1 }} />
+                  ) : (
+                    <Visibility fontSize="small" sx={{ mr: 1 }} />
+                  )}
+                  {showDeletedContent ? 'Скрыть удалённые' : 'Показать удалённые'}
+                </MenuItem>
+              )}
+            </Menu>
 
             {pins.length > 0 && (
               <Box
@@ -1492,6 +1650,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                 )}
                 {messages
                   .filter((m) => canViewDeleted || !m.deleted)
+                  .filter((m) => {
+                    const q = inThreadSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return String(m.body || '').toLowerCase().includes(q) ||
+                      String(m.authorName || '').toLowerCase().includes(q);
+                  })
                   .map((m, idx, list) => {
                   const own = isOwn(m);
                   const deleted = Boolean(m.deleted);
@@ -1504,8 +1668,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                   const prev = idx > 0 ? list[idx - 1] : null;
                   const showDay =
                     !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
-                  const mentionColor = own ? 'rgba(255,255,255,0.95)' : chatTheme.mention;
                   const bubbleOwn = own && !deleted;
+                  const mentionColor = chatTheme.mention;
                   return (
                     <React.Fragment key={m.id}>
                       {showDay && (
@@ -1529,20 +1693,27 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                         sx={{
                           display: 'flex',
                           justifyContent: own ? 'flex-end' : 'flex-start',
-                          mb: 0.75,
+                          alignItems: 'flex-end',
+                          gap: 0.75,
+                          mb: 0.85,
                           contentVisibility: 'auto',
                           containIntrinsicSize: `auto ${CHAT_MSG_ROW_EST}px`,
                         }}
                       >
+                        {!own && (
+                          <Box sx={{ mb: 0.15, flexShrink: 0, display: { xs: 'none', sm: 'block' } }}>
+                            <ChatAvatar title={m.authorName || '?'} size={28} />
+                          </Box>
+                        )}
                         <Box
                           sx={{
-                            maxWidth: { xs: '88%', sm: '72%' },
+                            maxWidth: { xs: '88%', sm: '70%' },
                             px: 1.35,
                             pt: 0.85,
                             pb: 0.55,
                             borderRadius: own
-                              ? '14px 14px 4px 14px'
-                              : '14px 14px 14px 4px',
+                              ? '16px 16px 4px 16px'
+                              : '16px 16px 16px 4px',
                             bgcolor: deleted
                               ? colors.rowAlt
                               : bubbleOwn
@@ -1556,9 +1727,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                             fontStyle: deleted && !showDeletedFull ? 'italic' : 'normal',
                             boxShadow: deleted
                               ? 'none'
-                              : bubbleOwn
-                                ? '0 1px 2px rgba(13, 75, 215, 0.25)'
-                                : '0 1px 2px rgba(0,0,0,0.08)',
+                              : '0 1px 3px rgba(32, 34, 36, 0.06)',
                             position: 'relative',
                             outline: editingId === m.id ? '2px solid' : 'none',
                             outlineColor: 'warning.main',
@@ -1581,7 +1750,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                             <Typography
                               variant="caption"
                               sx={{
-                                color: colors.primary,
+                                color: chatAuthorNameColor(m.authorName || m.id),
                                 fontWeight: 700,
                                 display: 'block',
                                 mb: 0.25,
@@ -1598,8 +1767,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                                 px: 0.85,
                                 py: 0.4,
                                 borderLeft: '3px solid',
-                                borderColor: own ? 'rgba(255,255,255,0.65)' : colors.primary,
-                                bgcolor: own ? 'rgba(255,255,255,0.12)' : 'rgba(72,128,255,0.08)',
+                                borderColor: colors.primary,
+                                bgcolor: own ? 'rgba(47,107,255,0.1)' : 'rgba(72,128,255,0.08)',
                                 borderRadius: '0 6px 6px 0',
                               }}
                             >
@@ -1741,14 +1910,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                                   <DoneAll
                                     sx={{
                                       fontSize: 15,
-                                      color: own ? 'rgba(255,255,255,0.95)' : colors.primary,
+                                      color: chatTheme.checkOwn,
                                     }}
                                   />
                                 ) : (
                                   <Done
                                     sx={{
                                       fontSize: 15,
-                                      color: own ? chatTheme.timeMutedOwn : colors.textHint,
+                                      color: chatTheme.timeMutedOwn,
                                     }}
                                   />
                                 )}
@@ -1756,6 +1925,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                             )}
                           </Box>
                         </Box>
+                        {own && (
+                          <Box sx={{ mb: 0.15, flexShrink: 0, display: { xs: 'none', sm: 'block' } }}>
+                            <ChatAvatar
+                              title={
+                                self.kind === 'USER'
+                                  ? 'Я'
+                                  : self.kind === 'SUPER_ADMIN'
+                                    ? 'SA'
+                                    : self.kind === 'TESTER'
+                                      ? 'T'
+                                      : 'Я'
+                              }
+                              size={28}
+                            />
+                          </Box>
+                        )}
                       </Box>
                     </React.Fragment>
                   );
@@ -1887,9 +2072,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                     disabled={sending || !activeThreadId || Boolean(editingId)}
                     title="Фото или видео"
                     onClick={() => fileInputRef.current?.click()}
-                    sx={{ color: colors.textHint, width: 32, height: 32 }}
+                    sx={{ color: colors.textHint, width: 36, height: 36 }}
                   >
-                    <AttachFile sx={{ fontSize: 20 }} />
+                    <AttachFile sx={{ fontSize: 22 }} />
                   </IconButton>
                   <Box
                     sx={{
@@ -1898,10 +2083,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                       alignItems: 'center',
                       gap: 0.25,
                       minWidth: 0,
-                      minHeight: 46,
-                      bgcolor: colors.surface,
+                      minHeight: 48,
+                      bgcolor: '#F3F5F9',
                       borderRadius: 999,
-                      border: `1px solid ${colors.divider}`,
+                      border: `1px solid transparent`,
                       pl: 1.75,
                       pr: 0.35,
                       py: 0.35,
@@ -1910,7 +2095,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                     <TextField
                       fullWidth
                       variant="standard"
-                      placeholder={editingId ? 'Изменить сообщение…' : 'Сообщение...'}
+                      placeholder={editingId ? 'Изменить сообщение…' : 'Напишите сообщение...'}
                       value={draft}
                       onChange={(e) => onDraftChange(e.target.value)}
                       onKeyDown={(e) => {
@@ -1951,15 +2136,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                       <EmojiEmotions sx={{ fontSize: 20 }} />
                     </IconButton>
                   </Box>
-                  {(draft.trim() || editingId) && (
+                  {(draft.trim() || editingId) ? (
                     <IconButton
                       onClick={handleSend}
                       disabled={sending || !draft.trim() || !activeThreadId}
                       sx={{
                         bgcolor: colors.primary,
                         color: '#fff',
-                        width: 32,
-                        height: 32,
+                        width: 44,
+                        height: 44,
                         flexShrink: 0,
                         '&:hover': { bgcolor: colors.primaryDark },
                         '&.Mui-disabled': {
@@ -1969,14 +2154,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                       }}
                     >
                       {sending ? (
-                        <CircularProgress size={16} color="inherit" />
+                        <CircularProgress size={18} color="inherit" />
                       ) : editingId ? (
-                        <Edit sx={{ fontSize: 18 }} />
+                        <Edit sx={{ fontSize: 20 }} />
                       ) : (
-                        <Send sx={{ fontSize: 18 }} />
+                        <Send sx={{ fontSize: 20 }} />
                       )}
                     </IconButton>
-                  )}
+                  ) : null}
                 </>
               )}
               <ChatVoiceRecorder
@@ -2093,6 +2278,68 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                 Нет участников
               </Typography>
+            )}
+          </MuiList>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={newChatOpen}
+        onClose={() => setNewChatOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Новый чат</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Поиск…"
+            value={newChatQuery}
+            onChange={(e) => setNewChatQuery(e.target.value)}
+            sx={{ mb: 1.5 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ fontSize: 18, color: colors.textHint }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <MuiList dense disablePadding>
+            {newChatCandidates.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                Ничего не найдено
+              </Typography>
+            ) : (
+              newChatCandidates.map((t) => {
+                const typeLabel = threadTypeLabel(t.type);
+                return (
+                  <ListItemButton
+                    key={t.threadKey}
+                    onClick={() => {
+                      setNewChatOpen(false);
+                      void openThread(t);
+                    }}
+                    sx={{ borderRadius: '10px', mb: 0.35 }}
+                  >
+                    <ChatAvatar title={t.title} size={36} />
+                    <ListItemText
+                      sx={{ ml: 1.25 }}
+                      primary={t.title}
+                      secondary={
+                        typeLabel
+                          ? `${typeLabel}${hasConversation(t) ? '' : ' · без переписки'}`
+                          : hasConversation(t)
+                            ? undefined
+                            : 'Без переписки'
+                      }
+                      primaryTypographyProps={{ fontWeight: 700, fontSize: 14 }}
+                      secondaryTypographyProps={{ fontSize: 12 }}
+                    />
+                  </ListItemButton>
+                );
+              })
             )}
           </MuiList>
         </DialogContent>

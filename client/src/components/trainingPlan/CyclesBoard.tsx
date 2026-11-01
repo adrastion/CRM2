@@ -277,10 +277,8 @@ const CyclesBoard: React.FC<Props> = ({
   onDelete,
   onOpenExercise,
   onChanged,
-  onDelete: _onDelete,
   onSwitchExercises,
 }) => {
-  void _onDelete;
   const [branchId, setBranchId] = useState('');
   const [groupId, setGroupId] = useState('');
   const [ageKey, setAgeKey] = useState('');
@@ -922,6 +920,15 @@ const CyclesBoard: React.FC<Props> = ({
                   >
                     Опубликовать
                   </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteOutline sx={{ fontSize: 16 }} />}
+                    onClick={() => onDelete(selected.id)}
+                    sx={{ ...ghostBtn, height: 36, px: 1.25, borderColor: '#F5C2C2', color: '#D32F2F' }}
+                  >
+                    Удалить
+                  </Button>
                 </Stack>
               </Box>
 
@@ -939,38 +946,68 @@ const CyclesBoard: React.FC<Props> = ({
                 <Stat iconBg="#E7F8F2" iconColor="#00B69B" icon={null} ring={fillProgress} value={`${fillProgress}%`} label="Прогресс заполнения" />
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.25, overflowX: 'auto' }}>
-                {weeks.map((w, i) => {
-                  const on = i === Math.min(weekIdx, weeks.length - 1);
-                  return (
-                    <Button
-                      key={w.index}
-                      onClick={() => setWeekIdx(i)}
-                      sx={{
-                        textTransform: 'none',
-                        borderRadius: '12px',
-                        px: 1.25,
-                        py: 0.6,
-                        minWidth: 0,
-                        flexDirection: 'column',
-                        alignItems: 'flex-start',
-                        bgcolor: on ? '#EAF0FF' : 'transparent',
-                        color: on ? colors.primary : '#1B2438',
-                        borderBottom: on ? `2px solid ${colors.primary}` : '2px solid transparent',
-                        '&:hover': { bgcolor: '#F5F8FF' },
-                      }}
-                    >
-                      <Typography sx={{ fontSize: 13, fontWeight: 800, lineHeight: 1.2 }}>Неделя {w.index}</Typography>
-                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: on ? colors.primary : '#8B8C8F' }}>
-                        {format(w.start, 'd', { locale: ru })}–{format(w.end, 'd MMM', { locale: ru })}
-                      </Typography>
-                    </Button>
-                  );
-                })}
-                <Box sx={{ flex: 1 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25, minWidth: 0 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    gap: 0.5,
+                    flex: 1,
+                    minWidth: 0,
+                    overflowX: 'auto',
+                    pb: 0.25,
+                    WebkitOverflowScrolling: 'touch',
+                    scrollbarWidth: 'thin',
+                  }}
+                >
+                  {weeks.map((w, i) => {
+                    const on = i === Math.min(weekIdx, weeks.length - 1);
+                    return (
+                      <Button
+                        key={w.index}
+                        onClick={() => setWeekIdx(i)}
+                        sx={{
+                          textTransform: 'none',
+                          borderRadius: '12px',
+                          px: 1.25,
+                          py: 0.6,
+                          flexShrink: 0,
+                          minWidth: 'max-content',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          whiteSpace: 'nowrap',
+                          bgcolor: on ? '#EAF0FF' : 'transparent',
+                          color: on ? colors.primary : '#1B2438',
+                          borderBottom: on ? `2px solid ${colors.primary}` : '2px solid transparent',
+                          '&:hover': { bgcolor: '#F5F8FF' },
+                        }}
+                      >
+                        <Typography sx={{ fontSize: 13, fontWeight: 800, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                          Неделя {w.index}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: on ? colors.primary : '#8B8C8F',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {format(w.start, 'd', { locale: ru })}–{format(w.end, 'd MMM', { locale: ru })}
+                        </Typography>
+                      </Button>
+                    );
+                  })}
+                </Box>
                 <Button
                   onClick={() => setNotice('Дни берутся из занятий группы в периоде цикла')}
-                  sx={{ textTransform: 'none', fontWeight: 700, color: colors.primary, whiteSpace: 'nowrap' }}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: colors.primary,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
                 >
                   + Добавить день
                 </Button>

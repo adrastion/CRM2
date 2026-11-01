@@ -126,6 +126,7 @@ const TesterDashboard: React.FC = () => {
           mode="platform"
           socketToken={token}
           self={{ kind: 'TESTER', id: tester.id }}
+          immersiveMobile
         />
       )}
 

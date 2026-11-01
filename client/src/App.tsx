@@ -687,7 +687,7 @@ const AppContent: React.FC = () => {
           path="/chats"
           element={
             <ProtectedRoute>
-              <AppLayout pageTitle="Чаты">
+              <AppLayout>
                 <Chats />
               </AppLayout>
             </ProtectedRoute>
