@@ -150,7 +150,20 @@ app.use(limiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  // localhost и 127.0.0.1 — разные Origin; для APK upload напрямую на :3001 нужны оба.
+  origin: (origin, cb) => {
+    const allowed = new Set(
+      String(process.env.CORS_ORIGIN || 'http://localhost:3000,http://127.0.0.1:3000')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+    if (!origin || allowed.has(origin)) {
+      cb(null, true);
+      return;
+    }
+    cb(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-CSRF-Token'],

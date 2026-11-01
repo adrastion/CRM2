@@ -2785,6 +2785,24 @@ class ApiService {
     return response.data.data;
   }
 
+  /**
+   * Крупные multipart через CRA `/api` proxy → HTTP 413.
+   * В локальной разработке бьём напрямую в backend :3001 (тот же hostname, что у UI).
+   */
+  private largeUploadBaseURL(): string {
+    const fromEnv = process.env.REACT_APP_API_URL;
+    if (fromEnv && /^https?:\/\//i.test(fromEnv)) {
+      return fromEnv.replace(/\/$/, '');
+    }
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return `${window.location.protocol}//${host}:3001/api`;
+      }
+    }
+    return String(this.api.defaults.baseURL || '/api').replace(/\/$/, '');
+  }
+
   async adminUploadMobileApk(
     file: File,
     label?: string
@@ -2798,9 +2816,11 @@ class ApiService {
     const form = new FormData();
     form.append('file', file);
     if (label) form.append('label', label);
-    // APK до 250 МБ — дефолтный axios timeout 10s обрывает загрузку.
     const response = await this.api.post<ApiResponse>('/admin-dashboard/mobile-apk', form, {
+      baseURL: this.largeUploadBaseURL(),
       timeout: 10 * 60 * 1000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
     });
     return response.data.data;
   }
