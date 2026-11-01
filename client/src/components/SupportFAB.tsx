@@ -1199,7 +1199,6 @@ const SupportFAB: React.FC = () => {
                 fullWidth
                 multiline
                 maxRows={4}
-                size="small"
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
                 placeholder="Напишите сообщение..."
@@ -1210,7 +1209,19 @@ const SupportFAB: React.FC = () => {
                     void sendReply();
                   }
                 }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '12px',
+                    minHeight: 48,
+                    alignItems: 'center',
+                    py: 0.5,
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    py: '10px',
+                    fontSize: 15,
+                    lineHeight: '22px',
+                  },
+                }}
               />
               <IconButton
                 color="primary"

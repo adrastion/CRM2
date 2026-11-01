@@ -1895,12 +1895,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                       alignItems: 'center',
                       gap: 0.25,
                       minWidth: 0,
-                      minHeight: 36,
+                      minHeight: 46,
                       bgcolor: colors.surface,
                       borderRadius: 999,
                       border: `1px solid ${colors.divider}`,
-                      pl: 1.5,
-                      pr: 0.25,
+                      pl: 1.75,
+                      pr: 0.35,
+                      py: 0.35,
                     }}
                   >
                     <TextField
@@ -1930,10 +1931,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                           alignItems: 'center',
                         },
                         '& .MuiInputBase-input': {
-                          padding: '2px 0 !important',
-                          lineHeight: '20px',
-                          fontSize: 14.5,
-                          minHeight: '20px !important',
+                          padding: '8px 0 !important',
+                          lineHeight: '22px',
+                          fontSize: 15,
+                          minHeight: '22px !important',
                         },
                       }}
                       InputProps={{ disableUnderline: true }}
@@ -1942,7 +1943,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                       onClick={(e) => setEmojiAnchor(e.currentTarget)}
                       disabled={sending || !activeThreadId}
                       title="Смайлы"
-                      sx={{ color: colors.textHint, width: 28, height: 28 }}
+                      sx={{ color: colors.textHint, width: 32, height: 32 }}
                     >
                       <EmojiEmotions sx={{ fontSize: 20 }} />
                     </IconButton>
