@@ -1911,12 +1911,17 @@ model PlatformChangelogEntry {
   tag            String?
   imageUrl       String?
   fileUrl        String?
+  /// Когда новость становится видимой аудитории (будущее = отложенная публикация)
+  publishedAt    DateTime   @default(now())
+  /// Когда отправлен push (null = ещё не отправляли / ждём publishedAt)
+  pushSentAt     DateTime?
   createdById    String
   createdBy      SuperAdmin @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   @@index([createdAt])
+  @@index([publishedAt])
   @@map("platform_changelog_entries")
 }
 

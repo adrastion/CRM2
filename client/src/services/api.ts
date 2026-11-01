@@ -4114,6 +4114,15 @@ class ApiService {
     return response.data.data;
   }
 
+  /** Обновление карточки / аватара из ЛК клиента. */
+  async updateAthleteCard(clientId: string, data: any): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/client-auth/athlete-card', {
+      clientId,
+      ...data,
+    });
+    return response.data.data;
+  }
+
   /** Календарь ЛК: свои тренировки + соревнования, где клиент участник. */
   async getClientCalendarPlan(params?: {
     clientId?: string;
@@ -5241,6 +5250,8 @@ class ApiService {
     body: string;
     audienceRoles?: string[];
     tag?: string;
+    /** ISO; будущее = отложенная публикация */
+    publishedAt?: string;
     image?: File | null;
     file?: File | null;
   }): Promise<any> {
@@ -5251,6 +5262,7 @@ class ApiService {
         body: data.body,
         audienceRoles: data.audienceRoles || [],
         tag: data.tag,
+        publishedAt: data.publishedAt,
       });
       return response.data.data;
     }
@@ -5260,6 +5272,7 @@ class ApiService {
     // Всегда передаём массив, в т.ч. [] — «только супер-админы»
     form.append('audienceRoles', JSON.stringify(data.audienceRoles || []));
     if (data.tag) form.append('tag', data.tag);
+    if (data.publishedAt) form.append('publishedAt', data.publishedAt);
     if (data.image) form.append('image', data.image);
     if (data.file) form.append('file', data.file);
     const response = await this.api.post<ApiResponse>('/platform/changelog', form, {
@@ -5275,6 +5288,7 @@ class ApiService {
       body?: string;
       audienceRoles?: string[];
       tag?: string;
+      publishedAt?: string;
       image?: File | null;
       file?: File | null;
       clearImage?: boolean;
@@ -5288,6 +5302,7 @@ class ApiService {
         body: data.body,
         audienceRoles: data.audienceRoles,
         tag: data.tag,
+        publishedAt: data.publishedAt,
         clearImage: data.clearImage || undefined,
         clearFile: data.clearFile || undefined,
       });
@@ -5300,6 +5315,7 @@ class ApiService {
       form.append('audienceRoles', JSON.stringify(data.audienceRoles));
     }
     if (data.tag !== undefined) form.append('tag', data.tag);
+    if (data.publishedAt !== undefined) form.append('publishedAt', data.publishedAt);
     if (data.clearImage) form.append('clearImage', 'true');
     if (data.clearFile) form.append('clearFile', 'true');
     if (data.image) form.append('image', data.image);

@@ -249,7 +249,7 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
 
   const save = async () => {
     if (!data?.id) return;
-    if (mode !== 'staff') {
+    if (mode !== 'staff' && mode !== 'client') {
       setSnack('Чтобы изменить данные, обратитесь к администратору школы');
       return;
     }
@@ -298,7 +298,6 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         photo: draft.photo || null,
         discipline: draft.discipline || null,
         weightCategory: draft.weightCategory || null,
-        athleteStatus: draft.athleteStatus || 'active',
         birthCertificateNumber: draft.birthCertificateNumber || null,
         medicalCertificateNumber: draft.medicalCertificateNumber || null,
         passportSeries: draft.passportSeries || null,
@@ -309,19 +308,33 @@ const AthleteCard: React.FC<AthleteCardProps> = ({
         passportBirthPlace: draft.passportBirthPlace || null,
         parents: parentsPayload,
       };
+      if (mode === 'staff') {
+        payload.athleteStatus = draft.athleteStatus || 'active';
+      }
       if ('birthCertificate' in draft) {
         payload.birthCertificate = draft.birthCertificate || null;
       }
       if ('medicalCertificate' in draft) {
         payload.medicalCertificate = draft.medicalCertificate || null;
       }
-      await apiService.updateClient(data.id, payload);
-      setSnack('Сохранено');
-      setEditing(false);
-      setDraft({});
-      const refreshed = await loadStaffCard(data.id);
-      setData(refreshed);
-      onSaved?.(refreshed);
+
+      if (mode === 'client') {
+        await apiService.updateAthleteCard(data.id, payload);
+        setSnack('Сохранено');
+        setEditing(false);
+        setDraft({});
+        const refreshed = await apiService.getAthleteCard(data.id);
+        setData(refreshed);
+        onSaved?.(refreshed);
+      } else {
+        await apiService.updateClient(data.id, payload);
+        setSnack('Сохранено');
+        setEditing(false);
+        setDraft({});
+        const refreshed = await loadStaffCard(data.id);
+        setData(refreshed);
+        onSaved?.(refreshed);
+      }
     } catch (e: any) {
       setSnack(e?.response?.data?.error || 'Ошибка сохранения');
     } finally {

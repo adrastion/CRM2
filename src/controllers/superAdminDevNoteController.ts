@@ -101,12 +101,20 @@ function serializeNote(note: any, viewerId: string | null) {
   };
 }
 
+async function markActorRead(noteId: string, superAdminId: string, at: Date = new Date()) {
+  await prisma.superAdminDevNoteRead.upsert({
+    where: { noteId_superAdminId: { noteId, superAdminId } },
+    create: { noteId, superAdminId, readAt: at },
+    update: { readAt: at },
+  });
+}
+
 export async function sweepDevNotes() {
   const border = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // Все «Готово» без архива — в архив (в т.ч. старые без doneAt)
   await prisma.superAdminDevNote.updateMany({
     where: {
       status: 'DONE',
-      doneAt: { lte: border },
       archivedAt: null,
       deletedAt: null,
     },
@@ -127,6 +135,8 @@ export async function sweepDevNotes() {
  */
 export const listDevNotes = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const viewerId = getSuperAdminId(req);
+  // Сразу уводим «Готово» в архив (не ждём hourly cron)
+  await sweepDevNotes();
   const bucket = String(req.query.bucket || 'active');
   const statusFilter = req.query.status ? String(req.query.status) : null;
   const where: any = {};
@@ -222,11 +232,14 @@ export const createDevNote = asyncHandler(async (req: AuthenticatedRequest, res:
       lastEditedById: superAdminId,
       activityAt: now,
       doneAt: status === 'DONE' ? now : null,
+      archivedAt: status === 'DONE' ? now : null,
     },
     include: noteInclude,
   });
-  await notifyOthers(superAdminId, 'DEV_NOTE_CREATED', 'Новая заметка', title);
-  res.status(201).json({ success: true, data: serializeNote(note, superAdminId) });
+  if (superAdminId) await markActorRead(note.id, superAdminId, now);
+  const fresh = await prisma.superAdminDevNote.findUnique({ where: { id: note.id }, include: noteInclude });
+  await notifyOthers(superAdminId!, 'DEV_NOTE_CREATED', 'Новая заметка', title);
+  res.status(201).json({ success: true, data: serializeNote(fresh, superAdminId) });
 });
 
 export const updateDevNote = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -261,7 +274,10 @@ export const updateDevNote = asyncHandler(async (req: AuthenticatedRequest, res:
     }
     data.status = statusRaw as DevNoteStatus;
     statusChanged = data.status !== existing.status;
-    if (data.status === 'DONE' && existing.status !== 'DONE') data.doneAt = new Date();
+    if (data.status === 'DONE' && existing.status !== 'DONE') {
+      data.doneAt = new Date();
+      data.archivedAt = new Date();
+    }
     if (data.status !== 'DONE') {
       data.doneAt = null;
       data.archivedAt = null;
@@ -287,6 +303,7 @@ export const updateDevNote = asyncHandler(async (req: AuthenticatedRequest, res:
     include: noteInclude,
   });
   if (superAdminId) {
+    await markActorRead(id, superAdminId, new Date(note.activityAt || Date.now()));
     await notifyOthers(
       superAdminId,
       statusChanged ? 'DEV_NOTE_STATUS' : 'DEV_NOTE_UPDATED',
@@ -294,7 +311,8 @@ export const updateDevNote = asyncHandler(async (req: AuthenticatedRequest, res:
       note.title
     );
   }
-  res.json({ success: true, data: serializeNote(note, superAdminId) });
+  const fresh = await prisma.superAdminDevNote.findUnique({ where: { id }, include: noteInclude });
+  res.json({ success: true, data: serializeNote(fresh, superAdminId) });
 });
 
 export const deleteDevNote = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -380,13 +398,16 @@ export const addDevNoteComment = asyncHandler(async (req: AuthenticatedRequest, 
   await prisma.superAdminDevNoteComment.create({
     data: { noteId: id, authorId: superAdminId, body },
   });
+  const now = new Date();
   const note = await prisma.superAdminDevNote.update({
     where: { id },
-    data: { activityAt: new Date(), lastEditedById: superAdminId },
+    data: { activityAt: now, lastEditedById: superAdminId },
     include: noteInclude,
   });
+  await markActorRead(id, superAdminId, now);
   await notifyOthers(superAdminId, 'DEV_NOTE_COMMENT', 'Новое сообщение в обсуждении', existing.title);
-  res.status(201).json({ success: true, data: serializeNote(note, superAdminId) });
+  const fresh = await prisma.superAdminDevNote.findUnique({ where: { id }, include: noteInclude });
+  res.status(201).json({ success: true, data: serializeNote(fresh, superAdminId) });
 });
 
 export const listSaNotifications = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
@@ -467,10 +488,12 @@ export const uploadDevNoteAttachments = asyncHandler(
       });
     }
 
+    const now = new Date();
     await prisma.superAdminDevNote.update({
       where: { id: noteId },
-      data: { activityAt: new Date(), lastEditedById: superAdminId },
+      data: { activityAt: now, lastEditedById: superAdminId },
     });
+    await markActorRead(noteId, superAdminId, now);
 
     res.status(201).json({ success: true, data: created });
   }

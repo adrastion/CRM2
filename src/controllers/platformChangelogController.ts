@@ -68,27 +68,86 @@ function entryInclude() {
   };
 }
 
-/** SA / Tester — полный список. Автор только для SA. */
+/** Парсит publishedAt из body; при пустом — now. Невалидная дата → null. */
+function parsePublishedAt(raw: unknown, fallback: Date = new Date()): Date | null {
+  if (raw == null || raw === '') return fallback;
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function isPublished(publishedAt: Date, now: Date = new Date()): boolean {
+  return publishedAt.getTime() <= now.getTime();
+}
+
+async function sendChangelogPushIfDue(entry: {
+  id: string;
+  title: string;
+  audienceRoles: string[];
+  publishedAt: Date;
+  pushSentAt: Date | null;
+  createdById: string;
+}): Promise<void> {
+  if (entry.pushSentAt) return;
+  if (!isPublished(entry.publishedAt)) return;
+  try {
+    const { notifyChangelogPush } = await import('../services/actorPushService');
+    await notifyChangelogPush({
+      title: entry.title,
+      authorSuperAdminId: entry.createdById,
+      entryId: entry.id,
+      audienceRoles: entry.audienceRoles,
+    });
+    await prisma.platformChangelogEntry.update({
+      where: { id: entry.id },
+      data: { pushSentAt: new Date() },
+    });
+  } catch (e) {
+    console.error('changelog push notify error', e);
+  }
+}
+
+/** Cron: отложенные новости, у которых наступило время публикации. */
+export async function publishDueChangelogEntries(): Promise<number> {
+  const now = new Date();
+  const due = await prisma.platformChangelogEntry.findMany({
+    where: {
+      publishedAt: { lte: now },
+      pushSentAt: null,
+    },
+    take: 50,
+  });
+  for (const entry of due) {
+    await sendChangelogPushIfDue(entry);
+  }
+  return due.length;
+}
+
+/** SA / Tester — полный список (включая отложенные). Автор только для SA. */
 export const listPlatformChangelog = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const includeAuthor = Boolean((req as any).superAdmin);
   const entries = await prisma.platformChangelogEntry.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
     include: includeAuthor ? entryInclude() : undefined,
     take: 200,
   });
   res.json({ success: true, data: entries });
 });
 
-/** Лента для роли (школа / клиент / маркетолог) — без автора. */
+/** Лента для роли (школа / клиент / маркетолог) — без автора, только уже опубликованные. */
 export const listPlatformNewsForRole = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const role = String((req as any).newsAudienceRole || '').toUpperCase();
   if (!role) {
     res.status(400).json({ success: false, error: 'Роль не определена' });
     return;
   }
+  const now = new Date();
   const entries = await prisma.platformChangelogEntry.findMany({
-    where: { audienceRoles: { has: role } },
-    orderBy: { createdAt: 'desc' },
+    where: {
+      audienceRoles: { has: role },
+      publishedAt: { lte: now },
+    },
+    orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
     take: 100,
   });
   res.json({ success: true, data: entries });
@@ -106,6 +165,11 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
   // Пустой список = только супер-админы (они видят все новости без записи в audience)
   const audienceRoles = parseAudienceRoles(req.body?.audienceRoles);
   const tag = parseNewsTag(req.body?.tag) || 'update';
+  const publishedAt = parsePublishedAt(req.body?.publishedAt);
+  if (!publishedAt) {
+    res.status(400).json({ success: false, error: 'Некорректная дата публикации' });
+    return;
+  }
 
   const files = req.files as
     | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
@@ -127,21 +191,13 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
       tag,
       imageUrl,
       fileUrl,
+      publishedAt,
       createdById: superAdmin.id,
     },
     include: entryInclude(),
   });
 
-  void import('../services/actorPushService')
-    .then(({ notifyChangelogPush }) =>
-      notifyChangelogPush({
-        title: entry.title,
-        authorSuperAdminId: superAdmin.id,
-        entryId: entry.id,
-        audienceRoles: entry.audienceRoles,
-      })
-    )
-    .catch((e) => console.error('changelog push notify error', e));
+  void sendChangelogPushIfDue(entry);
 
   res.json({ success: true, data: entry });
 });
@@ -183,6 +239,18 @@ export const updatePlatformChangelog = asyncHandler(async (req: Request, res: Re
     }
     data.tag = tag;
   }
+  if (req.body?.publishedAt !== undefined) {
+    const publishedAt = parsePublishedAt(req.body.publishedAt, existing.publishedAt);
+    if (!publishedAt) {
+      res.status(400).json({ success: false, error: 'Некорректная дата публикации' });
+      return;
+    }
+    data.publishedAt = publishedAt;
+    // Перенос в будущее — снова ждать push; уже отправленный не шлём повторно при той же дате
+    if (!isPublished(publishedAt) && existing.pushSentAt) {
+      data.pushSentAt = null;
+    }
+  }
 
   const files = req.files as
     | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
@@ -203,6 +271,9 @@ export const updatePlatformChangelog = asyncHandler(async (req: Request, res: Re
     data,
     include: entryInclude(),
   });
+
+  void sendChangelogPushIfDue(entry);
+
   res.json({ success: true, data: entry });
 });
 
@@ -221,8 +292,10 @@ async function assertNewsAccess(req: Request, entryId: string): Promise<boolean>
   const entry = await prisma.platformChangelogEntry.findUnique({ where: { id: entryId } });
   if (!entry) return false;
 
-  // SA / Tester видят полный список новостей и вложения.
+  // SA / Tester видят полный список новостей и вложения (в т.ч. отложенные).
   if ((req as any).superAdmin || (req as any).tester) return true;
+
+  if (!isPublished(entry.publishedAt)) return false;
 
   const role = String(
     (req as any).newsAudienceRole || (req as AuthenticatedRequest).user?.role || ''

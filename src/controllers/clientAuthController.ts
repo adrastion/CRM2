@@ -5,7 +5,10 @@ import jwt from 'jsonwebtoken';
 import { ApiResponse } from '../types';
 import { asyncHandler } from '../middleware/errorHandler';
 import { BCRYPT_ROUNDS, LOGIN_FAILED_MESSAGE } from '../constants/security';
-import { sanitizeClientCertificateFields } from '../utils/clientCertificates';
+import {
+  resolveCertificateUpdate,
+  sanitizeClientCertificateFields,
+} from '../utils/clientCertificates';
 import { maybeSetAuthCookies } from '../middleware/authCookies';
 import {
   createAuthSession,
@@ -13,6 +16,7 @@ import {
   expiresAtFromTtl,
   revokeOtherAuthSessions,
 } from '../services/authSessionService';
+import { normalizeEmail } from '../utils/identifier';
 
 function normalizePhone(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -1292,6 +1296,240 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
       calendar: { trainings, competitions },
       userType,
     },
+  });
+});
+
+const PORTAL_CARD_MAX_PHOTO_CHARS = 3_500_000; // ~2.5MB raw
+
+/**
+ * Обновление карточки спортсмена из ЛК (свой / linked athlete).
+ * PUT /api/client-auth/athlete-card
+ */
+export const updateAthleteCard = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
+  }
+  const { clientId, tenantId } = resolved;
+
+  const existing = await prisma.client.findFirst({
+    where: { id: clientId, tenantId },
+  });
+  if (!existing) {
+    return res.status(404).json({ success: false, error: 'Спортсмен не найден' });
+  }
+
+  const body = (req.body || {}) as Record<string, unknown>;
+  const {
+    parents,
+    birthCertificate,
+    medicalCertificate,
+    firstName,
+    lastName,
+    middleName,
+    email,
+    phone,
+    dateOfBirth,
+    gender,
+    weight,
+    address,
+    photo,
+    discipline,
+    weightCategory,
+    birthCertificateNumber,
+    medicalCertificateNumber,
+    passportSeries,
+    passportNumber,
+    passportIssueDate,
+    passportIssuedBy,
+    passportDivisionCode,
+    passportBirthPlace,
+  } = body as any;
+
+  if (typeof photo === 'string' && photo.length > PORTAL_CARD_MAX_PHOTO_CHARS) {
+    return res.status(400).json({
+      success: false,
+      error: 'Фото слишком большое. Выберите изображение меньше 2 МБ',
+    });
+  }
+
+  if (Array.isArray(parents)) {
+    for (let i = 0; i < parents.length; i += 1) {
+      const p = parents[i] as any;
+      const name = String(p?.fullName || '').trim();
+      if (name.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: `У представителя ${i + 1} укажите ФИО (минимум 2 символа)`,
+        });
+      }
+      const rawEmail = typeof p?.email === 'string' ? p.email.trim() : '';
+      if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+        return res.status(400).json({
+          success: false,
+          error: `У представителя ${i + 1} некорректный email`,
+        });
+      }
+    }
+  }
+
+  const data: Record<string, unknown> = {};
+  if (firstName !== undefined) data.firstName = String(firstName || '').trim() || existing.firstName;
+  if (lastName !== undefined) data.lastName = String(lastName || '').trim() || existing.lastName;
+  if (middleName !== undefined) data.middleName = middleName ? String(middleName).trim() : null;
+  if (email !== undefined) {
+    const raw = typeof email === 'string' ? email.trim() : '';
+    data.email = raw ? normalizeEmail(raw) : null;
+  }
+  if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
+  if (dateOfBirth !== undefined) {
+    data.dateOfBirth = dateOfBirth ? new Date(String(dateOfBirth)) : null;
+  }
+  if (gender !== undefined) data.gender = gender || null;
+  if (weight !== undefined) {
+    if (weight === null || weight === '') data.weight = null;
+    else {
+      const num = Number(weight);
+      data.weight = Number.isFinite(num) ? num : null;
+    }
+  }
+  if (address !== undefined) data.address = address ? String(address).trim() : null;
+  if (photo !== undefined) data.photo = photo || null;
+  if (discipline !== undefined) data.discipline = discipline ? String(discipline).trim() : null;
+  if (weightCategory !== undefined) {
+    data.weightCategory = weightCategory ? String(weightCategory).trim() : null;
+  }
+  if (birthCertificateNumber !== undefined) {
+    data.birthCertificateNumber = birthCertificateNumber
+      ? String(birthCertificateNumber).trim()
+      : null;
+  }
+  if (medicalCertificateNumber !== undefined) {
+    data.medicalCertificateNumber = medicalCertificateNumber
+      ? String(medicalCertificateNumber).trim()
+      : null;
+  }
+  if (passportSeries !== undefined) {
+    data.passportSeries = passportSeries ? String(passportSeries).trim() : null;
+  }
+  if (passportNumber !== undefined) {
+    data.passportNumber = passportNumber ? String(passportNumber).trim() : null;
+  }
+  if (passportIssueDate !== undefined) {
+    data.passportIssueDate = passportIssueDate ? new Date(String(passportIssueDate)) : null;
+  }
+  if (passportIssuedBy !== undefined) {
+    data.passportIssuedBy = passportIssuedBy ? String(passportIssuedBy).trim() : null;
+  }
+  if (passportDivisionCode !== undefined) {
+    data.passportDivisionCode = passportDivisionCode
+      ? String(passportDivisionCode).trim()
+      : null;
+  }
+  if (passportBirthPlace !== undefined) {
+    data.passportBirthPlace = passportBirthPlace ? String(passportBirthPlace).trim() : null;
+  }
+
+  try {
+    if (birthCertificate !== undefined) {
+      const path = resolveCertificateUpdate(
+        tenantId,
+        clientId,
+        'birth',
+        birthCertificate,
+        existing.birthCertificate
+      );
+      if (path !== undefined) data.birthCertificate = path;
+    }
+    if (medicalCertificate !== undefined) {
+      const path = resolveCertificateUpdate(
+        tenantId,
+        clientId,
+        'medical',
+        medicalCertificate,
+        existing.medicalCertificate
+      );
+      if (path !== undefined) data.medicalCertificate = path;
+    }
+  } catch (e: any) {
+    return res.status(400).json({
+      success: false,
+      error: e?.message || 'Не удалось сохранить файл документа',
+    });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (Array.isArray(parents)) {
+      const existingParents = await tx.parent.findMany({
+        where: { clientId, tenantId },
+        select: { id: true },
+      });
+      const existingIds = new Set(existingParents.map((p) => p.id));
+      const keepIds = new Set<string>();
+
+      for (const parent of parents as any[]) {
+        const pid =
+          typeof parent?.id === 'string' && parent.id && !parent.id.startsWith('new-')
+            ? parent.id
+            : null;
+        const rawEmail = typeof parent?.email === 'string' ? parent.email.trim() : '';
+        const contact = {
+          fullName: String(parent?.fullName || '').trim(),
+          phone: parent?.phone || null,
+          email: rawEmail ? normalizeEmail(rawEmail) : null,
+          workplace: parent?.workplace || null,
+          workplaceContact: parent?.workplaceContact || null,
+          relationType: parent?.relationType || null,
+          isPrimaryContact: Boolean(parent?.isPrimaryContact),
+          tenantId,
+          isApproved: true,
+        };
+
+        if (pid && existingIds.has(pid)) {
+          keepIds.add(pid);
+          await tx.parent.update({
+            where: { id: pid },
+            data: contact,
+          });
+        } else {
+          await tx.parent.create({
+            data: {
+              ...contact,
+              clientId,
+            },
+          });
+        }
+      }
+
+      const toDelete = [...existingIds].filter((eid) => !keepIds.has(eid));
+      if (toDelete.length > 0) {
+        await tx.parent.deleteMany({
+          where: { id: { in: toDelete }, clientId, tenantId },
+        });
+      }
+    }
+
+    return tx.client.update({
+      where: { id: clientId },
+      data,
+      include: { parents: true },
+    });
+  });
+
+  const { password: _pw, ...safe } = updated as any;
+  const parentsSafe = (updated.parents || []).map((p: any) => {
+    const { password: _pp, ...rest } = p;
+    return rest;
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      ...sanitizeClientCertificateFields(safe as any),
+      parents: parentsSafe,
+      password: undefined,
+    },
+    message: 'Сохранено',
   });
 });
 

@@ -82,6 +82,7 @@ import {
   mskDateString,
 } from './services/siteAnalyticsService';
 import { sweepDevNotes } from './controllers/superAdminDevNoteController';
+import { publishDueChangelogEntries } from './controllers/platformChangelogController';
 import { applyScheduledMaintenance } from './services/maintenanceService';
 
 // Load .env from project root (works when cwd is not CRM2 or when using ts-node from src/)
@@ -477,6 +478,18 @@ httpServer.listen(PORT, () => {
   }, {
     timezone: process.env.TZ || 'Europe/Moscow',
   });
+
+  cron.schedule('* * * * *', async () => {
+    try {
+      const n = await publishDueChangelogEntries();
+      if (n > 0) console.log(`[Cron] Published ${n} scheduled changelog entr${n === 1 ? 'y' : 'ies'}`);
+    } catch (error) {
+      console.error('[Cron] Error publishing scheduled changelog:', error);
+    }
+  }, {
+    timezone: process.env.TZ || 'Europe/Moscow',
+  });
+  console.log('⏰ Scheduled platform news publish (every minute)');
   console.log('⏰ Scheduled maintenance check (every minute)');
 
   cron.schedule('25 * * * *', async () => {

@@ -98,7 +98,7 @@ const AthleteProfileHeader: React.FC<Props> = ({
         >
           {!photo && <PersonOutline sx={{ fontSize: 56, color: colors.primary }} />}
         </Avatar>
-        {mode === 'staff' && editing && (
+        {editing && (mode === 'staff' || mode === 'client') && (
           <>
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
             <IconButton
@@ -125,7 +125,7 @@ const AthleteProfileHeader: React.FC<Props> = ({
       </Box>
 
       <Box sx={{ flex: 1, width: '100%', minWidth: 0 }}>
-        {editing && mode === 'staff' ? (
+        {editing && (mode === 'staff' || mode === 'client') ? (
           <Stack spacing={1.5}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
@@ -214,20 +214,22 @@ const AthleteProfileHeader: React.FC<Props> = ({
                 onChange={(e) => onDraftChange({ weightCategory: e.target.value })}
                 fullWidth
               />
-              <TextField
-                size="small"
-                select
-                label="Статус"
-                value={draft.athleteStatus ?? data.athleteStatus ?? 'active'}
-                onChange={(e) => onDraftChange({ athleteStatus: e.target.value })}
-                fullWidth
-              >
-                {Object.entries(ATHLETE_STATUS_LABELS).map(([k, v]) => (
-                  <MenuItem key={k} value={k}>
-                    {v}
-                  </MenuItem>
-                ))}
-              </TextField>
+              {mode === 'staff' && (
+                <TextField
+                  size="small"
+                  select
+                  label="Статус"
+                  value={draft.athleteStatus ?? data.athleteStatus ?? 'active'}
+                  onChange={(e) => onDraftChange({ athleteStatus: e.target.value })}
+                  fullWidth
+                >
+                  {Object.entries(ATHLETE_STATUS_LABELS).map(([k, v]) => (
+                    <MenuItem key={k} value={k}>
+                      {v}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
             </Stack>
           </Stack>
         ) : (

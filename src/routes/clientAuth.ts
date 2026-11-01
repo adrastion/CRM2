@@ -8,6 +8,7 @@ import {
   findParentsForRegistration,
   registerParent,
   getAthleteCard,
+  updateAthleteCard,
   getClientCalendarPlan,
   getClientPayments,
   getPortalPaymentMethods,
@@ -150,6 +151,7 @@ router.post('/change-password', authenticateClient, changePortalPassword);
 router.get('/profile', authenticateClient, getClientProfile);
 router.get('/trainings', authenticateClient, getClientTrainings);
 router.get('/athlete-card', authenticateClient, getAthleteCard);
+router.put('/athlete-card', authenticateClient, updateAthleteCard);
 router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
 router.get('/payment-methods', authenticateClient, getPortalPaymentMethods);

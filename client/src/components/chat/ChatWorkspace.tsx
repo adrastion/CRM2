@@ -383,7 +383,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   useEffect(() => {
     if (mode === 'platform') {
       setEditLimitMinutes(0);
-      return;
     }
     const timer = window.setInterval(() => setNowTick(Date.now()), 30_000);
     return () => window.clearInterval(timer);
@@ -396,6 +395,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const showTasksTab = mode === 'staff' || threads.some((t) => TASK_TYPES.has(t.type));
 
   const categoryTabs = useMemo(() => {
+    // Платформенные чаты SA/тестеров — без школьных категорий «Личные/Группы»
+    if (mode === 'platform') {
+      return [{ id: 'all' as ChatCategory, label: 'Все' }];
+    }
     const tabs: Array<{ id: ChatCategory; label: string }> = [
       { id: 'all', label: 'Все' },
       { id: 'personal', label: 'Личные' },
@@ -403,7 +406,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     ];
     if (showTasksTab) tabs.push({ id: 'tasks', label: 'Задачи' });
     return tabs;
-  }, [showTasksTab]);
+  }, [showTasksTab, mode]);
 
   useEffect(() => {
     if (category === 'tasks' && !showTasksTab) setCategory('all');

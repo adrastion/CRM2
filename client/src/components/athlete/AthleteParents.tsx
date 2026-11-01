@@ -40,7 +40,7 @@ const emptyParent = (): Parent =>
   }) as Parent;
 
 const AthleteParents: React.FC<Props> = ({ parents, mode, editing, onChange, onRemoveConfirm }) => {
-  const canEdit = mode === 'staff' && editing;
+  const canEdit = editing && (mode === 'staff' || mode === 'client');
 
   return (
     <Box

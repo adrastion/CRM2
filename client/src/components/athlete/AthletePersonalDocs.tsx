@@ -167,7 +167,7 @@ const AthletePersonalDocs: React.FC<Props> = ({
         Защищённый блок персональных сведений
       </Typography>
 
-      {editing && mode === 'staff' ? (
+      {editing && (mode === 'staff' || mode === 'client') ? (
         <Stack spacing={1.5}>
           <TextField
             size="small"

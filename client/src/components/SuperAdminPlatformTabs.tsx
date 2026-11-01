@@ -49,11 +49,31 @@ interface ChangelogEntry {
   title: string;
   body: string;
   createdAt: string;
+  publishedAt?: string;
+  pushSentAt?: string | null;
   tag?: string | null;
   audienceRoles?: string[];
   imageUrl?: string | null;
   fileUrl?: string | null;
   createdBy?: { firstName?: string; lastName?: string; email?: string };
+}
+
+/** datetime-local value in local TZ from ISO/Date. */
+function toDatetimeLocalValue(iso?: string | null): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(local: string): string {
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+function isScheduledNews(entry: ChangelogEntry, now = Date.now()): boolean {
+  const at = entry.publishedAt || entry.createdAt;
+  return new Date(at).getTime() > now;
 }
 
 const NewsCardPreview: React.FC<{
@@ -223,6 +243,7 @@ export const SuperAdminPlatformChatsTab: React.FC = () => {
       mode="platform"
       socketToken={token}
       self={{ kind: 'SUPER_ADMIN', id: superAdmin.id }}
+      immersiveMobile
     />
   );
 };
@@ -244,6 +265,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
   const [clearFile, setClearFile] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [existingImagePreview, setExistingImagePreview] = useState<string | null>(null);
+  const [publishedAtLocal, setPublishedAtLocal] = useState(() => toDatetimeLocalValue());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -307,6 +329,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setDocFile(null);
     setClearImage(false);
     setClearFile(false);
+    setPublishedAtLocal(toDatetimeLocalValue());
     setDialogOpen(true);
   };
 
@@ -320,6 +343,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setDocFile(null);
     setClearImage(false);
     setClearFile(false);
+    setPublishedAtLocal(toDatetimeLocalValue(entry.publishedAt || entry.createdAt));
     setDialogOpen(true);
   };
 
@@ -334,14 +358,20 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
 
   const handleSave = async () => {
     if (!title.trim() || !body.trim()) return;
+    if (!publishedAtLocal) {
+      setError('Укажите дату и время публикации');
+      return;
+    }
     setSaving(true);
     try {
+      const publishedAt = fromDatetimeLocalValue(publishedAtLocal);
       if (editing) {
         await apiService.updatePlatformChangelog(editing.id, {
           title: title.trim(),
           body: body.trim(),
           audienceRoles,
           tag,
+          publishedAt,
           image: imageFile,
           file: docFile,
           clearImage,
@@ -353,6 +383,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           body: body.trim(),
           audienceRoles,
           tag,
+          publishedAt,
           image: imageFile,
           file: docFile,
         });
@@ -422,12 +453,27 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
                       />
                     );
                   })()}
+                  {isScheduledNews(e) && (
+                    <Chip
+                      size="small"
+                      label={`Отложено до ${new Date(e.publishedAt || e.createdAt).toLocaleString('ru-RU')}`}
+                      sx={{
+                        height: 22,
+                        fontWeight: 700,
+                        fontSize: 11,
+                        bgcolor: 'rgba(245, 158, 11, 0.16)',
+                        color: '#B45309',
+                      }}
+                    />
+                  )}
                   <Typography variant="h6" fontWeight={700}>
                     {e.title}
                   </Typography>
                 </Box>
                 <Typography variant="caption" color="text.secondary">
-                  {new Date(e.createdAt).toLocaleString('ru-RU')}
+                  {isScheduledNews(e)
+                    ? `Публикация: ${new Date(e.publishedAt || e.createdAt).toLocaleString('ru-RU')}`
+                    : `Опубликовано: ${new Date(e.publishedAt || e.createdAt).toLocaleString('ru-RU')}`}
                   {e.createdBy
                     ? ` · ${
                         [e.createdBy.lastName, e.createdBy.firstName].filter(Boolean).join(' ') ||
@@ -524,6 +570,20 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
             minRows={4}
             sx={{ mb: 2 }}
           />
+          <TextField
+            fullWidth
+            type="datetime-local"
+            label="Дата и время публикации"
+            value={publishedAtLocal}
+            onChange={(ev) => setPublishedAtLocal(ev.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+            helperText={
+              publishedAtLocal && new Date(publishedAtLocal).getTime() > Date.now()
+                ? 'Отложенная публикация: аудитория увидит новость в указанное время, push уйдёт тогда же'
+                : 'Оставить текущее время — опубликовать сразу'
+            }
+          />
           <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
             Аудитория
           </Typography>
@@ -611,7 +671,13 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
             onClick={handleSave}
             disabled={saving || !title.trim() || !body.trim()}
           >
-            {saving ? <CircularProgress size={20} /> : 'Сохранить'}
+            {saving ? (
+              <CircularProgress size={20} />
+            ) : publishedAtLocal && new Date(publishedAtLocal).getTime() > Date.now()
+              ? editing
+                ? 'Сохранить отложенную'
+                : 'Запланировать'
+              : 'Опубликовать'}
           </Button>
         </DialogActions>
       </Dialog>

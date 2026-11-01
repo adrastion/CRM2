@@ -1466,7 +1466,19 @@ const AdminDashboard: React.FC = () => {
 
       {section === 'client-ideas' && <SuperAdminClientIdeasTab />}
 
-      {section === 'chats' && <SuperAdminPlatformChatsTab />}
+      {section === 'chats' && (
+        <Box
+          sx={{
+            height: { xs: 'calc(100dvh - 160px)', md: 'calc(100vh - 180px)' },
+            minHeight: 420,
+            mx: { xs: -1, md: 0 },
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <SuperAdminPlatformChatsTab />
+        </Box>
+      )}
 
       {section === 'changelog' && <SuperAdminPlatformChangelogTab />}
 
