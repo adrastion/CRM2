@@ -62,6 +62,7 @@ const registerSchema = Joi.object({
   lastName: Joi.string().min(2).max(50).required(),
   phone: phoneSchema,
   refCode: Joi.string().trim().max(64).allow('', null).optional(),
+  promoCode: Joi.string().trim().max(64).allow('', null).optional(),
   referralCode: Joi.string().trim().max(64).allow('', null).optional(),
 });
 
@@ -144,12 +145,23 @@ const changeEmailSchema = Joi.object({
 export const register = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const result = await AuthService.registerTenant(req.body);
   const refCode = (req.body as any)?.refCode || (req.body as any)?.referralCode;
-  if (refCode && result?.tenant?.id) {
-    try {
-      const { applyReferralConversion } = await import('../services/referralConversionService');
-      await applyReferralConversion(String(refCode), result.tenant.id);
-    } catch (e) {
-      console.error('Referral conversion on register failed:', e);
+  const promoCode = (req.body as any)?.promoCode;
+  if (result?.tenant?.id) {
+    if (refCode) {
+      try {
+        const { applyReferralConversion } = await import('../services/referralConversionService');
+        await applyReferralConversion(String(refCode), result.tenant.id);
+      } catch (e) {
+        console.error('Referral conversion on register failed:', e);
+      }
+    }
+    if (promoCode) {
+      try {
+        const { applyPromoCodeAttribution } = await import('../services/referralConversionService');
+        await applyPromoCodeAttribution(String(promoCode), result.tenant.id);
+      } catch (e) {
+        console.error('Promo attribution on register failed:', e);
+      }
     }
   }
   maybeSetAuthCookies(res, result);

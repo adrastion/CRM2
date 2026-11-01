@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import { apiService } from '../../services/api';
+import MarketerActPdfDialog from '../marketer/MarketerActPdfDialog';
 
 type Row = {
   id: string;
@@ -31,7 +32,12 @@ type Row = {
   signedAt?: string | null;
   dueAt?: string | null;
   createdAt: string;
-  document?: { id: string; title?: string } | null;
+  document?: {
+    id: string;
+    title?: string;
+    signedAt?: string | null;
+    hasSignedCopy?: boolean;
+  } | null;
   npdReceipt?: { id: string; uploadedAt: string; originalName?: string | null } | null;
   marketer?: { id: string; name: string; email: string };
 };
@@ -63,6 +69,15 @@ const MarketerPayoutQueue: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState<Row | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [actViewer, setActViewer] = useState<{
+    payoutId: string;
+    title?: string;
+  } | null>(null);
+
+  const loadActBlob = useCallback(async () => {
+    if (!actViewer) throw new Error('Нет документа');
+    return apiService.adminDownloadMarketerPayoutDocumentBlob(actViewer.payoutId, 'auto');
+  }, [actViewer]);
 
   const load = useCallback(async () => {
     try {
@@ -205,10 +220,20 @@ const MarketerPayoutQueue: React.FC = () => {
                     <Button
                       size="small"
                       disabled={busyId === row.id || !row.document}
+                      onClick={() =>
+                        setActViewer({ payoutId: row.id, title: row.document?.title })
+                      }
+                      sx={{ mr: 1, textTransform: 'none' }}
+                    >
+                      Смотреть
+                    </Button>
+                    <Button
+                      size="small"
+                      disabled={busyId === row.id || !row.document}
                       onClick={() => void downloadAct(row)}
                       sx={{ mr: 1, textTransform: 'none' }}
                     >
-                      Акт
+                      Скачать
                     </Button>
                     <Button
                       size="small"
@@ -280,10 +305,20 @@ const MarketerPayoutQueue: React.FC = () => {
                       <Button
                         size="small"
                         disabled={busyId === row.id || !row.document}
+                        onClick={() =>
+                          setActViewer({ payoutId: row.id, title: row.document?.title })
+                        }
+                        sx={{ mr: 1, textTransform: 'none' }}
+                      >
+                        Смотреть
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={busyId === row.id || !row.document}
                         onClick={() => void downloadAct(row)}
                         sx={{ mr: 1, textTransform: 'none' }}
                       >
-                        Акт
+                        Скачать
                       </Button>
                       <Button
                         size="small"
@@ -324,6 +359,14 @@ const MarketerPayoutQueue: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <MarketerActPdfDialog
+        open={Boolean(actViewer)}
+        onClose={() => setActViewer(null)}
+        title={actViewer?.title || 'Акт на вывод'}
+        statusLabel="Подписанная копия"
+        loadBlob={loadActBlob}
+      />
     </Paper>
   );
 };

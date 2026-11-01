@@ -13,7 +13,6 @@ const LEAD_STATUSES = new Set(['NEW', 'IN_PROGRESS', 'CONVERTED', 'LOST']);
 const TASK_STATUSES = new Set(['OPEN', 'DONE', 'CANCELLED']);
 const TASK_KINDS = new Set(['TASK', 'CALL', 'OTHER']);
 const CHAT_CHANNELS = new Set(['SUPPORT', 'ACCOUNTING']);
-const PUB_TYPES = new Set(['NEWS', 'PROMO', 'BANNER', 'POSTER', 'UPDATE']);
 
 function isPaidPlan(planType?: string | null): boolean {
   if (!planType) return false;
@@ -128,7 +127,7 @@ export class MarketerCabinetService {
   static async getDashboard(marketerId: string) {
     await this.ensureAdvertisingLink(marketerId);
 
-    const [leads, schools, urgentTasks, publications, accruals, docs, marketer, promoCodes, referralLinks, pendingClicks, pendingClicksCount] =
+    const [leads, schools, urgentTasks, accruals, docs, marketer, promoCodes, referralLinks, pendingClicks, pendingClicksCount] =
       await Promise.all([
         prisma.marketerLead.count({ where: { marketerId } }),
         prisma.tenantMarketer.findMany({
@@ -148,11 +147,6 @@ export class MarketerCabinetService {
           },
           orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
           take: 8,
-        }),
-        prisma.platformPublication.findMany({
-          where: { isActive: true },
-          orderBy: { publishedAt: 'desc' },
-          take: 5,
         }),
         prisma.marketerCommissionLedger.findMany({
           where: { marketerId, kind: 'ACCRUAL' },
@@ -340,6 +334,20 @@ export class MarketerCabinetService {
           const primary = referralLinks.find((l) => l.isActive) || referralLinks[0];
           return primary ? { code: primary.code, path: `/ref/${primary.code}` } : null;
         })(),
+        /** Только если SA назначил личный промокод — иначе null (UI не показывает блок). */
+        personalPromo: (() => {
+          const p = promoCodes.find((c) => c.isActive) || promoCodes[0];
+          if (!p) return null;
+          return {
+            code: p.code,
+            discountType: p.discountType,
+            discountValue: Number(p.discountValue),
+            description: p.description,
+            usedCount: p.usedCount,
+            usageLimit: p.usageLimit,
+            validUntil: p.validUntil,
+          };
+        })(),
       },
       activity,
       balance: Number(marketer?.balance || 0),
@@ -372,7 +380,6 @@ export class MarketerCabinetService {
         linkName: c.referralLink.name,
       })),
       urgentTasks,
-      publications,
       recentAccruals: accruals.map((a) => ({
         ...a,
         amount: Number(a.amount),
@@ -404,10 +411,26 @@ export class MarketerCabinetService {
         serializeSchoolClient(marketerId, s, riskRanks.get(s.tenantId) || null)
       )
     );
+    const personalPromoRow = await prisma.promoCode.findFirst({
+      where: { marketerId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     return {
       leads: leads.map(serializeLead),
       schools: schoolRows,
       adLink: adLinkRow ? { code: adLinkRow.code, path: `/ref/${adLinkRow.code}` } : null,
+      personalPromo: personalPromoRow
+        ? {
+            code: personalPromoRow.code,
+            discountType: personalPromoRow.discountType,
+            discountValue: Number(personalPromoRow.discountValue),
+            description: personalPromoRow.description,
+            usedCount: personalPromoRow.usedCount,
+            usageLimit: personalPromoRow.usageLimit,
+            validUntil: personalPromoRow.validUntil,
+          }
+        : null,
     };
   }
 
@@ -812,14 +835,6 @@ export class MarketerCabinetService {
     };
   }
 
-  static async listPublications() {
-    return prisma.platformPublication.findMany({
-      where: { isActive: true },
-      orderBy: { publishedAt: 'desc' },
-      take: 100,
-    });
-  }
-
   static async listClosingDocs(marketerId: string) {
     return prisma.marketerClosingDoc.findMany({
       where: { OR: [{ marketerId }, { marketerId: null }] },
@@ -1021,35 +1036,6 @@ export class MarketerCabinetService {
       if (e?.code === 'P2002') return;
       throw e;
     }
-  }
-
-  /** SA: create publication */
-  static async createPublication(
-    superAdminId: string,
-    input: {
-      type: string;
-      title: string;
-      body: string;
-      imageUrl?: string;
-      fileUrl?: string;
-      isActive?: boolean;
-    }
-  ) {
-    if (!PUB_TYPES.has(input.type)) throw badRequest('Некорректный тип', 'type');
-    const title = String(input.title || '').trim();
-    const body = String(input.body || '').trim();
-    if (!title || !body) throw badRequest('Заголовок и текст обязательны');
-    return prisma.platformPublication.create({
-      data: {
-        type: input.type,
-        title,
-        body,
-        imageUrl: input.imageUrl || null,
-        fileUrl: input.fileUrl || null,
-        isActive: input.isActive !== false,
-        createdBySuperAdminId: superAdminId,
-      },
-    });
   }
 
   static async createClosingDoc(

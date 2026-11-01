@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Typography, type SxProps, type Theme } from '@mui/material';
 import { ContentCopy, LinkOutlined } from '@mui/icons-material';
 import { adLinkUrl } from '../../utils/refCode';
 import { marketerCardSx, marketerRadii } from './marketerUi';
@@ -8,8 +8,9 @@ type AdLink = { code?: string; path?: string } | null | undefined;
 
 type Props = {
   adLink?: AdLink;
-  /** card — блок на Главной; strip — компактная полоска в Мои организации */
+  /** card — блок на Главной; strip — компактная полоска */
   variant?: 'card' | 'strip';
+  sx?: SxProps<Theme>;
 };
 
 function resolveUrl(adLink: AdLink): string {
@@ -36,7 +37,7 @@ function displayHostPath(url: string): string {
  * Ссылка /ref/:code для приглашения школ (не путать с /join для команды).
  * Атрибуция сохраняется ~90 дней, даже если регистрация позже с прямого домена.
  */
-const MarketerSchoolRefLink: React.FC<Props> = ({ adLink, variant = 'card' }) => {
+const MarketerSchoolRefLink: React.FC<Props> = ({ adLink, variant = 'card', sx }) => {
   const [copied, setCopied] = useState(false);
   const url = useMemo(() => resolveUrl(adLink), [adLink]);
   const display = useMemo(() => displayHostPath(url), [url]);
@@ -55,15 +56,19 @@ const MarketerSchoolRefLink: React.FC<Props> = ({ adLink, variant = 'card' }) =>
   if (variant === 'strip') {
     return (
       <Box
-        sx={{
-          ...marketerCardSx,
-          p: { xs: 1.5, md: '14px 18px' },
-          mb: 2.5,
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'stretch', sm: 'center' },
-          gap: { xs: 1.25, sm: 2 },
-        }}
+        sx={[
+          {
+            ...marketerCardSx,
+            p: { xs: 1.5, md: '14px 18px' },
+            mb: 2.5,
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: { xs: 1.25, sm: 2 },
+            minWidth: 0,
+          },
+          ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+        ]}
       >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, flex: 1, minWidth: 0 }}>
           <Box
@@ -83,10 +88,10 @@ const MarketerSchoolRefLink: React.FC<Props> = ({ adLink, variant = 'card' }) =>
           </Box>
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 13, color: '#13213a', lineHeight: 1.3 }}>
-              Ссылка для школ
+              Пригласить организацию
             </Typography>
             <Typography sx={{ fontSize: 11, color: '#7a889e', mt: 0.35, lineHeight: 1.45 }}>
-              Отправьте владельцу — закрепление сохранится ~90 дней, даже если регистрация позже.
+              Ссылка для школ · закрепление ~90 дней
             </Typography>
             <Typography
               component="code"
@@ -131,7 +136,12 @@ const MarketerSchoolRefLink: React.FC<Props> = ({ adLink, variant = 'card' }) =>
   }
 
   return (
-    <Box sx={{ ...marketerCardSx, p: { xs: 2, md: '21px 21px 19px' } }}>
+    <Box
+      sx={[
+        { ...marketerCardSx, p: { xs: 2, md: '21px 21px 19px' }, minWidth: 0 },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+      ]}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, mb: 0.75 }}>
         <Box
           sx={{

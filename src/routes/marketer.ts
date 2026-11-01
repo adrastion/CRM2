@@ -24,10 +24,7 @@ import {
   listMarketerChatMessages,
   postMarketerChatMessage,
   getMarketerFinance,
-  listMarketerPublications,
   listMarketerClosingDocs,
-  downloadMarketerPublicationImage,
-  downloadMarketerPublicationFile,
   downloadMarketerClosingDoc,
   updateMarketerBankDetails,
   createMarketerPayout,
@@ -37,6 +34,7 @@ import {
   downloadMarketerPayoutDocument,
   uploadMarketerNpdReceipt,
   downloadMarketerNpdReceipt,
+  downloadMarketerLegalDocPersonal,
   getMarketerTeam,
   getMarketerInvite,
   resolveMarketerInvitePublic,
@@ -117,11 +115,9 @@ router.post(
   uploadMarketerNpdReceipt
 );
 router.get('/me/payouts/:id/npd-receipt', authenticateMarketer, downloadMarketerNpdReceipt);
-router.get('/me/publications', authenticateMarketer, listMarketerPublications);
-router.get('/me/publications/:id/image', authenticateMarketer, downloadMarketerPublicationImage);
-router.get('/me/publications/:id/file', authenticateMarketer, downloadMarketerPublicationFile);
 router.get('/me/closing-docs', authenticateMarketer, listMarketerClosingDocs);
 router.get('/me/closing-docs/:id/file', authenticateMarketer, downloadMarketerClosingDoc);
+router.get('/me/legal-docs/:key', authenticateMarketer, downloadMarketerLegalDocPersonal);
 
 /** Новости платформы для маркетолога. */
 router.get('/me/news', authenticateMarketer, attachMarketerNewsRole, listPlatformNewsForRole);

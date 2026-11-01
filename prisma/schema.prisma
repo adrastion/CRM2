@@ -1260,19 +1260,23 @@ model MarketerPayoutRequest {
 
 /// Закрывающий акт заявки + журнал ПЭП
 model MarketerPayoutDocument {
-  id             String                @id @default(cuid())
-  payoutId       String                @unique
-  title          String
-  fileUrl        String
-  contentHash    String
-  signerEmail    String?
-  codeSentAt     DateTime?
-  signedAt       DateTime?
-  signIp         String?
-  signUserAgent  String?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  payout         MarketerPayoutRequest @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  id                 String                @id @default(cuid())
+  payoutId           String                @unique
+  title              String
+  /// Черновик акта (до подписи)
+  fileUrl            String
+  contentHash        String
+  /// Подписанная копия со штампом ПЭП
+  signedFileUrl      String?
+  signedContentHash  String?
+  signerEmail        String?
+  codeSentAt         DateTime?
+  signedAt           DateTime?
+  signIp             String?
+  signUserAgent      String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  payout             MarketerPayoutRequest @relation(fields: [payoutId], references: [id], onDelete: Cascade)
 
   @@map("marketer_payout_documents")
 }
@@ -2521,15 +2525,18 @@ model SupportAutoReplyAttachment {
 /// PDF-договоры / согласия маркетолога (управляются из кабинета SA)
 model MarketerLegalDocument {
   id           String   @id @default(cuid())
-  /// Стабильный ключ: agency | personal-data | nda | npd-payouts
+  /// Стабильный ключ: offer | programRules | pep | pdn | npdPayouts | actTemplate | legalChecklist
   key          String   @unique
   title        String
-  /// Имя файла в URL (например agency-agreement.pdf)
+  /// Имя файла в URL (например offer.pdf)
   fileName     String
   mimeType     String   @default("application/pdf")
-  size         Int
-  storagePath  String
-  /// Версия конкретного файла (дата загрузки)
+  size         Int      @default(0)
+  /// Сгенерированный или загруженный PDF (может отсутствовать, пока есть только bodyText)
+  storagePath  String?
+  /// Редактируемый текст шаблона (плейсхолдеры {{operator.*}}, {{marketer.*}}, …)
+  bodyText     String?  @db.Text
+  /// Версия конкретного файла / текста
   version      String
   sortOrder    Int      @default(0)
   uploadedById String?

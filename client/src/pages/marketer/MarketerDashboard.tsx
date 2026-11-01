@@ -20,7 +20,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { apiService } from '../../services/api';
 import { colors } from '../../theme/tokens';
 import { marketerCardSx, marketerRadii } from './marketerUi';
-import MarketerSchoolRefLink from './MarketerSchoolRefLink';
+import MarketerInviteTools from './MarketerInviteTools';
 
 const money = (n: number) =>
   new Intl.NumberFormat('ru-RU', {
@@ -418,6 +418,8 @@ const MarketerDashboard: React.FC = () => {
         ))}
       </Box>
 
+      <MarketerInviteTools adLink={home.adLink} promo={home.personalPromo} />
+
       <Box
         sx={{
           display: 'grid',
@@ -588,8 +590,6 @@ const MarketerDashboard: React.FC = () => {
         </Box>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.25 }}>
-          <MarketerSchoolRefLink adLink={home.adLink} variant="card" />
-
           <Box sx={{ ...cardSx, p: { xs: 2, md: '21px 21px 19px' } }}>
             <Typography sx={{ fontWeight: 800, fontSize: 16, color: '#13213a' }}>Моя команда</Typography>
             <Typography sx={{ fontSize: 11, color: '#8390a4', mt: 0.75, mb: 1.5 }}>
@@ -687,7 +687,7 @@ const MarketerDashboard: React.FC = () => {
               <Box component="b" sx={{ fontWeight: 700 }}>
                 7 рабочих дней
               </Box>{' '}
-              после подписания закрывающих документов по СМС.
+              после подписания закрывающих документов письмом на электронную почту.
             </Typography>
             <Link
               component={RouterLink}

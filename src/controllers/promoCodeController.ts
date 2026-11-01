@@ -117,6 +117,14 @@ export const getPromoCode = asyncHandler(async (req: AuthenticatedRequest, res: 
 
 export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const scope = getActorScope(req);
+  /** Личные промокоды маркетолога создаёт только SA/PCA — не сам маркетолог. */
+  if (scope.kind === 'marketer') {
+    res.status(403).json({
+      success: false,
+      error: 'Личный промокод назначается из кабинета супер-админа',
+    });
+    return;
+  }
   const {
     code,
     description,
@@ -131,8 +139,7 @@ export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, re
     isActive = true,
   } = req.body;
 
-  const marketerId =
-    scope.kind === 'marketer' ? scope.marketerId : providedMarketerId || null;
+  const marketerId = providedMarketerId || null;
 
   const normalizedCode = String(code || '')
     .trim()
@@ -182,6 +189,13 @@ export const createPromoCode = asyncHandler(async (req: AuthenticatedRequest, re
 
 export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const scope = getActorScope(req);
+  if (scope.kind === 'marketer') {
+    res.status(403).json({
+      success: false,
+      error: 'Изменение промокода доступно только супер-админу',
+    });
+    return;
+  }
   const { id } = req.params;
   const {
     code,
@@ -200,14 +214,6 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
   const existing = await prisma.promoCode.findFirst({ where: listWhere(scope, { id }) });
   if (!existing) {
     res.status(404).json({ success: false, error: 'Промокод не найден' });
-    return;
-  }
-
-  if (scope.kind === 'marketer' && existing.marketerId !== scope.marketerId) {
-    res.status(403).json({
-      success: false,
-      error: 'Доступ запрещен. Вы можете редактировать только свои промокоды.',
-    });
     return;
   }
 
@@ -257,19 +263,18 @@ export const updatePromoCode = asyncHandler(async (req: AuthenticatedRequest, re
 
 export const deletePromoCode = asyncHandler(async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
   const scope = getActorScope(req);
+  if (scope.kind === 'marketer') {
+    res.status(403).json({
+      success: false,
+      error: 'Удаление промокода доступно только супер-админу',
+    });
+    return;
+  }
   const { id } = req.params;
 
   const promoCode = await prisma.promoCode.findFirst({ where: listWhere(scope, { id }) });
   if (!promoCode) {
     res.status(404).json({ success: false, error: 'Промокод не найден' });
-    return;
-  }
-
-  if (scope.kind === 'marketer' && promoCode.marketerId !== scope.marketerId) {
-    res.status(403).json({
-      success: false,
-      error: 'Доступ запрещен. Вы можете удалять только свои промокоды.',
-    });
     return;
   }
 

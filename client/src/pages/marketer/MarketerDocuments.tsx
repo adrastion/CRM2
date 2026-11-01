@@ -7,8 +7,9 @@ import {
   Link,
   Typography,
 } from '@mui/material';
-import { Download, DescriptionOutlined } from '@mui/icons-material';
+import { Download, DescriptionOutlined, VisibilityOutlined } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import MarketerActPdfDialog from '../../components/marketer/MarketerActPdfDialog';
 import { colors, typography } from '../../theme/tokens';
 
 const cardSx = {
@@ -44,27 +45,43 @@ type PayoutRequest = {
   id: string;
   amount: number;
   status: string;
-  document?: { title?: string } | null;
+  signedAt?: string | null;
+  document?: {
+    title?: string;
+    signedAt?: string | null;
+    hasSignedCopy?: boolean;
+  } | null;
   npdReceipt?: { originalName?: string | null; uploadedAt?: string } | null;
 };
 
-const LEGAL_LINKS = [
-  { href: '/api/legal/marketer/npdPayouts', label: 'Порядок выплат и чеков НПД' },
-];
+type LegalPackDoc = { key: string; title: string; url: string; onboarding: boolean };
 
 const MarketerDocuments: React.FC = () => {
   const [closingDocs, setClosingDocs] = useState<ClosingDoc[]>([]);
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
+  const [legalPack, setLegalPack] = useState<LegalPackDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actViewer, setActViewer] = useState<{
+    payoutId: string;
+    title?: string;
+    signed?: boolean;
+  } | null>(null);
+
+  const loadActBlob = useCallback(async () => {
+    if (!actViewer) throw new Error('Нет документа');
+    return apiService.downloadMarketerPayoutDocumentBlob(actViewer.payoutId, 'auto');
+  }, [actViewer]);
 
   const reload = useCallback(async () => {
-    const [finance, docs] = await Promise.all([
+    const [finance, docs, legal] = await Promise.all([
       apiService.getMarketerFinance(),
       apiService.getMarketerClosingDocs().catch(() => []),
+      apiService.getPublicMarketerLegalDocs().catch(() => ({ documents: [] as LegalPackDoc[] })),
     ]);
     setPayouts(finance?.payouts || []);
     setClosingDocs(docs || []);
+    setLegalPack(legal?.documents || []);
   }, []);
 
   useEffect(() => {
@@ -121,6 +138,17 @@ const MarketerDocuments: React.FC = () => {
     }
   };
 
+  const openPersonalLegal = async (key: string, title: string) => {
+    try {
+      const blob = await apiService.downloadMarketerLegalDocPersonalBlob(key);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || `Не удалось открыть «${title}»`);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" py={6}>
@@ -131,7 +159,11 @@ const MarketerDocuments: React.FC = () => {
 
   const acts = payouts.filter((p) => p.document);
   const receipts = payouts.filter((p) => p.npdReceipt);
-  const empty = acts.length === 0 && receipts.length === 0 && closingDocs.length === 0;
+  const empty =
+    acts.length === 0 &&
+    receipts.length === 0 &&
+    closingDocs.length === 0 &&
+    legalPack.length === 0;
 
   return (
     <Box sx={{ width: '100%', minWidth: 0, pb: 4 }}>
@@ -151,25 +183,54 @@ const MarketerDocuments: React.FC = () => {
           Документы
         </Typography>
         <Typography sx={{ fontSize: typography.label, color: colors.textMuted, mt: 0.75, maxWidth: 560 }}>
-          Акты выплат, чеки НПД и закрывающие документы партнёрской программы.
+          Юридический пакет, акты выплат, чеки НПД и закрывающие документы.
         </Typography>
       </Box>
 
       <Box sx={{ ...cardSx, p: { xs: 2, md: 2.5 }, mb: 2 }}>
-        <Typography sx={{ fontWeight: 800, mb: 1 }}>Справочные материалы</Typography>
+        <Typography sx={{ fontWeight: 800, mb: 1 }}>Юридический пакет</Typography>
+        <Typography sx={{ fontSize: typography.hint, color: colors.textMuted, mb: 1.25 }}>
+          Актуальные шаблоны с реквизитами платформы. Персональная копия доступна по кнопке «Моя
+          версия».
+        </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {LEGAL_LINKS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              fontWeight={700}
-              sx={{ fontSize: typography.label }}
+          {legalPack.map((item) => (
+            <Box
+              key={item.key}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
             >
-              {item.label} →
-            </Link>
+              <Typography sx={{ fontSize: typography.label, fontWeight: 700 }}>{item.title}</Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Link
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  fontWeight={700}
+                  sx={{ fontSize: typography.hint }}
+                >
+                  PDF →
+                </Link>
+                <Button
+                  size="small"
+                  onClick={() => void openPersonalLegal(item.key, item.title)}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: typography.hint, minWidth: 0 }}
+                >
+                  Моя версия
+                </Button>
+              </Box>
+            </Box>
           ))}
+          {legalPack.length === 0 && (
+            <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
+              Пакет пока не загружен
+            </Typography>
+          )}
         </Box>
       </Box>
 
@@ -200,17 +261,36 @@ const MarketerDocuments: React.FC = () => {
                   {p.document?.title || 'Акт на вывод'}
                 </Typography>
                 <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                  {STATUS_LABEL[p.status] || p.status} · {money(p.amount)}
+                  {p.document?.hasSignedCopy || p.document?.signedAt || p.signedAt
+                    ? 'Подписан'
+                    : STATUS_LABEL[p.status] || p.status}{' '}
+                  · {money(p.amount)}
                 </Typography>
               </Box>
-              <Button
-                size="small"
-                startIcon={<Download />}
-                onClick={() => void downloadAct(p.id, p.document?.title)}
-                sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
-              >
-                Скачать
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.75, flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  startIcon={<VisibilityOutlined />}
+                  onClick={() =>
+                    setActViewer({
+                      payoutId: p.id,
+                      title: p.document?.title,
+                      signed: Boolean(p.document?.hasSignedCopy || p.document?.signedAt || p.signedAt),
+                    })
+                  }
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Смотреть
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<Download />}
+                  onClick={() => void downloadAct(p.id, p.document?.title)}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Скачать
+                </Button>
+              </Box>
             </Box>
           ))}
 
@@ -279,6 +359,14 @@ const MarketerDocuments: React.FC = () => {
           ))}
         </Box>
       )}
+
+      <MarketerActPdfDialog
+        open={Boolean(actViewer)}
+        onClose={() => setActViewer(null)}
+        title={actViewer?.title || 'Акт на вывод'}
+        statusLabel={actViewer?.signed ? 'Подписанная копия' : 'Черновик акта'}
+        loadBlob={loadActBlob}
+      />
     </Box>
   );
 };

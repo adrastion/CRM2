@@ -1269,13 +1269,19 @@ export const rejectMarketerPayoutAdmin = asyncHandler(
 export const downloadMarketerPayoutDocumentAdmin = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { MarketerPayoutService } = await import('../services/marketerPayoutService');
-    const doc = await MarketerPayoutService.getDocumentPathAdmin(String(req.params.id));
+    const rawVersion = String(req.query.version || 'auto').toLowerCase();
+    const version =
+      rawVersion === 'draft' || rawVersion === 'signed' ? rawVersion : ('auto' as const);
+    const doc = await MarketerPayoutService.getDocumentPathAdmin(String(req.params.id), version);
     const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
     if (!isStoredUploadPath(doc.fileUrl)) {
       res.status(404).json({ success: false, error: 'Некорректный путь' });
       return;
     }
-    sendStoredUpload(res, doc.fileUrl, { downloadName: `${doc.title || 'act'}.pdf` });
+    const suffix = doc.version === 'signed' ? 'подписанный' : 'черновик';
+    sendStoredUpload(res, doc.fileUrl, {
+      downloadName: `${doc.title || 'act'} (${suffix}).pdf`,
+    });
   }
 );
 
@@ -3205,45 +3211,6 @@ export const unlinkTenantOwnerTester = asyncHandler(async (
   });
 });
 
-/** Публикации для маркетологов (реклама / новости) */
-export const listPlatformPublicationsAdmin = asyncHandler(
-  async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const data = await prisma.platformPublication.findMany({
-      orderBy: { publishedAt: 'desc' },
-      take: 200,
-    });
-    res.json({ success: true, data });
-  }
-);
-
-export const createPlatformPublicationAdmin = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const superAdmin = (req as any).superAdmin;
-    const files = req.files as
-      | { image?: Express.Multer.File[]; file?: Express.Multer.File[] }
-      | undefined;
-    const imageFile = files?.image?.[0];
-    const docFile = files?.file?.[0];
-    const imageUrl = imageFile
-      ? `marketer-cabinet/publications/${imageFile.filename}`
-      : String(req.body?.imageUrl || '').trim() || undefined;
-    const fileUrl = docFile
-      ? `marketer-cabinet/publications/${docFile.filename}`
-      : String(req.body?.fileUrl || '').trim() || undefined;
-
-    const { MarketerCabinetService } = await import('../services/marketerCabinetService');
-    const data = await MarketerCabinetService.createPublication(superAdmin?.id, {
-      type: String(req.body?.type || ''),
-      title: String(req.body?.title || ''),
-      body: String(req.body?.body || ''),
-      imageUrl,
-      fileUrl,
-      isActive: req.body?.isActive !== 'false' && req.body?.isActive !== false,
-    });
-    res.status(201).json({ success: true, data });
-  }
-);
-
 export const listMarketerClosingDocsAdmin = asyncHandler(
   async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const data = await prisma.marketerClosingDoc.findMany({
@@ -3276,46 +3243,6 @@ export const createMarketerClosingDocAdmin = asyncHandler(
   }
 );
 
-export const downloadPlatformPublicationImageAdmin = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const pub = await prisma.platformPublication.findUnique({ where: { id: String(req.params.id) } });
-    if (!pub?.imageUrl) {
-      res.status(404).json({ success: false, error: 'Изображение не найдено' });
-      return;
-    }
-    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
-    if (isHttpUrl(pub.imageUrl)) {
-      res.redirect(pub.imageUrl);
-      return;
-    }
-    if (!isStoredUploadPath(pub.imageUrl)) {
-      res.status(404).json({ success: false, error: 'Некорректный путь' });
-      return;
-    }
-    sendStoredUpload(res, pub.imageUrl, { inline: true });
-  }
-);
-
-export const downloadPlatformPublicationFileAdmin = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const pub = await prisma.platformPublication.findUnique({ where: { id: String(req.params.id) } });
-    if (!pub?.fileUrl) {
-      res.status(404).json({ success: false, error: 'Файл не найден' });
-      return;
-    }
-    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
-    if (isHttpUrl(pub.fileUrl)) {
-      res.redirect(pub.fileUrl);
-      return;
-    }
-    if (!isStoredUploadPath(pub.fileUrl)) {
-      res.status(404).json({ success: false, error: 'Некорректный путь' });
-      return;
-    }
-    sendStoredUpload(res, pub.fileUrl);
-  }
-);
-
 export const downloadMarketerClosingDocAdmin = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const doc = await prisma.marketerClosingDoc.findUnique({ where: { id: String(req.params.id) } });
@@ -3340,6 +3267,26 @@ export const listMarketerLegalDocsAdmin = asyncHandler(
   async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
     const data = await MarketerLegalDocumentService.listAdmin();
+    res.json({ success: true, data });
+  }
+);
+
+export const getMarketerLegalDocBodyAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const key = String(req.params.key || '');
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    const data = await MarketerLegalDocumentService.getAdminBody(key);
+    res.json({ success: true, data });
+  }
+);
+
+export const updateMarketerLegalDocBodyAdmin = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
+    const key = String(req.params.key || '');
+    const bodyText = String((req.body as any)?.bodyText ?? '');
+    const superAdmin = (req as any).superAdmin;
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    const data = await MarketerLegalDocumentService.updateBody(key, bodyText, superAdmin?.id);
     res.json({ success: true, data });
   }
 );

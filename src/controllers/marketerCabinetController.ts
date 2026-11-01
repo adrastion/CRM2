@@ -204,63 +204,10 @@ export const resolveMarketerInvitePublic = asyncHandler(
   }
 );
 
-export const listMarketerPublications = asyncHandler(
-  async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
-    const data = await MarketerCabinetService.listPublications();
-    res.json({ success: true, data });
-  }
-);
-
 export const listMarketerClosingDocs = asyncHandler(
   async (req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const data = await MarketerCabinetService.listClosingDocs(requireMarketerId(req));
     res.json({ success: true, data });
-  }
-);
-
-export const downloadMarketerPublicationImage = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    requireMarketerId(req);
-    const pub = await prisma.platformPublication.findFirst({
-      where: { id: String(req.params.id), isActive: true },
-    });
-    if (!pub?.imageUrl) {
-      res.status(404).json({ success: false, error: 'Изображение не найдено' });
-      return;
-    }
-    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
-    if (isHttpUrl(pub.imageUrl)) {
-      res.redirect(pub.imageUrl);
-      return;
-    }
-    if (!isStoredUploadPath(pub.imageUrl)) {
-      res.status(404).json({ success: false, error: 'Некорректный путь' });
-      return;
-    }
-    sendStoredUpload(res, pub.imageUrl, { inline: true });
-  }
-);
-
-export const downloadMarketerPublicationFile = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    requireMarketerId(req);
-    const pub = await prisma.platformPublication.findFirst({
-      where: { id: String(req.params.id), isActive: true },
-    });
-    if (!pub?.fileUrl) {
-      res.status(404).json({ success: false, error: 'Файл не найден' });
-      return;
-    }
-    const { isHttpUrl, isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
-    if (isHttpUrl(pub.fileUrl)) {
-      res.redirect(pub.fileUrl);
-      return;
-    }
-    if (!isStoredUploadPath(pub.fileUrl)) {
-      res.status(404).json({ success: false, error: 'Некорректный путь' });
-      return;
-    }
-    sendStoredUpload(res, pub.fileUrl);
   }
 );
 
@@ -347,16 +294,23 @@ export const confirmMarketerPayoutSign = asyncHandler(
 export const downloadMarketerPayoutDocument = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { MarketerPayoutService } = await import('../services/marketerPayoutService');
+    const rawVersion = String(req.query.version || 'auto').toLowerCase();
+    const version =
+      rawVersion === 'draft' || rawVersion === 'signed' ? rawVersion : ('auto' as const);
     const doc = await MarketerPayoutService.getDocumentPath(
       requireMarketerId(req),
-      String(req.params.id)
+      String(req.params.id),
+      version
     );
     const { isStoredUploadPath, sendStoredUpload } = await import('../utils/marketerCabinetFiles');
     if (!isStoredUploadPath(doc.fileUrl)) {
       res.status(404).json({ success: false, error: 'Некорректный путь' });
       return;
     }
-    sendStoredUpload(res, doc.fileUrl, { downloadName: `${doc.title || 'act'}.pdf` });
+    const suffix = doc.version === 'signed' ? 'подписанный' : 'черновик';
+    sendStoredUpload(res, doc.fileUrl, {
+      downloadName: `${doc.title || 'act'} (${suffix}).pdf`,
+    });
   }
 );
 
@@ -390,6 +344,49 @@ export const downloadMarketerNpdReceipt = asyncHandler(
       return;
     }
     sendStoredUpload(res, doc.fileUrl, { downloadName: doc.title || 'npd-receipt' });
+  }
+);
+
+/** Персональный PDF юр. документа с подстановкой данных маркетолога. */
+export const downloadMarketerLegalDocPersonal = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const key = String(req.params.key || '');
+    const marketerId = requireMarketerId(req);
+    const { prisma } = await import('../lib/prisma');
+    const { MarketerLegalDocumentService } = await import('../services/marketerLegalDocumentService');
+    const marketer = await prisma.marketer.findUnique({
+      where: { id: marketerId },
+      select: { name: true, email: true, phone: true, inn: true, taxStatus: true },
+    });
+    if (!marketer) {
+      res.status(404).json({ success: false, error: 'Маркетолог не найден' });
+      return;
+    }
+    try {
+      const file = await MarketerLegalDocumentService.resolveAbsolutePath(key, {
+        marketer,
+      });
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${file.fileName.replace(/"/g, '_')}"`
+      );
+      const fs = await import('fs');
+      const stream = fs.createReadStream(file.abs);
+      stream.pipe(res);
+      if (file.ephemeral) {
+        stream.on('close', () => {
+          try {
+            fs.unlinkSync(file.abs);
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    } catch (e: any) {
+      const status = e?.statusCode || e?.status || 404;
+      res.status(status).json({ success: false, error: e?.message || 'Документ не найден' });
+    }
   }
 );
 

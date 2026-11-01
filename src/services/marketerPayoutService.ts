@@ -1,13 +1,15 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { prisma } from '../lib/prisma';
 import { badRequest, notFound } from '../utils/httpError';
-import { absoluteUploadPath, ensureUploadDir } from '../utils/fileStorage';
+import { ensureUploadDir } from '../utils/fileStorage';
 import { EmailOtpService } from './emailOtpService';
 import { emailService } from './emailService';
 import { MarketerCabinetService } from './marketerCabinetService';
+import {
+  buildMarketerPayoutActPdf,
+  unlinkActFile,
+  type ActPdfMarketer,
+} from './marketerPayoutActPdf';
 
 export const PAYOUT_STATUS = {
   AWAITING_SIGNATURE: 'AWAITING_SIGNATURE',
@@ -73,6 +75,8 @@ function serializePayout(p: any) {
           id: p.document.id,
           title: p.document.title,
           contentHash: p.document.contentHash,
+          signedContentHash: p.document.signedContentHash || null,
+          hasSignedCopy: Boolean(p.document.signedFileUrl || p.document.signedAt),
           signedAt: p.document.signedAt,
           codeSentAt: p.document.codeSentAt,
         }
@@ -92,75 +96,27 @@ const payoutInclude = {
   npdReceipt: true,
 } as const;
 
-async function generateActPdf(params: {
-  payoutId: string;
-  marketerName: string;
-  marketerEmail: string;
-  amount: number;
-  bankName: string;
-  bankBik: string;
-  bankAccount: string;
-  bankRecipient: string;
-}): Promise<{ relativePath: string; contentHash: string; title: string }> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const title = `Akt vyvoda #${params.payoutId.slice(-8)}`;
-  const dateStr = new Date().toLocaleDateString('ru-RU');
-  const amountStr = new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    minimumFractionDigits: 2,
-  }).format(params.amount);
-
-  const lines = [
-    { text: 'ZAKRYVAYUSHCHIY AKT (PROSTYE ELEKTRONNYE PODPISI)', bold: true, size: 14 },
-    { text: '', bold: false, size: 11 },
-    { text: `Data: ${dateStr}`, bold: false, size: 11 },
-    { text: `Poluchatel: ${params.marketerName}`, bold: false, size: 11 },
-    { text: `Email: ${params.marketerEmail}`, bold: false, size: 11 },
-    { text: `Summa: ${amountStr}`, bold: true, size: 12 },
-    { text: '', bold: false, size: 11 },
-    { text: `Bank: ${params.bankName}`, bold: false, size: 11 },
-    { text: `BIK: ${params.bankBik}`, bold: false, size: 11 },
-    { text: `Schet: ${params.bankAccount}`, bold: false, size: 11 },
-    { text: `Poluchatel scheta: ${params.bankRecipient}`, bold: false, size: 11 },
-    { text: '', bold: false, size: 11 },
-    {
-      text: 'Dokument podpisivaetsya odnorazovym kodom (PEP) po usloviyam oferty.',
-      bold: false,
-      size: 10,
-    },
-    { text: `ID zayavki: ${params.payoutId}`, bold: false, size: 10 },
-  ];
-
-  let y = 780;
-  for (const line of lines) {
-    if (!line.text) {
-      y -= 14;
-      continue;
-    }
-    page.drawText(line.text, {
-      x: 50,
-      y,
-      size: line.size,
-      font: line.bold ? fontBold : font,
-      color: rgb(0.12, 0.14, 0.18),
-      maxWidth: 495,
-    });
-    y -= line.size + 10;
-  }
-
-  const bytes = await pdfDoc.save();
-  const contentHash = crypto.createHash('sha256').update(bytes).digest('hex');
-  const dir = ensureUploadDir('marketer-cabinet', 'payouts');
-  const filename = `${params.payoutId}-${Date.now()}.pdf`;
-  fs.writeFileSync(path.join(dir, filename), bytes);
+function toActMarketer(marketer: {
+  name: string;
+  email: string;
+  phone?: string | null;
+  inn?: string | null;
+  taxStatus?: string | null;
+  bankName?: string | null;
+  bankBik?: string | null;
+  bankAccount?: string | null;
+  bankRecipient?: string | null;
+}): ActPdfMarketer {
   return {
-    relativePath: `marketer-cabinet/payouts/${filename}`,
-    contentHash,
-    title: `Акт на вывод средств от ${dateStr}`,
+    name: marketer.name,
+    email: marketer.email,
+    phone: marketer.phone || null,
+    inn: marketer.inn || null,
+    taxStatus: marketer.taxStatus || null,
+    bankName: marketer.bankName || '',
+    bankBik: marketer.bankBik || '',
+    bankAccount: marketer.bankAccount || '',
+    bankRecipient: marketer.bankRecipient || '',
   };
 }
 
@@ -214,15 +170,11 @@ export class MarketerPayoutService {
     if (amount > balance) throw badRequest('Сумма превышает доступный баланс', 'amount');
 
     const payoutId = crypto.randomBytes(12).toString('hex');
-    const act = await generateActPdf({
+    const act = await buildMarketerPayoutActPdf({
       payoutId,
-      marketerName: marketer.name,
-      marketerEmail: marketer.email,
       amount,
-      bankName: marketer.bankName,
-      bankBik: marketer.bankBik,
-      bankAccount: marketer.bankAccount,
-      bankRecipient: marketer.bankRecipient,
+      marketer: toActMarketer(marketer),
+      issuedAt: new Date(),
     });
 
     try {
@@ -260,11 +212,7 @@ export class MarketerPayoutService {
       });
       return serializePayout(created);
     } catch (e) {
-      try {
-        fs.unlinkSync(absoluteUploadPath(act.relativePath));
-      } catch {
-        /* ignore */
-      }
+      unlinkActFile(act.relativePath);
       throw e;
     }
   }
@@ -347,7 +295,10 @@ export class MarketerPayoutService {
   ) {
     const payout = await prisma.marketerPayoutRequest.findFirst({
       where: { id: payoutId, marketerId },
-      include: { document: true, marketer: { select: { email: true } } },
+      include: {
+        document: true,
+        marketer: true,
+      },
     });
     if (!payout) throw notFound('Заявка не найдена');
     if (payout.status !== PAYOUT_STATUS.AWAITING_SIGNATURE) {
@@ -364,43 +315,131 @@ export class MarketerPayoutService {
 
     const now = new Date();
     const dueAt = addBusinessDays(now, payout.dueBusinessDays || 7);
-    const updated = await prisma.$transaction(async (tx) => {
-      if (payout.document) {
-        await tx.marketerPayoutDocument.update({
-          where: { id: payout.document.id },
-          data: {
-            signedAt: now,
-            signerEmail: payout.marketer.email,
-            signIp: meta?.ip || null,
-            signUserAgent: meta?.userAgent || null,
-          },
-        });
-      }
-      return tx.marketerPayoutRequest.update({
-        where: { id: payoutId },
-        data: { status: PAYOUT_STATUS.PROCESSING, signedAt: now, dueAt },
-        include: payoutInclude,
+    const draftHash = payout.document?.contentHash || '';
+
+    let signedRelativePath: string | null = null;
+    let signedContentHash: string | null = null;
+    if (payout.document) {
+      const signed = await buildMarketerPayoutActPdf({
+        payoutId,
+        amount: Number(payout.amount),
+        marketer: toActMarketer({
+          ...payout.marketer,
+          bankName: payout.bankName,
+          bankBik: payout.bankBik,
+          bankAccount: payout.bankAccount,
+          bankRecipient: payout.bankRecipient,
+        }),
+        issuedAt: payout.createdAt || now,
+        signature: {
+          signedAt: now,
+          signerEmail: payout.marketer.email,
+          signIp: meta?.ip || null,
+          draftContentHash: draftHash,
+        },
       });
-    });
-    return serializePayout(updated);
+      signedRelativePath = signed.relativePath;
+      signedContentHash = signed.contentHash;
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        if (payout.document) {
+          await tx.marketerPayoutDocument.update({
+            where: { id: payout.document.id },
+            data: {
+              signedAt: now,
+              signerEmail: payout.marketer.email,
+              signIp: meta?.ip || null,
+              signUserAgent: meta?.userAgent || null,
+              signedFileUrl: signedRelativePath,
+              signedContentHash,
+            },
+          });
+        }
+        return tx.marketerPayoutRequest.update({
+          where: { id: payoutId },
+          data: { status: PAYOUT_STATUS.PROCESSING, signedAt: now, dueAt },
+          include: payoutInclude,
+        });
+      });
+      return serializePayout(updated);
+    } catch (e) {
+      unlinkActFile(signedRelativePath);
+      throw e;
+    }
   }
 
-  static async getDocumentPath(marketerId: string, payoutId: string) {
+  /**
+   * Возвращает путь к PDF. По умолчанию — подписанная копия (если есть), иначе черновик.
+   * version=draft|signed — явный выбор; для signed без файла — ленивая догенерация.
+   */
+  static async resolveDocumentFile(
+    payoutId: string,
+    opts?: { marketerId?: string; version?: 'draft' | 'signed' | 'auto' }
+  ) {
+    const version = opts?.version || 'auto';
     const payout = await prisma.marketerPayoutRequest.findFirst({
-      where: { id: payoutId, marketerId },
-      include: { document: true },
+      where: opts?.marketerId ? { id: payoutId, marketerId: opts.marketerId } : { id: payoutId },
+      include: { document: true, marketer: true },
     });
     if (!payout?.document?.fileUrl) throw notFound('Документ не найден');
-    return { fileUrl: payout.document.fileUrl, title: payout.document.title };
+
+    const doc = payout.document;
+    const wantSigned =
+      version === 'signed' || (version === 'auto' && Boolean(doc.signedAt || doc.signedFileUrl));
+
+    if (!wantSigned || version === 'draft') {
+      return { fileUrl: doc.fileUrl, title: doc.title, version: 'draft' as const };
+    }
+
+    if (doc.signedFileUrl) {
+      return { fileUrl: doc.signedFileUrl, title: doc.title, version: 'signed' as const };
+    }
+
+    // Ленивая догенерация подписанной копии для старых заявок
+    if (doc.signedAt) {
+      const signed = await buildMarketerPayoutActPdf({
+        payoutId,
+        amount: Number(payout.amount),
+        marketer: toActMarketer({
+          ...payout.marketer,
+          bankName: payout.bankName,
+          bankBik: payout.bankBik,
+          bankAccount: payout.bankAccount,
+          bankRecipient: payout.bankRecipient,
+        }),
+        issuedAt: payout.createdAt || doc.signedAt,
+        signature: {
+          signedAt: doc.signedAt,
+          signerEmail: doc.signerEmail || payout.marketer.email,
+          signIp: doc.signIp,
+          draftContentHash: doc.contentHash,
+        },
+      });
+      await prisma.marketerPayoutDocument.update({
+        where: { id: doc.id },
+        data: {
+          signedFileUrl: signed.relativePath,
+          signedContentHash: signed.contentHash,
+        },
+      });
+      return { fileUrl: signed.relativePath, title: doc.title, version: 'signed' as const };
+    }
+
+    return { fileUrl: doc.fileUrl, title: doc.title, version: 'draft' as const };
   }
 
-  static async getDocumentPathAdmin(payoutId: string) {
-    const payout = await prisma.marketerPayoutRequest.findUnique({
-      where: { id: payoutId },
-      include: { document: true },
-    });
-    if (!payout?.document?.fileUrl) throw notFound('Документ не найден');
-    return { fileUrl: payout.document.fileUrl, title: payout.document.title };
+  static async getDocumentPath(
+    marketerId: string,
+    payoutId: string,
+    version?: 'draft' | 'signed' | 'auto'
+  ) {
+    return this.resolveDocumentFile(payoutId, { marketerId, version });
+  }
+
+  static async getDocumentPathAdmin(payoutId: string, version?: 'draft' | 'signed' | 'auto') {
+    return this.resolveDocumentFile(payoutId, { version });
   }
 
   static async uploadNpdReceipt(
@@ -463,7 +502,16 @@ export class MarketerPayoutService {
       orderBy: { createdAt: 'asc' },
       include: {
         marketer: { select: { id: true, name: true, email: true, phone: true } },
-        document: { select: { id: true, title: true, signedAt: true, contentHash: true } },
+        document: {
+          select: {
+            id: true,
+            title: true,
+            signedAt: true,
+            contentHash: true,
+            signedFileUrl: true,
+            signedContentHash: true,
+          },
+        },
         npdReceipt: true,
       },
       take: 200,

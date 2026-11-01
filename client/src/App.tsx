@@ -970,7 +970,6 @@ const AppContent: React.FC = () => {
         <Route path="/marketer/tasks" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route path="/marketer/calendar" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route path="/marketer/chats" element={<Navigate to="/marketer/dashboard" replace />} />
-        <Route path="/marketer/ads" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route path="/marketer/feedback" element={<Navigate to="/marketer/dashboard" replace />} />
         <Route path="/ref/:code" element={<ReferralLanding />} />
         <Route path="/promo-code-admin/login" element={<Navigate to="/auth" replace />} />

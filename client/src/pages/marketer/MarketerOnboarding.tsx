@@ -178,8 +178,25 @@ const MarketerOnboarding: React.FC = () => {
         </Typography>
         {(data.docs || []).map((d: any) => (
           <Box key={d.key} sx={{ mb: 1.5 }}>
-            <Link href={d.url} target="_blank" rel="noopener noreferrer" fontWeight={700}>
-              {d.title} (PDF)
+            <Link
+              component="button"
+              type="button"
+              fontWeight={700}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const blob = await apiService.downloadMarketerLegalDocPersonalBlob(d.key);
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                  } catch (e: any) {
+                    setError(e?.response?.data?.error || 'Не удалось открыть документ');
+                  }
+                })();
+              }}
+              sx={{ textAlign: 'left', cursor: 'pointer' }}
+            >
+              {d.title} (PDF с вашими данными)
             </Link>
           </Box>
         ))}
@@ -191,7 +208,7 @@ const MarketerOnboarding: React.FC = () => {
           { key: 'offer' as const, label: 'Принимаю оферту маркетолога' },
           {
             key: 'pep' as const,
-            label: 'Согласен на простую электронную подпись (код на email / в UI как СМС)',
+            label: 'Согласен на простую электронную подпись (код письмом на электронную почту)',
           },
           { key: 'pdn' as const, label: 'Согласие на обработку персональных данных' },
         ].map((item) => (

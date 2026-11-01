@@ -18,6 +18,7 @@ import PublicFooter from '../components/PublicFooter';
 import PublicSiteNav from '../components/PublicSiteNav';
 import { useAuth } from '../contexts/AuthContext';
 import { hasAnySession } from '../utils/authSession';
+import { PLATFORM_OPERATOR } from '../constants/platformOperator';
 
 const Contacts: React.FC = () => {
   const navigate = useNavigate();
@@ -68,7 +69,7 @@ const Contacts: React.FC = () => {
                     Email
                   </Typography>
                   <Typography variant="body1" fontWeight="medium">
-                    profsportcrm@yandex.ru
+                    {PLATFORM_OPERATOR.email}
                   </Typography>
                 </Box>
               </Box>
@@ -90,7 +91,7 @@ const Contacts: React.FC = () => {
                   Полное наименование
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  Индивидуальный предприниматель Карась Сергей Сергеевич
+                  {PLATFORM_OPERATOR.fullName}
                 </Typography>
               </Box>
 
@@ -99,7 +100,7 @@ const Contacts: React.FC = () => {
                   ИНН
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  331104002146
+                  {PLATFORM_OPERATOR.inn}
                 </Typography>
               </Box>
 
@@ -108,7 +109,7 @@ const Contacts: React.FC = () => {
                   ОГРНИП
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  323330000033789
+                  {PLATFORM_OPERATOR.ogrnip}
                 </Typography>
               </Box>
 
@@ -117,7 +118,7 @@ const Contacts: React.FC = () => {
                   Расчетный счет
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  40802810338000045634
+                  {PLATFORM_OPERATOR.bankAccount}
                 </Typography>
               </Box>
 
@@ -126,7 +127,7 @@ const Contacts: React.FC = () => {
                   Корреспондентский счет
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  30101810400000000225
+                  {PLATFORM_OPERATOR.bankCorrAccount}
                 </Typography>
               </Box>
 
@@ -135,7 +136,7 @@ const Contacts: React.FC = () => {
                   БИК
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  044525225
+                  {PLATFORM_OPERATOR.bankBik}
                 </Typography>
               </Box>
 
@@ -144,7 +145,7 @@ const Contacts: React.FC = () => {
                   Банк
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  ПАО Сбербанк
+                  {PLATFORM_OPERATOR.bankName}
                 </Typography>
               </Box>
 
@@ -153,7 +154,7 @@ const Contacts: React.FC = () => {
                   Юридический адрес
                 </Typography>
                 <Typography variant="body1" fontWeight="medium">
-                  Владимирская область, Александровский район город Струнино, ул. Заречная, д. 10
+                  {PLATFORM_OPERATOR.legalAddress}
                 </Typography>
               </Box>
             </Box>

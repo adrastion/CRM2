@@ -2493,6 +2493,15 @@ class ApiService {
     leads: any[];
     schools: any[];
     adLink?: { code: string; path: string } | null;
+    personalPromo?: {
+      code: string;
+      discountType: string;
+      discountValue: number;
+      description?: string | null;
+      usedCount?: number;
+      usageLimit?: number | null;
+      validUntil?: string | null;
+    } | null;
   }> {
     const response = await this.api.get<ApiResponse>('/marketers/me/clients');
     return response.data.data || { leads: [], schools: [] };
@@ -2592,9 +2601,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async downloadMarketerPayoutDocumentBlob(id: string): Promise<Blob> {
+  async downloadMarketerPayoutDocumentBlob(
+    id: string,
+    version: 'auto' | 'draft' | 'signed' = 'auto'
+  ): Promise<Blob> {
     const response = await this.api.get(`/marketers/me/payouts/${id}/document`, {
       responseType: 'blob',
+      params: version && version !== 'auto' ? { version } : undefined,
     });
     return response.data;
   }
@@ -2638,9 +2651,13 @@ class ApiService {
     return response.data.data;
   }
 
-  async adminDownloadMarketerPayoutDocumentBlob(id: string): Promise<Blob> {
+  async adminDownloadMarketerPayoutDocumentBlob(
+    id: string,
+    version: 'auto' | 'draft' | 'signed' = 'auto'
+  ): Promise<Blob> {
     const response = await this.api.get(`/admin-dashboard/marketer-payouts/${id}/document`, {
       responseType: 'blob',
+      params: version && version !== 'auto' ? { version } : undefined,
     });
     return response.data;
   }
@@ -2652,38 +2669,9 @@ class ApiService {
     return response.data;
   }
 
-  async getMarketerPublications(): Promise<any[]> {
-    const response = await this.api.get<ApiResponse>('/marketers/me/publications');
-    return response.data.data || [];
-  }
-
   async getMarketerClosingDocs(): Promise<any[]> {
     const response = await this.api.get<ApiResponse>('/marketers/me/closing-docs');
     return response.data.data || [];
-  }
-
-  async adminListMarketerPublications(): Promise<any[]> {
-    const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-publications');
-    return response.data.data || [];
-  }
-
-  async adminCreateMarketerPublication(data: {
-    type: string;
-    title: string;
-    body: string;
-    image?: File | null;
-    file?: File | null;
-  }): Promise<any> {
-    const form = new FormData();
-    form.append('type', data.type);
-    form.append('title', data.title);
-    form.append('body', data.body);
-    if (data.image) form.append('image', data.image);
-    if (data.file) form.append('file', data.file);
-    const response = await this.api.post<ApiResponse>('/admin-dashboard/marketer-publications', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data.data;
   }
 
   async adminListMarketerClosingDocs(): Promise<any[]> {
@@ -2711,6 +2699,7 @@ class ApiService {
   async adminListMarketerLegalDocs(): Promise<{
     packVersion: string;
     packUpdatedAt: string | null;
+    placeholders?: string[];
     documents: Array<{
       key: string;
       title: string;
@@ -2724,9 +2713,37 @@ class ApiService {
       updatedAt: string | null;
       uploadedById: string | null;
       hasFile: boolean;
+      hasBody?: boolean;
+      bodyPreview?: string | null;
     }>;
   }> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/marketer-legal-docs');
+    return response.data.data;
+  }
+
+  async adminGetMarketerLegalDocBody(key: string): Promise<{
+    key: string;
+    title: string;
+    onboarding: boolean;
+    bodyText: string;
+    version: string | null;
+    updatedAt: string | null;
+    url: string;
+  }> {
+    const response = await this.api.get<ApiResponse>(
+      `/admin-dashboard/marketer-legal-docs/${encodeURIComponent(key)}/body`
+    );
+    return response.data.data;
+  }
+
+  async adminUpdateMarketerLegalDocBody(
+    key: string,
+    bodyText: string
+  ): Promise<{ packVersion: string; document: any; bodyText: string }> {
+    const response = await this.api.put<ApiResponse>(
+      `/admin-dashboard/marketer-legal-docs/${encodeURIComponent(key)}/body`,
+      { bodyText }
+    );
     return response.data.data;
   }
 
@@ -2843,15 +2860,8 @@ class ApiService {
     return response.data.data;
   }
 
-  async downloadMarketerPublicationImageBlob(id: string): Promise<Blob> {
-    const response = await this.api.get(`/marketers/me/publications/${id}/image`, {
-      responseType: 'blob',
-    });
-    return response.data;
-  }
-
-  async downloadMarketerPublicationFileBlob(id: string): Promise<Blob> {
-    const response = await this.api.get(`/marketers/me/publications/${id}/file`, {
+  async downloadMarketerLegalDocPersonalBlob(key: string): Promise<Blob> {
+    const response = await this.api.get(`/marketers/me/legal-docs/${encodeURIComponent(key)}`, {
       responseType: 'blob',
     });
     return response.data;
@@ -2859,13 +2869,6 @@ class ApiService {
 
   async downloadMarketerClosingDocBlob(id: string): Promise<Blob> {
     const response = await this.api.get(`/marketers/me/closing-docs/${id}/file`, {
-      responseType: 'blob',
-    });
-    return response.data;
-  }
-
-  async adminDownloadMarketerPublicationFileBlob(id: string): Promise<Blob> {
-    const response = await this.api.get(`/admin-dashboard/marketer-publications/${id}/file`, {
       responseType: 'blob',
     });
     return response.data;
@@ -3069,6 +3072,17 @@ class ApiService {
   async getPlatformMarketers(params?: any): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/admin-dashboard/platform/marketers', { params });
     return { data: response.data.data || [], pagination: response.data.pagination };
+  }
+
+  async getPlatformMarketer(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/admin-dashboard/platform/marketers/${id}`);
+    return response.data.data;
+  }
+
+  /** Клики/промо-статы по маркетологу (platform/:id/stats). */
+  async getPlatformMarketerDetailStats(id: string): Promise<any> {
+    const response = await this.api.get<ApiResponse>(`/admin-dashboard/platform/marketers/${id}/stats`);
+    return response.data.data;
   }
 
   async createPlatformMarketer(data: any): Promise<any> {

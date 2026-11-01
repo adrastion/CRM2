@@ -28,10 +28,12 @@ import {
   ScheduleOutlined,
   TrendingUpOutlined,
   UploadFileOutlined,
+  VisibilityOutlined,
   WalletOutlined,
 } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../../services/api';
+import MarketerActPdfDialog from '../../components/marketer/MarketerActPdfDialog';
 import { colors, typography } from '../../theme/tokens';
 import { marketerCardSx, marketerFieldSx, marketerRadii } from './marketerUi';
 
@@ -79,7 +81,12 @@ type PayoutRequest = {
   dueBusinessDays?: number;
   rejectReason?: string | null;
   createdAt: string;
-  document?: { id: string; title: string; signedAt?: string | null } | null;
+  document?: {
+    id: string;
+    title: string;
+    signedAt?: string | null;
+    hasSignedCopy?: boolean;
+  } | null;
   npdReceipt?: { id: string; uploadedAt: string; originalName?: string | null } | null;
 };
 
@@ -166,6 +173,11 @@ const MarketerFinance: React.FC = () => {
   });
   const [bankBusy, setBankBusy] = useState(false);
 
+  const [actViewer, setActViewer] = useState<{
+    payoutId: string;
+    title?: string;
+    signed?: boolean;
+  } | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('amount');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -233,6 +245,15 @@ const MarketerFinance: React.FC = () => {
     docs.length +
     payouts.filter((p) => p.document).length +
     payouts.filter((p) => p.npdReceipt).length;
+
+  const openActViewer = (payoutId: string, title?: string, signed?: boolean) => {
+    setActViewer({ payoutId, title, signed });
+  };
+
+  const loadActBlob = useCallback(async () => {
+    if (!actViewer) throw new Error('Нет документа');
+    return apiService.downloadMarketerPayoutDocumentBlob(actViewer.payoutId, 'auto');
+  }, [actViewer]);
 
   const downloadClosingDoc = async (id: string, title: string) => {
     try {
@@ -365,7 +386,7 @@ const MarketerFinance: React.FC = () => {
     try {
       setActionBusy(true);
       const res = await apiService.sendMarketerPayoutSignCode(activePayout.id);
-      setSmsHint(res?.emailMasked ? `Код отправлен (как СМС-подпись) на ${res.emailMasked}` : 'Код отправлен');
+      setSmsHint(res?.emailMasked ? `Код отправлен письмом на ${res.emailMasked}` : 'Код отправлен письмом на электронную почту');
       setWithdrawStep('sms');
     } catch (e: any) {
       setActionError(e?.response?.data?.error || 'Не удалось отправить код');
@@ -518,8 +539,8 @@ const MarketerFinance: React.FC = () => {
             после подписания закрывающих документов.
           </Typography>
           <Typography sx={{ fontSize: typography.hint, color: colors.textMuted, lineHeight: 1.55 }}>
-            Закрывающие документы подписываются дистанционно с помощью одноразового СМС-кода в соответствии с условиями
-            договора-оферты и соглашения об электронной подписи.
+            Закрывающие документы подписываются дистанционно с помощью одноразового кода из письма на электронную почту
+            в соответствии с условиями договора-оферты и соглашения об электронной подписи.
           </Typography>
         </Box>
       </Box>
@@ -656,7 +677,7 @@ const MarketerFinance: React.FC = () => {
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', color: colors.textMuted }}>
             <InfoOutlined sx={{ fontSize: 18, mt: 0.15, flexShrink: 0 }} />
             <Typography sx={{ fontSize: typography.hint, lineHeight: 1.5 }}>
-              Для перечисления необходимо подписать закрывающие документы по СМС.
+              Для перечисления необходимо подписать закрывающие документы письмом на электронную почту.
             </Typography>
           </Box>
         </Box>
@@ -946,17 +967,36 @@ const MarketerFinance: React.FC = () => {
                             {p.document?.title || 'Акт на вывод'}
                           </Typography>
                           <Typography sx={{ fontSize: typography.hint, color: colors.textMuted }}>
-                            {STATUS_LABEL[p.status] || p.status} · {money(p.amount)}
+                            {p.document?.hasSignedCopy || p.document?.signedAt || p.signedAt
+                              ? 'Подписан'
+                              : STATUS_LABEL[p.status] || p.status}{' '}
+                            · {money(p.amount)}
                           </Typography>
                         </Box>
-                        <Button
-                          size="small"
-                          startIcon={<Download />}
-                          onClick={() => void downloadPayoutDoc(p.id, p.document?.title)}
-                          sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
-                        >
-                          Скачать
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 0.75, flexShrink: 0 }}>
+                          <Button
+                            size="small"
+                            startIcon={<VisibilityOutlined />}
+                            onClick={() =>
+                              openActViewer(
+                                p.id,
+                                p.document?.title,
+                                Boolean(p.document?.hasSignedCopy || p.document?.signedAt || p.signedAt)
+                              )
+                            }
+                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Смотреть
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<Download />}
+                            onClick={() => void downloadPayoutDoc(p.id, p.document?.title)}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Скачать
+                          </Button>
+                        </Box>
                       </Box>
                     ))}
                   {payouts
@@ -1052,7 +1092,7 @@ const MarketerFinance: React.FC = () => {
               {
                 n: '2',
                 title: 'Подпишите закрывающие документы',
-                text: 'Ознакомьтесь с документом и подтвердите подписание одноразовым СМС-кодом.',
+                text: 'Ознакомьтесь с документом и подтвердите подписание одноразовым кодом из письма на электронную почту.',
               },
               {
                 n: '3',
@@ -1103,8 +1143,8 @@ const MarketerFinance: React.FC = () => {
             </Typography>
             <Typography sx={{ fontSize: typography.hint, color: colors.textMuted, lineHeight: 1.55, mb: 1 }}>
               После получения оплаты самозанятый обязан сформировать чек в приложении «Мой налог». Подписанный акт не
-              заменяет чек НПД. Закрывающие документы подписываются одноразовым СМС-кодом по условиям оферты и соглашения
-              о простой электронной подписи.
+              заменяет чек НПД. Закрывающие документы подписываются одноразовым кодом из письма на электронную почту по
+              условиям оферты и соглашения о простой электронной подписи.
             </Typography>
             <Link href="/api/legal/marketer/npdPayouts" target="_blank" rel="noopener noreferrer" fontWeight={700} sx={{ fontSize: typography.hint }}>
               Порядок выплат и чеков НПД (PDF)
@@ -1254,14 +1294,24 @@ const MarketerFinance: React.FC = () => {
                 Ознакомьтесь с актом на сумму <b>{money(activePayout.amount, 2)}</b> и подтвердите согласие перед
                 запросом кода.
               </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<Download />}
-                onClick={() => void downloadPayoutDoc(activePayout.id, activePayout.document?.title)}
-                sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
-              >
-                Скачать акт
-              </Button>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<VisibilityOutlined />}
+                  onClick={() => openActViewer(activePayout.id, activePayout.document?.title, false)}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Смотреть акт
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={() => void downloadPayoutDoc(activePayout.id, activePayout.document?.title)}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Скачать
+                </Button>
+              </Box>
               <FormControlLabel
                 sx={{
                   alignItems: 'flex-start',
@@ -1281,10 +1331,10 @@ const MarketerFinance: React.FC = () => {
                     sx={{ pt: 0.25 }}
                   />
                 }
-                label="Согласен с текстом акта и подписываю его одноразовым СМС-кодом по условиям оферты и ПЭП"
+                label="Согласен с текстом акта и подписываю его одноразовым кодом из письма на электронную почту по условиям оферты и ПЭП"
               />
               <Alert severity="info">
-                Код придёт на email профиля; в интерфейсе подпись оформляется как подтверждение по СМС (ПЭП).
+                Код придёт письмом на электронную почту профиля (простая электронная подпись).
               </Alert>
             </Box>
           )}
@@ -1293,7 +1343,7 @@ const MarketerFinance: React.FC = () => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
               {smsHint && <Alert severity="success">{smsHint}</Alert>}
               <TextField
-                label="Код из СМС"
+                label="Код из письма"
                 value={smsCode}
                 onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 fullWidth
@@ -1349,7 +1399,7 @@ const MarketerFinance: React.FC = () => {
                 disabled={actionBusy || !withdrawAgree}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                {actionBusy ? 'Отправка…' : 'Получить СМС-код'}
+                {actionBusy ? 'Отправка…' : 'Получить код на email'}
               </Button>
             </>
           )}
@@ -1375,6 +1425,14 @@ const MarketerFinance: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      <MarketerActPdfDialog
+        open={Boolean(actViewer)}
+        onClose={() => setActViewer(null)}
+        title={actViewer?.title || 'Акт на вывод'}
+        statusLabel={actViewer?.signed ? 'Подписанная копия' : 'Черновик акта'}
+        loadBlob={loadActBlob}
+      />
     </Box>
   );
 };

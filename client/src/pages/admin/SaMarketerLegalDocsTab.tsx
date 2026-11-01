@@ -5,15 +5,20 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
-import { UploadFile, OpenInNew } from '@mui/icons-material';
+import { EditOutlined, OpenInNew, UploadFile } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 
 type LegalDocRow = {
@@ -26,6 +31,7 @@ type LegalDocRow = {
   version: string | null;
   updatedAt: string | null;
   hasFile: boolean;
+  hasBody?: boolean;
 };
 
 const formatBytes = (n: number | null) => {
@@ -45,18 +51,25 @@ const formatDate = (iso: string | null) => {
 };
 
 /**
- * Замена PDF-договоров маркетолога (не визуальный редактор PDF).
- * Замена онбординг-документа повышает версию комплекта — маркетологи принимают заново.
+ * Редактирование текстов шаблонов договоров маркетолога + опциональная замена PDF.
+ * Сохранение текста пересобирает PDF на сервере и (для онбординга) повышает версию комплекта.
  */
 const SaMarketerLegalDocsTab: React.FC = () => {
   const [docs, setDocs] = useState<LegalDocRow[]>([]);
   const [packVersion, setPackVersion] = useState('');
   const [packUpdatedAt, setPackUpdatedAt] = useState<string | null>(null);
+  const [placeholders, setPlaceholders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +79,7 @@ const SaMarketerLegalDocsTab: React.FC = () => {
       setDocs(data.documents || []);
       setPackVersion(data.packVersion || '');
       setPackUpdatedAt(data.packUpdatedAt || null);
+      setPlaceholders(data.placeholders || []);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить договоры');
     } finally {
@@ -76,6 +90,43 @@ const SaMarketerLegalDocsTab: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const openEditor = async (key: string) => {
+    setEditKey(key);
+    setEditLoading(true);
+    setError(null);
+    try {
+      const data = await apiService.adminGetMarketerLegalDocBody(key);
+      setEditTitle(data.title);
+      setEditBody(data.bodyText || '');
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось открыть текст');
+      setEditKey(null);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const saveEditor = async () => {
+    if (!editKey) return;
+    setEditSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const data = await apiService.adminUpdateMarketerLegalDocBody(editKey, editBody);
+      setSuccess(
+        data.document?.onboarding
+          ? `«${editTitle}» сохранён. Версия комплекта: ${data.packVersion} — маркетологи принимают документы заново.`
+          : `«${editTitle}» сохранён, PDF пересобран.`
+      );
+      setEditKey(null);
+      await load();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const onPick = (key: string) => {
     fileRefs.current[key]?.click();
@@ -90,8 +141,8 @@ const SaMarketerLegalDocsTab: React.FC = () => {
       const data = await apiService.adminUploadMarketerLegalDoc(key, file);
       setSuccess(
         data.document?.onboarding
-          ? `«${data.document.title}» заменён. Версия комплекта: ${data.packVersion} — маркетологи должны принять документы заново.`
-          : `«${data.document?.title || key}» заменён.`
+          ? `«${data.document.title}» PDF заменён. Версия комплекта: ${data.packVersion}.`
+          : `«${data.document?.title || key}» PDF заменён.`
       );
       await load();
     } catch (e: any) {
@@ -116,11 +167,10 @@ const SaMarketerLegalDocsTab: React.FC = () => {
       <Typography variant="h5" gutterBottom>
         Договоры маркетологов
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
-        Загрузите готовый PDF, чтобы заменить файл в кабинете маркетолога. Редактирование текста
-        внутри PDF здесь не выполняется — подготовьте документ во внешнем редакторе и загрузите
-        новую версию. При замене договора из онбординга повышается версия комплекта, и маркетологи
-        принимают согласия заново.
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 780 }}>
+        Тексты шаблонов редактируются на сайте. При сохранении сервер подставляет реквизиты оператора и
+        собирает PDF. Для онбординг-документов повышается версия комплекта. Можно также заменить готовый
+        PDF вручную.
       </Typography>
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
@@ -131,6 +181,15 @@ const SaMarketerLegalDocsTab: React.FC = () => {
           </Typography>
         )}
       </Stack>
+
+      {placeholders.length > 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Плейсхолдеры:{' '}
+          {placeholders.map((p) => (
+            <Chip key={p} size="small" label={p} sx={{ mr: 0.5, mb: 0.5 }} />
+          ))}
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -148,73 +207,109 @@ const SaMarketerLegalDocsTab: React.FC = () => {
           <TableRow>
             <TableCell>Документ</TableCell>
             <TableCell>Онбординг</TableCell>
-            <TableCell>Версия файла</TableCell>
-            <TableCell>Размер</TableCell>
+            <TableCell>Версия</TableCell>
+            <TableCell>Размер PDF</TableCell>
             <TableCell>Обновлён</TableCell>
             <TableCell align="right">Действия</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {docs.map((d) => (
-            <TableRow key={d.key} hover>
+            <TableRow key={d.key}>
               <TableCell>
-                <Typography fontWeight={600}>{d.title}</Typography>
+                <Typography fontWeight={700}>{d.title}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {d.fileName} · {d.key}
+                  {d.key}
+                  {d.hasBody ? ' · текст' : ''}
+                  {d.hasFile ? ' · PDF' : ''}
                 </Typography>
               </TableCell>
               <TableCell>
                 {d.onboarding ? (
-                  <Chip size="small" label="Да" color="warning" variant="outlined" />
+                  <Chip size="small" color="primary" label="Да" />
                 ) : (
-                  <Chip size="small" label="Справочный" variant="outlined" />
+                  <Chip size="small" label="Нет" variant="outlined" />
                 )}
               </TableCell>
               <TableCell>{d.version || '—'}</TableCell>
               <TableCell>{formatBytes(d.size)}</TableCell>
               <TableCell>{formatDate(d.updatedAt)}</TableCell>
               <TableCell align="right">
-                <Stack direction="row" spacing={1} justifyContent="flex-end">
-                  <Button
-                    size="small"
-                    href={d.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    startIcon={<OpenInNew fontSize="small" />}
-                    disabled={!d.hasFile}
-                  >
-                    Открыть
-                  </Button>
-                  <input
-                    ref={(el) => {
-                      fileRefs.current[d.key] = el;
-                    }}
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    hidden
-                    onChange={(e) => void onFile(d.key, e.target.files?.[0])}
-                  />
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={
-                      uploadingKey === d.key ? (
-                        <CircularProgress size={14} color="inherit" />
-                      ) : (
-                        <UploadFile fontSize="small" />
-                      )
-                    }
-                    disabled={uploadingKey !== null}
-                    onClick={() => onPick(d.key)}
-                  >
-                    Заменить PDF
-                  </Button>
-                </Stack>
+                <Button
+                  size="small"
+                  startIcon={<EditOutlined />}
+                  onClick={() => void openEditor(d.key)}
+                  sx={{ textTransform: 'none', mr: 0.5 }}
+                >
+                  Текст
+                </Button>
+                <Button
+                  size="small"
+                  href={d.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  startIcon={<OpenInNew />}
+                  sx={{ textTransform: 'none', mr: 0.5 }}
+                >
+                  PDF
+                </Button>
+                <input
+                  ref={(el) => {
+                    fileRefs.current[d.key] = el;
+                  }}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  hidden
+                  onChange={(e) => void onFile(d.key, e.target.files?.[0])}
+                />
+                <Button
+                  size="small"
+                  startIcon={<UploadFile />}
+                  disabled={uploadingKey === d.key}
+                  onClick={() => onPick(d.key)}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {uploadingKey === d.key ? '…' : 'PDF'}
+                </Button>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <Dialog open={Boolean(editKey)} onClose={() => !editSaving && setEditKey(null)} fullWidth maxWidth="md">
+        <DialogTitle>Редактирование: {editTitle || editKey}</DialogTitle>
+        <DialogContent dividers>
+          {editLoading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TextField
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              fullWidth
+              multiline
+              minRows={18}
+              InputProps={{ sx: { fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 13 } }}
+              helperText="Обычный текст с переносами. Плейсхолдеры вида {{operator.inn}} подставятся при сборке PDF."
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setEditKey(null)} disabled={editSaving} sx={{ textTransform: 'none' }}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void saveEditor()}
+            disabled={editSaving || editLoading || !editBody.trim()}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            {editSaving ? 'Сохранение…' : 'Сохранить и собрать PDF'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

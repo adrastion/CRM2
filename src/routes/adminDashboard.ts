@@ -38,14 +38,12 @@ import {
   getDashboardPresets,
   saveDashboardPreset,
   deleteDashboardPreset,
-  listPlatformPublicationsAdmin,
-  createPlatformPublicationAdmin,
   listMarketerClosingDocsAdmin,
   createMarketerClosingDocAdmin,
-  downloadPlatformPublicationImageAdmin,
-  downloadPlatformPublicationFileAdmin,
   downloadMarketerClosingDocAdmin,
   listMarketerLegalDocsAdmin,
+  getMarketerLegalDocBodyAdmin,
+  updateMarketerLegalDocBodyAdmin,
   uploadMarketerLegalDocAdmin,
   downloadMarketerLegalDocAdmin,
   listMarketerPayoutsAdmin,
@@ -186,15 +184,7 @@ const devNotesUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 10 },
 });
 
-const marketerCabinetUploadDir = ensureUploadDir('marketer-cabinet', 'publications');
 const marketerDocsUploadDir = ensureUploadDir('marketer-cabinet', 'docs');
-const marketerPubsUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, marketerCabinetUploadDir),
-    filename: (_req, file, cb) => cb(null, uniqueUploadFilename(file.originalname)),
-  }),
-  limits: { fileSize: 25 * 1024 * 1024, files: 4 },
-});
 const marketerDocsUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, marketerDocsUploadDir),
@@ -429,22 +419,13 @@ router.put('/notification-prefs', updateSuperAdminNotificationPrefs);
 router.get('/school-offers', listSchoolOffers);
 router.post('/school-offers', publishSchoolOffer);
 
-router.get('/marketer-publications', listPlatformPublicationsAdmin);
-router.post(
-  '/marketer-publications',
-  marketerPubsUpload.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'file', maxCount: 1 },
-  ]),
-  createPlatformPublicationAdmin
-);
-router.get('/marketer-publications/:id/image', downloadPlatformPublicationImageAdmin);
-router.get('/marketer-publications/:id/file', downloadPlatformPublicationFileAdmin);
 router.get('/marketer-closing-docs', listMarketerClosingDocsAdmin);
 router.post('/marketer-closing-docs', marketerDocsUpload.single('file'), createMarketerClosingDocAdmin);
 router.get('/marketer-closing-docs/:id/file', downloadMarketerClosingDocAdmin);
 
 router.get('/marketer-legal-docs', listMarketerLegalDocsAdmin);
+router.get('/marketer-legal-docs/:key/body', getMarketerLegalDocBodyAdmin);
+router.put('/marketer-legal-docs/:key/body', updateMarketerLegalDocBodyAdmin);
 router.post(
   '/marketer-legal-docs/:key',
   marketerLegalUpload.single('file'),

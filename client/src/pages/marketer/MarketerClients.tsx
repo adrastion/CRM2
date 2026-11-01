@@ -17,6 +17,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../../services/api';
 import { colors } from '../../theme/tokens';
 import MarketerSchoolRefLink from './MarketerSchoolRefLink';
+import MarketerPersonalPromo from './MarketerPersonalPromo';
 
 const cardSx = {
   bgcolor: colors.card,
@@ -64,6 +65,7 @@ const MarketerClients: React.FC = () => {
   const [leads, setLeads] = useState<any[]>([]);
   const [schools, setSchools] = useState<any[]>([]);
   const [adLink, setAdLink] = useState<{ code?: string; path?: string } | null>(null);
+  const [personalPromo, setPersonalPromo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -82,6 +84,7 @@ const MarketerClients: React.FC = () => {
       setLeads(data.leads || []);
       setSchools(data.schools || []);
       setAdLink(data.adLink || null);
+      setPersonalPromo(data.personalPromo || null);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Ошибка загрузки');
     } finally {
@@ -250,6 +253,7 @@ const MarketerClients: React.FC = () => {
       </Box>
 
       <MarketerSchoolRefLink adLink={adLink} variant="strip" />
+      <MarketerPersonalPromo promo={personalPromo} variant="strip" />
 
       <Box
         sx={{

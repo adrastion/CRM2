@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -86,38 +86,18 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
   const [marketerForm, setMarketerForm] = useState(emptyMarketer);
   const [promoForm, setPromoForm] = useState(emptyPromo);
   const [linkForm, setLinkForm] = useState(emptyLink);
-  const [publications, setPublications] = useState<any[]>([]);
-  const [closingDocs, setClosingDocs] = useState<any[]>([]);
-  const [pubForm, setPubForm] = useState({
-    type: 'NEWS',
-    title: '',
-    body: '',
-    imageFile: null as File | null,
-    fileFile: null as File | null,
-  });
-  const [docForm, setDocForm] = useState({
-    title: '',
-    periodLabel: '',
-    marketerId: '',
-    file: null as File | null,
-  });
-
   const load = useCallback(async () => {
     setError('');
     try {
       if (mode === 'sa') {
-        const [m, p, r, pubs, docs] = await Promise.all([
+        const [m, p, r] = await Promise.all([
           apiService.getPlatformMarketers(),
           apiService.getPlatformPromoCodes(),
           apiService.getPlatformReferralLinks(),
-          apiService.adminListMarketerPublications(),
-          apiService.adminListMarketerClosingDocs(),
         ]);
         setMarketers(m.data || []);
         setPromos(p.data || []);
         setLinks(r.data || []);
-        setPublications(pubs || []);
-        setClosingDocs(docs || []);
       } else {
         const [m, p, r] = await Promise.all([
           apiService.getMarketers(),
@@ -248,7 +228,6 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
         <Tab label="Маркетологи" />
         <Tab label="Промокоды" />
         <Tab label="Реферальные ссылки" />
-        {mode === 'sa' && <Tab label="Реклама и документы" />}
       </Tabs>
 
       {tab === 0 && (
@@ -336,13 +315,20 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
               variant="contained"
               onClick={() => {
                 setEditingPromo(null);
-                setPromoForm(emptyPromo);
+                setPromoForm({
+                  ...emptyPromo,
+                  validFrom: new Date().toISOString().slice(0, 16),
+                });
                 setPromoDialog(true);
               }}
             >
-              Добавить
+              Добавить личный / акцию
             </Button>
           </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Личный промокод = выбран маркетолог + скидка. Он видит код в своём кабинете; без назначения
+            блок промокода у маркетолога скрыт.
+          </Typography>
           <TableContainer component={Paper}>
             <Table size="small">
               <TableHead>
@@ -491,231 +477,6 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
         </Box>
       )}
 
-      {mode === 'sa' && tab === 3 && (
-        <Box>
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            Публикации для маркетологов
-          </Typography>
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Тип</InputLabel>
-                <Select
-                  label="Тип"
-                  value={pubForm.type}
-                  onChange={(e) => setPubForm({ ...pubForm, type: e.target.value })}
-                >
-                  <MenuItem value="NEWS">Новость</MenuItem>
-                  <MenuItem value="PROMO">Акция</MenuItem>
-                  <MenuItem value="BANNER">Баннер</MenuItem>
-                  <MenuItem value="POSTER">Афиша</MenuItem>
-                  <MenuItem value="UPDATE">Обновление</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={9}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Заголовок"
-                value={pubForm.title}
-                onChange={(e) => setPubForm({ ...pubForm, title: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                size="small"
-                multiline
-                minRows={2}
-                label="Текст"
-                value={pubForm.body}
-                onChange={(e) => setPubForm({ ...pubForm, body: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Button variant="outlined" component="label" fullWidth sx={{ textTransform: 'none' }}>
-                {pubForm.imageFile ? `Изображение: ${pubForm.imageFile.name}` : 'Загрузить изображение'}
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={(e) =>
-                    setPubForm({ ...pubForm, imageFile: e.target.files?.[0] || null })
-                  }
-                />
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Button variant="outlined" component="label" fullWidth sx={{ textTransform: 'none' }}>
-                {pubForm.fileFile ? `Файл: ${pubForm.fileFile.name}` : 'Загрузить файл'}
-                <input
-                  type="file"
-                  hidden
-                  onChange={(e) =>
-                    setPubForm({ ...pubForm, fileFile: e.target.files?.[0] || null })
-                  }
-                />
-              </Button>
-            </Grid>
-            <Grid item xs={12}>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={async () => {
-                  try {
-                    await apiService.adminCreateMarketerPublication({
-                      type: pubForm.type,
-                      title: pubForm.title,
-                      body: pubForm.body,
-                      image: pubForm.imageFile,
-                      file: pubForm.fileFile,
-                    });
-                    setPubForm({
-                      type: 'NEWS',
-                      title: '',
-                      body: '',
-                      imageFile: null,
-                      fileFile: null,
-                    });
-                    await load();
-                  } catch (e: any) {
-                    setError(e.response?.data?.error || e.message || 'Ошибка публикации');
-                  }
-                }}
-              >
-                Опубликовать
-              </Button>
-            </Grid>
-          </Grid>
-          <TableContainer component={Paper} sx={{ mb: 3 }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Тип</TableCell>
-                  <TableCell>Заголовок</TableCell>
-                  <TableCell>Дата</TableCell>
-                  <TableCell>Вложения</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {publications.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>{p.type}</TableCell>
-                    <TableCell>{p.title}</TableCell>
-                    <TableCell>{new Date(p.publishedAt).toLocaleDateString('ru-RU')}</TableCell>
-                    <TableCell>
-                      {p.fileUrl ? (
-                        <Button
-                          size="small"
-                          onClick={async () => {
-                            const blob = await apiService.adminDownloadMarketerPublicationFileBlob(p.id);
-                            const url = URL.createObjectURL(blob);
-                            window.open(url, '_blank');
-                          }}
-                        >
-                          Файл
-                        </Button>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            Закрывающие документы
-          </Typography>
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Название"
-                value={docForm.title}
-                onChange={(e) => setDocForm({ ...docForm, title: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Период"
-                value={docForm.periodLabel}
-                onChange={(e) => setDocForm({ ...docForm, periodLabel: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <Button variant="outlined" component="label" fullWidth sx={{ textTransform: 'none' }}>
-                {docForm.file ? docForm.file.name : 'Выбрать файл'}
-                <input
-                  type="file"
-                  hidden
-                  onChange={(e) => setDocForm({ ...docForm, file: e.target.files?.[0] || null })}
-                />
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <Button
-                fullWidth
-                variant="contained"
-                disabled={!docForm.file || !docForm.title.trim()}
-                onClick={async () => {
-                  try {
-                    if (!docForm.file) return;
-                    await apiService.adminCreateMarketerClosingDoc({
-                      title: docForm.title,
-                      periodLabel: docForm.periodLabel || undefined,
-                      marketerId: docForm.marketerId || null,
-                      file: docForm.file,
-                    });
-                    setDocForm({ title: '', periodLabel: '', marketerId: '', file: null });
-                    await load();
-                  } catch (e: any) {
-                    setError(e.response?.data?.error || e.message || 'Ошибка документа');
-                  }
-                }}
-              >
-                Добавить
-              </Button>
-            </Grid>
-          </Grid>
-          <TableContainer component={Paper}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Название</TableCell>
-                  <TableCell>Период</TableCell>
-                  <TableCell>Файл</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {closingDocs.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell>{d.title}</TableCell>
-                    <TableCell>{d.periodLabel || '—'}</TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        onClick={async () => {
-                          const blob = await apiService.adminDownloadMarketerClosingDocBlob(d.id);
-                          const url = URL.createObjectURL(blob);
-                          window.open(url, '_blank');
-                        }}
-                      >
-                        Открыть
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      )}
 
       <Dialog open={marketerDialog} onClose={() => setMarketerDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingMarketer ? 'Редактировать маркетолога' : 'Новый маркетолог'}</DialogTitle>
@@ -776,6 +537,11 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
       <Dialog open={promoDialog} onClose={() => setPromoDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingPromo ? 'Редактировать промокод' : 'Новый промокод'}</DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
+            Укажите маркетолога — получится его личный промокод: скидка (% или ₽) и закрепление школы
+            как по реферальной ссылке. Без маркетолога — обычная акция платформы. Маркетолог увидит
+            код в кабинете только если он назначен ему.
+          </Typography>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} sm={6}>
               <TextField fullWidth label="Код" value={promoForm.code} onChange={(e) => setPromoForm({ ...promoForm, code: e.target.value.toUpperCase() })} />
@@ -784,19 +550,28 @@ const PlatformMarketersCrud: React.FC<Props> = ({ mode }) => {
               <FormControl fullWidth>
                 <InputLabel>Тип скидки</InputLabel>
                 <Select label="Тип скидки" value={promoForm.discountType} onChange={(e) => setPromoForm({ ...promoForm, discountType: e.target.value })}>
-                  <MenuItem value="PERCENTAGE">Процент</MenuItem>
-                  <MenuItem value="FIXED">Фиксированная</MenuItem>
+                  <MenuItem value="PERCENTAGE">Процент (%)</MenuItem>
+                  <MenuItem value="FIXED">Рубли (₽)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Значение" value={promoForm.discountValue} onChange={(e) => setPromoForm({ ...promoForm, discountValue: e.target.value })} />
+              <TextField
+                fullWidth
+                label={promoForm.discountType === 'PERCENTAGE' ? 'Скидка, %' : 'Скидка, ₽'}
+                value={promoForm.discountValue}
+                onChange={(e) => setPromoForm({ ...promoForm, discountValue: e.target.value })}
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Маркетолог</InputLabel>
-                <Select label="Маркетолог" value={promoForm.marketerId} onChange={(e) => setPromoForm({ ...promoForm, marketerId: e.target.value })}>
-                  <MenuItem value="">—</MenuItem>
+                <InputLabel>Маркетолог (личный код)</InputLabel>
+                <Select
+                  label="Маркетолог (личный код)"
+                  value={promoForm.marketerId}
+                  onChange={(e) => setPromoForm({ ...promoForm, marketerId: e.target.value })}
+                >
+                  <MenuItem value="">— без маркетолога —</MenuItem>
                   {marketers.map((m) => (
                     <MenuItem key={m.id} value={m.id}>
                       {m.name}
