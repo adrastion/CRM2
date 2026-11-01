@@ -74,7 +74,15 @@ const SaMobileAppTab: React.FC = () => {
       setLabel(data.label || '');
       setSuccess('APK загружен. Пользователям файл пока не выдаётся.');
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Не удалось загрузить APK');
+      const timedOut =
+        e?.code === 'ECONNABORTED' ||
+        String(e?.message || '').toLowerCase().includes('timeout');
+      setError(
+        e?.response?.data?.error ||
+          (timedOut
+            ? 'Превышено время ожидания загрузки. Попробуйте ещё раз или проверьте размер APK.'
+            : e?.message || 'Не удалось загрузить APK')
+      );
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = '';

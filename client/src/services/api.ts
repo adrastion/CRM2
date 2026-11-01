@@ -2798,8 +2798,9 @@ class ApiService {
     const form = new FormData();
     form.append('file', file);
     if (label) form.append('label', label);
+    // APK до 250 МБ — дефолтный axios timeout 10s обрывает загрузку.
     const response = await this.api.post<ApiResponse>('/admin-dashboard/mobile-apk', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 10 * 60 * 1000,
     });
     return response.data.data;
   }
