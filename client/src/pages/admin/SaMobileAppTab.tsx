@@ -74,14 +74,17 @@ const SaMobileAppTab: React.FC = () => {
       setLabel(data.label || '');
       setSuccess('APK загружен. Пользователям файл пока не выдаётся.');
     } catch (e: any) {
+      const status = e?.response?.status;
       const timedOut =
         e?.code === 'ECONNABORTED' ||
         String(e?.message || '').toLowerCase().includes('timeout');
       setError(
         e?.response?.data?.error ||
-          (timedOut
-            ? 'Превышено время ожидания загрузки. Попробуйте ещё раз или проверьте размер APK.'
-            : e?.message || 'Не удалось загрузить APK')
+          (status === 413
+            ? 'Файл слишком большой для прокси/сервера (413). Перезапустите клиент после обновления setupProxy или загрузите меньший APK.'
+            : timedOut
+              ? 'Превышено время ожидания загрузки. Попробуйте ещё раз или проверьте размер APK.'
+              : e?.message || 'Не удалось загрузить APK')
       );
     } finally {
       setBusy(false);

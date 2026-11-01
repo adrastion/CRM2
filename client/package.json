@@ -56,7 +56,7 @@
   "devDependencies": {
     "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@types/jest": "^29.5.8",
-    "@types/typo-js": "^1.2.2"
-  },
-  "proxy": "http://127.0.0.1:3001"
+    "@types/typo-js": "^1.2.2",
+    "http-proxy-middleware": "^2.0.11"
+  }
 }
