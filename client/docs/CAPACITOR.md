@@ -8,14 +8,15 @@ Flutter-репозиторий `CRM2-mobile` **deprecated** как UI (не на
 ```bash
 cd client
 npm install
-npm run build:mobile
+npm run build:mobile   # PUBLIC_URL=./ + API прод + cap sync
 npx cap open android
 ```
 
-В Android Studio: Run / Build APK. Готовый APK загружается в SA → «Мобильное приложение».
+**Важно:** для сайта на сервере только `npm run build` (пути `/static/...`).
+`homepage: "./"` / `PUBLIC_URL=./` нельзя для веб-деплоя — на `/admin/...` белый экран
+(браузер ищет JS в `/admin/static/...`).
 
-В нативном приложении API: `https://profsportcrm.ru/api`
-(`npm run build:mobile` проставляет `REACT_APP_API_URL`).
+В Android Studio: Run / Build APK. Готовый APK → SA «Мобильное приложение».
 
 **На сервере** в CORS должны быть origins Capacitor (уже в коде `server.ts`):
 `https://localhost`, `capacitor://localhost`. После деплоя backend — перезапуск PM2.

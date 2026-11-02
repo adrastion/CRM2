@@ -2,7 +2,6 @@
   "name": "martial-arts-crm-client",
   "version": "1.0.0",
   "private": true,
-  "homepage": "./",
   "dependencies": {
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
@@ -42,7 +41,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "react-scripts start",
-    "build:mobile": "set REACT_APP_API_URL=https://profsportcrm.ru/api&& react-scripts build && npx cap sync android",
+    "build:mobile": "node scripts/build-mobile.js",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "cap:add:android": "npx cap add android"
