@@ -362,8 +362,8 @@ server {
     access_log /var/log/nginx/martial-arts-crm-access.log;
     error_log /var/log/nginx/martial-arts-crm-error.log;
 
-    # Максимальный размер загружаемых файлов
-    client_max_body_size 10M;
+    # APK до 250 МБ (см. multer mobile-apk) + прочие загрузки
+    client_max_body_size 250M;
 
     # Frontend (статичные файлы)
     location / {
@@ -396,10 +396,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         
-        # Таймауты
+        # Таймауты (загрузка APK может идти минуты)
         proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
     }
 
     # Health check endpoint
@@ -433,7 +433,7 @@ server {
     listen [::]:80;
     server_name yourdomain.com www.yourdomain.com;
 
-    client_max_body_size 10M;
+    client_max_body_size 250M;
 
     location / {
         root /var/www/martial-arts-crm/client/build;
@@ -451,6 +451,8 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
     }
 }
 ```
@@ -857,8 +859,12 @@ ls -la /var/www/martial-arts-crm/uploads
 chmod 755 /var/www/martial-arts-crm/uploads
 chown -R crmuser:crmuser /var/www/martial-arts-crm/uploads
 
-# Проверить настройку client_max_body_size в Nginx
+# Проверить настройку client_max_body_size в Nginx (для APK нужно ≥ 250M)
 sudo grep client_max_body_size /etc/nginx/sites-available/martial-arts-crm
+
+# Быстро поднять лимит под загрузку APK, затем:
+# sudo nginx -t && sudo systemctl reload nginx
+# sudo sed -i 's/client_max_body_size.*/client_max_body_size 250M;/' /etc/nginx/sites-available/martial-arts-crm
 ```
 
 ### Проблема: Высокое использование памяти

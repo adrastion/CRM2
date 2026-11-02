@@ -34,16 +34,25 @@ export const authenticateSuperAdmin = asyncHandler(async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const queryToken =
+      typeof req.query.access_token === 'string' ? req.query.access_token.trim() : '';
+    // Только скачивание APK: <a href> не шлёт Authorization, axios на больших файлах даёт timeout 10s.
+    const allowQueryToken =
+      req.method === 'GET' &&
+      (req.path === '/mobile-apk/file' || String(req.originalUrl || '').includes('/mobile-apk/file'));
+
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (allowQueryToken && queryToken) {
+      token = queryToken;
+    } else {
       res.status(401).json({
         success: false,
         error: 'Требуется токен доступа'
       });
       return;
     }
-
-    const token = authHeader.substring(7);
     
     if (!process.env.JWT_SECRET) {
       res.status(500).json({

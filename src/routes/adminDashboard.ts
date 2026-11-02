@@ -438,6 +438,7 @@ router.get('/mobile-apk', getMobileApkMeta);
 router.post('/mobile-apk', mobileApkUpload.single('file'), uploadMobileApk);
 router.put('/mobile-apk/label', updateMobileApkLabel);
 router.delete('/mobile-apk', deleteMobileApk);
+/** Скачивание: клиент открывает URL с ?access_token= (см. authenticateSuperAdmin) */
 router.get('/mobile-apk/file', downloadMobileApk);
 
 router.get('/maintenance', getAdminMaintenance);

@@ -2850,21 +2850,22 @@ class ApiService {
   }
 
   async adminDownloadMobileApk(): Promise<void> {
-    const response = await this.api.get('/admin-dashboard/mobile-apk/file', {
-      responseType: 'blob',
-    });
-    const disposition = String(response.headers['content-disposition'] || '');
-    const match = /filename="?([^"]+)"?/i.exec(disposition);
-    const fileName = match?.[1] || 'profsport.apk';
-    const blob = response.data as Blob;
-    const url = window.URL.createObjectURL(blob);
+    // Не через axios blob: дефолтный timeout 10s и буфер всего APK в RAM.
+    // Браузер качает потоком по прямой ссылке (Bearer из query только для этого файла).
+    const token =
+      (typeof localStorage !== 'undefined' && localStorage.getItem('superAdminToken')) || '';
+    if (!token) {
+      throw new Error('Нет токена супер-админа');
+    }
+    const base = this.largeUploadBaseURL().replace(/\/$/, '');
+    const url = `${base}/admin-dashboard/mobile-apk/file?access_token=${encodeURIComponent(token)}`;
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName;
+    a.rel = 'noopener';
+    a.download = 'profsport.apk';
     document.body.appendChild(a);
     a.click();
     a.remove();
-    window.URL.revokeObjectURL(url);
   }
 
   async getPublicMarketerLegalDocs(): Promise<{
