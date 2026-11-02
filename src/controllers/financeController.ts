@@ -307,6 +307,17 @@ export const createFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     excludeUserId: req.user?.id,
   }).catch((err) => console.error('[Notifications] finance:', err));
 
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(req.tenant.id, {
+      entity: 'finance',
+      action: 'created',
+      id: op.id,
+    });
+  } catch (e) {
+    console.warn('[realtime] finance created emit failed', e);
+  }
+
   res.status(201).json({ success: true, data: op });
 });
 
@@ -320,6 +331,18 @@ export const deleteFinanceOperation = asyncHandler(async (req: AuthenticatedRequ
     throw badRequest('Укажите ID операции');
   }
   await FinanceService.deleteOperation(req.tenant.id, id);
+
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(req.tenant.id, {
+      entity: 'finance',
+      action: 'deleted',
+      id,
+    });
+  } catch (e) {
+    console.warn('[realtime] finance deleted emit failed', e);
+  }
+
   res.json({ success: true, data: { id }, message: 'Операция отменена' });
 });
 

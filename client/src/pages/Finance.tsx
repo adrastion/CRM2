@@ -50,6 +50,8 @@ import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canCancelFinanceOperations } from '../utils/roles';
+import { useRealtimeSubscription } from '../realtime/useRealtimeSubscription';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { useSearchParams } from 'react-router-dom';
 import ClientNameLink from '../components/ClientNameLink';
 import TrainerNameLink from '../components/TrainerNameLink';
@@ -536,6 +538,18 @@ const Finance: React.FC = () => {
     },
     [loadOperations, loadSalary, loadMemberships, loadTypes]
   );
+
+  useRealtimeSubscription('finance', () => {
+    void loadOperations();
+    if (tab === 'salary') void loadSalary();
+    if (tab === 'memberships') void loadMemberships();
+  });
+
+  usePullToRefresh(async () => {
+    await loadOperations();
+    if (tab === 'salary') await loadSalary();
+    if (tab === 'memberships') await loadMemberships();
+  });
 
   const handleConfirmCancelOperation = async () => {
     if (!cancelOp) return;

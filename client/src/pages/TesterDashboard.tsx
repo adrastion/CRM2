@@ -4,13 +4,11 @@ import {
   Box,
   CircularProgress,
   Paper,
-  Tab,
-  Tabs,
   Typography,
-  Divider,
   Button,
 } from '@mui/material';
 import { Download } from '@mui/icons-material';
+import { useSearchParams } from 'react-router-dom';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import NotificationSettingsPanel from '../components/notifications/NotificationSettingsPanel';
 import Email2faSettingsToggle from '../components/auth/Email2faSettingsToggle';
@@ -70,11 +68,12 @@ const TesterNewsImage: React.FC<{ id: string; hasImage: boolean }> = ({ id, hasI
 };
 
 /**
- * Панель тестировщика: платформенные чаты + новости.
+ * Панель тестировщика. Чаты — immersive как у школы; вкладки через shell nav (?tab=).
  */
 const TesterDashboard: React.FC = () => {
   const { tester } = useTesterAuth();
-  const [tab, setTab] = useState(0);
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'chats';
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -94,7 +93,7 @@ const TesterDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (tab === 1) loadChangelog();
+    if (tab === 'news') void loadChangelog();
   }, [tab, loadChangelog]);
 
   if (!tester) {
@@ -105,78 +104,78 @@ const TesterDashboard: React.FC = () => {
     );
   }
 
-  return (
-    <Box>
-      <Paper sx={{ mb: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label="Чаты" />
-          <Tab label="Новости" />
-          <Tab label="Уведомления" />
-        </Tabs>
-      </Paper>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-
-      {tab === 0 && (
+  if (tab !== 'news' && tab !== 'notifications') {
+    return (
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          height: { xs: '100%', md: 'calc(100vh - 120px)' },
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <ChatWorkspace
           mode="platform"
           socketToken={token}
           self={{ kind: 'TESTER', id: tester.id }}
           immersiveMobile
         />
-      )}
+      </Box>
+    );
+  }
 
-      {tab === 1 && (
-        <Box>
-          {loading ? (
-            <Box display="flex" justifyContent="center" p={4}>
-              <CircularProgress />
-            </Box>
-          ) : entries.length === 0 ? (
-            <Typography color="text.secondary">Пока нет новостей</Typography>
-          ) : (
-            entries.map((e) => (
-              <Paper key={e.id} sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" fontWeight={700}>
-                  {e.title}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {new Date(e.createdAt).toLocaleString('ru-RU')}
-                </Typography>
-                <Divider sx={{ my: 1.5 }} />
-                <Typography sx={{ whiteSpace: 'pre-wrap' }}>{e.body}</Typography>
-                <TesterNewsImage id={e.id} hasImage={Boolean(e.imageUrl)} />
-                {e.fileUrl && (
-                  <Button
-                    size="small"
-                    startIcon={<Download />}
-                    sx={{ mt: 1.5, textTransform: 'none' }}
-                    onClick={async () => {
-                      const blob = await apiService.downloadPlatformNewsFileBlob(e.id, 'sa');
-                      const url = URL.createObjectURL(blob);
-                      window.open(url, '_blank');
-                    }}
-                  >
-                    Скачать файл
-                  </Button>
-                )}
-              </Paper>
-            ))
-          )}
-        </Box>
-      )}
+  if (tab === 'news') {
+    return (
+      <Box>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={4}>
+            <CircularProgress />
+          </Box>
+        ) : entries.length === 0 ? (
+          <Typography color="text.secondary">Пока нет новостей</Typography>
+        ) : (
+          entries.map((e) => (
+            <Paper key={e.id} sx={{ p: 2, mb: 2 }}>
+              <Typography variant="h6" fontWeight={700}>
+                {e.title}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {new Date(e.createdAt).toLocaleString('ru-RU')}
+              </Typography>
+              <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{e.body}</Typography>
+              <TesterNewsImage id={e.id} hasImage={Boolean(e.imageUrl)} />
+              {e.fileUrl && (
+                <Button
+                  size="small"
+                  startIcon={<Download />}
+                  sx={{ mt: 1.5, textTransform: 'none' }}
+                  onClick={async () => {
+                    const blob = await apiService.downloadPlatformNewsFileBlob(e.id, 'sa');
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                  }}
+                >
+                  Скачать файл
+                </Button>
+              )}
+            </Paper>
+          ))
+        )}
+      </Box>
+    );
+  }
 
-      {tab === 2 && (
-        <Box sx={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Email2faSettingsToggle />
-          <ActiveSessionsPanel />
-          <NotificationSettingsPanel actor="tester" showChangelog />
-        </Box>
-      )}
+  return (
+    <Box sx={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Email2faSettingsToggle />
+      <ActiveSessionsPanel />
+      <NotificationSettingsPanel actor="tester" showChangelog />
     </Box>
   );
 };

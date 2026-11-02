@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { useCreateFlows } from '../contexts/CreateFlowsContext';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { apiService } from '../services/api';
 import { DashboardStats } from '../types';
 import Panel from '../components/dashboard/Panel';
@@ -196,6 +197,25 @@ const Dashboard: React.FC = () => {
   const [planUsage, setPlanUsage] = useState<any>(null);
   const [planUsageLoading, setPlanUsageLoading] = useState(false);
 
+  const reloadDashboard = useCallback(async (opts?: { silent?: boolean }) => {
+    try {
+      if (!opts?.silent) setLoading(true);
+      setError('');
+      const [statsData, activitiesData, trainingsData] = await Promise.all([
+        apiService.getDashboardStats(),
+        apiService.getRecentActivity(10),
+        apiService.getUpcomingTrainings(10, 7),
+      ]);
+      setStats(statsData);
+      setActivities(activitiesData);
+      setUpcomingTrainings(trainingsData);
+    } catch {
+      setError('Не удалось загрузить данные панели управления');
+    } finally {
+      if (!opts?.silent) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
     const abortController = new AbortController();
@@ -228,6 +248,8 @@ const Dashboard: React.FC = () => {
       abortController.abort();
     };
   }, []);
+
+  usePullToRefresh(() => reloadDashboard({ silent: true }));
 
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);

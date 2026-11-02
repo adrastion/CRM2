@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import {
   Box,
   Typography,
@@ -307,6 +308,8 @@ const Groups: React.FC = () => {
       setLoading(false);
     }
   };
+
+  usePullToRefresh(() => fetchData());
 
   useEffect(() => {
     let isMounted = true;

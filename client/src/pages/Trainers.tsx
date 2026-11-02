@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import {
   Box,
   Typography,
@@ -155,6 +156,19 @@ const Trainers: React.FC = () => {
       console.error('Error fetching employees:', err);
     }
   };
+
+  usePullToRefresh(async () => {
+    try {
+      const [trainersRes, branchesRes] = await Promise.all([
+        apiService.getTrainers({ includeAdmins: 'true', limit: 1000 }),
+        apiService.getBranches(),
+      ]);
+      setTrainers(trainersRes.data);
+      setBranches(branchesRes.data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Ошибка загрузки данных');
+    }
+  });
 
   const handleDeleteTrainer = (trainerId: string) => {
     const employee =

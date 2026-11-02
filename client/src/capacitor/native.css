@@ -1,17 +1,24 @@
-/* Capacitor / mobile WebView: safe areas + touch */
+/**
+ * Capacitor / mobile WebView.
+ * НЕ ставить padding-top на body/html — sticky-шапка с top:0
+ * тогда «уезжает» под статус-бар при скролле. Отступ — на самом header.
+ */
 html.capacitor-native,
 html.capacitor-native body,
 body.capacitor-native {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Safe-area для липкой шапки кабинета */
+.crm-shell-header-mobile {
+  padding-top: max(0.55rem, env(safe-area-inset-top, 0px)) !important;
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  background-clip: padding-box;
+}
+
 @media (max-width: 900px) {
-  /* Не даём горизонтальный скролл ломать WebView */
   body {
     overflow-x: hidden;
   }

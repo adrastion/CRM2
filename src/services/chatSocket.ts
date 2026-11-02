@@ -189,6 +189,20 @@ export function attachChatNamespace(io: Server): void {
 
   setChatMessageEmitter((payload: CreatedMessagePayload) => {
     nsp.to(roomName(payload.threadId)).emit('chat:message', payload);
+    void import('./realtimeBus')
+      .then(({ emitTenantRealtime }) => {
+        emitTenantRealtime(payload.tenantId, {
+          entity: 'chat',
+          action: 'changed',
+          id: payload.threadId,
+          meta: {
+            preview: payload.body,
+            kind: payload.kind,
+            createdAt: payload.createdAt,
+          },
+        });
+      })
+      .catch(() => undefined);
   });
 
   setChatMessageUpdatedEmitter((payload: CreatedMessagePayload) => {
@@ -203,6 +217,9 @@ export function attachChatNamespace(io: Server): void {
           nsp.to(actorPersonalRoom(key)).emit('chat:unread', {
             threadId: thread.id,
             unreadDelta: 1,
+          });
+          nsp.to(actorPersonalRoom(key)).emit('chat:thread-activity', {
+            threadId: thread.id,
           });
         }
       } catch (e) {

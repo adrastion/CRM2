@@ -25,6 +25,7 @@ import SpellcheckProvider from './spellcheck/SpellcheckProvider';
 import PageLoader from './components/PageLoader';
 import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 import NativeBootstrap from './capacitor/NativeBootstrap';
+import RealtimeBridge from './realtime/RealtimeBridge';
 
 // Lazy load pages for better performance (с retry при обрыве chunk на мобильных)
 const Landing = lazy(() => import('./pages/Landing'));
@@ -543,6 +544,7 @@ const AppContent: React.FC = () => {
     <SpellcheckProvider>
     <Router>
       <NativeBootstrap />
+      <RealtimeBridge />
       <SwitchAccountFromPush />
       <MaintenanceGate>
       <SiteTrafficTracker />
@@ -804,7 +806,7 @@ const AppContent: React.FC = () => {
           path="/tester/dashboard"
           element={
             <ProtectedTesterRoute>
-              <AppLayout pageTitle="Панель тестировщика">
+              <AppLayout>
                 <TesterDashboard />
               </AppLayout>
             </ProtectedTesterRoute>

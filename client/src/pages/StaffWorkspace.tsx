@@ -18,6 +18,7 @@ import {
   NoteAltOutlined,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { apiService } from '../services/api';
 import { colors, radii, typography } from '../theme/tokens';
 import CreateNoteDialog from '../components/staff/CreateNoteDialog';
@@ -90,6 +91,8 @@ const StaffWorkspace: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  usePullToRefresh(() => load());
 
   const openNewNote = () => {
     setNewMenuEl(null);

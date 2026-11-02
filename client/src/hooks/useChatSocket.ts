@@ -59,6 +59,7 @@ export function useChatSocket(opts: {
     readerId: string;
     lastReadAt: string;
   }) => void;
+  onThreadActivity?: (payload: { threadId: string }) => void;
 }): void {
   const {
     token,
@@ -69,6 +70,7 @@ export function useChatSocket(opts: {
     onPresence,
     onPin,
     onRead,
+    onThreadActivity,
   } = opts;
   const socketRef = useRef<Socket | null>(null);
   const onMessageRef = useRef(onMessage);
@@ -76,11 +78,13 @@ export function useChatSocket(opts: {
   const onPresenceRef = useRef(onPresence);
   const onPinRef = useRef(onPin);
   const onReadRef = useRef(onRead);
+  const onThreadActivityRef = useRef(onThreadActivity);
   onMessageRef.current = onMessage;
   onMessageUpdatedRef.current = onMessageUpdated;
   onPresenceRef.current = onPresence;
   onPinRef.current = onPin;
   onReadRef.current = onRead;
+  onThreadActivityRef.current = onThreadActivity;
   const joinedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -120,6 +124,10 @@ export function useChatSocket(opts: {
         onReadRef.current?.(payload);
       }
     );
+
+    socket.on('chat:thread-activity', (payload: { threadId: string }) => {
+      onThreadActivityRef.current?.(payload);
+    });
 
     return () => {
       socket.disconnect();

@@ -69,6 +69,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import ClientNameLink from '../components/ClientNameLink';
 import TrainerNameLink from '../components/TrainerNameLink';
 import { useStaffEntityCards } from '../components/StaffEntityCardHost';
@@ -430,6 +431,8 @@ const Schedule: React.FC = () => {
       setLoading(false);
     }
   };
+
+  usePullToRefresh(() => fetchData());
 
   useEffect(() => {
     let isMounted = true;

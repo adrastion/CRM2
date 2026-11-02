@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { DeleteOutline, Download, UploadFile } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import { useRealtimeSubscription } from '../../realtime/useRealtimeSubscription';
 
 type ApkMeta = {
   hasFile: boolean;
@@ -62,6 +63,10 @@ const SaMobileAppTab: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useRealtimeSubscription('mobile-apk', () => {
+    void load();
+  });
 
   const onUpload = async (file: File | undefined) => {
     if (!file) return;

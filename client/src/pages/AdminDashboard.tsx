@@ -1166,6 +1166,23 @@ const AdminDashboard: React.FC = () => {
     return null;
   }
 
+  // Чаты — тот же immersive layout, что /chats у школы (без Container/отступов).
+  if (section === 'chats') {
+    return (
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          height: { xs: '100%', md: 'calc(100vh - 120px)' },
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <SuperAdminPlatformChatsTab />
+      </Box>
+    );
+  }
+
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
       <Dialog open={staffDialog} onClose={() => setStaffDialog(false)} maxWidth="sm" fullWidth>
@@ -1465,20 +1482,6 @@ const AdminDashboard: React.FC = () => {
       {section === 'development' && <SuperAdminDevNotesTab />}
 
       {section === 'client-ideas' && <SuperAdminClientIdeasTab />}
-
-      {section === 'chats' && (
-        <Box
-                    sx={{
-            height: { xs: 'calc(100dvh - 160px)', md: 'calc(100vh - 180px)' },
-            minHeight: 420,
-            mx: { xs: -1, md: 0 },
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          <SuperAdminPlatformChatsTab />
-        </Box>
-      )}
 
       {section === 'changelog' && <SuperAdminPlatformChangelogTab />}
 

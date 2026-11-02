@@ -1088,18 +1088,22 @@ const DashboardShell: React.FC<DashboardShellProps> = ({
       {!isMdUp && (
         <Box
           component="header"
+          className="crm-shell-header-mobile"
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             columnGap: 1,
             px: 2,
-            py: 1.1,
+            pt: 'max(0.55rem, env(safe-area-inset-top, 0px))',
+            pb: 1.1,
             bgcolor: colors.card,
             borderBottom: `1px solid ${colors.surface}`,
             position: 'sticky',
             top: 0,
             zIndex: 30,
+            // фон шапки заливает зону статус-бара, контент не «прыгает» при скролле
+            boxSizing: 'border-box',
           }}
         >
           {wordmark}

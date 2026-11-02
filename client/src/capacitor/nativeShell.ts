@@ -12,9 +12,11 @@ export async function initNativeShell(): Promise<void> {
   document.body.classList.add('capacitor-native');
 
   try {
-    await StatusBar.setStyle({ style: Style.Dark });
+    // overlay=true + padding на header (не на body) — стабильная шапка под notch/status bar
+    await StatusBar.setOverlaysWebView({ overlay: true });
+    await StatusBar.setStyle({ style: Style.Light });
     if (nativePlatform() === 'android') {
-      await StatusBar.setBackgroundColor({ color: '#0B1F3A' });
+      await StatusBar.setBackgroundColor({ color: '#FFFFFF' });
     }
   } catch (e) {
     console.warn('[capacitor] StatusBar', e);

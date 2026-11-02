@@ -685,6 +685,17 @@ export const createClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     branchId: (client as any).branchId || null,
   }).catch((err) => console.error('[Notifications] athlete_created:', err));
 
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(tenantId, {
+      entity: 'clients',
+      action: 'created',
+      id: client.id,
+    });
+  } catch (e) {
+    console.warn('[realtime] client created emit failed', e);
+  }
+
   res.status(201).json({
     success: true,
     data: sanitizeClientCertificateFields(client as any),
@@ -836,6 +847,17 @@ export const updateClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     });
   });
 
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(tenantId, {
+      entity: 'clients',
+      action: 'updated',
+      id: client.id,
+    });
+  } catch (e) {
+    console.warn('[realtime] client updated emit failed', e);
+  }
+
   res.json({
     success: true,
     data: sanitizeClientCertificateFields(client as any),
@@ -902,6 +924,17 @@ export const approveClientAccount = asyncHandler(async (req: AuthenticatedReques
       accountApprovedBy: userId || null
     }
   });
+
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(tenantId, {
+      entity: 'clients',
+      action: 'updated',
+      id,
+    });
+  } catch (e) {
+    console.warn('[realtime] client approved emit failed', e);
+  }
 
   res.json({
     success: true,
@@ -1016,6 +1049,17 @@ export const deleteClient = asyncHandler(async (req: AuthenticatedRequest, res: 
     data: { isActive: false, sessionVersion: { increment: 1 } }
   });
   await revokeSessionsOnVersionBump('CLIENT', id);
+
+  try {
+    const { emitTenantRealtime } = await import('../services/realtimeBus');
+    emitTenantRealtime(tenantId, {
+      entity: 'clients',
+      action: 'deleted',
+      id,
+    });
+  } catch (e) {
+    console.warn('[realtime] client deleted emit failed', e);
+  }
 
   res.json({
     success: true,

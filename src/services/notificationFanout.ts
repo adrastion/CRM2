@@ -69,6 +69,22 @@ export async function fanoutNotification(payload: FanoutPayload): Promise<void> 
     })),
   });
 
+  try {
+    const { emitActorRealtime } = await import('./realtimeBus');
+    emitActorRealtime(recipients, {
+      entity: 'notifications',
+      action: 'created',
+      tenantId: payload.tenantId || null,
+      meta: {
+        category: payload.category,
+        type: payload.type,
+        title: payload.title,
+      },
+    });
+  } catch (e) {
+    console.warn('[realtime] notification emit failed', e);
+  }
+
   if (payload.inboxOnly) return;
 
   await Promise.allSettled(

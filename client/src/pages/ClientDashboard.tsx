@@ -40,6 +40,8 @@ import ClientDocumentsPanel from '../components/client/ClientDocumentsPanel';
 import ChatWorkspace from '../components/chat/ChatWorkspace';
 import ClientSettingsPanel from '../components/client/ClientSettingsPanel';
 import DashboardShell, { ShellNavItem } from '../components/dashboard/DashboardShell';
+import PullToRefresh from '../capacitor/PullToRefresh';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import Panel from '../components/dashboard/Panel';
 import MetricCard from '../components/dashboard/MetricCard';
 import { toIso } from '../components/dashboard/MonthCalendar';
@@ -133,6 +135,32 @@ const ClientDashboard: React.FC = () => {
     enabled: Boolean(clientToken),
   });
 
+  const refreshDashboard = React.useCallback(
+    async (opts?: { silent?: boolean }) => {
+      try {
+        if (!opts?.silent) setLoading(true);
+        const result = await loadDashboard(switchClientId);
+        setData(result);
+        setEmailVerifiedLocal(null);
+        setVerifyCode('');
+        setVerifyNotice('');
+        setVerifyError('');
+        setError('');
+      } catch (err) {
+        const { status, message } = extractApiError(err, 'Не удалось загрузить данные');
+        if (status === 401) {
+          const nextDestination = logoutCurrentAccount();
+          window.location.assign(nextDestination || '/');
+          return;
+        }
+        setError(message);
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [switchClientId]
+  );
+
   React.useEffect(() => {
     if (!localStorage.getItem('clientToken')) {
       navigate('/', { replace: true });
@@ -168,6 +196,8 @@ const ClientDashboard: React.FC = () => {
       cancelled = true;
     };
   }, [navigate, switchClientId]);
+
+  usePullToRefresh(() => refreshDashboard({ silent: true }), activeKey !== 'chats');
 
   React.useEffect(() => {
     if (!data || data.isAccountApproved) return;
@@ -904,6 +934,7 @@ const ClientDashboard: React.FC = () => {
       showSupportHelp={!pending}
       hideMobileBottomNav={activeKey === 'chats'}
     >
+      <PullToRefresh disabled={activeKey === 'chats'}>
       <ClientTrainerCardDialog
         open={Boolean(trainerCardId)}
         trainerId={trainerCardId}
@@ -1023,6 +1054,7 @@ const ClientDashboard: React.FC = () => {
           mainContent
         )}
       </Box>
+      </PullToRefresh>
     </DashboardShell>
   );
 };

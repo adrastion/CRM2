@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import AthleteCard from '../components/athlete/AthleteCard';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../hooks/useUnsavedClose';
 import ClientGroupsDialog from '../components/client/ClientGroupsDialog';
 import CreateClientDialog from '../components/client/CreateClientDialog';
+import { useRealtimeSubscription } from '../realtime/useRealtimeSubscription';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { useSearchParams } from 'react-router-dom';
 import { validateClientForm, validateField, hasFormErrors, ClientFormData, ValidationErrors } from '../utils/clientValidation';
 import {
@@ -318,18 +320,24 @@ const Clients: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       const response = await apiService.getClients({ limit: 100 }, undefined, false);
       setClients(response.data);
     } catch (err: any) {
       setError('Не удалось загрузить клиентов');
       console.error('Clients error:', err);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  };
+  }, []);
+
+  useRealtimeSubscription('clients', () => {
+    void fetchClients({ silent: true });
+  });
+
+  usePullToRefresh(() => fetchClients({ silent: true }));
 
   useEffect(() => {
     let isMounted = true;
@@ -1184,7 +1192,7 @@ const Clients: React.FC = () => {
       <CreateClientDialog
         open={openDialog}
         onClose={() => setOpenDialog(false)}
-        onSuccess={fetchClients}
+        onSuccess={() => void fetchClients({ silent: true })}
       />
 
       {/* Import Dialog */}

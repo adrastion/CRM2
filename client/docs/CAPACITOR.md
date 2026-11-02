@@ -16,7 +16,34 @@ npx cap open android
 `PUBLIC_URL=./` ломает lazy-chunks после логина (`/dashboard`, `/admin/...`) → белый экран.
 Capacitor отдаёт файлы с корня `https://localhost/`, поэтому `/static` в APK корректен.
 
-В Android Studio: Run / Build APK. Готовый APK → SA «Мобильное приложение».
+В Android Studio: **Build → Generate Signed Bundle / APK** или Gradle `assembleRelease`.
+Готовый APK → SA «Мобильное приложение».
+
+### Подпись release
+
+1. Один раз на машине (если нет файлов):
+   ```powershell
+   cd client
+   powershell -ExecutionPolicy Bypass -File scripts/create-release-keystore.ps1
+   ```
+2. Появятся `android/profsportcrm-release.jks` и `android/keystore.properties` (**не в git**).
+3. `app/build.gradle` подхватывает их автоматически для `release`.
+4. Сборка:
+   ```bash
+   cd android
+   .\gradlew.bat assembleRelease
+   ```
+   APK: `android/app/build/outputs/apk/release/app-release.apk`
+
+**Важно:** сохраните `.jks` + `keystore.properties` в надёжном месте. Потеря = нельзя подписать обновление тем же applicationId.
+
+### Иконка приложения
+
+Берётся с сайта (`public/logo512.png`). Перегенерация mipmap:
+
+```bash
+python scripts/generate-android-icons.py
+```
 
 **На сервере** в CORS должны быть origins Capacitor (уже в коде `server.ts`):
 `https://localhost`, `capacitor://localhost`. После деплоя backend — перезапуск PM2.
@@ -28,6 +55,7 @@ Capacitor отдаёт файлы с корня `https://localhost/`, поэто
 - Deep link `appUrlOpen` → React Router
 - FCM Capacitor → `POST /api/mobile/fcm/register`
 - Offline IndexedDB: кэш календаря/контактов, очередь посещаемости, баннер sync
+- Pull-to-refresh (свайп вниз) на вкладках кабинета школы и портала (кроме чатов)
 
 ## Локальная отладка WebView без APK
 

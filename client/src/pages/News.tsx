@@ -36,6 +36,7 @@ import {
   PlatformNewsEntry,
 } from '../components/PlatformNewsFeed';
 import { apiService } from '../services/api';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { colors, radii, typography } from '../theme/tokens';
 import { FAQ_CONTENT } from '../content/faqContent';
 
@@ -162,6 +163,8 @@ const News: React.FC = () => {
   useEffect(() => {
     void loadEntries();
   }, [loadEntries]);
+
+  usePullToRefresh(() => loadEntries());
 
   useEffect(() => {
     let cancelled = false;

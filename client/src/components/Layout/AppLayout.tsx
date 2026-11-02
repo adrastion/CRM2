@@ -32,6 +32,7 @@ import {
 } from '../../config/saDashboard';
 import OfflineBanner from '../../offline/OfflineBanner';
 import { isNativeApp } from '../../capacitor/platform';
+import PullToRefresh from '../../capacitor/PullToRefresh';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -278,6 +279,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
 
   const saResolved = resolveSaLocation(location.search);
   const saSection = saResolved.section;
+  const testerChatTab = new URLSearchParams(location.search).get('tab');
+  /** Как /chats у школы: на весь экран без bottom nav / отступов main. */
+  const chatImmersive =
+    location.pathname.startsWith('/chats') ||
+    (isSuperAdminRoute && saSection === 'chats') ||
+    (isTesterRoute && (!testerChatTab || testerChatTab === 'chats'));
 
   // Алиасы старых ?section= → канонический URL
   React.useEffect(() => {
@@ -322,9 +329,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       ? [
           {
             key: '/tester/dashboard',
-            label: 'Панель тестировщика',
-            iconName: 'dashboard',
+            label: 'Чаты',
+            iconName: 'chats' as NavIconName,
             onClick: () => navigate('/tester/dashboard'),
+          },
+          {
+            key: '/tester/dashboard?tab=news',
+            label: 'Новости',
+            iconName: 'issued-tariffs' as NavIconName,
+            onClick: () => navigate('/tester/dashboard?tab=news'),
+          },
+          {
+            key: '/tester/dashboard?tab=notifications',
+            label: 'Уведомления',
+            iconName: 'settings' as NavIconName,
+            onClick: () => navigate('/tester/dashboard?tab=notifications'),
           },
         ]
       : isMarketerRoute
@@ -532,7 +551,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       ? '/admin/support-hub'
       : `/admin/dashboard?section=${saSection}`
     : isTesterRoute
-      ? '/tester/dashboard'
+      ? testerChatTab === 'news'
+        ? '/tester/dashboard?tab=news'
+        : testerChatTab === 'notifications'
+          ? '/tester/dashboard?tab=notifications'
+          : '/tester/dashboard'
       : isMarketerRoute
         ? marketerActiveKey
         : isPromoCodeAdminRoute
@@ -541,16 +564,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         ? '/schedule'
         : location.pathname;
 
-  const resolvedPageTitle = isSuperAdminRoute
-    ? pageTitle ||
-      (location.pathname.startsWith('/admin/support-hub')
-        ? 'Support Hub'
-        : SA_SECTION_TITLES[saSection] || 'Панель супер-админа')
-    : isMarketerRoute
-      ? pageTitle || undefined
-      : isPromoCodeAdminRoute
-        ? pageTitle || 'Промокоды'
-        : pageTitle;
+  const resolvedPageTitle = chatImmersive
+    ? undefined
+    : isSuperAdminRoute
+      ? pageTitle ||
+        (location.pathname.startsWith('/admin/support-hub')
+          ? 'Support Hub'
+          : SA_SECTION_TITLES[saSection] || 'Панель супер-админа')
+      : isMarketerRoute
+        ? pageTitle || undefined
+        : isPromoCodeAdminRoute
+          ? pageTitle || 'Промокоды'
+          : isTesterRoute
+            ? testerChatTab === 'news'
+              ? 'Новости'
+              : testerChatTab === 'notifications'
+                ? 'Уведомления'
+                : pageTitle || 'Панель тестировщика'
+            : pageTitle;
 
   const marketerBreadcrumb = (() => {
     if (!isMarketerRoute) return undefined;
@@ -575,7 +606,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
         isNativeApp()
           ? {
               minHeight: '100dvh',
-              pb: 'env(safe-area-inset-bottom)',
+              // bottom safe-area — на bottom nav / shell, не на весь layout
             }
           : undefined
       }
@@ -595,7 +626,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onProfileClick={isMarketerRoute ? () => navigate('/marketer/profile') : undefined}
           shellVariant={isMarketerRoute ? 'marketer' : 'default'}
           breadcrumb={marketerBreadcrumb}
-          hideMobileBottomNav={location.pathname.startsWith('/chats')}
+          hideMobileBottomNav={chatImmersive}
           mobileBottomTabs={
             isMarketerRoute
               ? marketerLocked
@@ -642,8 +673,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onSearchResultClick={handleSearchResultClick}
           searchMaxWidth={{ sm: 560, md: 720 }}
         >
-          <OfflineBanner />
-          {children}
+          <PullToRefresh disabled={chatImmersive}>
+            <OfflineBanner />
+            {children}
+          </PullToRefresh>
         </DashboardShell>
       </CreateFlowsProvider>
     </Box>

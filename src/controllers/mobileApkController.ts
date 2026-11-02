@@ -22,6 +22,16 @@ export const uploadMobileApk = asyncHandler(
       typeof req.body?.label === 'string' ? req.body.label : undefined;
     try {
       const data = await MobileApkService.replace(uploaded, label);
+      try {
+        const { emitPlatformRealtime } = await import('../services/realtimeBus');
+        emitPlatformRealtime({
+          entity: 'mobile-apk',
+          action: 'uploaded',
+          meta: { label: data.label, originalName: data.originalName },
+        });
+      } catch (e) {
+        console.warn('[realtime] apk upload emit failed', e);
+      }
       res.json({ success: true, data });
     } catch (e: any) {
       const status = e?.statusCode || e?.status || 400;
@@ -35,6 +45,16 @@ export const updateMobileApkLabel = asyncHandler(
     const label = req.body?.label == null ? null : String(req.body.label);
     try {
       const data = await MobileApkService.updateLabel(label);
+      try {
+        const { emitPlatformRealtime } = await import('../services/realtimeBus');
+        emitPlatformRealtime({
+          entity: 'mobile-apk',
+          action: 'updated',
+          meta: { label: data.label },
+        });
+      } catch (e) {
+        console.warn('[realtime] apk label emit failed', e);
+      }
       res.json({ success: true, data });
     } catch (e: any) {
       const status = e?.statusCode || e?.status || 400;
@@ -46,6 +66,15 @@ export const updateMobileApkLabel = asyncHandler(
 export const deleteMobileApk = asyncHandler(
   async (_req: AuthenticatedRequest, res: Response<ApiResponse>) => {
     const data = await MobileApkService.remove();
+    try {
+      const { emitPlatformRealtime } = await import('../services/realtimeBus');
+      emitPlatformRealtime({
+        entity: 'mobile-apk',
+        action: 'removed',
+      });
+    } catch (e) {
+      console.warn('[realtime] apk delete emit failed', e);
+    }
     res.json({ success: true, data });
   }
 );

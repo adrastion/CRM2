@@ -61,6 +61,7 @@ import siteAnalyticsRoutes from './routes/siteAnalytics';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
 import { attachChatNamespace } from './services/chatSocket';
+import { attachRealtimeNamespace } from './services/realtimeSocket';
 import { cleanupExpiredDesignerRecordings } from './controllers/supportTicketController';
 import { createMonthlyPaymentsForAllTenants } from './controllers/paymentController';
 import { sendDailyTrainingNotifications, sendTrainingReminders } from './services/notificationService';
@@ -275,6 +276,7 @@ app.use(errorHandler);
 const httpServer = http.createServer(app);
 const io = attachSupportCallSocket(httpServer);
 attachChatNamespace(io);
+attachRealtimeNamespace(io);
 
 // Start server
 httpServer.listen(PORT, () => {

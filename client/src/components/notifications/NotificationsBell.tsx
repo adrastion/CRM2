@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../../services/api';
+import { useRealtimeSubscription } from '../../realtime/useRealtimeSubscription';
 import { colors, radii } from '../../theme/tokens';
 
 export type InboxPayload = {
@@ -195,6 +196,11 @@ const NotificationsBell: React.FC<Props> = ({ channel }) => {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
+
+  useRealtimeSubscription('notifications', () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    void load({ silent: true });
+  });
 
   const unread = data?.unreadTotal || 0;
 

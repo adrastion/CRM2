@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import {
   Accordion,
   AccordionDetails,
@@ -296,6 +297,8 @@ const TrainingPlan: React.FC = () => {
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  usePullToRefresh(() => refreshAll());
 
   useEffect(() => {
     if (tab !== 1 || activeCycleId || cycles.length === 0) return;

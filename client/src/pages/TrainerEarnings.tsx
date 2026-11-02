@@ -25,6 +25,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { salarySchemeLabel } from '../utils/salarySchemes';
 
 const TrainerEarnings: React.FC = () => {
@@ -35,11 +36,6 @@ const TrainerEarnings: React.FC = () => {
   const [showReport, setShowReport] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [endDate, setEndDate] = useState<Date | null>(new Date());
-
-  useEffect(() => {
-    fetchEarnings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEarnings refetch on date change
-  }, [startDate, endDate]);
 
   const fetchEarnings = async () => {
     try {
@@ -68,6 +64,13 @@ const TrainerEarnings: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchEarnings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEarnings refetch on date change
+  }, [startDate, endDate]);
+
+  usePullToRefresh(() => fetchEarnings());
 
   if (loading) {
     return (

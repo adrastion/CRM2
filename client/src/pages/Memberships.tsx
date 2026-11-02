@@ -21,6 +21,7 @@ import {
 import { Add } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../services/api';
+import { usePullToRefresh } from '../capacitor/usePullToRefresh';
 import { Membership } from '../types';
 import { colors, radii, typography } from '../theme/tokens';
 import UnsavedChangesDialog from '../components/common/UnsavedChangesDialog';
@@ -142,6 +143,8 @@ const Memberships: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  usePullToRefresh(() => load());
 
   const discardForm = useCallback(() => {
     setDialogOpen(false);

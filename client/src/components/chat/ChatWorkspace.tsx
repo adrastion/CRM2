@@ -41,6 +41,7 @@ import {
 import { apiService } from '../../services/api';
 import { useChatSocket, ChatSocketMessage } from '../../hooks/useChatSocket';
 import { dispatchChatUnreadRefresh } from '../../hooks/useChatUnreadBadge';
+import { useRealtimeSubscription } from '../../realtime/useRealtimeSubscription';
 import { colors, radii } from '../../theme/tokens';
 import ChatMediaBubble from './ChatMediaBubble';
 import ChatVoiceRecorder from './ChatVoiceRecorder';
@@ -721,12 +722,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     [activeThreadId]
   );
 
+  useRealtimeSubscription('chat', () => {
+    void loadThreads();
+  });
+
   useChatSocket({
     token: socketToken,
     threadId: activeThreadId,
     enabled: Boolean(socketToken),
     onMessage: onSocketMessage,
     onMessageUpdated: onSocketMessageUpdated,
+    onThreadActivity: () => {
+      void loadThreads();
+    },
     onPin: (payload) => {
       if (payload.threadId !== activeThreadId) return;
       setMessages((prev) => {
