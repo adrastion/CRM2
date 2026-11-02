@@ -3,29 +3,49 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import { isNativeApp } from './capacitor/platform';
-import { initNativeShell } from './capacitor/nativeShell';
-import { initNativePush } from './capacitor/push';
-import { initOfflineLayer } from './offline/offlineApi';
 import './capacitor/native.css';
 
-async function bootstrap() {
+const rootEl = document.getElementById('root') as HTMLElement;
+const root = ReactDOM.createRoot(rootEl);
+
+// Сначала UI — иначе ожидание offline/Capacitor даёт «белый экран» на слабых WebView.
+root.render(
+  <React.StrictMode>
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  </React.StrictMode>
+);
+
+async function initNativeExtras() {
   try {
+    const { initNativeShell } = await import('./capacitor/nativeShell');
     await initNativeShell();
   } catch (e) {
     console.warn('[bootstrap] nativeShell', e);
   }
   try {
+    const { initOfflineLayer } = await import('./offline/offlineApi');
     await initOfflineLayer();
   } catch (e) {
     console.warn('[bootstrap] offline', e);
   }
-  // Push откладываем: без google-services.json ранний register роняет Android.
   window.setTimeout(() => {
-    void initNativePush();
-  }, 1500);
+    void import('./capacitor/push')
+      .then(({ initNativePush }) => initNativePush())
+      .catch((e) => console.warn('[bootstrap] push', e));
+  }, 2000);
+}
 
-  // SW только в браузере (в Capacitor — нативный FCM)
-  if (!isNativeApp() && 'serviceWorker' in navigator) {
+if (isNativeApp()) {
+  void initNativeExtras();
+} else {
+  // На сайте offline-слой тоже полезен, но не блокирует первый кадр
+  void import('./offline/offlineApi')
+    .then(({ initOfflineLayer }) => initOfflineLayer())
+    .catch((e) => console.warn('[bootstrap] offline', e));
+
+  if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register('/sw.js')
@@ -37,15 +57,4 @@ async function bootstrap() {
         });
     });
   }
-
-  const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-  root.render(
-    <React.StrictMode>
-      <AppErrorBoundary>
-        <App />
-      </AppErrorBoundary>
-    </React.StrictMode>
-  );
 }
-
-void bootstrap();

@@ -233,7 +233,9 @@ const Auth: React.FC = () => {
       return;
     }
     const dest = applyUnifiedSession(result);
-    window.location.assign(dest);
+    // Полный reload: AuthContext/провайдеры перечитывают токены из storage.
+    // Абсолютный dest (/dashboard, …) + PUBLIC_URL=/ — иначе белый экран на chunks.
+    window.location.replace(dest);
   };
 
   const ensureIdentified = async () => {
@@ -496,7 +498,7 @@ const Auth: React.FC = () => {
         accountId: account.id,
       });
       const dest = applyUnifiedSession(session);
-      window.location.assign(dest);
+      window.location.replace(dest);
     } catch (err) {
       handleError(err, 'form');
     } finally {

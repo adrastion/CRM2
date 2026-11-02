@@ -12,9 +12,9 @@ npm run build:mobile   # PUBLIC_URL=./ + API прод + cap sync
 npx cap open android
 ```
 
-**Важно:** для сайта на сервере только `npm run build` (пути `/static/...`).
-`homepage: "./"` / `PUBLIC_URL=./` нельзя для веб-деплоя — на `/admin/...` белый экран
-(браузер ищет JS в `/admin/static/...`).
+**Важно:** и сайт, и APK — абсолютные пути `/static/...` (`PUBLIC_URL=/`).
+`PUBLIC_URL=./` ломает lazy-chunks после логина (`/dashboard`, `/admin/...`) → белый экран.
+Capacitor отдаёт файлы с корня `https://localhost/`, поэтому `/static` в APK корректен.
 
 В Android Studio: Run / Build APK. Готовый APK → SA «Мобильное приложение».
 
