@@ -1368,7 +1368,7 @@ const AdminDashboard: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
-            </Box>
+              </Box>
           )}
         </Box>
       )}
@@ -1468,7 +1468,7 @@ const AdminDashboard: React.FC = () => {
 
       {section === 'chats' && (
         <Box
-          sx={{
+                    sx={{
             height: { xs: 'calc(100dvh - 160px)', md: 'calc(100vh - 180px)' },
             minHeight: 420,
             mx: { xs: -1, md: 0 },

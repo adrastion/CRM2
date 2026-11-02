@@ -26,6 +26,7 @@ import {
   removeSavedAccount,
 } from '../utils/accountSwitcher';
 import { clearStoredRefCode, getStoredRefCode } from '../utils/refCode';
+import { getApiBaseUrl } from '../capacitor/platform';
 
 export type NotificationPrefs = {
   actorType: string;
@@ -73,7 +74,7 @@ class ApiService {
 
   constructor() {
     this.api = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || '/api',
+      baseURL: getApiBaseUrl(),
       timeout: 10000,
       withCredentials: true,
       headers: {
@@ -1947,14 +1948,50 @@ class ApiService {
     return response.data.data;
   }
 
+  private isLikelyOfflineError(e: any): boolean {
+    return (
+      !e?.response ||
+      e?.code === 'ERR_NETWORK' ||
+      e?.message === 'Network Error' ||
+      (typeof navigator !== 'undefined' && navigator.onLine === false)
+    );
+  }
+
   async createAttendance(data: any): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/attendances', data);
-    return response.data.data;
+    try {
+      const response = await this.api.post<ApiResponse>('/attendances', data);
+      return response.data.data;
+    } catch (e) {
+      if (!this.isLikelyOfflineError(e)) throw e;
+      const { queueAttendanceMark } = await import('../offline/offlineApi');
+      await queueAttendanceMark({
+        trainingId: String(data?.trainingId || ''),
+        clientId: String(data?.clientId || ''),
+        status: String(data?.status || 'PRESENT'),
+        path: '/attendances',
+        body: data,
+      });
+      return { ...data, queuedOffline: true };
+    }
   }
 
   async updateAttendance(id: string, data: any): Promise<any> {
-    const response = await this.api.put<ApiResponse>(`/attendances/${id}`, data);
-    return response.data.data;
+    try {
+      const response = await this.api.put<ApiResponse>(`/attendances/${id}`, data);
+      return response.data.data;
+    } catch (e) {
+      if (!this.isLikelyOfflineError(e)) throw e;
+      const { queueAttendanceMark } = await import('../offline/offlineApi');
+      await queueAttendanceMark({
+        trainingId: String(data?.trainingId || ''),
+        clientId: String(data?.clientId || id),
+        status: String(data?.status || 'PRESENT'),
+        path: `/attendances/${id}`,
+        method: 'PUT',
+        body: data,
+      });
+      return { ...data, id, queuedOffline: true };
+    }
   }
 
   async deleteAttendance(id: string): Promise<void> {
@@ -1962,16 +1999,39 @@ class ApiService {
   }
 
   async getAttendancesByTraining(trainingId: string): Promise<any> {
-    const response = await this.api.get<ApiResponse>(`/attendances/training/${trainingId}`);
-    return response.data.data;
+    try {
+      const response = await this.api.get<ApiResponse>(`/attendances/training/${trainingId}`);
+      return response.data.data;
+    } catch (e) {
+      const { getCachedAttendances } = await import('../offline/offlineApi');
+      const cached = await getCachedAttendances<any>();
+      return cached.filter(
+        (a) => String(a?.trainingId || '') === String(trainingId)
+      );
+    }
   }
 
   async bulkUpdateAttendance(trainingId: string, attendances: any[]): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/attendances/bulk', {
-      trainingId,
-      attendances
-    });
-    return response.data.data;
+    try {
+      const response = await this.api.post<ApiResponse>('/attendances/bulk', {
+        trainingId,
+        attendances
+      });
+      return response.data.data;
+    } catch (e) {
+      if (!this.isLikelyOfflineError(e)) throw e;
+      const { queueAttendanceMark } = await import('../offline/offlineApi');
+      for (const row of attendances || []) {
+        await queueAttendanceMark({
+          trainingId: String(trainingId),
+          clientId: String(row?.clientId || ''),
+          status: String(row?.status || 'PRESENT'),
+          path: '/attendances/bulk',
+          body: { trainingId, attendances: [row] },
+        });
+      }
+      return { trainingId, attendances, queuedOffline: true };
+    }
   }
 
   // Payment endpoints
@@ -2790,10 +2850,8 @@ class ApiService {
    * В локальной разработке бьём напрямую в backend :3001 (тот же hostname, что у UI).
    */
   private largeUploadBaseURL(): string {
-    const fromEnv = process.env.REACT_APP_API_URL;
-    if (fromEnv && /^https?:\/\//i.test(fromEnv)) {
-      return fromEnv.replace(/\/$/, '');
-    }
+    const base = getApiBaseUrl();
+    if (base && base !== '/api') return base.replace(/\/$/, '');
     if (typeof window !== 'undefined') {
       const host = window.location.hostname;
       if (host === 'localhost' || host === '127.0.0.1') {

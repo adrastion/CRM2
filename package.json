@@ -10,6 +10,7 @@
     "build": "npm run build:server && npm run build:client",
     "build:server": "prisma generate && tsc",
     "build:client": "cd client && npm run build",
+    "build:mobile": "cd client && npm run build:mobile",
     "start": "node dist/server.js",
     "migrate": "npx prisma migrate dev",
     "seed": "npx prisma db seed",

@@ -30,6 +30,8 @@ import {
   resolveSaLocation,
   saDashboardPath,
 } from '../../config/saDashboard';
+import OfflineBanner from '../../offline/OfflineBanner';
+import { isNativeApp } from '../../capacitor/platform';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -567,7 +569,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   })();
 
   return (
-    <Box>
+    <Box
+      className={isNativeApp() ? 'capacitor-native' : undefined}
+      sx={
+        isNativeApp()
+          ? {
+              minHeight: '100dvh',
+              pb: 'env(safe-area-inset-bottom)',
+            }
+          : undefined
+      }
+    >
       <CreateFlowsProvider>
         <DashboardShell
           pageTitle={resolvedPageTitle}
@@ -630,6 +642,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           onSearchResultClick={handleSearchResultClick}
           searchMaxWidth={{ sm: 560, md: 720 }}
         >
+          <OfflineBanner />
           {children}
         </DashboardShell>
       </CreateFlowsProvider>

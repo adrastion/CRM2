@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { getApiBaseUrl } from '../capacitor/platform';
 import { hasAnalyticsConsent } from '../utils/cookieConsent';
 
 const VISITOR_KEY = 'siteVisitorId';
@@ -44,7 +45,7 @@ function resolveActorHint(): string {
 }
 
 function pingUrl(): string {
-  const base = process.env.REACT_APP_API_URL || '';
+  const base = getApiBaseUrl();
   if (base) return `${base.replace(/\/$/, '')}/site-analytics/ping`;
   return '/api/site-analytics/ping';
 }

@@ -406,12 +406,26 @@ const Schedule: React.FC = () => {
     }
   };
 
+  const applyOfflineTrainingsFallback = async () => {
+    try {
+      const { getCachedTrainings, pullOfflineSnapshots } = await import('../offline/offlineApi');
+      void pullOfflineSnapshots();
+      const cached = await getCachedTrainings<any>();
+      if (cached.length) {
+        setTrainings(cached as any);
+      }
+    } catch (e) {
+      console.warn('Offline trainings fallback failed', e);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       await loadRange();
     } catch (error) {
       console.error('Error fetching data:', error);
+      await applyOfflineTrainingsFallback();
     } finally {
       setLoading(false);
     }
@@ -434,6 +448,7 @@ const Schedule: React.FC = () => {
         }
         if (!isMounted) return;
         console.error('Error fetching data:', error);
+        await applyOfflineTrainingsFallback();
       } finally {
         if (isMounted && !abortController.signal.aborted) {
           setLoading(false);

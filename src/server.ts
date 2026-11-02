@@ -149,15 +149,28 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // CORS configuration
+// Capacitor Android (androidScheme: https) шлёт Origin: https://localhost —
+// без этого APK получает axios "Network Error" на любой запрос к API.
+const CAPACITOR_CORS_ORIGINS = [
+  'https://localhost',
+  'http://localhost',
+  'capacitor://localhost',
+  'ionic://localhost',
+  'https://127.0.0.1',
+  'http://127.0.0.1',
+];
 app.use(cors({
-  // localhost и 127.0.0.1 — разные Origin; для APK upload напрямую на :3001 нужны оба.
   origin: (origin, cb) => {
-    const allowed = new Set(
-      String(process.env.CORS_ORIGIN || 'http://localhost:3000,http://127.0.0.1:3000')
+    const allowed = new Set([
+      ...String(
+        process.env.CORS_ORIGIN ||
+          'http://localhost:3000,http://127.0.0.1:3000,https://profsportcrm.ru,https://www.profsportcrm.ru'
+      )
         .split(',')
         .map((s) => s.trim())
-        .filter(Boolean)
-    );
+        .filter(Boolean),
+      ...CAPACITOR_CORS_ORIGINS,
+    ]);
     if (!origin || allowed.has(origin)) {
       cb(null, true);
       return;

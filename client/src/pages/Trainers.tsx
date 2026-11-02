@@ -112,7 +112,24 @@ const Trainers: React.FC = () => {
           return;
         }
         if (!isMounted) return;
-        setError(err.response?.data?.error || 'Ошибка загрузки данных');
+        try {
+          const { getCachedContacts } = await import('../offline/offlineApi');
+          const cached = await getCachedContacts<any>();
+          const trainersCached = cached
+            .filter((c) => c?.contactKind === 'trainer' || c?.role || c?.specialization != null)
+            .map((c) => {
+              const { contactKind, ...rest } = c;
+              return rest;
+            });
+          if (trainersCached.length) {
+            setTrainers(trainersCached as any);
+            setError(null);
+          } else {
+            setError(err.response?.data?.error || 'Ошибка загрузки данных');
+          }
+        } catch {
+          setError(err.response?.data?.error || 'Ошибка загрузки данных');
+        }
         console.error('Error fetching data:', err);
       } finally {
         if (isMounted && !abortController.signal.aborted) {

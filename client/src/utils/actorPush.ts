@@ -1,4 +1,5 @@
 import { apiService } from '../services/api';
+import { getApiBaseUrl } from '../capacitor/platform';
 import {
   getSlotBearerToken,
   listUsableSavedAccounts,
@@ -7,7 +8,7 @@ import {
 
 export type ActorPushChannel = 'school' | 'portal' | 'superAdmin' | 'tester';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+const API_BASE = getApiBaseUrl();
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
