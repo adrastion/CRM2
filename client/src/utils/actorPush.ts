@@ -91,6 +91,26 @@ export async function checkActorPushStatus(channel: ActorPushChannel): Promise<b
 
 export async function subscribeActorPush(channel: ActorPushChannel): Promise<boolean> {
   try {
+    const { isNativeApp } = await import('../capacitor/platform');
+    if (isNativeApp()) {
+      const { initNativePush, refreshNativePushRegistration, isNativeFcmBuildEnabled } =
+        await import('../capacitor/push');
+      const { ensureLocalNotifyChannel } = await import('../capacitor/localNotify');
+      await ensureLocalNotifyChannel();
+      await initNativePush();
+      await refreshNativePushRegistration();
+      // На native web-push недоступен; успех = права на уведомления (+ FCM если собран)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        return false;
+      }
+      if (!isNativeFcmBuildEnabled()) {
+        console.info(
+          '[actorPush] native: локальные уведомления включены; для push в фоне нужен google-services.json'
+        );
+      }
+      return true;
+    }
+
     if (!('serviceWorker' in navigator)) return false;
     const hasPermission = await requestNotificationPermission();
     if (!hasPermission) return false;

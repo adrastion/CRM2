@@ -512,8 +512,8 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
                 sx={{ mt: 1.5, textTransform: 'none' }}
                 onClick={async () => {
                   const blob = await apiService.downloadPlatformNewsFileBlob(e.id, 'sa');
-                  const url = URL.createObjectURL(blob);
-                  window.open(url, '_blank');
+                  const { downloadBlob } = await import('../capacitor/nativeDownload');
+                  await downloadBlob(blob, e.title || 'news-file');
                 }}
               >
                 Скачать файл

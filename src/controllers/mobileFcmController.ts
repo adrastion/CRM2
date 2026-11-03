@@ -8,6 +8,7 @@ function resolveActor(req: AuthenticatedRequest): { actorType: string; actorId: 
   if (anyReq.client?.id) return { actorType: 'CLIENT', actorId: String(anyReq.client.id) };
   if (anyReq.parent?.id) return { actorType: 'PARENT', actorId: String(anyReq.parent.id) };
   if (anyReq.superAdmin?.id) return { actorType: 'SUPER_ADMIN', actorId: String(anyReq.superAdmin.id) };
+  if (anyReq.tester?.id) return { actorType: 'TESTER', actorId: String(anyReq.tester.id) };
   return null;
 }
 

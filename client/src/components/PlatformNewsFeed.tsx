@@ -90,10 +90,10 @@ export const AuthNewsImage: React.FC<{
   );
 };
 
-async function openBlob(loader: () => Promise<Blob>) {
+async function openBlob(loader: () => Promise<Blob>, filename = 'file') {
   const blob = await loader();
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+  const { downloadBlob } = await import('../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 export const ROLE_LABELS_NEWS: Record<string, string> = {
@@ -296,7 +296,10 @@ const PlatformNewsFeed: React.FC<PlatformNewsFeedProps> = ({
                     fontWeight: 600,
                   }}
                   onClick={() =>
-                    void openBlob(() => apiService.downloadPlatformNewsFileBlob(e.id, source))
+                    void openBlob(
+                      () => apiService.downloadPlatformNewsFileBlob(e.id, source),
+                      e.title || 'news-file'
+                    )
                   }
                 >
                   Скачать файл

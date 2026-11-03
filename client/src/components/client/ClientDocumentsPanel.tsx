@@ -30,13 +30,9 @@ const FORMAT_HINT = 'Поддерживаемые форматы: PDF, JPG, PNG.
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
 const MAX_BYTES = 10 * 1024 * 1024;
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  const { downloadBlob } = await import('../../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 function formatSize(bytes: number): string {
@@ -144,7 +140,7 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
     setDownloading(kind);
     try {
       const { blob, filename } = await apiService.clientDownloadCertificate(clientId, kind);
-      triggerBlobDownload(blob, filename);
+      await triggerBlobDownload(blob, filename);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать файл');
     } finally {
@@ -156,7 +152,7 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
     setDownloading(contractId);
     try {
       const { blob, filename } = await apiService.clientDownloadContract(clientId, contractId);
-      triggerBlobDownload(blob, filename || name);
+      await triggerBlobDownload(blob, filename || name);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать договор');
     } finally {
@@ -172,7 +168,7 @@ const ClientDocumentsPanel: React.FC<Props> = ({ clientId }) => {
         contractId,
         addendumId
       );
-      triggerBlobDownload(blob, filename || name);
+      await triggerBlobDownload(blob, filename || name);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать доп. соглашение');
     } finally {

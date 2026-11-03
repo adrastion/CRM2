@@ -102,19 +102,11 @@ const MarketerDocuments: React.FC = () => {
     };
   }, [reload]);
 
-  const downloadBlob = (blob: Blob, name: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const downloadAct = async (id: string, title?: string) => {
     try {
       const blob = await apiService.downloadMarketerPayoutDocumentBlob(id);
-      downloadBlob(blob, `${title || 'act'}.pdf`);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, `${title || 'act'}.pdf`);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать акт');
     }
@@ -123,7 +115,8 @@ const MarketerDocuments: React.FC = () => {
   const downloadNpd = async (id: string, name?: string | null) => {
     try {
       const blob = await apiService.downloadMarketerNpdReceiptBlob(id);
-      downloadBlob(blob, name || 'npd-receipt.pdf');
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, name || 'npd-receipt.pdf');
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать чек НПД');
     }
@@ -132,7 +125,8 @@ const MarketerDocuments: React.FC = () => {
   const downloadClosing = async (id: string, title: string) => {
     try {
       const blob = await apiService.downloadMarketerClosingDocBlob(id);
-      downloadBlob(blob, `${title || 'document'}.pdf`);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, `${title || 'document'}.pdf`);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать документ');
     }
@@ -141,9 +135,8 @@ const MarketerDocuments: React.FC = () => {
   const openPersonalLegal = async (key: string, title: string) => {
     try {
       const blob = await apiService.downloadMarketerLegalDocPersonalBlob(key);
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, `${title || key}.pdf`);
     } catch (e: any) {
       setError(e?.response?.data?.error || `Не удалось открыть «${title}»`);
     }

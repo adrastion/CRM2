@@ -53,12 +53,8 @@ const formatDue = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 async function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+  const { downloadBlob: save } = await import('../../capacitor/nativeDownload');
+  await save(blob, name);
 }
 
 const MarketerPayoutQueue: React.FC = () => {

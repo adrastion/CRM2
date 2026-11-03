@@ -1039,6 +1039,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     await uploadMediaFile(file, kind);
   };
 
+  const onAttachClick = async () => {
+    if (sending || !activeThreadId || Boolean(editingId)) return;
+    try {
+      const { isNativeApp } = await import('../../capacitor/platform');
+      if (isNativeApp()) {
+        const { pickNativeMedia } = await import('../../capacitor/nativeFilePick');
+        const picked = await pickNativeMedia({ images: true, videos: true });
+        if (!picked) return;
+        await uploadMediaFile(picked.file, picked.kind);
+        return;
+      }
+    } catch {
+      /* fallback to input */
+    }
+    fileInputRef.current?.click();
+  };
+
   const openParticipants = async () => {
     if (!activeThreadId) return;
     setParticipantsOpen(true);
@@ -2079,7 +2096,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
                   <IconButton
                     disabled={sending || !activeThreadId || Boolean(editingId)}
                     title="Фото или видео"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => void onAttachClick()}
                     sx={{ color: colors.textHint, width: 36, height: 36 }}
                   >
                     <AttachFile sx={{ fontSize: 22 }} />

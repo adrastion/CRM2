@@ -62,15 +62,24 @@ const MarketerActPdfDialog: React.FC<Props> = ({
 
   const download = () => {
     if (!url) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title || 'act'}.pdf`;
-    a.click();
+    void (async () => {
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const { downloadBlob } = await import('../../capacitor/nativeDownload');
+        await downloadBlob(blob, `${title || 'act'}.pdf`);
+      } catch {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${title || 'act'}.pdf`;
+        a.click();
+      }
+    })();
   };
 
   const openTab = () => {
     if (!url) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    void download();
   };
 
   return (

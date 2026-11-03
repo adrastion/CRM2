@@ -1,17 +1,19 @@
 /**
- * Нативный FCM.
+ * Нативный FCM + локальные уведомления.
  *
- * ВАЖНО: без `android/app/google-services.json` любой вызов
- * PushNotifications.register() роняет процесс:
- * "Default FirebaseApp is not initialized".
+ * FCM (системный push при убитом приложении) требует:
+ *   android/app/google-services.json
+ * и на сервере FIREBASE_SERVICE_ACCOUNT_JSON (или GOOGLE_APPLICATION_CREDENTIALS).
  *
- * Включать только после добавления google-services.json:
- *   REACT_APP_ENABLE_NATIVE_PUSH=true npm run build:mobile
+ * Локальные уведомления работают без Firebase, пока процесс WebView жив.
  */
 
 import { getApiBaseUrl, isNativeApp, nativePlatform } from './platform';
+import { ensureLocalNotifyChannel, initLocalNotifyActions } from './localNotify';
 
-const PUSH_ENABLED = process.env.REACT_APP_ENABLE_NATIVE_PUSH === 'true';
+const PUSH_ENABLED =
+  process.env.REACT_APP_ENABLE_NATIVE_PUSH === 'true' ||
+  process.env.REACT_APP_ENABLE_NATIVE_PUSH === '1';
 
 function authBearer(): string | null {
   return (
@@ -48,8 +50,20 @@ async function registerTokenOnServer(token: string): Promise<void> {
   });
 }
 
+let fcmListenersBound = false;
+
 export async function initNativePush(): Promise<void> {
-  if (!PUSH_ENABLED || !isNativeApp()) return;
+  if (!isNativeApp()) return;
+
+  // Локальный канал всегда — даже без google-services
+  await initLocalNotifyActions();
+
+  if (!PUSH_ENABLED) {
+    console.info(
+      '[capacitor] FCM выключен (нет REACT_APP_ENABLE_NATIVE_PUSH / google-services.json). Локальные уведомления активны.'
+    );
+    return;
+  }
 
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
@@ -61,22 +75,37 @@ export async function initNativePush(): Promise<void> {
     }
     if (receive !== 'granted') return;
 
-    PushNotifications.addListener('registration', (token) => {
-      void registerTokenOnServer(token.value).catch((e) =>
-        console.warn('[capacitor] FCM server register failed', e)
-      );
-    });
-    PushNotifications.addListener('registrationError', (err) => {
-      console.warn('[capacitor] push registrationError', err);
-    });
-    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      const data = action.notification?.data as Record<string, string> | undefined;
-      const path = data?.path || data?.url || data?.route;
-      if (path && typeof path === 'string' && path.startsWith('/')) {
-        window.history.pushState({}, '', path);
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    });
+    if (!fcmListenersBound) {
+      fcmListenersBound = true;
+      PushNotifications.addListener('registration', (token) => {
+        void registerTokenOnServer(token.value).catch((e) =>
+          console.warn('[capacitor] FCM server register failed', e)
+        );
+      });
+      PushNotifications.addListener('registrationError', (err) => {
+        console.warn('[capacitor] push registrationError', err);
+      });
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        const data = action.notification?.data as Record<string, string> | undefined;
+        const path = data?.path || data?.url || data?.route;
+        if (path && typeof path === 'string' && path.startsWith('/')) {
+          window.history.pushState({}, '', path);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      });
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        // foreground: дублируем локальным баннером
+        void import('./localNotify').then(({ showLocalNotification }) =>
+          showLocalNotification({
+            title: notification.title || 'ПРОФСПОРТСРМ',
+            body: notification.body || '',
+            path:
+              (notification.data as Record<string, string> | undefined)?.url ||
+              (notification.data as Record<string, string> | undefined)?.path,
+          })
+        );
+      });
+    }
 
     await PushNotifications.register();
   } catch (e) {
@@ -85,7 +114,9 @@ export async function initNativePush(): Promise<void> {
 }
 
 export async function refreshNativePushRegistration(): Promise<void> {
-  if (!PUSH_ENABLED || !isNativeApp()) return;
+  if (!isNativeApp()) return;
+  await ensureLocalNotifyChannel();
+  if (!PUSH_ENABLED) return;
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     const perm = await PushNotifications.checkPermissions();
@@ -94,4 +125,8 @@ export async function refreshNativePushRegistration(): Promise<void> {
   } catch (e) {
     console.warn('[capacitor] refreshNativePush skipped', e);
   }
+}
+
+export function isNativeFcmBuildEnabled(): boolean {
+  return PUSH_ENABLED;
 }

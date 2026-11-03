@@ -186,9 +186,8 @@ const MarketerOnboarding: React.FC = () => {
                 void (async () => {
                   try {
                     const blob = await apiService.downloadMarketerLegalDocPersonalBlob(d.key);
-                    const url = URL.createObjectURL(blob);
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                    const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                    await downloadBlob(blob, `${d.title || d.key}.pdf`);
                   } catch (e: any) {
                     setError(e?.response?.data?.error || 'Не удалось открыть документ');
                   }

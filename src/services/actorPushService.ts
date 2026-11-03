@@ -229,11 +229,21 @@ export async function sendLoginCodePush(
   data: Record<string, unknown> = {}
 ): Promise<number> {
   const subscriptions = await getSubscriptionsForActor(actorType, actorId);
-  if (!subscriptions.length) return 0;
   await sendToSubscriptions(subscriptions, title, body, { ...data, type: 'LOGIN_CODE' }, (endpoint) =>
     removeSubscription(actorType, actorId, endpoint)
   );
-  return subscriptions.length;
+  let fcm = 0;
+  try {
+    const { sendFcmToActor } = await import('./fcmPushService');
+    fcm = await sendFcmToActor(actorType, actorId, {
+      title,
+      body,
+      data: { ...data, type: 'LOGIN_CODE' },
+    });
+  } catch {
+    /* ignore */
+  }
+  return subscriptions.length + fcm;
 }
 
 export async function sendPushToActor(
@@ -261,6 +271,17 @@ export async function sendPushToActor(
   await sendToSubscriptions(subscriptions, enrichedTitle, body, enrichedData, (endpoint) =>
     removeSubscription(actorType, actorId, endpoint)
   );
+
+  try {
+    const { sendFcmToActor } = await import('./fcmPushService');
+    await sendFcmToActor(actorType, actorId, {
+      title: enrichedTitle,
+      body,
+      data: enrichedData,
+    });
+  } catch (e) {
+    console.warn('[ActorPush] FCM send skipped', e);
+  }
 }
 
 function parsePresenceKey(key: string): { actorType: NotificationActorType; actorId: string } | null {

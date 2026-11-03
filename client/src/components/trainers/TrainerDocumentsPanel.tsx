@@ -96,12 +96,8 @@ const TrainerDocumentsPanel: React.FC<TrainerDocumentsPanelProps> = ({
   const handleDownload = async (doc: TrainerDocument) => {
     try {
       const blob = await apiService.downloadTrainerDocumentBlob(trainerId, doc.id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.originalName || doc.title;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, doc.originalName || doc.title);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать файл');
     }

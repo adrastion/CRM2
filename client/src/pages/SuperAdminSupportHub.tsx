@@ -39,13 +39,9 @@ import { Link as RouterLink } from 'react-router-dom';
 import { apiService } from '../services/api';
 import SupportAttachmentBubble from '../components/support/SupportAttachmentBubble';
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  const { downloadBlob } = await import('../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 type PromoForm = {
@@ -393,13 +389,13 @@ const SuperAdminSupportHub: React.FC = () => {
 
   const downloadRecording = async (id: string) => {
     const { blob, filename } = await apiService.superAdminDownloadDesignerRecording(id);
-    triggerBlobDownload(blob, filename);
+    await triggerBlobDownload(blob, filename);
   };
 
   const downloadAutoReplyAttachment = async (id: string) => {
     try {
       const { blob, filename } = await apiService.superAdminDownloadAutoReplyAttachmentBlob(id);
-      triggerBlobDownload(blob, filename);
+      await triggerBlobDownload(blob, filename);
     } catch {
       setPromoError('Не удалось скачать файл');
     }

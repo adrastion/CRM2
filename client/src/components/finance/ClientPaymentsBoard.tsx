@@ -549,12 +549,9 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                     )
                     .join('\n');
                   const blob = new Blob([`${header}\n${body}`], { type: 'text/csv;charset=utf-8' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'oplaty-klientov.csv';
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  void import('../../capacitor/nativeDownload').then(({ downloadBlob }) =>
+                    downloadBlob(blob, 'oplaty-klientov.csv')
+                  );
                 }}
               >
                 Экспорт

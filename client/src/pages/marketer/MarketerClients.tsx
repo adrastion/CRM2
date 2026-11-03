@@ -189,12 +189,9 @@ const MarketerClients: React.FC = () => {
       .map((r) => [r.name, r.statusLabel, r.plan, r.phone || '', r.nextAction].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'))
       .join('\n');
     const blob = new Blob([header + body], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'organizations.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    void import('../../capacitor/nativeDownload').then(({ downloadBlob }) =>
+      downloadBlob(blob, 'organizations.csv')
+    );
   };
 
   if (loading) {

@@ -23,10 +23,10 @@ import { inferNewsTag, TAG_META } from '../news/newsTags';
 
 const BODY_PREVIEW = 140;
 
-async function openBlob(loader: () => Promise<Blob>) {
+async function openBlob(loader: () => Promise<Blob>, filename = 'file') {
   const blob = await loader();
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+  const { downloadBlob } = await import('../../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 /**
@@ -245,7 +245,10 @@ const ClientNewsPanel: React.FC = () => {
                       fontWeight: 600,
                     }}
                     onClick={() =>
-                      void openBlob(() => apiService.downloadPlatformNewsFileBlob(entry.id, 'portal'))
+                      void openBlob(
+                        () => apiService.downloadPlatformNewsFileBlob(entry.id, 'portal'),
+                        entry.title || 'news-file'
+                      )
                     }
                   >
                     Скачать файл

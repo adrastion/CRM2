@@ -210,9 +210,15 @@ const NotificationSettingsPanel: React.FC<Props> = ({
       } else {
         const ok = await subscribeActorPush(channel);
         if (!ok) {
+          const nativeDenied =
+            typeof window !== 'undefined' &&
+            (window as any).Capacitor?.isNativePlatform?.() &&
+            browserNotificationPermission() === 'denied';
           setError(
             browserNotificationPermission() === 'denied'
-              ? 'Уведомления запрещены в настройках браузера'
+              ? nativeDenied
+                ? 'Уведомления запрещены в настройках Android — разрешите ПРОФСПОРТСРМ'
+                : 'Уведомления запрещены в настройках браузера'
               : 'Не удалось включить уведомления'
           );
           return;

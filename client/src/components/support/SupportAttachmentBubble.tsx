@@ -75,17 +75,11 @@ const SupportAttachmentBubble: React.FC<{
       if (String(mimeType || blob.type || '').includes('application/json')) {
         throw new Error('download failed');
       }
-      const objectUrl = URL.createObjectURL(blob);
-      if (isImageMime(mimeType || blob.type, filename) || mimeType === 'application/pdf') {
-        window.open(objectUrl, '_blank', 'noopener,noreferrer');
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-      } else {
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = filename || attachment.originalName || 'file';
-        a.click();
-        URL.revokeObjectURL(objectUrl);
-      }
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      const name = filename || attachment.originalName || 'file';
+      // PDF/картинки тоже сохраняем через Share в APK — без ухода в браузер
+      void mimeType;
+      await downloadBlob(blob, name);
     } catch {
       setError('Не удалось открыть файл');
     }

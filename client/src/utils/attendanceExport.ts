@@ -34,12 +34,6 @@ export async function downloadAttendanceExcel(params: {
   const fallback = buildAttendanceFilename(params.entityName, params.from, params.to);
   // ASCII fallback с сервера — attendance_…; UTF-8 имя содержит «Посещаемость»
   const resolved = filename && !/^attendance_/i.test(filename) ? filename : fallback;
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = resolved;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
+  const { downloadBlob } = await import('../capacitor/nativeDownload');
+  await downloadBlob(blob, resolved);
 }

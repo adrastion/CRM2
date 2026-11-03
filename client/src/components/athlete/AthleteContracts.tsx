@@ -47,13 +47,9 @@ interface Props {
   canManage: boolean;
 }
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  const { downloadBlob } = await import('../../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 function formatSize(bytes: number): string {
@@ -225,7 +221,7 @@ const AthleteContracts: React.FC<Props> = ({ clientId, mode, canManage }) => {
                         clientId,
                         c.id
                       );
-                      triggerBlobDownload(blob, filename || c.originalName);
+                      await triggerBlobDownload(blob, filename || c.originalName);
                     } catch (e: any) {
                       setError(e?.response?.data?.error || 'Ошибка скачивания');
                     }
@@ -292,7 +288,7 @@ const AthleteContracts: React.FC<Props> = ({ clientId, mode, canManage }) => {
                                 c.id,
                                 a.id
                               );
-                            triggerBlobDownload(blob, filename || a.originalName);
+                            await triggerBlobDownload(blob, filename || a.originalName);
                           } catch (e: any) {
                             setError(e?.response?.data?.error || 'Ошибка скачивания');
                           }

@@ -773,14 +773,8 @@ const AdminDashboard: React.FC = () => {
       if (selectedCategoryId !== 'all') params.categoryId = selectedCategoryId;
       
       const blob = await apiService.exportTransactions(params);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `transactions_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, `transactions_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка экспорта транзакций');
     }
@@ -789,14 +783,8 @@ const AdminDashboard: React.FC = () => {
   const handleExportTenants = async () => {
     try {
       const blob = await apiService.exportTenants();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tenants_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, `tenants_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка экспорта аккаунтов');
     }
@@ -805,14 +793,8 @@ const AdminDashboard: React.FC = () => {
   const handleExportMarketers = async () => {
     try {
       const blob = await apiService.exportMarketers();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `marketers_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, `marketers_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Ошибка экспорта маркетологов');
     }

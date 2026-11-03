@@ -933,10 +933,12 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                         size="small"
                         startIcon={<Download />}
                         onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = positionDocumentPreview;
-                          link.download = 'position-document';
-                          link.click();
+                          void (async () => {
+                            const res = await fetch(positionDocumentPreview);
+                            const blob = await res.blob();
+                            const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                            await downloadBlob(blob, 'position-document');
+                          })();
                         }}
                       >
                         Скачать
@@ -971,10 +973,12 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                         size="small"
                         startIcon={<Download />}
                         onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = regulationsDocumentPreview;
-                          link.download = 'regulations-document';
-                          link.click();
+                          void (async () => {
+                            const res = await fetch(regulationsDocumentPreview);
+                            const blob = await res.blob();
+                            const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                            await downloadBlob(blob, 'regulations-document');
+                          })();
                         }}
                       >
                         Скачать
@@ -1236,10 +1240,12 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                         size="small"
                         startIcon={<Download />}
                         onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = positionDocumentPreview;
-                          link.download = 'position-document';
-                          link.click();
+                          void (async () => {
+                            const res = await fetch(positionDocumentPreview);
+                            const blob = await res.blob();
+                            const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                            await downloadBlob(blob, 'position-document');
+                          })();
                         }}
                       >
                         Скачать
@@ -1274,10 +1280,12 @@ const CompetitionsPanel: React.FC<CompetitionsPanelProps> = ({ embedded = false 
                         size="small"
                         startIcon={<Download />}
                         onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = regulationsDocumentPreview;
-                          link.download = 'regulations-document';
-                          link.click();
+                          void (async () => {
+                            const res = await fetch(regulationsDocumentPreview);
+                            const blob = await res.blob();
+                            const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                            await downloadBlob(blob, 'regulations-document');
+                          })();
                         }}
                       >
                         Скачать

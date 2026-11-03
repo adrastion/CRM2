@@ -23,13 +23,9 @@ interface Props {
   onFileUpload?: (field: 'birthCertificate' | 'medicalCertificate', base64: string) => void;
 }
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  const { downloadBlob } = await import('../../capacitor/nativeDownload');
+  await downloadBlob(blob, filename);
 }
 
 const FileCard: React.FC<{
@@ -145,7 +141,7 @@ const AthletePersonalDocs: React.FC<Props> = ({
         mode === 'client'
           ? await apiService.clientDownloadCertificate(data.id, kind)
           : await apiService.downloadClientCertificate(data.id, kind);
-      triggerBlobDownload(blob, filename);
+      await triggerBlobDownload(blob, filename);
     } catch {
       /* ignore — host shows snack if needed */
     }

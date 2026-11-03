@@ -79,6 +79,8 @@ export async function fanoutNotification(payload: FanoutPayload): Promise<void> 
         category: payload.category,
         type: payload.type,
         title: payload.title,
+        body: payload.body,
+        url,
       },
     });
   } catch (e) {

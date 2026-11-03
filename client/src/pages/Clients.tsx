@@ -843,14 +843,8 @@ const Clients: React.FC = () => {
   const handleExportClients = async () => {
     try {
       const blob = await apiService.exportClients();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `clients_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, `clients_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error: any) {
       console.error('Error exporting clients:', error);
       setError('Не удалось экспортировать клиентов');
@@ -892,14 +886,8 @@ const Clients: React.FC = () => {
   const handleDownloadTemplate = async () => {
     try {
       const blob = await apiService.downloadClientTemplate();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'template_import_clients.xlsx';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, 'template_import_clients.xlsx');
     } catch (error: any) {
       console.error('Error downloading template:', error);
       setError('Не удалось скачать шаблон');
@@ -1327,7 +1315,33 @@ const Clients: React.FC = () => {
                   backgroundColor: 'action.hover'
                 }
               }}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const { isNativeApp } = await import('../capacitor/platform');
+                    if (isNativeApp()) {
+                      const { pickNativeFile } = await import('../capacitor/nativeFilePick');
+                      const file = await pickNativeFile({
+                        types: [
+                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                          'application/vnd.ms-excel',
+                          '.xlsx',
+                          '.xls',
+                        ],
+                      });
+                      if (file) {
+                        setImportFile(file);
+                        setImportResult(null);
+                        setError('');
+                      }
+                      return;
+                    }
+                  } catch {
+                    /* fallback */
+                  }
+                  fileInputRef.current?.click();
+                })();
+              }}
             >
               {importFile ? (
                 <Box>

@@ -258,12 +258,8 @@ const MarketerFinance: React.FC = () => {
   const downloadClosingDoc = async (id: string, title: string) => {
     try {
       const blob = await apiService.downloadMarketerClosingDocBlob(id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title || 'document'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, `${title || 'document'}.pdf`);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать документ');
     }
@@ -272,12 +268,8 @@ const MarketerFinance: React.FC = () => {
   const downloadPayoutDoc = async (payoutId: string, title?: string) => {
     try {
       const blob = await apiService.downloadMarketerPayoutDocumentBlob(payoutId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title || 'act'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, `${title || 'act'}.pdf`);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать акт');
     }
@@ -286,12 +278,8 @@ const MarketerFinance: React.FC = () => {
   const downloadNpdReceipt = async (payoutId: string, name?: string | null) => {
     try {
       const blob = await apiService.downloadMarketerNpdReceiptBlob(payoutId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name || 'npd-receipt.pdf';
-      a.click();
-      URL.revokeObjectURL(url);
+      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+      await downloadBlob(blob, name || 'npd-receipt.pdf');
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось скачать чек НПД');
     }

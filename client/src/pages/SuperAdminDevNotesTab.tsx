@@ -297,12 +297,8 @@ const SuperAdminDevNotesTab: React.FC = () => {
 
   const downloadFile = async (noteId: string, file: DevNoteAttachment) => {
     const { blob, filename } = await apiService.downloadDevNoteAttachment(noteId, file.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename || file.originalName;
-    a.click();
-    URL.revokeObjectURL(url);
+    const { downloadBlob } = await import('../capacitor/nativeDownload');
+    await downloadBlob(blob, filename || file.originalName);
   };
 
   const images = (open?.attachments || []).filter((a) => isImage(a.mimeType));

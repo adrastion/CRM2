@@ -62,16 +62,28 @@ python scripts/generate-android-icons.py
 `npm start` в браузере — обычный сайт.
 Для проверки native-веток нужен Android emulator после `build:mobile`.
 
+## Уведомления (APK)
+
+В WebView **не работают** браузерные Web Push. Нужны:
+
+1. **Локальные** (уже в коде) — баннер, пока приложение запущено / в фоне.
+2. **FCM** — доставка, когда приложение убито:
+   - Firebase Console → Android app `ru.profsportcrm.app` → скачать `google-services.json` →  
+     положить в `client/android/app/google-services.json`
+   - На сервере env: `FIREBASE_SERVICE_ACCOUNT_JSON` (JSON сервисного аккаунта)  
+     или `GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json`
+   - `npm run build:mobile` сам включит FCM, если видит `google-services.json`
+   - В настройках уведомлений кабинета нажать «Включить уведомления»
+
+## Файлы в APK
+
+- **Выбор** (чат, Excel, APK) — нативный File Picker, не браузер.
+- **Скачивание** — `Filesystem` + системный Share («Сохранить в…»), без открытия Chrome.
+
 ## Если APK сразу закрывается
 
-Частая причина: `Default FirebaseApp is not initialized` — вызов FCM без Firebase.
+Частая причина: `Default FirebaseApp is not initialized` — FCM без `google-services.json`.
 
-1. `homepage: "./"` + `npm run build:mobile` (относительные ассеты).
-2. **Пока нет** `android/app/google-services.json` — нативный push **выключен** (не вызывать register).
-3. Когда добавите `google-services.json` из Firebase Console:
-   ```bash
-   # положить файл в client/android/app/google-services.json
-   set REACT_APP_ENABLE_NATIVE_PUSH=true
-   npm run build:mobile
-   ```
-4. Logcat: фильтр `AndroidRuntime` / `FirebaseApp`.
+1. Уберите файл или не ставьте `REACT_APP_ENABLE_NATIVE_PUSH` без него.
+2. Когда добавите `google-services.json` — пересоберите `build:mobile`.
+3. Logcat: фильтр `AndroidRuntime` / `FirebaseApp`.

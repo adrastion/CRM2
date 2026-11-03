@@ -143,8 +143,8 @@ const SaMarketerClosingDocsPanel: React.FC = () => {
                     sx={{ textTransform: 'none' }}
                     onClick={async () => {
                       const blob = await apiService.adminDownloadMarketerClosingDocBlob(d.id);
-                      const url = URL.createObjectURL(blob);
-                      window.open(url, '_blank');
+                      const { downloadBlob } = await import('../../capacitor/nativeDownload');
+                      await downloadBlob(blob, `${d.title || 'document'}.pdf`);
                     }}
                   >
                     Открыть

@@ -221,7 +221,24 @@ const SaMobileAppTab: React.FC = () => {
             variant="contained"
             startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <UploadFile />}
             disabled={busy}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {
+              void (async () => {
+                try {
+                  const { isNativeApp } = await import('../../capacitor/platform');
+                  if (isNativeApp()) {
+                    const { pickNativeFile } = await import('../../capacitor/nativeFilePick');
+                    const file = await pickNativeFile({
+                      types: ['application/vnd.android.package-archive', '.apk'],
+                    });
+                    if (file) void onUpload(file);
+                    return;
+                  }
+                } catch {
+                  /* fallback */
+                }
+                fileRef.current?.click();
+              })();
+            }}
           >
             {meta?.hasFile ? 'Заменить APK' : 'Загрузить APK'}
           </Button>

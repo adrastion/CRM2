@@ -4,6 +4,30 @@ import { getWsBaseUrl } from '../utils/getWsBaseUrl';
 import { dispatchRealtimeEvent } from './dispatch';
 import type { RealtimeEvent } from './types';
 import { resolveRealtimeToken } from './resolveRealtimeToken';
+import { isNativeApp } from '../capacitor/platform';
+import { showLocalNotification } from '../capacitor/localNotify';
+
+function maybeLocalNotify(payload: RealtimeEvent): void {
+  if (!isNativeApp()) return;
+  // Только когда экран не в фокусе — иначе шум
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+
+  if (payload.entity === 'notifications') {
+    const title =
+      (typeof payload.meta?.title === 'string' && payload.meta.title) || 'Уведомление';
+    const body = typeof payload.meta?.body === 'string' ? payload.meta.body : undefined;
+    const path = typeof payload.meta?.url === 'string' ? payload.meta.url : undefined;
+    void showLocalNotification({ title, body, path });
+    return;
+  }
+  if (payload.entity === 'chat') {
+    void showLocalNotification({
+      title: 'Новое сообщение',
+      body: typeof payload.meta?.preview === 'string' ? String(payload.meta.preview) : undefined,
+      path: '/chats',
+    });
+  }
+}
 
 /**
  * Держит одно соединение /realtime и прокидывает события в window bus.
@@ -34,7 +58,10 @@ export function useRealtimeSocket(opts?: {
     socketRef.current = socket;
 
     socket.on('realtime:event', (payload: RealtimeEvent) => {
-      if (payload?.entity) dispatchRealtimeEvent(payload);
+      if (payload?.entity) {
+        dispatchRealtimeEvent(payload);
+        maybeLocalNotify(payload);
+      }
     });
 
     return () => {

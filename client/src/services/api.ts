@@ -2908,8 +2908,8 @@ class ApiService {
   }
 
   async adminDownloadMobileApk(): Promise<void> {
-    // Не через axios blob: дефолтный timeout 10s и буфер всего APK в RAM.
-    // Браузер качает потоком по прямой ссылке (Bearer из query только для этого файла).
+    // Прямая ссылка с access_token (не axios — большие APK / долгий timeout).
+    // В APK — Filesystem+Share, в браузере — <a download>, без открытия вкладки.
     const token =
       (typeof localStorage !== 'undefined' && localStorage.getItem('superAdminToken')) || '';
     if (!token) {
@@ -2917,13 +2917,8 @@ class ApiService {
     }
     const base = this.largeUploadBaseURL().replace(/\/$/, '');
     const url = `${base}/admin-dashboard/mobile-apk/file?access_token=${encodeURIComponent(token)}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.rel = 'noopener';
-    a.download = 'profsport.apk';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const { downloadFromUrl } = await import('../capacitor/nativeDownload');
+    await downloadFromUrl(url, 'profsport.apk');
   }
 
   async getPublicMarketerLegalDocs(): Promise<{

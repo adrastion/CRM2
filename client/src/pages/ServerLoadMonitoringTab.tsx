@@ -337,14 +337,8 @@ const ServerLoadMonitoringTab: React.FC = () => {
     try {
       setLogBusy(true);
       const blob = await apiService.downloadLogFile();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `error-log-${new Date().toISOString().split('T')[0]}.log`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const { downloadBlob } = await import('../capacitor/nativeDownload');
+      await downloadBlob(blob, `error-log-${new Date().toISOString().split('T')[0]}.log`);
     } catch (err: any) {
       setPushMessage(err.response?.data?.error || 'Ошибка скачивания файла логов');
     } finally {
