@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import type { Messaging } from 'firebase-admin/messaging';
 
 type FcmPayload = {
   title: string;
@@ -6,7 +7,7 @@ type FcmPayload = {
   data?: Record<string, unknown>;
 };
 
-let messaging: import('firebase-admin/messaging').Messaging | null | undefined;
+let messaging: Messaging | null | undefined;
 
 function flattenData(data?: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -19,27 +20,29 @@ function flattenData(data?: Record<string, unknown>): Record<string, string> {
 }
 
 /** Ленивая инициализация Firebase Admin (нужен FIREBASE_SERVICE_ACCOUNT_JSON или GOOGLE_APPLICATION_CREDENTIALS). */
-async function getMessaging(): Promise<import('firebase-admin/messaging').Messaging | null> {
-  if (messaging !== undefined) return messaging;
+async function getMessaging(): Promise<Messaging | null> {
+  if (messaging !== undefined) return messaging ?? null;
   try {
-    const admin = await import('firebase-admin');
-    if (!admin.apps.length) {
+    const { initializeApp, getApps, cert, applicationDefault } = await import('firebase-admin/app');
+    const { getMessaging: getFcmMessaging } = await import('firebase-admin/messaging');
+
+    if (!getApps().length) {
       const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
       if (raw) {
         const cred = JSON.parse(raw);
-        admin.initializeApp({
-          credential: admin.credential.cert(cred),
+        initializeApp({
+          credential: cert(cred),
         });
       } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        admin.initializeApp({
-          credential: admin.credential.applicationDefault(),
+        initializeApp({
+          credential: applicationDefault(),
         });
       } else {
         messaging = null;
         return null;
       }
     }
-    messaging = admin.messaging();
+    messaging = getFcmMessaging();
     return messaging;
   } catch (e) {
     console.warn('[FCM] firebase-admin unavailable', e);
