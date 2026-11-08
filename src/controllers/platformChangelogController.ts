@@ -183,11 +183,17 @@ export const createPlatformChangelog = asyncHandler(async (req: Request, res: Re
     ? `platform-news/${docFile.filename}`
     : String(req.body?.fileUrl || '').trim() || null;
 
+  const isPublicOnSite =
+    req.body?.isPublicOnSite === true ||
+    req.body?.isPublicOnSite === 'true' ||
+    req.body?.isPublicOnSite === '1';
+
   const entry = await prisma.platformChangelogEntry.create({
     data: {
       title,
       body,
       audienceRoles,
+      isPublicOnSite,
       tag,
       imageUrl,
       fileUrl,
@@ -227,6 +233,12 @@ export const updatePlatformChangelog = asyncHandler(async (req: Request, res: Re
   if (req.body?.audienceRoles !== undefined) {
     // Пустой список = только супер-админы
     data.audienceRoles = parseAudienceRoles(req.body.audienceRoles);
+  }
+  if (req.body?.isPublicOnSite !== undefined) {
+    data.isPublicOnSite =
+      req.body.isPublicOnSite === true ||
+      req.body.isPublicOnSite === 'true' ||
+      req.body.isPublicOnSite === '1';
   }
   if (req.body?.tag !== undefined) {
     const tag = parseNewsTag(req.body.tag);

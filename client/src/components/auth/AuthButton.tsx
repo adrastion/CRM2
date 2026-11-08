@@ -50,8 +50,15 @@ const AuthButton: React.FC<AuthButtonProps> = ({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 1,
-        transition: 'transform 140ms ease, filter 140ms ease',
-        '&:hover': isDisabled ? undefined : { filter: 'brightness(1.06)' },
+        boxShadow: variant === 'primary' && !isDisabled ? '0 10px 24px rgba(47, 107, 255, 0.28)' : 'none',
+        transition: 'transform 140ms ease, filter 140ms ease, box-shadow 140ms ease',
+        '&:hover': isDisabled
+          ? undefined
+          : {
+              filter: 'brightness(1.06)',
+              boxShadow:
+                variant === 'primary' ? '0 12px 28px rgba(47, 107, 255, 0.34)' : undefined,
+            },
         '&:active': isDisabled ? undefined : { transform: 'translateY(1px)' },
         '&:focus-visible': {
           outline: `3px solid ${colors.primarySoft}`,

@@ -225,7 +225,12 @@ export async function getCachedAttendances<T = unknown>(): Promise<T[]> {
   return listEntities<T>(tenantKey(), 'attendance');
 }
 
+let offlineLayerInitialized = false;
+
 export async function initOfflineLayer(): Promise<void> {
+  if (offlineLayerInitialized) return;
+  offlineLayerInitialized = true;
+
   const updateOnline = async (online: boolean) => {
     status = { ...status, online };
     emit();

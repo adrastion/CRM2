@@ -36,11 +36,22 @@ import { isOwnerOrAdmin } from '../../utils/roles';
 
 async function loadStaffCard(clientId: string): Promise<AthleteCardData> {
   const client = await apiService.getClient(clientId);
+  const now = new Date();
+  const horizonEnd = new Date(now);
+  horizonEnd.setDate(horizonEnd.getDate() + 90);
+
   const [standardsRes, competitionsRes, attendancesRes, trainingsRes] = await Promise.all([
     apiService.getClientStandards(clientId).catch(() => ({ data: [] })),
     apiService.getCompetitions().catch(() => ({ data: [] })),
-    apiService.getAttendances({ clientId }).catch(() => ({ data: [] })),
-    apiService.getTrainings().catch(() => ({ data: [] })),
+    apiService.getAttendances({ clientId, limit: 200, page: 1 }).catch(() => ({ data: [] })),
+    apiService
+      .getTrainings({
+        startDate: now.toISOString(),
+        endDate: horizonEnd.toISOString(),
+        limit: 500,
+        page: 1,
+      })
+      .catch(() => ({ data: [] })),
   ]);
 
   const groupIds =
@@ -51,9 +62,15 @@ async function loadStaffCard(clientId: string): Promise<AthleteCardData> {
 
   const trainingsFromAtt = (attendancesRes.data || [])
     .map((a: any) => a.training)
-    .filter((t: any) => t && !t.isCancelled);
+    .filter(
+      (t: any) =>
+        t &&
+        !t.isCancelled &&
+        (!t.groupId || groupIds.includes(t.groupId)) &&
+        new Date(t.startTime).getTime() >= now.getTime() - 86_400_000
+    );
   const trainingsFromGroups = (trainingsRes.data || []).filter(
-    (t: any) => groupIds.includes(t.groupId) && !t.isCancelled
+    (t: any) => t.groupId && groupIds.includes(t.groupId) && !t.isCancelled
   );
   const trainingMap = new Map<string, any>();
   [...trainingsFromAtt, ...trainingsFromGroups].forEach((t: any) => {

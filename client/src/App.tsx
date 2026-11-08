@@ -49,6 +49,9 @@ const TermsOfServiceWrapper = lazy(() => import('./components/TermsOfServiceWrap
 const PrivacyPolicyWrapper = lazy(() => import('./components/PrivacyPolicyWrapper'));
 const ContactsWrapper = lazy(() => import('./components/ContactsWrapper'));
 const PricingWrapper = lazy(() => import('./components/PricingWrapper'));
+const PublicNewsWrapper = lazy(() => import('./components/PublicNewsWrapper'));
+const PublicDownload = lazy(() => import('./pages/PublicDownload'));
+const PublicVacancies = lazy(() => import('./pages/PublicVacancies'));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess'));
 const AdminPromoCodes = lazy(() => import('./pages/AdminPromoCodes'));
 const MarketerRegister = lazy(() => import('./pages/MarketerRegister'));
@@ -65,7 +68,6 @@ const MarketerInvite = lazy(() => import('./pages/marketer/MarketerInvite'));
 const MarketerNews = lazy(() => import('./pages/marketer/MarketerNews'));
 const MarketerSettings = lazy(() => import('./pages/marketer/MarketerSettings'));
 const MarketerJoin = lazy(() => import('./pages/MarketerJoin'));
-const News = lazy(() => import('./pages/News'));
 const Feedback = lazy(() => import('./pages/Feedback'));
 const ReferralLanding = lazy(() => import('./pages/ReferralLanding'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -604,6 +606,9 @@ const AppContent: React.FC = () => {
             path="/pricing"
             element={<PricingWrapper />}
           />
+          <Route path="/news" element={<PublicNewsWrapper />} />
+          <Route path="/download" element={<PublicDownload />} />
+          <Route path="/vacancies" element={<PublicVacancies />} />
 
         {/* Protected Routes */}
         <Route
@@ -759,16 +764,6 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Navigate to="/faq#materials" replace />
             </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/news"
-          element={
-            <RoleRoute roles={['OWNER', 'ADMIN', 'TRAINER', 'PROMOTER']}>
-              <AppLayout>
-                <News />
-              </AppLayout>
-            </RoleRoute>
           }
         />
         <Route

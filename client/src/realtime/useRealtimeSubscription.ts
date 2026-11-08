@@ -30,11 +30,16 @@ export function useRealtimeSubscription(
       if (ev) onEventRef.current(ev);
     };
 
-    return onRealtimeEvent((event) => {
+    const unsub = onRealtimeEvent((event) => {
       if (!wanted.has(event.entity)) return;
       pending = event;
       if (timer != null) window.clearTimeout(timer);
       timer = window.setTimeout(flush, debounceMs);
     });
+
+    return () => {
+      if (timer != null) window.clearTimeout(timer);
+      unsub();
+    };
   }, [enabled, debounceMs, list.join('|')]);
 }

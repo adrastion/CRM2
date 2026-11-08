@@ -25,23 +25,12 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
       isCancelled: false // Исключаем отмененные тренировки
     };
 
-    // Если пользователь - тренер: старший — тренировки своих филиалов; иначе — свои / canViewAllGroups
+    // Тренер: свои занятия (+ замены) ИЛИ филиалы, где он старший (не взаимоисключающе)
     if (req.user?.role === 'TRAINER') {
-      const { getSeniorBranchIds } = await import('../utils/branchAccess');
-      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
-      if (seniorIds.length > 0) {
-        where.branchId = { in: seniorIds };
-      } else {
-        const trainer = await prisma.trainer.findFirst({
-          where: {
-            userId: req.user.id,
-            tenantId: req.tenant?.id
-          }
-        });
-
-        if (trainer && !trainer.canViewAllGroups) {
-          where.trainerId = trainer.id;
-        }
+      const { buildTrainerScheduleScope } = await import('../utils/branchAccess');
+      const scope = await buildTrainerScheduleScope(req.user.id, req.tenant?.id);
+      if (scope.orFilter) {
+        where.AND = [...(where.AND || []), { OR: scope.orFilter }];
       }
     }
 
@@ -53,7 +42,9 @@ export const getTrainings = async (req: AuthenticatedRequest, res: Response) => 
       ];
     }
 
-    if (branchId) where.branchId = String(branchId);
+    if (branchId) {
+      where.AND = [...(where.AND || []), { branchId: String(branchId) }];
+    }
     if (hallId) where.hallId = String(hallId);
     if (trainerId) where.trainerId = String(trainerId);
     if (groupId) where.groupId = String(groupId);

@@ -58,6 +58,7 @@ import mobileFcmRoutes from './routes/mobileFcm';
 import maintenanceRoutes from './routes/maintenance';
 import legalRoutes from './routes/legal';
 import siteAnalyticsRoutes from './routes/siteAnalytics';
+import publicSiteRoutes from './routes/publicSite';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { attachSupportCallSocket } from './services/supportCallSocket';
 import { attachChatNamespace } from './services/chatSocket';
@@ -227,6 +228,7 @@ const schoolTenantGuard = stripClientTenantFields;
 
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/legal', legalRoutes);
+app.use('/api/public-site', publicSiteRoutes);
 app.use('/api/site-analytics', siteAnalyticsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/client-auth', clientAuthRoutes);

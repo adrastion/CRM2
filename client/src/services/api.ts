@@ -5327,6 +5327,7 @@ class ApiService {
     tag?: string;
     /** ISO; будущее = отложенная публикация */
     publishedAt?: string;
+    isPublicOnSite?: boolean;
     image?: File | null;
     file?: File | null;
   }): Promise<any> {
@@ -5338,6 +5339,7 @@ class ApiService {
         audienceRoles: data.audienceRoles || [],
         tag: data.tag,
         publishedAt: data.publishedAt,
+        isPublicOnSite: Boolean(data.isPublicOnSite),
       });
       return response.data.data;
     }
@@ -5348,6 +5350,7 @@ class ApiService {
     form.append('audienceRoles', JSON.stringify(data.audienceRoles || []));
     if (data.tag) form.append('tag', data.tag);
     if (data.publishedAt) form.append('publishedAt', data.publishedAt);
+    form.append('isPublicOnSite', data.isPublicOnSite ? 'true' : 'false');
     if (data.image) form.append('image', data.image);
     if (data.file) form.append('file', data.file);
     const response = await this.api.post<ApiResponse>('/platform/changelog', form, {
@@ -5364,6 +5367,7 @@ class ApiService {
       audienceRoles?: string[];
       tag?: string;
       publishedAt?: string;
+      isPublicOnSite?: boolean;
       image?: File | null;
       file?: File | null;
       clearImage?: boolean;
@@ -5378,6 +5382,7 @@ class ApiService {
         audienceRoles: data.audienceRoles,
         tag: data.tag,
         publishedAt: data.publishedAt,
+        isPublicOnSite: data.isPublicOnSite,
         clearImage: data.clearImage || undefined,
         clearFile: data.clearFile || undefined,
       });
@@ -5391,6 +5396,9 @@ class ApiService {
     }
     if (data.tag !== undefined) form.append('tag', data.tag);
     if (data.publishedAt !== undefined) form.append('publishedAt', data.publishedAt);
+    if (data.isPublicOnSite !== undefined) {
+      form.append('isPublicOnSite', data.isPublicOnSite ? 'true' : 'false');
+    }
     if (data.clearImage) form.append('clearImage', 'true');
     if (data.clearFile) form.append('clearFile', 'true');
     if (data.image) form.append('image', data.image);
@@ -5509,6 +5517,138 @@ class ApiService {
     const response = await this.api.post<ApiResponse>(`/admin-dashboard/feature-ideas/${id}/reject`, {
       rejectReason: rejectReason || undefined,
     });
+    return response.data.data;
+  }
+
+  /** Публичный конфиг сайта (соцсети, вкладка приложения). */
+  async getPublicSiteConfig(): Promise<{
+    socialLinks: Array<{ key: string; label: string; url: string; sortOrder: number }>;
+    landingVariant?: string;
+    download: {
+      tabEnabled: boolean;
+      rustoreUrl: string | null;
+      publicApkEnabled: boolean;
+      apkLabel: string | null;
+      iosInstructionEnabled: boolean;
+      iosInstructionText: string;
+    };
+  }> {
+    const response = await this.api.get<ApiResponse>('/public-site/config');
+    return response.data.data;
+  }
+
+  async getPublicNews(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/public-site/news');
+    return response.data.data || [];
+  }
+
+  async getPublicVacancies(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/public-site/vacancies');
+    return response.data.data || [];
+  }
+
+  async submitSiteFeedback(data: { name?: string; contact?: string; body: string }): Promise<{ id: string }> {
+    const response = await this.api.post<ApiResponse>('/public-site/feedback', data);
+    return response.data.data;
+  }
+
+  async applyToVacancy(
+    vacancyId: string,
+    data: { name: string; contacts: string; message: string }
+  ): Promise<{ id: string }> {
+    const response = await this.api.post<ApiResponse>(
+      `/public-site/vacancies/${encodeURIComponent(vacancyId)}/apply`,
+      data
+    );
+    return response.data.data;
+  }
+
+  getPublicApkDownloadUrl(): string {
+    const base = String(this.api.defaults.baseURL || '/api').replace(/\/$/, '');
+    return `${base}/public-site/download/apk`;
+  }
+
+  getPublicNewsImageUrl(id: string): string {
+    const base = String(this.api.defaults.baseURL || '/api').replace(/\/$/, '');
+    return `${base}/public-site/news/${encodeURIComponent(id)}/image`;
+  }
+
+  async adminGetPublicSiteSettings(): Promise<any> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/public-site');
+    return response.data.data;
+  }
+
+  async adminUpdatePublicSiteSettings(payload: {
+    socialLinks?: Array<{
+      key: string;
+      label: string;
+      url: string;
+      enabled: boolean;
+      sortOrder: number;
+    }>;
+    landingVariant?: string;
+    download?: {
+      tabEnabled?: boolean;
+      rustoreUrl?: string | null;
+      publicApkEnabled?: boolean;
+      iosInstructionEnabled?: boolean;
+      iosInstructionText?: string | null;
+    };
+  }): Promise<any> {
+    const response = await this.api.put<ApiResponse>('/admin-dashboard/public-site', payload);
+    return response.data.data;
+  }
+
+  async adminListVacancies(): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/vacancies');
+    return response.data.data || [];
+  }
+
+  async adminCreateVacancy(data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.post<ApiResponse>('/admin-dashboard/vacancies', data);
+    return response.data.data;
+  }
+
+  async adminUpdateVacancy(id: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/admin-dashboard/vacancies/${encodeURIComponent(id)}`,
+      data
+    );
+    return response.data.data;
+  }
+
+  async adminDeleteVacancy(id: string): Promise<any> {
+    const response = await this.api.delete<ApiResponse>(
+      `/admin-dashboard/vacancies/${encodeURIComponent(id)}`
+    );
+    return response.data.data;
+  }
+
+  async adminListVacancyApplications(params?: { status?: string }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/vacancy-applications', {
+      params,
+    });
+    return response.data.data || [];
+  }
+
+  async adminUpdateVacancyApplication(id: string, status: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/admin-dashboard/vacancy-applications/${encodeURIComponent(id)}`,
+      { status }
+    );
+    return response.data.data;
+  }
+
+  async adminListSiteFeedback(params?: { status?: string }): Promise<any[]> {
+    const response = await this.api.get<ApiResponse>('/admin-dashboard/site-feedback', { params });
+    return response.data.data || [];
+  }
+
+  async adminUpdateSiteFeedback(id: string, status: string): Promise<any> {
+    const response = await this.api.put<ApiResponse>(
+      `/admin-dashboard/site-feedback/${encodeURIComponent(id)}`,
+      { status }
+    );
     return response.data.data;
   }
 }

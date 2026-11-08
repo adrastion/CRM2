@@ -722,10 +722,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     [activeThreadId]
   );
 
-  useRealtimeSubscription('chat', () => {
-    void loadThreads();
-  });
+  useRealtimeSubscription(
+    'chat',
+    () => {
+      void loadThreads();
+    },
+    { debounceMs: 2500 }
+  );
 
+  const threadActivityTimer = useRef<number | null>(null);
   useChatSocket({
     token: socketToken,
     threadId: activeThreadId,
@@ -733,7 +738,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     onMessage: onSocketMessage,
     onMessageUpdated: onSocketMessageUpdated,
     onThreadActivity: () => {
-      void loadThreads();
+      if (threadActivityTimer.current != null) window.clearTimeout(threadActivityTimer.current);
+      threadActivityTimer.current = window.setTimeout(() => {
+        threadActivityTimer.current = null;
+        void loadThreads();
+      }, 2500);
     },
     onPin: (payload) => {
       if (payload.threadId !== activeThreadId) return;

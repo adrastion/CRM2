@@ -38,8 +38,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
 
     if (isChunkLoadError(lastError) && typeof window !== 'undefined') {
       try {
-        if (!sessionStorage.getItem(RELOAD_KEY)) {
-          sessionStorage.setItem(RELOAD_KEY, '1');
+        const prev = Number(sessionStorage.getItem(RELOAD_KEY) || '0');
+        // До двух reload после деплоя/обрыва сети — иначе вкладка зависает навечно
+        if (prev < 2) {
+          sessionStorage.setItem(RELOAD_KEY, String(prev + 1));
           window.location.reload();
           return new Promise(() => {
             /* ждём reload */

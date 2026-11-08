@@ -676,13 +676,15 @@ export const getScheduleSummary = async (req: AuthenticatedRequest, res: Respons
       status: { not: 'CANCELLED' },
     };
 
-    // Trainer scope
+    // Trainer scope: свои + замены + филиалы старшего
     if (req.user?.role === 'TRAINER') {
-      const trainer = await prisma.trainer.findFirst({
-        where: { userId: req.user.id, tenantId },
-      });
-      if (trainer && !trainer.canViewAllGroups) {
-        trainingWhereBase.trainerId = trainer.id;
+      const { buildTrainerScheduleScope } = await import('../utils/branchAccess');
+      const scope = await buildTrainerScheduleScope(req.user.id, tenantId);
+      if (scope.orFilter) {
+        trainingWhereBase.AND = [
+          ...((trainingWhereBase.AND as unknown[]) || []),
+          { OR: scope.orFilter },
+        ];
       }
     }
 
@@ -799,25 +801,17 @@ export const getUpcomingTrainings = async (req: AuthenticatedRequest, res: Respo
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
 
-    // Check if user is a trainer
-    let trainerId: string | undefined;
-    
+    let trainerScopeOr: Array<Record<string, unknown>> | null = null;
     if (req.user?.role === 'TRAINER') {
-      const trainer = await prisma.trainer.findFirst({
-        where: {
-          userId: req.user.id,
-          tenantId
-        }
-      });
-      if (trainer) {
-        trainerId = trainer.id;
-      }
+      const { buildTrainerScheduleScope } = await import('../utils/branchAccess');
+      const scope = await buildTrainerScheduleScope(req.user.id, tenantId);
+      trainerScopeOr = scope.orFilter;
     }
 
     const trainings = await prisma.training.findMany({
       where: {
         tenantId,
-        ...(trainerId && { trainerId }),
+        ...(trainerScopeOr ? { OR: trainerScopeOr } : {}),
         startTime: {
           gte: now,
           lte: futureDate

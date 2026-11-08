@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import BrandLogo from './common/BrandLogo';
 import { colors } from '../theme/tokens';
 import { currentSessionDestination, hasAnySession } from '../utils/authSession';
+import { usePublicSiteConfig } from '../hooks/usePublicSiteConfig';
 
 export type PublicNavVariant = 'overlay' | 'solid';
 
@@ -48,6 +49,8 @@ const PublicSiteNav: React.FC<PublicSiteNavProps> = ({
   const theme = useTheme();
   const showWordmark = useMediaQuery(theme.breakpoints.up('sm'));
   const loggedIn = hasAnySession();
+  const { config } = usePublicSiteConfig();
+  const downloadEnabled = Boolean(config?.download?.tabEnabled);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
 
@@ -74,11 +77,23 @@ const PublicSiteNav: React.FC<PublicSiteNavProps> = ({
         ? [{ label: 'Возможности', onClick: () => onFeaturesClick?.() }]
         : [];
 
+  /** Полный набор вкладок из плана публичного сайта (+ якоря лендинга на `/`). */
   const secondaryLinks: Array<{ label: string; onClick: () => void; active?: boolean }> = [
-    ...(anchors.length > 0
-      ? anchors
-      : [{ label: 'Главная', onClick: () => navigate('/'), active: linkActive('/') }]),
+    { label: 'Главная', onClick: () => navigate('/'), active: linkActive('/') },
+    ...anchors,
+    { label: 'Новости', onClick: () => navigate('/news'), active: linkActive('/news') },
+    ...(downloadEnabled
+      ? [
+          {
+            label: 'Приложение',
+            onClick: () => navigate('/download'),
+            active: linkActive('/download'),
+          },
+        ]
+      : []),
     { label: 'Тарифы', onClick: () => navigate('/pricing'), active: linkActive('/pricing') },
+    { label: 'Вакансии', onClick: () => navigate('/vacancies'), active: linkActive('/vacancies') },
+    { label: 'FAQ', onClick: () => navigate('/faq'), active: linkActive('/faq') },
     { label: 'Контакты', onClick: () => navigate('/contacts'), active: linkActive('/contacts') },
   ];
 

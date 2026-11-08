@@ -6,6 +6,82 @@ export function isOwnerOrAdminRole(role?: string | null): boolean {
   return role === 'OWNER' || role === 'ADMIN';
 }
 
+/**
+ * Условие видимости тренировок/групп для роли TRAINER:
+ * свои занятия (+ замены) ИЛИ филиалы, где тренер старший.
+ * Раньше senior-скоуп полностью вытеснял личные занятия в других филиалах.
+ */
+export async function buildTrainerScheduleScope(
+  userId: string,
+  tenantId?: string
+): Promise<{
+  trainerId: string | null;
+  canViewAllGroups: boolean;
+  /** null = без доп. фильтра (OWNER-like / canViewAllGroups без senior). */
+  orFilter: Array<Record<string, unknown>> | null;
+}> {
+  const trainer = await prisma.trainer.findFirst({
+    where: {
+      userId,
+      ...(tenantId ? { tenantId } : {}),
+      isActive: true,
+    },
+    select: { id: true, canViewAllGroups: true },
+  });
+  if (!trainer) {
+    return { trainerId: null, canViewAllGroups: false, orFilter: null };
+  }
+
+  const seniorIds = await getSeniorBranchIds(userId, tenantId);
+  if (trainer.canViewAllGroups && seniorIds.length === 0) {
+    return { trainerId: trainer.id, canViewAllGroups: true, orFilter: null };
+  }
+
+  const orFilter: Array<Record<string, unknown>> = [
+    { trainerId: trainer.id },
+    { substituteTrainerId: trainer.id },
+  ];
+  if (seniorIds.length > 0) {
+    orFilter.push({ branchId: { in: seniorIds } });
+  }
+
+  if (trainer.canViewAllGroups) {
+    // Старший + canViewAll: всё равно нужен OR только если хотим сузить —
+    // canViewAll без senior уже вернули null выше; с senior оставляем OR,
+    // чтобы не резать чужие филиалы? Для canViewAll лучше без фильтра.
+    return { trainerId: trainer.id, canViewAllGroups: true, orFilter: null };
+  }
+
+  return { trainerId: trainer.id, canViewAllGroups: false, orFilter };
+}
+
+/** Филиалы тренера: старшие + привязки TrainerBranch. */
+export async function getTrainerVisibleBranchIds(
+  userId: string,
+  tenantId?: string
+): Promise<string[] | null> {
+  const trainer = await prisma.trainer.findFirst({
+    where: {
+      userId,
+      ...(tenantId ? { tenantId } : {}),
+      isActive: true,
+    },
+    select: { id: true, canViewAllGroups: true },
+  });
+  if (!trainer) return [];
+  if (trainer.canViewAllGroups) return null; // все филиалы школы
+
+  const [seniorIds, links] = await Promise.all([
+    getSeniorBranchIds(userId, tenantId),
+    prisma.trainerBranch.findMany({
+      where: { trainerId: trainer.id },
+      select: { branchId: true },
+    }),
+  ]);
+  const ids = Array.from(new Set([...seniorIds, ...links.map((l) => l.branchId)]));
+  return ids;
+}
+
 /** Филиалы, где пользователь назначен старшим тренером. */
 export async function getSeniorBranchIds(userId: string, tenantId?: string): Promise<string[]> {
   const trainer = await prisma.trainer.findFirst({

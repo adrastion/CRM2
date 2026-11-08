@@ -18,6 +18,8 @@ export const SA_SECTIONS = [
   'notifications',
   'sandbox',
   'mobile-app',
+  'public-site',
+  'vacancies',
   'legal',
   'audit',
 ] as const;
@@ -86,6 +88,8 @@ export const SA_NAV_GROUPS: SaNavGroup[] = [
       { section: 'notifications', label: 'Уведомления', iconName: 'earnings' },
       { section: 'sandbox', label: 'Тестовые кабинеты', iconName: 'staff' },
       { section: 'mobile-app', label: 'Мобильное приложение', iconName: 'knowledge-base' },
+      { section: 'public-site', label: 'Публичный сайт', iconName: 'faq' },
+      { section: 'vacancies', label: 'Вакансии', iconName: 'groups' },
     ],
   },
   {

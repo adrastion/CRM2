@@ -12,22 +12,20 @@ export const getGroups = async (req: AuthenticatedRequest, res: Response) => {
       isActive: true
     };
 
-    // Если пользователь - тренер: старший видит группы своих филиалов; иначе — свои / canViewAllGroups
+    // Тренер: свои группы ИЛИ группы филиалов, где он старший
     if (req.user?.role === 'TRAINER') {
-      const { getSeniorBranchIds } = await import('../utils/branchAccess');
-      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
-      if (seniorIds.length > 0) {
-        where.branchId = { in: seniorIds };
-      } else {
-        const trainer = await prisma.trainer.findFirst({
-          where: {
-            userId: req.user.id,
-            tenantId: req.tenant?.id
-          }
-        });
-
-        if (trainer && !trainer.canViewAllGroups) {
-          where.trainerId = trainer.id;
+      const { buildTrainerScheduleScope } = await import('../utils/branchAccess');
+      const scope = await buildTrainerScheduleScope(req.user.id, req.tenant?.id);
+      if (scope.orFilter) {
+        // У групп нет substituteTrainerId — оставляем trainerId + senior branches
+        const groupOr = scope.orFilter
+          .map((clause) => {
+            if ('substituteTrainerId' in clause) return null;
+            return clause;
+          })
+          .filter(Boolean) as Array<Record<string, unknown>>;
+        if (groupOr.length > 0) {
+          where.AND = [...(where.AND || []), { OR: groupOr }];
         }
       }
     }

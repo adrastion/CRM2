@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { getWsBaseUrl } from '../utils/getWsBaseUrl';
+import { Socket } from 'socket.io-client';
 import { apiService } from '../services/api';
+import { acquireChatSocket, releaseChatSocket } from './chatSocketShared';
 
 export const CHAT_UNREAD_REFRESH_EVENT = 'chat:unread-refresh';
 
@@ -45,22 +45,20 @@ export function useChatUnreadBadge(opts: {
   useEffect(() => {
     if (!enabled || !token) return;
 
-    const socket = io(`${getWsBaseUrl()}/chat`, {
-      path: '/socket.io',
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
+    const socket = acquireChatSocket(token);
     socketRef.current = socket;
 
-    socket.on('chat:unread', (payload: { threadId?: string; unreadDelta?: number }) => {
+    const onUnread = (payload: { threadId?: string; unreadDelta?: number }) => {
       const delta = Number(payload?.unreadDelta) || 0;
       if (delta !== 0) {
         setTotal((t) => Math.max(0, t + delta));
       }
-    });
+    };
+    socket.on('chat:unread', onUnread);
 
     return () => {
-      socket.disconnect();
+      socket.off('chat:unread', onUnread);
+      releaseChatSocket(socket);
       socketRef.current = null;
     };
   }, [token, enabled]);
@@ -71,6 +69,7 @@ export function useChatUnreadBadge(opts: {
       void refetch();
     };
     const onFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void refetch();
     };
     window.addEventListener(CHAT_UNREAD_REFRESH_EVENT, onRefresh);

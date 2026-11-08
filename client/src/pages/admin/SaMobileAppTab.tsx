@@ -4,7 +4,9 @@ import {
   Box,
   Button,
   CircularProgress,
+  FormControlLabel,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -18,6 +20,14 @@ type ApkMeta = {
   size: number | null;
   label: string | null;
   uploadedAt: string | null;
+};
+
+type DownloadSettings = {
+  tabEnabled: boolean;
+  rustoreUrl: string;
+  publicApkEnabled: boolean;
+  iosInstructionEnabled: boolean;
+  iosInstructionText: string;
 };
 
 const formatBytes = (n: number | null) => {
@@ -40,6 +50,13 @@ const formatDate = (iso: string | null) => {
 const SaMobileAppTab: React.FC = () => {
   const [meta, setMeta] = useState<ApkMeta | null>(null);
   const [label, setLabel] = useState('');
+  const [download, setDownload] = useState<DownloadSettings>({
+    tabEnabled: false,
+    rustoreUrl: '',
+    publicApkEnabled: false,
+    iosInstructionEnabled: true,
+    iosInstructionText: '',
+  });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +67,20 @@ const SaMobileAppTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiService.adminGetMobileApk();
-      setMeta(data);
-      setLabel(data.label || '');
+      const [apk, site] = await Promise.all([
+        apiService.adminGetMobileApk(),
+        apiService.adminGetPublicSiteSettings(),
+      ]);
+      setMeta(apk);
+      setLabel(apk.label || '');
+      const d = site?.download || {};
+      setDownload({
+        tabEnabled: Boolean(d.tabEnabled),
+        rustoreUrl: d.rustoreUrl || '',
+        publicApkEnabled: Boolean(d.publicApkEnabled),
+        iosInstructionEnabled: d.iosInstructionEnabled !== false,
+        iosInstructionText: d.iosInstructionText || '',
+      });
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить сведения об APK');
     } finally {
@@ -77,7 +105,11 @@ const SaMobileAppTab: React.FC = () => {
       const data = await apiService.adminUploadMobileApk(file, label.trim() || undefined);
       setMeta(data);
       setLabel(data.label || '');
-      setSuccess('APK загружен. Пользователям файл пока не выдаётся.');
+      setSuccess(
+        download.publicApkEnabled && download.tabEnabled
+          ? 'APK загружен и доступен на вкладке «Приложение».'
+          : 'APK загружен. Включите вкладку и публичную выдачу ниже, чтобы отдавать файл пользователям.'
+      );
     } catch (e: any) {
       const status = e?.response?.status;
       const timedOut =
@@ -124,6 +156,28 @@ const SaMobileAppTab: React.FC = () => {
     }
   };
 
+  const onSaveDownloadSettings = async () => {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiService.adminUpdatePublicSiteSettings({
+        download: {
+          tabEnabled: download.tabEnabled,
+          rustoreUrl: download.rustoreUrl.trim() || null,
+          publicApkEnabled: download.publicApkEnabled,
+          iosInstructionEnabled: download.iosInstructionEnabled,
+          iosInstructionText: download.iosInstructionText.trim() || null,
+        },
+      });
+      setSuccess('Настройки вкладки «Приложение» сохранены');
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Не удалось сохранить настройки');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onDelete = async () => {
     if (!window.confirm('Удалить загруженный APK с сервера?')) return;
     setBusy(true);
@@ -155,8 +209,8 @@ const SaMobileAppTab: React.FC = () => {
         Мобильное приложение
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
-        Загрузите APK программы для хранения на сервере. Сейчас файл доступен только в кабинете
-        супер-админа — пользователям и школам он нигде не показывается и не скачивается.
+        Загрузите APK и настройте публичную вкладку «Приложение»: RuStore, прямое скачивание APK и
+        инструкцию «добавить на рабочий стол» для iOS/PWA.
       </Typography>
 
       {error && (
@@ -267,6 +321,78 @@ const SaMobileAppTab: React.FC = () => {
             </>
           )}
         </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          mt: 3,
+          p: 2.5,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          maxWidth: 640,
+        }}
+      >
+        <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+          Публичная вкладка «Приложение»
+        </Typography>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={download.tabEnabled}
+              onChange={(_, v) => setDownload((d) => ({ ...d, tabEnabled: v }))}
+              disabled={busy}
+            />
+          }
+          label="Показывать вкладку на сайте"
+        />
+        <FormControlLabel
+          sx={{ display: 'block' }}
+          control={
+            <Switch
+              checked={download.publicApkEnabled}
+              onChange={(_, v) => setDownload((d) => ({ ...d, publicApkEnabled: v }))}
+              disabled={busy}
+            />
+          }
+          label="Разрешить скачивание APK с сайта"
+        />
+        <TextField
+          label="Ссылка RuStore"
+          value={download.rustoreUrl}
+          onChange={(e) => setDownload((d) => ({ ...d, rustoreUrl: e.target.value }))}
+          fullWidth
+          size="small"
+          sx={{ mt: 1.5, mb: 1.5 }}
+          disabled={busy}
+          placeholder="https://apps.rustore.ru/..."
+        />
+        <FormControlLabel
+          sx={{ display: 'block', mb: 1 }}
+          control={
+            <Switch
+              checked={download.iosInstructionEnabled}
+              onChange={(_, v) => setDownload((d) => ({ ...d, iosInstructionEnabled: v }))}
+              disabled={busy}
+            />
+          }
+          label="Показывать инструкцию «На рабочий стол» (iOS/PWA)"
+        />
+        <TextField
+          label="Текст инструкции"
+          value={download.iosInstructionText}
+          onChange={(e) => setDownload((d) => ({ ...d, iosInstructionText: e.target.value }))}
+          fullWidth
+          multiline
+          minRows={3}
+          size="small"
+          sx={{ mb: 2 }}
+          disabled={busy || !download.iosInstructionEnabled}
+        />
+        <Button variant="contained" disabled={busy} onClick={() => void onSaveDownloadSettings()}>
+          Сохранить настройки вкладки
+        </Button>
       </Box>
     </Box>
   );

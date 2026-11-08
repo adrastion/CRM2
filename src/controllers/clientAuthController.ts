@@ -1235,31 +1235,45 @@ export const getAthleteCard = asyncHandler(async (req: Request, res: Response<Ap
   const groupIds = client.groupMemberships.map((gm) => gm.groupId).filter(Boolean) as string[];
 
   const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 14);
+  const horizonEnd = new Date(now);
+  horizonEnd.setDate(horizonEnd.getDate() + 90);
+
+  const individualAttendances = await prisma.attendance.findMany({
+    where: {
+      clientId,
+      training: { groupId: null, tenantId, isCancelled: false },
+    },
+    select: { trainingId: true },
+  });
+  const individualIds = individualAttendances.map((a) => a.trainingId);
+
+  const trainingWhere =
+    groupIds.length > 0 || individualIds.length > 0
+      ? {
+          tenantId,
+          isCancelled: false,
+          startTime: { gte: now, lt: horizonEnd },
+          OR: [
+            ...(groupIds.length ? [{ groupId: { in: groupIds } }] : []),
+            ...(individualIds.length ? [{ id: { in: individualIds } }] : []),
+          ],
+        }
+      : null;
 
   const [trainings, competitions] = await Promise.all([
-    groupIds.length
+    trainingWhere
       ? prisma.training.findMany({
-          where: {
-            tenantId,
-            groupId: { in: groupIds },
-            isCancelled: false,
-            startTime: { gte: weekStart, lt: weekEnd },
-          },
+          where: trainingWhere,
           include: { group: true, branch: true, hall: true },
           orderBy: { startTime: 'asc' },
-          take: 50,
+          take: 100,
         })
       : Promise.resolve([]),
     prisma.competition.findMany({
       where: {
         tenantId,
         participants: { some: { clientId } },
-        startDate: { gte: weekStart },
+        startDate: { gte: now },
       },
       orderBy: { startDate: 'asc' },
       take: 20,

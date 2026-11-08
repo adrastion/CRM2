@@ -53,6 +53,7 @@ interface ChangelogEntry {
   pushSentAt?: string | null;
   tag?: string | null;
   audienceRoles?: string[];
+  isPublicOnSite?: boolean;
   imageUrl?: string | null;
   fileUrl?: string | null;
   createdBy?: { firstName?: string; lastName?: string; email?: string };
@@ -266,6 +267,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [existingImagePreview, setExistingImagePreview] = useState<string | null>(null);
   const [publishedAtLocal, setPublishedAtLocal] = useState(() => toDatetimeLocalValue());
+  const [isPublicOnSite, setIsPublicOnSite] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -330,6 +332,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setClearImage(false);
     setClearFile(false);
     setPublishedAtLocal(toDatetimeLocalValue());
+    setIsPublicOnSite(false);
     setDialogOpen(true);
   };
 
@@ -344,6 +347,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
     setClearImage(false);
     setClearFile(false);
     setPublishedAtLocal(toDatetimeLocalValue(entry.publishedAt || entry.createdAt));
+    setIsPublicOnSite(Boolean(entry.isPublicOnSite));
     setDialogOpen(true);
   };
 
@@ -372,6 +376,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           audienceRoles,
           tag,
           publishedAt,
+          isPublicOnSite,
           image: imageFile,
           file: docFile,
           clearImage,
@@ -384,6 +389,7 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
           audienceRoles,
           tag,
           publishedAt,
+          isPublicOnSite,
           image: imageFile,
           file: docFile,
         });
@@ -463,6 +469,19 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
                         fontSize: 11,
                         bgcolor: 'rgba(245, 158, 11, 0.16)',
                         color: '#B45309',
+                      }}
+                    />
+                  )}
+                  {e.isPublicOnSite && (
+                    <Chip
+                      size="small"
+                      label="На сайте"
+                      sx={{
+                        height: 22,
+                        fontWeight: 700,
+                        fontSize: 11,
+                        bgcolor: 'rgba(47, 107, 255, 0.12)',
+                        color: colors.primary,
                       }}
                     />
                   )}
@@ -616,6 +635,16 @@ export const SuperAdminPlatformChangelogTab: React.FC = () => {
               ))}
             </FormGroup>
           </FormControl>
+          <FormControlLabel
+            sx={{ mb: 2, display: 'block' }}
+            control={
+              <Checkbox
+                checked={isPublicOnSite}
+                onChange={(_, v) => setIsPublicOnSite(v)}
+              />
+            }
+            label="Показывать на публичной вкладке «Новости» сайта"
+          />
           <Box display="flex" gap={2} flexWrap="wrap" sx={{ mb: 1 }}>
             <Button variant="outlined" component="label" sx={{ textTransform: 'none' }}>
               {imageFile ? `Изображение: ${imageFile.name}` : 'Загрузить изображение'}

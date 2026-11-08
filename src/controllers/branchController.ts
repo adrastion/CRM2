@@ -133,10 +133,11 @@ export const getBranches = async (req: AuthenticatedRequest, res: Response) => {
     };
 
     if (req.user?.role === 'TRAINER') {
-      const seniorIds = await getSeniorBranchIds(req.user.id, req.tenant?.id);
-      // Старший тренер видит только свои филиалы; обычный тренер — все (фильтры расписания)
-      if (seniorIds.length > 0) {
-        where.id = { in: seniorIds };
+      const { getTrainerVisibleBranchIds } = await import('../utils/branchAccess');
+      const visibleIds = await getTrainerVisibleBranchIds(req.user.id, req.tenant?.id);
+      // null = canViewAllGroups (все филиалы); иначе — старшие + TrainerBranch
+      if (visibleIds && visibleIds.length > 0) {
+        where.id = { in: visibleIds };
       }
     }
 

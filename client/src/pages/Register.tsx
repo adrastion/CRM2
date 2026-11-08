@@ -1,24 +1,50 @@
 import React, { useState } from 'react';
+import { Box, Typography } from '@mui/material';
 import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-  Link,
-  Divider,
-  Grid,
-} from '@mui/material';
-import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
+  SchoolOutlined,
+  PersonOutline,
+  BadgeOutlined,
+  MailOutline,
+  PhoneIphone,
+  LockOutlined,
+  LockReset,
+} from '@mui/icons-material';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { RegisterForm } from '../types';
-import PublicFooter from '../components/PublicFooter';
-import PublicSiteNav from '../components/PublicSiteNav';
 import { normalizePhone, validatePhone } from '../utils/phone';
-import PasswordField from '../components/common/PasswordField';
+import AuthShell from '../components/auth/AuthShell';
+import AuthButton from '../components/auth/AuthButton';
+import PillField from '../components/auth/PillField';
+import { colors, typography } from '../theme/tokens';
+
+function maskPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  const body = digits.startsWith('7') || digits.startsWith('8') ? digits.slice(1) : digits;
+  const d = body.slice(0, 10);
+  if (!d) return '';
+  let out = '+7';
+  if (d.length > 0) out += ` (${d.slice(0, 3)}`;
+  if (d.length >= 3) out += ')';
+  if (d.length > 3) out += ` ${d.slice(3, 6)}`;
+  if (d.length > 6) out += `-${d.slice(6, 8)}`;
+  if (d.length > 8) out += `-${d.slice(8, 10)}`;
+  return out;
+}
+
+const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Typography
+    sx={{
+      fontSize: typography.field,
+      fontWeight: 700,
+      color: colors.text,
+      mb: { xs: 1.5, md: 2 },
+      letterSpacing: '-0.01em',
+    }}
+  >
+    {children}
+  </Typography>
+);
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState<RegisterForm>({
@@ -29,30 +55,25 @@ const Register: React.FC = () => {
     lastName: '',
     phone: '',
   });
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [error, setError] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  
+
   const { register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const nextAfterRegister =
     (location.state as { next?: string } | null)?.next === '/pricing' ? '/pricing' : '/dashboard';
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+  const setField = (name: keyof RegisterForm) => (value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (error) setError('');
-    // Clear field error when user starts typing
     if (fieldErrors[name]) {
-      setFieldErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
       });
     }
   };
@@ -60,54 +81,40 @@ const Register: React.FC = () => {
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
 
-    // Validate tenant name
     if (!formData.tenantName || formData.tenantName.trim().length < 2) {
       errors.tenantName = 'Название школы должно содержать минимум 2 символа';
     }
-
-    // Validate first name
     if (!formData.firstName || formData.firstName.trim().length < 2) {
       errors.firstName = 'Имя должно содержать минимум 2 символа';
     }
-
-    // Validate last name
     if (!formData.lastName || formData.lastName.trim().length < 2) {
       errors.lastName = 'Фамилия должна содержать минимум 2 символа';
     }
 
-    // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!formData.email || !emailRegex.test(formData.email)) {
       errors.email = 'Введите корректный адрес электронной почты';
     }
 
-    // Validate password
     if (!formData.password || formData.password.length < 6) {
       errors.password = 'Пароль должен содержать минимум 6 символов';
     }
-
-    // Validate password confirmation
     if (formData.password !== confirmPassword) {
       errors.confirmPassword = 'Пароли не совпадают';
     }
 
-    // Validate phone (if provided)
     if (formData.phone && formData.phone.trim() !== '') {
       const phoneError = validatePhone(formData.phone);
-      if (phoneError) {
-        errors.phone = phoneError;
-      }
+      if (phoneError) errors.phone = phoneError;
     }
 
     return errors;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setIsLoading(true);
     setError('');
 
-    // Client-side validation
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -119,7 +126,6 @@ const Register: React.FC = () => {
     setFieldErrors({});
 
     try {
-      // Нормализуем телефон к +7XXXXXXXXXX
       const cleanedData = {
         ...formData,
         phone: formData.phone?.trim() ? normalizePhone(formData.phone) : undefined,
@@ -130,13 +136,11 @@ const Register: React.FC = () => {
       };
 
       await register(cleanedData);
-      // Navigate to dashboard on success
       navigate(nextAfterRegister);
     } catch (err: any) {
-      // Handle different error types
-      const errorMessage = err.response?.data?.error || err.message || 'Ошибка регистрации. Попробуйте еще раз.';
-      
-      // Translate common errors
+      const errorMessage =
+        err.response?.data?.error || err.message || 'Ошибка регистрации. Попробуйте еще раз.';
+
       let translatedError = errorMessage;
       if (
         errorMessage.includes('Email is already registered') ||
@@ -144,7 +148,8 @@ const Register: React.FC = () => {
         errorMessage.includes('already exists') ||
         errorMessage.includes('уже существует')
       ) {
-        translatedError = 'Этот email уже зарегистрирован. Используйте другой email или войдите в систему.';
+        translatedError =
+          'Этот email уже зарегистрирован. Используйте другой email или войдите в систему.';
       } else if (
         errorMessage.includes('Subdomain is already taken') ||
         errorMessage.includes('поддомен')
@@ -153,7 +158,7 @@ const Register: React.FC = () => {
       } else if (errorMessage.includes('validation') || errorMessage.includes('проверки данных')) {
         translatedError = 'Проверьте правильность заполнения всех полей.';
       }
-      
+
       setError(translatedError);
     } finally {
       setIsLoading(false);
@@ -161,247 +166,234 @@ const Register: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <PublicSiteNav />
-      <Container component="main" maxWidth="md" sx={{ flexGrow: 1, py: 4 }}>
-      <Box
-        sx={{
-            marginTop: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-          <Button variant="contained" size="small" disabled>
-            1. Регистрация
-          </Button>
-          <Button variant="outlined" size="small" onClick={() => navigate('/pricing')}>
-            2. Тарифы
-          </Button>
-          <Button variant="outlined" size="small" onClick={() => navigate('/contacts')}>
-            3. Контакты
-          </Button>
-        </Box>
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Typography component="h1" variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
-              Создайте свою спортивную школу
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Шаг 1: регистрация. После входа можно выбрать тариф или написать в контакты.
-            </Typography>
-          </Box>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'medium' }}>
-              Информация о школе
-            </Typography>
-            
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TextField
-                  required
-                  fullWidth
-                  id="tenantName"
-                  label="Название школы"
-                  name="tenantName"
-                  value={formData.tenantName}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  error={!!fieldErrors.tenantName}
-                  helperText={fieldErrors.tenantName}
-                />
-              </Grid>
-            </Grid>
-
-            <Typography variant="h6" sx={{ mb: 2, mt: 3, fontWeight: 'medium' }}>
-              Информация о владельце
-            </Typography>
-
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="firstName"
-                  label="Имя"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  error={!!fieldErrors.firstName}
-                  helperText={fieldErrors.firstName}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="lastName"
-                  label="Фамилия"
-                  name="lastName"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  error={!!fieldErrors.lastName}
-                  helperText={fieldErrors.lastName}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="email"
-                  label="Адрес электронной почты"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  error={!!fieldErrors.email}
-                  helperText={fieldErrors.email || "Будет использован для входа в систему"}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  id="phone"
-                  label="Номер телефона"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  placeholder="+79991234567"
-                  error={!!fieldErrors.phone}
-                  helperText={fieldErrors.phone || 'Необязательно. Например: +7 999 123-45-67 или 8 (999) 123-45-67'}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <PasswordField
-                  required
-                  fullWidth
-                  name="password"
-                  label="Пароль"
-                  id="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  error={!!fieldErrors.password}
-                  helperText={fieldErrors.password || "Минимум 6 символов"}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <PasswordField
-                  required
-                  fullWidth
-                  name="confirmPassword"
-                  label="Подтвердите пароль"
-                  id="confirmPassword"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value);
-                    if (fieldErrors.confirmPassword) {
-                      setFieldErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors.confirmPassword;
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  error={!!fieldErrors.confirmPassword || (confirmPassword !== '' && formData.password !== confirmPassword)}
-                  helperText={fieldErrors.confirmPassword || (confirmPassword !== '' && formData.password !== confirmPassword ? 'Пароли не совпадают' : '')}
-                  disabled={isLoading}
-                />
-              </Grid>
-            </Grid>
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2, py: 1.5 }}
-              disabled={isLoading}
+    <AuthShell
+      title="Создайте свою спортивную школу"
+      subtitle="Шаг 1: регистрация. После входа можно выбрать тариф или написать в контакты."
+      width="register"
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 3, md: 3.5 } }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            justifyContent: { xs: 'center', md: 'flex-start' },
+          }}
+        >
+          {[
+            { label: '1. Регистрация', active: true, to: null as string | null },
+            { label: '2. Тарифы', active: false, to: '/pricing' },
+            { label: '3. Контакты', active: false, to: '/contacts' },
+          ].map((step) => (
+            <Box
+              key={step.label}
+              component={step.to ? 'button' : 'span'}
+              type={step.to ? 'button' : undefined}
+              onClick={step.to ? () => navigate(step.to!) : undefined}
+              sx={{
+                border: step.active ? 'none' : `1px solid ${colors.divider}`,
+                bgcolor: step.active ? colors.primary : colors.white,
+                color: step.active ? colors.white : colors.textMuted,
+                borderRadius: 999,
+                px: 1.75,
+                py: 0.75,
+                fontSize: 13,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                cursor: step.to ? 'pointer' : 'default',
+                '&:hover': step.to
+                  ? { borderColor: colors.primary, color: colors.primary }
+                  : undefined,
+              }}
             >
-              {isLoading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                'Создать аккаунт'
-              )}
-            </Button>
-
-            <Divider sx={{ my: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                ИЛИ
-              </Typography>
-            </Divider>
-
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Уже есть аккаунт?
-              </Typography>
-              <Link
-                component={RouterLink}
-                to="/login"
-                variant="body2"
-                sx={{ textDecoration: 'none', fontWeight: 'medium' }}
-              >
-                Войти здесь
-              </Link>
+              {step.label}
             </Box>
+          ))}
+        </Box>
 
-            <Box sx={{ textAlign: 'center', mt: 3 }}>
-              <Link
-                component={RouterLink}
-                to="/faq"
-                variant="body2"
-                sx={{ textDecoration: 'none', color: 'text.secondary' }}
-              >
-                Часто задаваемые вопросы (FAQ)
-              </Link>
-            </Box>
+        <Box>
+          <SectionTitle>Информация о школе</SectionTitle>
+          <PillField
+            dense
+            name="tenantName"
+            label="Название школы *"
+            icon={<SchoolOutlined />}
+            placeholder="Например, Спортивная школа «Бокс»"
+            value={formData.tenantName}
+            onChange={setField('tenantName')}
+            error={fieldErrors.tenantName}
+            disabled={isLoading}
+            autoFocus
+          />
+        </Box>
+
+        <Box>
+          <SectionTitle>Информация о владельце</SectionTitle>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+              gap: { xs: 2.5, md: 3 },
+            }}
+          >
+            <PillField
+              dense
+              name="firstName"
+              label="Имя *"
+              icon={<PersonOutline />}
+              placeholder="Имя"
+              autoComplete="given-name"
+              value={formData.firstName}
+              onChange={setField('firstName')}
+              error={fieldErrors.firstName}
+              disabled={isLoading}
+            />
+            <PillField
+              dense
+              name="lastName"
+              label="Фамилия *"
+              icon={<BadgeOutlined />}
+              placeholder="Фамилия"
+              autoComplete="family-name"
+              value={formData.lastName}
+              onChange={setField('lastName')}
+              error={fieldErrors.lastName}
+              disabled={isLoading}
+            />
+            <PillField
+              dense
+              name="email"
+              label="Email *"
+              icon={<MailOutline />}
+              placeholder="Email"
+              type="email"
+              autoComplete="email"
+              value={formData.email}
+              onChange={(v) => setField('email')(v.toLowerCase())}
+              error={fieldErrors.email}
+              hint="Будет использован для входа в систему"
+              disabled={isLoading}
+            />
+            <PillField
+              dense
+              name="phone"
+              label="Телефон"
+              icon={<PhoneIphone />}
+              placeholder="+7 (999) 999-99-99"
+              type="tel"
+              autoComplete="tel"
+              value={formData.phone ?? ''}
+              onChange={(v) => setField('phone')(maskPhone(v))}
+              error={fieldErrors.phone}
+              hint="Необязательно"
+              disabled={isLoading}
+            />
+            <PillField
+              dense
+              name="password"
+              label="Придумайте пароль *"
+              icon={<LockOutlined />}
+              placeholder="Пароль"
+              type="password"
+              autoComplete="new-password"
+              revealable
+              value={formData.password}
+              onChange={setField('password')}
+              error={fieldErrors.password}
+              hint="Минимум 6 символов"
+              disabled={isLoading}
+            />
+            <PillField
+              dense
+              name="confirmPassword"
+              label="Подтвердите пароль *"
+              icon={<LockReset />}
+              placeholder="Пароль ещё раз"
+              type="password"
+              autoComplete="new-password"
+              revealable
+              value={confirmPassword}
+              onChange={(v) => {
+                setConfirmPassword(v);
+                if (fieldErrors.confirmPassword) {
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.confirmPassword;
+                    return next;
+                  });
+                }
+              }}
+              error={
+                fieldErrors.confirmPassword ||
+                (confirmPassword !== '' && formData.password !== confirmPassword
+                  ? 'Пароли не совпадают'
+                  : undefined)
+              }
+              disabled={isLoading}
+              onEnter={handleSubmit}
+            />
           </Box>
-        </Paper>
+        </Box>
 
-        <Box sx={{ mt: 4, textAlign: 'center', maxWidth: 600 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'medium' }}>
-            Что вы получаете с ПРОФСПОРТСРМ:
+        {error && (
+          <Typography
+            role="alert"
+            sx={{ color: colors.danger, fontSize: typography.label, textAlign: 'center' }}
+          >
+            {error}
           </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Полное управление клиентами
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Расписание тренировок и посещаемость
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Отслеживание платежей и членства
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Финансовые отчеты и аналитика
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Поддержка нескольких филиалов
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ✓ Управление тренерами
-              </Typography>
-            </Grid>
-          </Grid>
+        )}
+
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <AuthButton onClick={handleSubmit} loading={isLoading}>
+            Создать аккаунт
+          </AuthButton>
+        </Box>
+
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography
+            component="button"
+            type="button"
+            onClick={() => navigate('/auth')}
+            sx={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              color: colors.textHint,
+              fontSize: typography.hint,
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
+            У меня уже есть аккаунт
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            pt: 1,
+            borderTop: `1px solid ${colors.divider}`,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+            gap: 1.25,
+          }}
+        >
+          {[
+            'Управление клиентами и группами',
+            'Расписание и посещаемость',
+            'Платежи и абонементы',
+            'ЛК ученика и родителя',
+          ].map((item) => (
+            <Typography key={item} sx={{ color: colors.textMuted, fontSize: 13, lineHeight: 1.4 }}>
+              <Box component="span" sx={{ color: colors.primary, fontWeight: 700, mr: 0.75 }}>
+                ✓
+              </Box>
+              {item}
+            </Typography>
+          ))}
         </Box>
       </Box>
-    </Container>
-      <PublicFooter />
-    </Box>
+    </AuthShell>
   );
 };
 

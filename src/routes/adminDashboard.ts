@@ -88,6 +88,18 @@ import {
   downloadMobileApk,
 } from '../controllers/mobileApkController';
 import {
+  getAdminPublicSiteSettings,
+  updateAdminPublicSiteSettings,
+  listAdminVacancies,
+  createAdminVacancy,
+  updateAdminVacancy,
+  deleteAdminVacancy,
+  listAdminVacancyApplications,
+  updateAdminVacancyApplication,
+  listAdminSiteFeedback,
+  updateAdminSiteFeedback,
+} from '../controllers/publicSiteController';
+import {
   getLogFileInfo,
   readLogFile,
   downloadLogFile,
@@ -433,13 +445,25 @@ router.post(
 );
 router.get('/marketer-legal-docs/:key/file', downloadMarketerLegalDocAdmin);
 
-/** APK мобильного приложения — только SA, без публичной выдачи пользователям */
+/** APK мобильного приложения — только SA; публичная выдача — /api/public-site/download/apk */
 router.get('/mobile-apk', getMobileApkMeta);
 router.post('/mobile-apk', mobileApkUpload.single('file'), uploadMobileApk);
 router.put('/mobile-apk/label', updateMobileApkLabel);
 router.delete('/mobile-apk', deleteMobileApk);
 /** Скачивание: клиент открывает URL с ?access_token= (см. authenticateSuperAdmin) */
 router.get('/mobile-apk/file', downloadMobileApk);
+
+/** Публичный сайт: соцсети, вкладка приложения, вакансии, заявки, фидбек */
+router.get('/public-site', getAdminPublicSiteSettings);
+router.put('/public-site', updateAdminPublicSiteSettings);
+router.get('/vacancies', listAdminVacancies);
+router.post('/vacancies', createAdminVacancy);
+router.put('/vacancies/:id', updateAdminVacancy);
+router.delete('/vacancies/:id', deleteAdminVacancy);
+router.get('/vacancy-applications', listAdminVacancyApplications);
+router.put('/vacancy-applications/:id', updateAdminVacancyApplication);
+router.get('/site-feedback', listAdminSiteFeedback);
+router.put('/site-feedback/:id', updateAdminSiteFeedback);
 
 router.get('/maintenance', getAdminMaintenance);
 router.put('/maintenance', updateAdminMaintenance);

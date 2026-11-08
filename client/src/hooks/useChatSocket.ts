@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { getWsBaseUrl } from '../utils/getWsBaseUrl';
+import { Socket } from 'socket.io-client';
+import { acquireChatSocket, releaseChatSocket } from './chatSocketShared';
 
 export interface ChatSocketMessage {
   id: string;
@@ -44,6 +44,7 @@ export interface ChatSocketMessage {
 
 /**
  * Подключение к namespace /chat. При смене threadId — leave/join.
+ * Использует общий socket с бейджем непрочитанных.
  */
 export function useChatSocket(opts: {
   token: string | null;
@@ -90,47 +91,38 @@ export function useChatSocket(opts: {
   useEffect(() => {
     if (!enabled || !token) return;
 
-    const socket = io(`${getWsBaseUrl()}/chat`, {
-      path: '/socket.io',
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
+    const socket = acquireChatSocket(token);
     socketRef.current = socket;
 
-    socket.on('chat:message', (payload: ChatSocketMessage) => {
-      onMessageRef.current(payload);
-    });
-
-    socket.on('chat:message:updated', (payload: ChatSocketMessage) => {
-      onMessageUpdatedRef.current?.(payload);
-    });
-
-    socket.on('chat:presence', (payload: { key: string; online: boolean }) => {
+    const onMsg = (payload: ChatSocketMessage) => onMessageRef.current(payload);
+    const onMsgUpdated = (payload: ChatSocketMessage) => onMessageUpdatedRef.current?.(payload);
+    const onPresenceEvt = (payload: { key: string; online: boolean }) =>
       onPresenceRef.current?.(payload);
-    });
-
-    socket.on('chat:pin', (payload: { threadId: string; messageId: string; pinned: boolean }) => {
+    const onPinEvt = (payload: { threadId: string; messageId: string; pinned: boolean }) =>
       onPinRef.current?.(payload);
-    });
+    const onReadEvt = (payload: {
+      threadId: string;
+      readerType: string;
+      readerId: string;
+      lastReadAt: string;
+    }) => onReadRef.current?.(payload);
+    const onActivity = (payload: { threadId: string }) => onThreadActivityRef.current?.(payload);
 
-    socket.on(
-      'chat:read',
-      (payload: {
-        threadId: string;
-        readerType: string;
-        readerId: string;
-        lastReadAt: string;
-      }) => {
-        onReadRef.current?.(payload);
-      }
-    );
-
-    socket.on('chat:thread-activity', (payload: { threadId: string }) => {
-      onThreadActivityRef.current?.(payload);
-    });
+    socket.on('chat:message', onMsg);
+    socket.on('chat:message:updated', onMsgUpdated);
+    socket.on('chat:presence', onPresenceEvt);
+    socket.on('chat:pin', onPinEvt);
+    socket.on('chat:read', onReadEvt);
+    socket.on('chat:thread-activity', onActivity);
 
     return () => {
-      socket.disconnect();
+      socket.off('chat:message', onMsg);
+      socket.off('chat:message:updated', onMsgUpdated);
+      socket.off('chat:presence', onPresenceEvt);
+      socket.off('chat:pin', onPinEvt);
+      socket.off('chat:read', onReadEvt);
+      socket.off('chat:thread-activity', onActivity);
+      releaseChatSocket(socket);
       socketRef.current = null;
       joinedRef.current = null;
     };
@@ -163,6 +155,7 @@ export function useChatSocket(opts: {
     else socket.once('connect', join);
 
     return () => {
+      socket.off('connect', join);
       leavePrev();
     };
   }, [threadId, enabled, token]);

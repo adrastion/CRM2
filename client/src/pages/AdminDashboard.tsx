@@ -62,6 +62,8 @@ import SaTariffsTab from './admin/SaTariffsTab';
 import SaMarketersTab from './admin/SaMarketersTab';
 import SaSandboxTab from './admin/SaSandboxTab';
 import SaMobileAppTab from './admin/SaMobileAppTab';
+import SaPublicSiteTab from './admin/SaPublicSiteTab';
+import SaVacanciesTab from './admin/SaVacanciesTab';
 import {
   resolveSaLocation,
   resolveSaTab,
@@ -1458,6 +1460,8 @@ const AdminDashboard: React.FC = () => {
       {section === 'notifications' && <SaNotificationsTab />}
       {section === 'sandbox' && <SaSandboxTab />}
       {section === 'mobile-app' && <SaMobileAppTab />}
+      {section === 'public-site' && <SaPublicSiteTab />}
+      {section === 'vacancies' && <SaVacanciesTab />}
 
       {section === 'planner' && <SuperAdminPlannerTab />}
 

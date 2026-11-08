@@ -41,6 +41,7 @@ type Step =
   | 'twofa_code'
   | 'push_code'
   | 'qr_wait'
+  | 'recovery_options'
   | 'forgot_email'
   | 'forgot_code'
   | 'forgot_select'
@@ -55,10 +56,11 @@ const STEP_ORDER: Record<Step, number> = {
   twofa_code: 5,
   push_code: 6,
   qr_wait: 7,
-  forgot_email: 8,
-  forgot_code: 9,
-  forgot_select: 10,
-  forgot_new_password: 11,
+  recovery_options: 8,
+  forgot_email: 9,
+  forgot_code: 10,
+  forgot_select: 11,
+  forgot_new_password: 12,
 };
 
 const Auth: React.FC = () => {
@@ -525,8 +527,10 @@ const Auth: React.FC = () => {
     goToStep('identify');
   };
 
-  const startForgotPassword = () => {
+  /** «Забыли пароль?» → сначала альтернативный вход, потом сброс. */
+  const startRecovery = () => {
     setErrors({});
+    setNotice('');
     setForgotCode('');
     setForgotNotice('');
     setResetToken('');
@@ -535,6 +539,21 @@ const Auth: React.FC = () => {
     const candidate =
       (contact || '').trim() ||
       (identifierType === 'email' ? (identifier || '').trim() : '');
+    setForgotEmail(candidate.includes('@') ? candidate.toLowerCase() : '');
+    goToStep('recovery_options');
+  };
+
+  const startPasswordReset = () => {
+    setErrors({});
+    setForgotCode('');
+    setForgotNotice('');
+    setResetToken('');
+    setForgotAccounts([]);
+    setForgotAccount(null);
+    const candidate =
+      (contact || '').trim() ||
+      (identifierType === 'email' ? (identifier || '').trim() : '') ||
+      forgotEmail;
     setForgotEmail(candidate.includes('@') ? candidate.toLowerCase() : '');
     goToStep('forgot_email');
   };
@@ -758,22 +777,17 @@ const Auth: React.FC = () => {
           Продолжить
         </AuthButton>
         {!testingMode && (
-          <>
-            <AuthButton variant="dark" onClick={() => navigate('/partner/register')}>
-              Стать партнером
-            </AuthButton>
-            <AuthButton variant="dark" onClick={() => navigate('/marketer/register')}>
-              Стать маркетологом
-            </AuthButton>
-          </>
+          <AuthButton variant="dark" onClick={() => navigate('/partner/register')}>
+            Стать партнером
+          </AuthButton>
         )}
       </Box>
 
-      <Box sx={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Box sx={{ textAlign: 'center' }}>
         <Typography
           component="button"
           type="button"
-          onClick={startForgotPassword}
+          onClick={startRecovery}
           sx={{
             border: 'none',
             background: 'none',
@@ -785,57 +799,6 @@ const Auth: React.FC = () => {
           }}
         >
           Забыли пароль?
-        </Typography>
-        <Typography
-          component="button"
-          type="button"
-          disabled={loading}
-          onClick={() => void startEmailCodeLogin()}
-          sx={{
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: colors.primary,
-            fontSize: typography.hint,
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          Войти по коду с почты
-        </Typography>
-        <Typography
-          component="button"
-          type="button"
-          disabled={loading}
-          onClick={() => void startPushLogin()}
-          sx={{
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: colors.primary,
-            fontSize: typography.hint,
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          Войти с другого устройства
-        </Typography>
-        <Typography
-          component="button"
-          type="button"
-          disabled={loading}
-          onClick={() => void startQrLogin()}
-          sx={{
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: colors.primary,
-            fontSize: typography.hint,
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          Войти по QR-коду
         </Typography>
       </Box>
     </Box>
@@ -873,7 +836,16 @@ const Auth: React.FC = () => {
         <Typography
           component="button"
           type="button"
-          onClick={restart}
+          onClick={() => {
+            setLoginCode('');
+            setErrors({});
+            setNotice('');
+            if (step === 'twofa_code') {
+              goToStep('password');
+              return;
+            }
+            goToStep('recovery_options');
+          }}
           sx={{
             border: 'none',
             background: 'none',
@@ -959,7 +931,7 @@ const Auth: React.FC = () => {
         <Typography
           component="button"
           type="button"
-          onClick={startForgotPassword}
+          onClick={startRecovery}
           sx={{
             border: 'none',
             background: 'none',
@@ -1131,6 +1103,121 @@ const Auth: React.FC = () => {
     </Box>
   );
 
+  const recoveryOptionSx = {
+    border: `1px solid ${colors.divider}`,
+    background: colors.white,
+    cursor: 'pointer' as const,
+    fontFamily: 'inherit',
+    textAlign: 'left' as const,
+    borderRadius: '14px',
+    px: 2,
+    py: 1.75,
+    width: '100%',
+    transition: 'border-color 140ms ease, background 140ms ease',
+    '&:hover': {
+      borderColor: colors.primary,
+      bgcolor: '#F4F7FF',
+    },
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'default',
+    },
+  };
+
+  const recoveryOptionsStep = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, md: 2.5 } }}>
+      <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
+        Сначала можно войти без пароля. Сброс — если другие способы недоступны.
+      </Typography>
+
+      {!identifier && (
+        <PillField
+          name="contact"
+          icon={contactIcon}
+          placeholder="Email или телефон"
+          type="text"
+          autoComplete="username"
+          autoFocus
+          value={contact}
+          onChange={(v) => setContact(formatContactInput(v))}
+          error={errors.contact}
+        />
+      )}
+      {identifier ? identifierFieldForNextSteps : null}
+
+      {errorBanner}
+      {noticeBanner}
+
+      <Box
+        component="button"
+        type="button"
+        disabled={loading}
+        onClick={() => void startEmailCodeLogin()}
+        sx={recoveryOptionSx}
+      >
+        <Typography sx={{ fontWeight: 700, fontSize: 14, color: colors.text }}>
+          Войти по коду с почты
+        </Typography>
+        <Typography sx={{ fontSize: 12, color: colors.textMuted, mt: 0.35 }}>
+          Отправим одноразовый код на email аккаунта
+        </Typography>
+      </Box>
+
+      <Box
+        component="button"
+        type="button"
+        disabled={loading}
+        onClick={() => void startPushLogin()}
+        sx={recoveryOptionSx}
+      >
+        <Typography sx={{ fontWeight: 700, fontSize: 14, color: colors.text }}>
+          Войти по коду с другого устройства
+        </Typography>
+        <Typography sx={{ fontSize: 12, color: colors.textMuted, mt: 0.35 }}>
+          Код появится там, где вы уже вошли в кабинет
+        </Typography>
+      </Box>
+
+      <Divider sx={{ my: 0.5 }}>
+        <Typography sx={{ color: colors.textMuted, fontSize: typography.hint }}>или</Typography>
+      </Divider>
+
+      <Box
+        component="button"
+        type="button"
+        disabled={loading}
+        onClick={startPasswordReset}
+        sx={recoveryOptionSx}
+      >
+        <Typography sx={{ fontWeight: 700, fontSize: 14, color: colors.text }}>
+          Сбросить пароль
+        </Typography>
+        <Typography sx={{ fontSize: 12, color: colors.textMuted, mt: 0.35 }}>
+          Получите код на email и задайте новый пароль
+        </Typography>
+      </Box>
+
+      <Box sx={{ textAlign: 'center', pt: 0.5 }}>
+        <Typography
+          component="button"
+          type="button"
+          onClick={() => goToStep(identifier ? 'password' : 'identify')}
+          sx={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: colors.textHint,
+            fontSize: typography.hint,
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Назад ко входу
+        </Typography>
+      </Box>
+    </Box>
+  );
+
   const forgotEmailStep = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, md: 3 } }}>
       <Typography sx={{ color: colors.textMuted, fontSize: typography.label, textAlign: 'center' }}>
@@ -1158,7 +1245,7 @@ const Auth: React.FC = () => {
         <Typography
           component="button"
           type="button"
-          onClick={() => goToStep('identify')}
+          onClick={() => goToStep('recovery_options')}
           sx={{
             border: 'none',
             background: 'none',
@@ -1169,7 +1256,7 @@ const Auth: React.FC = () => {
             '&:hover': { textDecoration: 'underline' },
           }}
         >
-          Назад ко входу
+          Назад к вариантам входа
         </Typography>
       </Box>
     </Box>
@@ -1333,13 +1420,17 @@ const Auth: React.FC = () => {
     }
   }
 
-  if (
+  if (step === 'recovery_options') {
+    title = 'Не можете войти?';
+  } else if (
     step === 'forgot_email' ||
     step === 'forgot_code' ||
     step === 'forgot_new_password' ||
     step === 'forgot_select'
   ) {
     title = 'Сброс пароля';
+  } else if (step === 'qr_wait') {
+    title = 'Вход по QR-коду';
   }
 
   const content =
@@ -1353,15 +1444,70 @@ const Auth: React.FC = () => {
             ? codeStep
             : step === 'qr_wait'
               ? qrWaitStep
-              : step === 'forgot_email'
-                ? forgotEmailStep
-                : step === 'forgot_code'
-                  ? forgotCodeStep
-                  : step === 'forgot_select'
-                    ? forgotSelectStep
-                    : step === 'forgot_new_password'
-                      ? forgotNewPasswordStep
-                      : selectStep;
+              : step === 'recovery_options'
+                ? recoveryOptionsStep
+                : step === 'forgot_email'
+                  ? forgotEmailStep
+                  : step === 'forgot_code'
+                    ? forgotCodeStep
+                    : step === 'forgot_select'
+                      ? forgotSelectStep
+                      : step === 'forgot_new_password'
+                        ? forgotNewPasswordStep
+                        : selectStep;
+
+  const showQrEntry = step === 'identify' || step === 'password';
+  const qrEntry = showQrEntry ? (
+    <Box
+      component="button"
+      type="button"
+      disabled={loading}
+      onClick={() => void startQrLogin()}
+      sx={{
+        border: '1px solid rgba(255,255,255,0.35)',
+        bgcolor: 'rgba(255,255,255,0.12)',
+        color: colors.white,
+        cursor: loading ? 'default' : 'pointer',
+        fontFamily: 'inherit',
+        borderRadius: '12px',
+        px: 1.75,
+        py: 1.25,
+        width: '100%',
+        textAlign: 'left',
+        '&:hover': loading
+          ? undefined
+          : { bgcolor: 'rgba(255,255,255,0.18)', borderColor: 'rgba(255,255,255,0.55)' },
+      }}
+    >
+      <Typography sx={{ fontWeight: 700, fontSize: 13, color: 'inherit' }}>Войти по QR-коду</Typography>
+      <Typography sx={{ fontSize: 12, opacity: 0.85, mt: 0.25, color: 'inherit' }}>
+        Отдельный экран — сканируйте телефоном, где уже есть сессия
+      </Typography>
+    </Box>
+  ) : null;
+
+  const qrEntryMobile = showQrEntry ? (
+    <Box sx={{ textAlign: 'center' }}>
+      <Typography
+        component="button"
+        type="button"
+        disabled={loading}
+        onClick={() => void startQrLogin()}
+        sx={{
+          border: 'none',
+          background: 'none',
+          cursor: loading ? 'default' : 'pointer',
+          fontFamily: 'inherit',
+          color: colors.primary,
+          fontSize: typography.hint,
+          fontWeight: 600,
+          '&:hover': { textDecoration: 'underline' },
+        }}
+      >
+        Войти по QR-коду
+      </Typography>
+    </Box>
+  ) : null;
 
   return (
     <AuthShell
@@ -1374,6 +1520,8 @@ const Auth: React.FC = () => {
           (step === 'forgot_select' && forgotMixed)
         )
       }
+      asideExtra={qrEntry}
+      belowCard={qrEntryMobile}
     >
       <StepTransition stepKey={step} direction={direction}>
         {content}
