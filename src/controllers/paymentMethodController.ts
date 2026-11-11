@@ -346,6 +346,7 @@ export const listAwaitingReceipts = asyncHandler(
         type: p.type,
         status: p.status,
         dueDate: p.dueDate,
+        notes: p.notes,
         client: p.client,
         groupName: p.group?.name || null,
         membershipName: p.membership?.name || null,

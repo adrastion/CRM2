@@ -2055,6 +2055,8 @@ export class FinanceService {
       !input.periodKey || resolvePeriodKey(p) === input.periodKey;
 
     const adjustment = await prisma.$transaction(async (tx) => {
+      // isMonthlyPayment=false: иначе partial unique (tenant,client,group,periodKey)
+      // конфликтует с исходным ежемесячным счётом за тот же период.
       const adj = await tx.payment.create({
         data: {
           tenantId,
@@ -2065,7 +2067,7 @@ export class FinanceService {
           amount: delta,
           type: source!.type || 'membership',
           status: 'adjustment',
-          isMonthlyPayment: source!.isMonthlyPayment,
+          isMonthlyPayment: false,
           periodKey: adjPeriodKey,
           notes: `Корректировка начисления: ${reason}`,
           correctsPaymentId: source!.id,
@@ -2145,6 +2147,19 @@ export class FinanceService {
             },
           });
         } else {
+          // Если за период уже есть paid с тем же periodKey — нельзя создать второй
+          // isMonthlyPayment+periodKey (unique). Доп. долг без флага monthly.
+          const hasMonthlySlotTaken = await tx.payment.findFirst({
+            where: {
+              tenantId,
+              clientId: input.clientId,
+              groupId: source!.groupId || undefined,
+              periodKey: adjPeriodKey,
+              isMonthlyPayment: true,
+              status: { not: 'cancelled' },
+            },
+            select: { id: true },
+          });
           await tx.payment.create({
             data: {
               tenantId,
@@ -2155,7 +2170,7 @@ export class FinanceService {
               amount: delta,
               type: source!.type || 'membership',
               status: 'pending',
-              isMonthlyPayment: source!.isMonthlyPayment,
+              isMonthlyPayment: !hasMonthlySlotTaken,
               periodKey: adjPeriodKey,
               notes: `Доп. начисление после корректировки: ${reason}`,
               dueDate: source!.dueDate || occurredAt,

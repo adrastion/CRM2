@@ -6,6 +6,10 @@ import {
   StaffTaskLike,
 } from './calendarTypes';
 
+/** Совпадает с дефолтом цвета группы в Groups.tsx */
+const DEFAULT_GROUP_COLOR = '#4880FF';
+const INDIVIDUAL_TRAINING_COLOR = '#F93C65';
+
 function hasClockTime(d: Date): boolean {
   return d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0;
 }
@@ -15,6 +19,11 @@ function trainerShort(training: Training): string {
   if (!u) return '';
   const initial = u.firstName ? `${u.firstName.charAt(0)}.` : '';
   return `${u.lastName || ''} ${initial}`.trim();
+}
+
+function trainingColor(t: Training): string {
+  if (!t.groupId) return INDIVIDUAL_TRAINING_COLOR;
+  return t.group?.color || DEFAULT_GROUP_COLOR;
 }
 
 export function trainingToCalendarItem(t: Training): CalendarItem {
@@ -36,7 +45,7 @@ export function trainingToCalendarItem(t: Training): CalendarItem {
     title: t.title || t.group?.name || 'Тренировка',
     start: new Date(t.startTime),
     end: new Date(t.endTime),
-    color: CALENDAR_LAYER_COLORS.training,
+    color: trainingColor(t),
     subtitle: time,
     meta: [place, coach].filter(Boolean).join(' · '),
     lines: [time, place, coach].filter(Boolean),
@@ -139,7 +148,12 @@ export function buildCalendarItems(params: {
       .filter((t) => !t.isCancelled)
       .filter((t) => !filters?.branchId || t.branchId === filters.branchId)
       .filter((t) => !filters?.hallId || t.hallId === filters.hallId)
-      .filter((t) => !filters?.trainerId || t.trainerId === filters.trainerId)
+      .filter(
+        (t) =>
+          !filters?.trainerId ||
+          t.trainerId === filters.trainerId ||
+          t.substituteTrainerId === filters.trainerId
+      )
       .filter((t) => !filters?.groupId || t.groupId === filters.groupId)
       .forEach((t) => items.push(trainingToCalendarItem(t)));
   }

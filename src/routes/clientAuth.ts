@@ -14,6 +14,7 @@ import {
   getPortalPaymentMethods,
   getPortalPaymentMethodQr,
   submitPortalPaymentReceipt,
+  submitPortalAdvanceReceipt,
   changePortalPassword,
 } from '../controllers/clientAuthController';
 import { authenticateClient } from '../middleware/clientAuth';
@@ -156,6 +157,20 @@ router.get('/calendar-plan', authenticateClient, getClientCalendarPlan);
 router.get('/payments', authenticateClient, getClientPayments);
 router.get('/payment-methods', authenticateClient, getPortalPaymentMethods);
 router.get('/payment-methods/:id/qr', authenticateClient, getPortalPaymentMethodQr);
+router.post(
+  '/payments/advance-receipt',
+  authenticateClient,
+  (req, res, next) => {
+    portalReceiptUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message || 'Ошибка загрузки' });
+        return;
+      }
+      next();
+    });
+  },
+  submitPortalAdvanceReceipt
+);
 router.post(
   '/payments/:id/receipt',
   authenticateClient,

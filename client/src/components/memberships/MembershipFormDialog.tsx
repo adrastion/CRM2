@@ -492,45 +492,7 @@ const MembershipFormDialog: React.FC<Props> = ({
                   После окна ученикам уходит уведомление о неоплате.
                 </Typography>
               </Box>
-              <Box>
-                <Typography component="label" sx={labelSx}>
-                  Перерасчёт пропусков
-                </Typography>
-                <FormControl fullWidth size="small">
-                  <Select
-                    value={form.recalcMode}
-                    onChange={(e) =>
-                      setForm({ ...form, recalcMode: e.target.value as MembershipFormState['recalcMode'] })
-                    }
-                    sx={{
-                      borderRadius: '12px',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#E3E6EE' },
-                    }}
-                  >
-                    <MenuItem value="PAY_ATTENDED">Платят только за посещённые</MenuItem>
-                    <MenuItem value="MISS_THRESHOLD">Перерасчёт при пропуске N% занятий</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
             </Box>
-
-            {form.recalcMode === 'MISS_THRESHOLD' && (
-              <Box sx={{ maxWidth: { sm: '50%' } }}>
-                <Typography component="label" sx={labelSx}>
-                  Порог пропуска %
-                </Typography>
-                <TextField
-                  fullWidth
-                  size="small"
-                  type="number"
-                  value={form.missThresholdPercent}
-                  onChange={(e) => setForm({ ...form, missThresholdPercent: e.target.value })}
-                  sx={fieldSx}
-                />
-              </Box>
-            )}
 
             <Box>
               <Typography component="label" sx={labelSx}>

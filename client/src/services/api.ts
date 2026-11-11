@@ -4256,6 +4256,28 @@ class ApiService {
     return response.data.data;
   }
 
+  /** Предоплата без счёта: QR/ссылка школы + чек → платёж «на проверке». */
+  async submitPortalAdvanceReceipt(
+    file: File,
+    claimedAmount: number,
+    methodId?: string,
+    clientId?: string
+  ): Promise<any> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('claimedAmount', String(claimedAmount));
+    if (methodId) form.append('methodId', methodId);
+    const response = await this.api.post<ApiResponse>(
+      '/client-auth/payments/advance-receipt',
+      form,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        params: clientId ? { clientId } : undefined,
+      }
+    );
+    return response.data.data;
+  }
+
   /** Данные для панели управления клиента/родителя (учитывает подтверждение школой). */
   async getClientDashboard(clientId?: string): Promise<ClientDashboardData> {
     const response = await this.api.get<ApiResponse<ClientDashboardData>>('/client-auth/dashboard', {

@@ -209,8 +209,6 @@ const Memberships: React.FC = () => {
       payload.type = 'group_monthly';
       payload.paymentWindowStartDay = Number(f.paymentWindowStartDay) || 1;
       payload.paymentWindowEndDay = Number(f.paymentWindowEndDay) || 6;
-      payload.recalcMode = f.recalcMode;
-      payload.missThresholdPercent = Number(f.missThresholdPercent) || 50;
       payload.groupBindings = f.groupIds.map((groupId) => ({
         groupId,
         effectiveFrom: fromDate,

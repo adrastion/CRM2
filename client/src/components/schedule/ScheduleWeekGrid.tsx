@@ -34,6 +34,16 @@ interface ScheduleWeekGridProps {
 const WEEKDAY = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
+function contrastOn(bg: string): string {
+  const hex = String(bg || '').replace('#', '');
+  if (hex.length !== 6) return '#fff';
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.65 ? '#1B2438' : '#fff';
+}
+
 function layoutColumns(items: CalendarItem[]) {
   const sorted = [...items].sort(
     (a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime()
@@ -272,7 +282,7 @@ const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
                     onClick={() => onSelectItem(item)}
                     sx={{
                       bgcolor: item.color,
-                      color: '#fff',
+                      color: contrastOn(item.color),
                       borderRadius: '4px',
                       px: 0.5,
                       py: 0.15,
@@ -319,7 +329,7 @@ const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
                         top: box.top + 2,
                         height: Math.max(28, box.height - 4),
                         bgcolor: item.color,
-                        color: '#fff',
+                        color: contrastOn(item.color),
                         borderRadius: '10px',
                         px: 0.75,
                         py: 0.5,

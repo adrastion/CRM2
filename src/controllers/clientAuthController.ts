@@ -1883,6 +1883,94 @@ export const getPortalPaymentMethodQr = asyncHandler(async (req: Request, res: R
 });
 
 /**
+ * Предоплата без выставленного счёта: создать платёж «на проверке» + чек.
+ * POST /api/client-auth/payments/advance-receipt (multipart: file + claimedAmount + optional methodId)
+ */
+export const submitPortalAdvanceReceipt = asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const resolved = await resolvePortalClientId(req);
+  if (resolved.ok === false) {
+    return res.status(resolved.status).json({ success: false, error: resolved.error });
+  }
+  const { clientId, tenantId, userType } = resolved;
+
+  const claimedAmount = Number(req.body?.claimedAmount);
+  if (!Number.isFinite(claimedAmount) || claimedAmount <= 0) {
+    return res.status(400).json({ success: false, error: 'Укажите сумму оплаты' });
+  }
+
+  const file = (req as any).file as Express.Multer.File | undefined;
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'Приложите чек об оплате' });
+  }
+
+  const methodId = typeof req.body?.methodId === 'string' ? req.body.methodId.trim() : '';
+  if (methodId) {
+    const method = await prisma.schoolPaymentMethod.findFirst({
+      where: { id: methodId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!method) {
+      return res.status(400).json({ success: false, error: 'Способ оплаты не найден' });
+    }
+  }
+
+  const now = new Date();
+  const periodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const payment = await prisma.payment.create({
+    data: {
+      tenantId,
+      clientId,
+      amount: claimedAmount,
+      type: 'membership',
+      status: 'awaiting_confirmation',
+      isMonthlyPayment: true,
+      periodKey,
+      notes: '[payment-excess][advance]',
+    },
+  });
+
+  const pathMod = await import('path');
+  const storagePath = pathMod
+    .join('payment-receipts', tenantId, file.filename)
+    .replace(/\\/g, '/');
+
+  const submittedByKind = userType === 'parent' ? 'parent' : 'client';
+  const submittedById =
+    userType === 'parent'
+      ? String((req as any).parent?.id || '')
+      : String((req as any).client?.id || clientId);
+
+  await prisma.paymentReceipt.create({
+    data: {
+      paymentId: payment.id,
+      storagePath,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+      claimedAmount,
+      submittedByKind,
+      submittedById,
+    },
+  });
+
+  const { notifyFinanceChange } = await import('../services/notificationDomainHooks');
+  void notifyFinanceChange({
+    tenantId,
+    title: 'Чек предоплаты на проверке',
+    body: `${claimedAmount.toLocaleString('ru-RU')} ₽`,
+    entityUrl: '/finance',
+  }).catch((err) => console.error('[Notifications] finance:', err));
+
+  return res.json({
+    success: true,
+    data: {
+      id: payment.id,
+      status: payment.status,
+      claimedAmount,
+    },
+  });
+});
+
+/**
  * Подать чек об оплате.
  * POST /api/client-auth/payments/:id/receipt  (multipart: file + claimedAmount)
  */

@@ -350,21 +350,34 @@ const Schedule: React.FC = () => {
     } = rangeParamsRef.current;
     const { from, to } = getScheduleRange(date, mode);
     const summaryRange = getSummaryRange(date);
-    const rangeLimit = mode === 'day' ? 200 : mode === 'week' ? 400 : 600;
+    const pageSize = mode === 'day' ? 200 : mode === 'week' ? 400 : 600;
 
-    const [trainingsRes, competitionsRes, eventsRes, tasksRes, summaryRes] = await Promise.all([
-      apiService.getTrainings(
-        {
-          limit: rangeLimit,
-          page: 1,
-          startDate: from.toISOString(),
-          endDate: to.toISOString(),
-        },
-        signal
-      ),
+    const fetchAllTrainings = async () => {
+      const all: any[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const res = await apiService.getTrainings(
+          {
+            limit: pageSize,
+            page,
+            startDate: from.toISOString(),
+            endDate: to.toISOString(),
+          },
+          signal
+        );
+        all.push(...(res.data || []));
+        totalPages = Math.max(1, Number(res.pagination?.totalPages) || 1);
+        page += 1;
+      } while (page <= totalPages && !signal?.aborted);
+      return all;
+    };
+
+    const [trainingsData, competitionsRes, eventsRes, tasksRes, summaryRes] = await Promise.all([
+      fetchAllTrainings(),
       apiService.getCompetitions(
         {
-          limit: rangeLimit,
+          limit: pageSize,
           page: 1,
           startDate: from.toISOString(),
           endDate: to.toISOString(),
@@ -393,7 +406,7 @@ const Schedule: React.FC = () => {
     ]);
 
     if (signal?.aborted) return;
-    setTrainings(trainingsRes.data);
+    setTrainings(trainingsData);
     setCompetitions(competitionsRes.data);
     setSchoolEvents(eventsRes || []);
     setStaffTasks(Array.isArray(tasksRes) ? tasksRes : []);
@@ -1165,7 +1178,9 @@ const Schedule: React.FC = () => {
       filtered = filtered.filter(t => t.hallId === filterHallId);
     }
     if (filterTrainerId) {
-      filtered = filtered.filter(t => t.trainerId === filterTrainerId);
+      filtered = filtered.filter(
+        (t) => t.trainerId === filterTrainerId || t.substituteTrainerId === filterTrainerId
+      );
     }
     if (filterGroupId) {
       filtered = filtered.filter(t => t.groupId === filterGroupId);
@@ -1195,7 +1210,9 @@ const Schedule: React.FC = () => {
       filtered = filtered.filter(t => t.hallId === filterHallId);
     }
     if (filterTrainerId) {
-      filtered = filtered.filter(t => t.trainerId === filterTrainerId);
+      filtered = filtered.filter(
+        (t) => t.trainerId === filterTrainerId || t.substituteTrainerId === filterTrainerId
+      );
     }
     if (filterGroupId) {
       filtered = filtered.filter(t => t.groupId === filterGroupId);
@@ -2265,7 +2282,7 @@ const Schedule: React.FC = () => {
                     const isIndividual = !training.groupId;
                     const barColor = isIndividual
                       ? EVENT_BAR.individual
-                      : group?.color || EVENT_BAR.group;
+                      : training.group?.color || group?.color || '#4880FF';
                     const place = branch?.address || branch?.name || hall?.name;
                     if (isMobile) {
                     return (
@@ -2585,7 +2602,7 @@ const Schedule: React.FC = () => {
                           const substituteTrainer = training.substituteTrainerId ? trainers.find(t => t.id === training.substituteTrainerId) : null;
                           const hall = halls.find(h => h.id === training.hallId);
                           const branch = branches.find(b => b.id === training.branchId);
-                          const groupColor = group?.color || '#4880FF';
+                          const groupColor = training.group?.color || group?.color || '#4880FF';
                           const isLightColor = isColorLight(groupColor);
                           const style = getTrainingBlockStyle(training, day, timeTrainings);
                           const startTime = format(new Date(training.startTime), 'HH:mm');

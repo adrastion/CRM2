@@ -38,6 +38,7 @@ import { differenceInYears, format } from 'date-fns';
 import { List, type RowComponentProps } from 'react-window';
 import { Client } from '../../types';
 import { colors, radii, typography } from '../../theme/tokens';
+import { balanceAmountColor } from '../../utils/balanceColor';
 import {
   clientAccountStatusLabel,
   getClientAccountStatus,
@@ -112,6 +113,7 @@ function membershipCategory(c: Client): MembershipCategoryKey {
     if (c.activeMembership.remaining != null && c.activeMembership.remaining < 0) return 'inactive';
     return 'active';
   }
+  if (c.onGroupBilling) return 'active';
   if (c.athleteStatus === 'active' && (c.groupMemberships || []).some((gm: any) => gm.isActive && !gm.isTrial)) {
     return 'active';
   }
@@ -141,6 +143,13 @@ function membershipInfo(c: Client): { title: string; sub: string; expired: boole
   const m = c.activeMembership;
   if (!m) {
     if (isTrialClient(c)) return { title: 'Пробное занятие', sub: '1 из 3', expired: false };
+    if (c.onGroupBilling) {
+      return {
+        title: c.groupBillingPlanName || 'Групповой абонемент',
+        sub: 'Ежемесячная оплата',
+        expired: false,
+      };
+    }
     return { title: 'Нет абонемента', sub: '—', expired: true };
   }
   if (m.endDate && new Date(m.endDate) < new Date()) {
@@ -546,7 +555,7 @@ function ClientRow({
         sx={{
           fontSize: typography.label,
           fontWeight: 800,
-          color: bal < 0 ? '#DC2626' : '#1B2438',
+          color: balanceAmountColor(bal),
         }}
       >
         {formatBalance(bal)}
@@ -637,8 +646,8 @@ const ClientsBoard: React.FC<Props> = ({
       if (statusFilter) {
         if (registrationStatus(c) !== statusFilter) return false;
       }
-      if (membershipFilter === 'none' && c.activeMembership) return false;
-      if (membershipFilter === 'active' && !c.activeMembership) return false;
+      if (membershipFilter === 'none' && (c.activeMembership || c.onGroupBilling)) return false;
+      if (membershipFilter === 'active' && !c.activeMembership && !c.onGroupBilling) return false;
       if (membershipFilter === 'expired') {
         const m = c.activeMembership;
         if (!m?.endDate || new Date(m.endDate) >= new Date()) return false;

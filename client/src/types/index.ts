@@ -462,6 +462,9 @@ export interface Client {
     endDate?: string | null;
     isActive: boolean;
   } | null;
+  /** Клиент на групповом ежемесячном биллинге (без клиентского абонемента) */
+  onGroupBilling?: boolean;
+  groupBillingPlanName?: string | null;
   clientMemberships?: Array<{
     id: string;
     visitsUsed: number;

@@ -44,6 +44,7 @@ import { format, isBefore, startOfMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Branch, Client, FinanceMembershipRow, Group } from '../../types';
 import { colors } from '../../theme/tokens';
+import { balanceAmountColor } from '../../utils/balanceColor';
 
 type PayStatus = 'paid' | 'partial' | 'unpaid' | 'overdue';
 
@@ -55,6 +56,8 @@ type Props = {
   loading: boolean;
   onOpenClient: (clientId: string) => void;
   onReceive: (row: FinanceMembershipRow) => void;
+  /** Клик по «Начислено» — ручная корректировка суммы */
+  onCorrectAccrual?: (row: FinanceMembershipRow) => void;
   onMonthChange: (month: Date) => void;
   formatMoney: (v: number) => string;
 };
@@ -141,6 +144,7 @@ const ClientPaymentsBoard: React.FC<Props> = ({
   loading,
   onOpenClient,
   onReceive,
+  onCorrectAccrual,
   onMonthChange,
   formatMoney,
 }) => {
@@ -644,7 +648,7 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                             sx={{
                               fontSize: 13,
                               fontWeight: 800,
-                              color: row.remaining > 0 ? '#F93C65' : '#12B981',
+                              color: balanceAmountColor(row.remaining),
                               flexShrink: 0,
                               whiteSpace: 'nowrap',
                             }}
@@ -708,9 +712,6 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                       <SortHead label="Оплачено" id="paid" />
                       <SortHead label="Баланс" id="remaining" />
                       <SortHead label="Статус" id="status" />
-                      <TableCell sx={{ fontSize: 11, fontWeight: 800, color: '#8B8C8F', bgcolor: '#F7F8FB', borderBottom: '1px solid #EEF1F6' }}>
-                        Действия
-                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -756,9 +757,41 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                             )}
                           </TableCell>
                           <TableCell sx={{ fontSize: 12, fontWeight: 600, color: '#5A6275' }}>{row.groupName}</TableCell>
-                          <TableCell sx={{ fontSize: 13, fontWeight: 700 }}>{formatMoney(row.membershipPrice)}</TableCell>
-                          <TableCell sx={{ fontSize: 13, fontWeight: 700, color: '#12B981' }}>{formatMoney(row.paidAmount)}</TableCell>
-                          <TableCell sx={{ fontSize: 13, fontWeight: 800, color: row.remaining > 0 ? '#F93C65' : '#12B981' }}>
+                          <TableCell
+                            sx={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              ...(onCorrectAccrual
+                                ? {
+                                    cursor: 'pointer',
+                                    color: colors.primary,
+                                    textDecoration: 'underline',
+                                    textUnderlineOffset: 2,
+                                    '&:hover': { opacity: 0.85 },
+                                  }
+                                : {}),
+                            }}
+                            onClick={() => onCorrectAccrual?.(row)}
+                            title={onCorrectAccrual ? 'Изменить начисление' : undefined}
+                          >
+                            {formatMoney(row.membershipPrice)}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: '#12B981',
+                              cursor: 'pointer',
+                              textDecoration: 'underline',
+                              textUnderlineOffset: 2,
+                              '&:hover': { opacity: 0.85 },
+                            }}
+                            onClick={() => onReceive(row)}
+                            title="Изменить оплачено"
+                          >
+                            {formatMoney(row.paidAmount)}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: 13, fontWeight: 800, color: balanceAmountColor(row.remaining) }}>
                             {formatMoney(row.remaining)}
                           </TableCell>
                           <TableCell>
@@ -767,17 +800,6 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                               label={statusLabel(row.payStatus)}
                               sx={{ height: 24, fontWeight: 800, fontSize: 11, bgcolor: st.bg, color: st.fg, borderRadius: '8px' }}
                             />
-                          </TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              sx={{ color: '#9AA3B5' }}
-                              onClick={() =>
-                                row.interactive && row.remaining > 0 ? onReceive(row) : onOpenClient(row.clientId)
-                              }
-                            >
-                              <MoreHoriz sx={{ fontSize: 18 }} />
-                            </IconButton>
                           </TableCell>
                         </TableRow>
                       );
@@ -802,16 +824,24 @@ const ClientPaymentsBoard: React.FC<Props> = ({
                 >
                   Открыть клиента
                 </MenuItem>
-                {rowMenu?.row.interactive && rowMenu.row.remaining > 0 && (
+                {onCorrectAccrual && (
                   <MenuItem
                     onClick={() => {
-                      if (rowMenu) onReceive(rowMenu.row);
+                      if (rowMenu) onCorrectAccrual(rowMenu.row);
                       setRowMenu(null);
                     }}
                   >
-                    Принять оплату
+                    Изменить начисление
                   </MenuItem>
                 )}
+                <MenuItem
+                  onClick={() => {
+                    if (rowMenu) onReceive(rowMenu.row);
+                    setRowMenu(null);
+                  }}
+                >
+                  Изменить оплачено
+                </MenuItem>
               </Menu>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.25, gap: 1, flexWrap: 'wrap' }}>
                 <Typography sx={{ fontSize: 12, color: '#8B8C8F', fontWeight: 600 }}>

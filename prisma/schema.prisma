@@ -916,7 +916,7 @@ model Payment {
   tenantId         String
   isMonthlyPayment Boolean         @default(false) // Является ли это ежемесячным платежом
   originalAmount   Decimal? // Оригинальная сумма до перерасчета
-  /// Период ежемесячного платежа (YYYY-MM); уникален вместе с client+group (partial unique в SQL)
+  /// Период ежемесячного платежа (YYYY-MM); partial unique в SQL (без adjustment/cancelled)
   periodKey        String?
   /// Процент/доля после перерасчёта пропусков (100 = полная цена)
   recalcAppliedPercent Decimal?

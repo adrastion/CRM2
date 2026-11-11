@@ -8,8 +8,7 @@ export function isOwnerOrAdminRole(role?: string | null): boolean {
 
 /**
  * Условие видимости тренировок/групп для роли TRAINER:
- * свои занятия (+ замены) ИЛИ филиалы, где тренер старший.
- * Раньше senior-скоуп полностью вытеснял личные занятия в других филиалах.
+ * свои занятия (+ замены) ИЛИ филиалы старшего ИЛИ привязки TrainerBranch.
  */
 export async function buildTrainerScheduleScope(
   userId: string,
@@ -17,7 +16,7 @@ export async function buildTrainerScheduleScope(
 ): Promise<{
   trainerId: string | null;
   canViewAllGroups: boolean;
-  /** null = без доп. фильтра (OWNER-like / canViewAllGroups без senior). */
+  /** null = без доп. фильтра (OWNER-like / canViewAllGroups). */
   orFilter: Array<Record<string, unknown>> | null;
 }> {
   const trainer = await prisma.trainer.findFirst({
@@ -32,24 +31,25 @@ export async function buildTrainerScheduleScope(
     return { trainerId: null, canViewAllGroups: false, orFilter: null };
   }
 
-  const seniorIds = await getSeniorBranchIds(userId, tenantId);
-  if (trainer.canViewAllGroups && seniorIds.length === 0) {
+  if (trainer.canViewAllGroups) {
     return { trainerId: trainer.id, canViewAllGroups: true, orFilter: null };
   }
+
+  const [seniorIds, links] = await Promise.all([
+    getSeniorBranchIds(userId, tenantId),
+    prisma.trainerBranch.findMany({
+      where: { trainerId: trainer.id },
+      select: { branchId: true },
+    }),
+  ]);
+  const branchIds = Array.from(new Set([...seniorIds, ...links.map((l) => l.branchId)]));
 
   const orFilter: Array<Record<string, unknown>> = [
     { trainerId: trainer.id },
     { substituteTrainerId: trainer.id },
   ];
-  if (seniorIds.length > 0) {
-    orFilter.push({ branchId: { in: seniorIds } });
-  }
-
-  if (trainer.canViewAllGroups) {
-    // Старший + canViewAll: всё равно нужен OR только если хотим сузить —
-    // canViewAll без senior уже вернули null выше; с senior оставляем OR,
-    // чтобы не резать чужие филиалы? Для canViewAll лучше без фильтра.
-    return { trainerId: trainer.id, canViewAllGroups: true, orFilter: null };
+  if (branchIds.length > 0) {
+    orFilter.push({ branchId: { in: branchIds } });
   }
 
   return { trainerId: trainer.id, canViewAllGroups: false, orFilter };

@@ -1107,6 +1107,7 @@ const Finance: React.FC = () => {
             loading={loading}
             onOpenClient={openClient}
             onReceive={openReceive}
+            onCorrectAccrual={openAccrualCorrectDialog}
             onMonthChange={(month) => setMemDate(month)}
             formatMoney={(v) => formatMoney(v)}
           />

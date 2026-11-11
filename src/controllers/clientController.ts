@@ -20,6 +20,7 @@ import { notifyAthleteCreated } from '../services/notificationDomainHooks';
 import { normalizeEmail } from '../utils/identifier';
 import { revokeSessionsOnVersionBump } from '../services/authSessionService';
 import { FinanceService } from '../services/financeService';
+import { getGroupBillingPlan } from '../services/groupMembershipBillingService';
 
 /** Контактные поля родителя без ЛК (пароль, sessionVersion и т.п.). */
 function mapParentContactFields(parent: any, tenantId: string, opts?: { forCreate?: boolean }) {
@@ -381,6 +382,14 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
     ),
   ] as string[];
 
+  const groupBillingByGroupId = new Map<string, { name: string }>();
+  await Promise.all(
+    groupIds.map(async (gid) => {
+      const plan = await getGroupBillingPlan(gid);
+      if (plan) groupBillingByGroupId.set(gid, { name: plan.membershipName });
+    })
+  );
+
   const now = new Date();
   const upcomingTrainings =
     groupIds.length > 0
@@ -430,7 +439,9 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       ? financeBalances.get(client.id)!
       : walletBalance;
 
-    const activeGms = (client.groupMemberships || []).filter((gm: any) => gm.isActive);
+    const activeGms = (client.groupMemberships || []).filter(
+      (gm: any) => gm.isActive && !gm.isTrial
+    );
     let nextTraining: {
       id: string;
       startTime: Date;
@@ -438,7 +449,23 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       title: string | null;
       groupId: string | null;
     } | null = null;
+    let onGroupBilling = false;
+    let groupBillingPlanName: string | null = null;
     for (const gm of activeGms) {
+      const gid = gm.groupId || gm.group?.id;
+      const cand = gid ? nextByGroup.get(gid) : undefined;
+      if (cand && (!nextTraining || cand.startTime < nextTraining.startTime)) {
+        nextTraining = cand as any;
+      }
+      if (gid && groupBillingByGroupId.has(gid)) {
+        onGroupBilling = true;
+        if (!groupBillingPlanName) {
+          groupBillingPlanName = groupBillingByGroupId.get(gid)!.name;
+        }
+      }
+    }
+    // nextTraining: also consider trial groups for schedule hint
+    for (const gm of (client.groupMemberships || []).filter((g: any) => g.isActive)) {
       const gid = gm.groupId || gm.group?.id;
       const cand = gid ? nextByGroup.get(gid) : undefined;
       if (!cand) continue;
@@ -457,6 +484,8 @@ export const getClients = asyncHandler(async (req: AuthenticatedRequest, res: Re
       debt: totalDebt,
       overduePaymentsCount: overduePayments.length,
       activeMembership: pickActiveMembershipSummary(client.clientMemberships || []),
+      onGroupBilling,
+      groupBillingPlanName,
       nextTraining,
       isVip: Boolean((client.achievements || []).length >= 1),
       source: (client as any).createdByUserId ? 'promoter' : 'manual',

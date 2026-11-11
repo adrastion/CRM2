@@ -211,6 +211,8 @@ type PayTarget = {
   total: number;
   paymentIds: string[];
   singlePaymentAmount?: number;
+  /** Предоплата без выставленного счёта (на несколько месяцев вперёд) */
+  advance?: boolean;
 };
 
 type TypeFilter = 'all' | string;
@@ -242,6 +244,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   const [error, setError] = React.useState('');
   const [payments, setPayments] = React.useState<any[]>([]);
   const [payGroups, setPayGroups] = React.useState<any[]>([]);
+  const [payMethods, setPayMethods] = React.useState<any[]>([]);
   const [pickOpen, setPickOpen] = React.useState(false);
   const [payOpen, setPayOpen] = React.useState(false);
   const [payTarget, setPayTarget] = React.useState<PayTarget | null>(null);
@@ -264,6 +267,7 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
       ]);
       setPayments(list || []);
       setPayGroups(methodsData?.groups || []);
+      setPayMethods(methodsData?.methods || []);
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Не удалось загрузить платежи');
     } finally {
@@ -297,22 +301,41 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   const openPayDialog = (target: PayTarget) => {
     setPayTarget(target);
     setStep('qr');
-    setClaimedAmount(String(target.singlePaymentAmount ?? target.total));
+    const preset =
+      target.advance || (!target.paymentIds.length && target.total <= 0)
+        ? ''
+        : String(target.singlePaymentAmount ?? target.total);
+    setClaimedAmount(preset);
     setReceiptFile(null);
     setPayOpen(true);
   };
 
   const handleTopPay = () => {
     const withMethod = payGroups.filter((g) => g.method && g.paymentIds?.length);
-    if (withMethod.length === 0) {
-      setError('Школа ещё не добавила QR или ссылку для оплаты');
-      return;
-    }
     if (withMethod.length === 1) {
       openPayDialog({
         method: withMethod[0].method,
         total: withMethod[0].total,
         paymentIds: withMethod[0].paymentIds,
+      });
+      return;
+    }
+    if (withMethod.length > 1) {
+      setPickOpen(true);
+      return;
+    }
+    // Нет выставленных счетов — всё равно даём QR/ссылку для предоплаты
+    const methods = payMethods.filter((m) => m && (m.hasQr || m.paymentUrl));
+    if (methods.length === 0) {
+      setError('Школа ещё не добавила QR или ссылку для оплаты');
+      return;
+    }
+    if (methods.length === 1) {
+      openPayDialog({
+        method: methods[0],
+        total: 0,
+        paymentIds: [],
+        advance: true,
       });
       return;
     }
@@ -330,7 +353,6 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
   };
 
   const submitReceipt = async () => {
-    if (!payTarget?.paymentIds?.length) return;
     const amount = Number(claimedAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Укажите сумму');
@@ -338,6 +360,26 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
     }
     if (!receiptFile) {
       setError('Приложите чек об оплате');
+      return;
+    }
+
+    // Предоплата без счёта — создаём платёж «на проверке» с чеком
+    if (payTarget?.advance || !payTarget?.paymentIds?.length) {
+      setSubmitting(true);
+      try {
+        await apiService.submitPortalAdvanceReceipt(
+          receiptFile,
+          amount,
+          payTarget?.method?.id,
+          clientId
+        );
+        setPayOpen(false);
+        await reload();
+      } catch (e: any) {
+        setError(e?.response?.data?.error || 'Не удалось отправить чек');
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -930,26 +972,48 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
         <DialogTitle>Выберите способ оплаты</DialogTitle>
         <DialogContent>
           <Stack spacing={1} sx={{ mt: 1 }}>
-            {payGroups
-              .filter((g) => g.method && g.paymentIds?.length)
-              .map((g) => (
-                <Button
-                  key={g.method.id}
-                  variant="outlined"
-                  sx={{ justifyContent: 'space-between', textTransform: 'none' }}
-                  onClick={() => {
-                    setPickOpen(false);
-                    openPayDialog({
-                      method: g.method,
-                      total: g.total,
-                      paymentIds: g.paymentIds,
-                    });
-                  }}
-                >
-                  <span>{g.method.title}</span>
-                  <strong>{RUB.format(g.total)}</strong>
-                </Button>
-              ))}
+            {payGroups.filter((g) => g.method && g.paymentIds?.length).length > 0
+              ? payGroups
+                  .filter((g) => g.method && g.paymentIds?.length)
+                  .map((g) => (
+                    <Button
+                      key={g.method.id}
+                      variant="outlined"
+                      sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+                      onClick={() => {
+                        setPickOpen(false);
+                        openPayDialog({
+                          method: g.method,
+                          total: g.total,
+                          paymentIds: g.paymentIds,
+                        });
+                      }}
+                    >
+                      <span>{g.method.title}</span>
+                      <strong>{RUB.format(g.total)}</strong>
+                    </Button>
+                  ))
+              : payMethods
+                  .filter((m) => m && (m.hasQr || m.paymentUrl))
+                  .map((m) => (
+                    <Button
+                      key={m.id}
+                      variant="outlined"
+                      sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+                      onClick={() => {
+                        setPickOpen(false);
+                        openPayDialog({
+                          method: m,
+                          total: 0,
+                          paymentIds: [],
+                          advance: true,
+                        });
+                      }}
+                    >
+                      <span>{m.title}</span>
+                      <strong>Предоплата</strong>
+                    </Button>
+                  ))}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -958,11 +1022,24 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
       </Dialog>
 
       <Dialog open={payOpen} onClose={() => setPayOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{step === 'qr' ? 'Оплата' : 'Чек об оплате'}</DialogTitle>
+        <DialogTitle>
+          {step === 'qr'
+            ? payTarget?.advance
+              ? 'Оплата / предоплата'
+              : 'Оплата'
+            : 'Чек об оплате'}
+        </DialogTitle>
         <DialogContent>
           {step === 'qr' && payTarget && (
             <Stack spacing={2} alignItems="center" sx={{ py: 1 }}>
-              <Typography variant="h6">{RUB.format(payTarget.total)}</Typography>
+              {payTarget.advance || payTarget.total <= 0 ? (
+                <Typography sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 14 }}>
+                  Можно оплатить заранее на несколько месяцев. Отсканируйте QR или откройте ссылку,
+                  затем укажите сумму и приложите чек.
+                </Typography>
+              ) : (
+                <Typography variant="h6">{RUB.format(payTarget.total)}</Typography>
+              )}
               {payTarget.method?.hasQr && <QrImg methodId={payTarget.method.id} />}
               {!payTarget.method && (
                 <Typography color="text.secondary">
@@ -992,7 +1069,9 @@ const ClientPaymentsPanel: React.FC<Props> = ({ clientId }) => {
           {step === 'receipt' && (
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Приложите чек и укажите сумму, которую перевели.
+                {payTarget?.advance
+                  ? 'Укажите сумму перевода (можно за несколько месяцев) и приложите чек.'
+                  : 'Приложите чек и укажите сумму, которую перевели.'}
               </Typography>
               <TextField
                 label="Сумма"

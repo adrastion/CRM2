@@ -35,6 +35,7 @@ type Method = {
 type ReceiptRow = {
   id: string;
   amount: number;
+  notes?: string | null;
   client: { id: string; firstName: string; lastName: string; middleName?: string | null };
   groupName?: string | null;
   membershipName?: string | null;
@@ -638,7 +639,18 @@ const SchoolPaymentMethodsPanel: React.FC<Props> = ({ user, groups, variant = 'a
           {divider}
 
           {/* Right: CTA */}
-          <Box sx={{ ml: { md: 'auto' }, flexShrink: 0 }}>
+          <Box sx={{ ml: { md: 'auto' }, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+            {canConfirm && receipts.length > 0 && (
+              <Chip
+                size="small"
+                label={`Чеки: ${receipts.length}`}
+                sx={{
+                  fontWeight: 800,
+                  bgcolor: 'rgba(249, 60, 101, 0.12)',
+                  color: colors.danger,
+                }}
+              />
+            )}
             {canEdit && (
               <Button
                 variant="outlined"
@@ -668,6 +680,67 @@ const SchoolPaymentMethodsPanel: React.FC<Props> = ({ user, groups, variant = 'a
             )}
           </Box>
         </Box>
+
+        {canConfirm && receipts.length > 0 && (
+          <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid #EEF1F6' }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 14, color: '#1B2438', mb: 1 }}>
+              Чеки на проверке ({receipts.length})
+            </Typography>
+            <Stack spacing={1}>
+              {receipts.map((r) => (
+                <Box
+                  key={r.id}
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    alignItems: 'center',
+                    p: 1.25,
+                    border: '1px solid #EEF1F6',
+                    borderRadius: '12px',
+                    bgcolor: '#F7F8FB',
+                  }}
+                >
+                  {r.receipt && (
+                    <ReceiptThumb paymentId={r.id} mimeType={r.receipt.mimeType} />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 160 }}>
+                    <Typography fontWeight={700} sx={{ fontSize: 14 }}>
+                      {r.client.lastName} {r.client.firstName}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>
+                      Сумма: {Number(r.amount).toLocaleString('ru-RU')} ₽
+                      {r.receipt
+                        ? ` · в чеке: ${Number(r.receipt.claimedAmount).toLocaleString('ru-RU')} ₽`
+                        : ''}
+                      {(r.notes || '').includes('[advance]') ? ' · предоплата' : ''}
+                      {[r.groupName, r.membershipName].filter(Boolean).length
+                        ? ` · ${[r.groupName, r.membershipName].filter(Boolean).join(' / ')}`
+                        : ''}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    color="success"
+                    variant="contained"
+                    onClick={() => confirmReceipt(r.id)}
+                    sx={{ textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Подтвердить
+                  </Button>
+                  <Button
+                    size="small"
+                    color="inherit"
+                    onClick={() => rejectReceipt(r.id)}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Отклонить
+                  </Button>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
 
         {enlargeDialog}
         {editDialog}
