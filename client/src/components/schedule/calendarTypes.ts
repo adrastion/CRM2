@@ -73,7 +73,49 @@ export interface ScheduleSummaryCounts {
   events: { count: number; delta: number };
 }
 
-/** Grid hours 08:00–20:00 inclusive of 20:00 label row end. */
+/** Fallback, если в периоде нет timed-событий. */
 export const GRID_START_HOUR = 8;
 export const GRID_END_HOUR = 20;
 export const HOUR_HEIGHT_PX = 64;
+
+/** Диапазон часов сетки по фактическому времени занятий пользователя. endHour — исключительная граница (как Date#setHours). */
+export function computeScheduleGridRange(
+  spans: Array<{ start: Date; end: Date }>,
+  options?: {
+    fallbackStart?: number;
+    fallbackEnd?: number;
+    padHours?: number;
+    minStart?: number;
+    maxEnd?: number;
+  }
+): { startHour: number; endHour: number } {
+  const fallbackStart = options?.fallbackStart ?? GRID_START_HOUR;
+  const fallbackEnd = options?.fallbackEnd ?? GRID_END_HOUR;
+  const pad = options?.padHours ?? 1;
+  const minStart = options?.minStart ?? 6;
+  const maxEnd = options?.maxEnd ?? 23;
+
+  if (!spans.length) {
+    return { startHour: fallbackStart, endHour: fallbackEnd };
+  }
+
+  let minH = 24;
+  let maxH = 0;
+  for (const { start, end } of spans) {
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    const sh = start.getHours() + start.getMinutes() / 60 + start.getSeconds() / 3600;
+    let eh = end.getHours() + end.getMinutes() / 60 + end.getSeconds() / 3600;
+    if (eh <= sh) eh = sh + 0.5;
+    minH = Math.min(minH, sh);
+    maxH = Math.max(maxH, eh);
+  }
+
+  if (minH >= 24 && maxH <= 0) {
+    return { startHour: fallbackStart, endHour: fallbackEnd };
+  }
+
+  let startHour = Math.max(minStart, Math.floor(minH) - pad);
+  let endHour = Math.min(maxEnd, Math.ceil(maxH) + pad);
+  if (endHour <= startHour) endHour = Math.min(maxEnd, startHour + 1);
+  return { startHour, endHour };
+}

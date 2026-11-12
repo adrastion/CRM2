@@ -14,8 +14,7 @@ import { colors, radii } from '../../theme/tokens';
 import {
   CalendarItem,
   CalendarViewMode,
-  GRID_END_HOUR,
-  GRID_START_HOUR,
+  computeScheduleGridRange,
   HOUR_HEIGHT_PX,
 } from './calendarTypes';
 
@@ -63,16 +62,16 @@ function layoutColumns(items: CalendarItem[]) {
   return placed.map((p) => ({ ...p, cols }));
 }
 
-const hours = Array.from(
-  { length: GRID_END_HOUR - GRID_START_HOUR },
-  (_, i) => GRID_START_HOUR + i
-);
-
-function clampBlock(start: Date, end: Date): { top: number; height: number } | null {
+function clampBlock(
+  start: Date,
+  end: Date,
+  gridStartHour: number,
+  gridEndHour: number
+): { top: number; height: number } | null {
   const dayStart = new Date(start);
-  dayStart.setHours(GRID_START_HOUR, 0, 0, 0);
+  dayStart.setHours(gridStartHour, 0, 0, 0);
   const dayEnd = new Date(start);
-  dayEnd.setHours(GRID_END_HOUR, 0, 0, 0);
+  dayEnd.setHours(gridEndHour, 0, 0, 0);
 
   const s = Math.max(start.getTime(), dayStart.getTime());
   const e = Math.min(end.getTime(), dayEnd.getTime());
@@ -86,7 +85,7 @@ function clampBlock(start: Date, end: Date): { top: number; height: number } | n
   };
 }
 
-/** Неделя/день: фиксированная шкала 08:00–20:00, без схлопывания пустых часов. */
+/** Неделя/день: шкала часов по тренировкам пользователя в видимом периоде. */
 const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
   selectedDate,
   viewMode,
@@ -119,10 +118,7 @@ const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
       .filter((i) => i.allDay)
       .forEach((item) => {
         days.forEach((d) => {
-          if (
-            isSameDay(d, item.start) ||
-            (item.start <= d && item.end >= d)
-          ) {
+          if (isSameDay(d, item.start) || (item.start <= d && item.end >= d)) {
             const key = format(d, 'yyyy-MM-dd');
             map.get(key)?.push(item);
           }
@@ -142,6 +138,20 @@ const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
       });
     return map;
   }, [days, items]);
+
+  const { startHour: gridStartHour, endHour: gridEndHour } = useMemo(() => {
+    const dayKeys = new Set(days.map((d) => format(d, 'yyyy-MM-dd')));
+    const spans = items
+      .filter((i) => !i.allDay && dayKeys.has(format(i.start, 'yyyy-MM-dd')))
+      .map((i) => ({ start: i.start, end: i.end }));
+    return computeScheduleGridRange(spans);
+  }, [days, items]);
+
+  const hours = useMemo(
+    () =>
+      Array.from({ length: Math.max(1, gridEndHour - gridStartHour) }, (_, i) => gridStartHour + i),
+    [gridStartHour, gridEndHour]
+  );
 
   const gridHeight = hours.length * HOUR_HEIGHT_PX;
   const hasAllDay = items.some((item) => item.allDay);
@@ -313,7 +323,7 @@ const ScheduleWeekGrid: React.FC<ScheduleWeekGridProps> = ({
                 ))}
 
                 {layoutColumns(dayTimed).map(({ item, col, cols }) => {
-                  const box = clampBlock(item.start, item.end);
+                  const box = clampBlock(item.start, item.end, gridStartHour, gridEndHour);
                   if (!box) return null;
                   const width = `calc((100% - 6px) / ${cols})`;
                   const left = `calc(3px + ${col} * (100% - 6px) / ${cols})`;

@@ -77,7 +77,12 @@ import ScheduleDesktop, {
   getScheduleRange,
   getSummaryRange,
 } from '../components/schedule/ScheduleDesktop';
-import { CalendarItem, CalendarViewMode, ScheduleSummaryCounts } from '../components/schedule/calendarTypes';
+import {
+  CalendarItem,
+  CalendarViewMode,
+  ScheduleSummaryCounts,
+  computeScheduleGridRange,
+} from '../components/schedule/calendarTypes';
 import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, radii, typography } from '../theme/tokens';
@@ -1335,17 +1340,21 @@ const Schedule: React.FC = () => {
     setScheduleTaskDialog(true);
   };
 
-  // Генерация временных слотов (с 8:00 до 22:00)
-  const generateTimeSlots = () => {
-    const slots = [];
-    for (let hour = 8; hour < 22; hour++) {
-      slots.push(hour);
-    }
-    return slots;
-  };
-
-  const timeSlots = generateTimeSlots();
   const EMPTY_HOUR_HEIGHT = 10;
+
+  // Сетка часов индивидуально по тренировкам пользователя в видимой неделе
+  const weekTrainingsForGrid = getTrainingsForWeek();
+  const { startHour: gridStartHour, endHour: gridEndHour } = computeScheduleGridRange(
+    weekTrainingsForGrid.map((t) => ({
+      start: new Date(t.startTime),
+      end: new Date(t.endTime),
+    })),
+    { fallbackStart: 8, fallbackEnd: 22, padHours: 1, minStart: 6, maxEnd: 23 }
+  );
+  const timeSlots = Array.from(
+    { length: Math.max(1, gridEndHour - gridStartHour) },
+    (_, i) => gridStartHour + i
+  );
 
   // Группировать тренировки по времени начала для отображения в одну строку
   // Проверка, пересекаются ли два временных интервала
@@ -1444,8 +1453,8 @@ const Schedule: React.FC = () => {
       const endsExactlyOnHour =
         tEnd.getMinutes() === 0 && tEnd.getSeconds() === 0 && tEnd.getMilliseconds() === 0;
       const lastHour = endsExactlyOnHour && tEnd > tStart ? endHour - 1 : endHour;
-      while (hour <= lastHour && hour < 22) {
-        if (hour >= 8) occupied.add(hour);
+      while (hour <= lastHour && hour < gridEndHour) {
+        if (hour >= gridStartHour) occupied.add(hour);
         hour += 1;
       }
     });
@@ -1536,7 +1545,7 @@ const Schedule: React.FC = () => {
     const start = new Date(training.startTime);
     const end = new Date(training.endTime);
     const dayStart = new Date(day);
-    dayStart.setHours(8, 0, 0, 0);
+    dayStart.setHours(gridStartHour, 0, 0, 0);
     
     // Проверяем, что тренировка в этот день
     if (!isSameDay(start, day)) {
@@ -1549,7 +1558,7 @@ const Schedule: React.FC = () => {
     
     // Вычисляем позицию top с учетом реальных высот строк
     let top = 0;
-    for (let hour = 8; hour < startHour; hour++) {
+    for (let hour = gridStartHour; hour < startHour; hour++) {
       top += getHourHeight(hour);
     }
     // Добавляем позицию внутри часа (пропорционально минутам)
