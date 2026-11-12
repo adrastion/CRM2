@@ -185,6 +185,14 @@ export const createTraining = async (req: AuthenticatedRequest, res: Response) =
 
     // Extract only valid fields for Training model
     const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = req.body;
+    if (validData.isRecurring) {
+      const { encodeWeeklyRecurrence } = await import('../services/repairRecurringTrainingsService');
+      if (Array.isArray(daysOfWeek) && daysOfWeek.length > 0) {
+        validData.recurrence = encodeWeeklyRecurrence(daysOfWeek);
+      } else if (!validData.recurrence) {
+        validData.recurrence = 'weekly';
+      }
+    }
     
     // Validate required fields
     if (!validData.title) {
@@ -514,10 +522,19 @@ export const createTrainingsBatch = async (req: AuthenticatedRequest, res: Respo
 
     // Создаем тренировки последовательно, но без задержек между отдельными запросами
     // так как все выполняется в одном HTTP запросе
+    const { encodeWeeklyRecurrence } = await import('../services/repairRecurringTrainingsService');
+
     for (const trainingData of trainings) {
       try {
         // Extract only valid fields for Training model
         const { daysOfWeek, recurrenceStartDate, recurrenceEndDate, ...validData } = trainingData;
+        if (validData.isRecurring) {
+          if (Array.isArray(daysOfWeek) && daysOfWeek.length > 0) {
+            validData.recurrence = encodeWeeklyRecurrence(daysOfWeek);
+          } else if (!validData.recurrence) {
+            validData.recurrence = 'weekly';
+          }
+        }
         
         // Validate required fields (groupId is optional for individual trainings)
         if (!validData.title || !validData.trainerId || !validData.branchId || !validData.startTime || !validData.endTime) {
@@ -1247,6 +1264,41 @@ export const deleteTraining = async (req: AuthenticatedRequest, res: Response) =
 };
 
 // Функция для удаления дубликатов тренировок и тренировок без группы
+/** Дозаполнение пропущенных дней регулярных серий (пн/ср при наличии пт и т.п.). */
+export const repairRecurringTrainings = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.tenant?.id || req.tenantId;
+    if (!tenantId) {
+      res.status(400).json({ success: false, error: 'Требуется ID организации' });
+      return;
+    }
+    if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Недостаточно прав' });
+      return;
+    }
+
+    const { repairIncompleteRecurringSeries } = await import(
+      '../services/repairRecurringTrainingsService'
+    );
+    const result = await repairIncompleteRecurringSeries({ tenantId });
+
+    res.json({
+      success: true,
+      data: result,
+      message:
+        result.createdCount > 0
+          ? `Добавлено пропущенных тренировок: ${result.createdCount}`
+          : 'Пропущенных дней в сериях не найдено',
+    });
+  } catch (error: any) {
+    console.error('Repair recurring trainings error:', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Не удалось восстановить регулярные тренировки',
+    });
+  }
+};
+
 export const removeDuplicateTrainings = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tenantId = req.tenant?.id;

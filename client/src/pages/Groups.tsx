@@ -57,6 +57,10 @@ import DeletionScopeDialog, { PurgeOption } from '../components/common/DeletionS
 import { Group, Branch, Trainer, Client, GroupScheduleItem, Hall } from '../types';
 import { validateGroupForm, validateTrainerForm, validateBranchForm } from '../utils/validation';
 import {
+  createTrainingsInChunks,
+  expandRecurringByWeekdays,
+} from '../utils/recurringTrainings';
+import {
   GROUP_SALARY_SCHEME_OPTIONS,
   salaryRateFieldLabel,
   salarySchemeHint,
@@ -973,11 +977,16 @@ const Groups: React.FC = () => {
     const endTime = new Date(today);
     endTime.setHours(19, 30, 0, 0); // По умолчанию 19:30
 
-    // Если у группы есть график, используем первый день для предзаполнения
+    // Если у группы есть график — предзаполняем время и дни недели (пн/ср/пт и т.д.)
     let scheduleStartTime = today;
     let scheduleEndTime = endTime;
-    
-    // Парсим schedule, если он в виде строки
+    let prefillDaySchedules: Array<{
+      dayOfWeek: number;
+      startTime: Date | null;
+      endTime: Date | null;
+    }> = [];
+    let prefillDaysOfWeek: number[] = [];
+
     let schedule: GroupScheduleItem[] = [];
     if (fullGroup.schedule) {
       if (typeof fullGroup.schedule === 'string') {
@@ -990,7 +999,7 @@ const Groups: React.FC = () => {
         schedule = fullGroup.schedule;
       }
     }
-    
+
     if (schedule && schedule.length > 0) {
       const firstSchedule = schedule[0];
       const [startHours, startMinutes] = firstSchedule.startTime.split(':').map(Number);
@@ -999,6 +1008,20 @@ const Groups: React.FC = () => {
       scheduleStartTime.setHours(startHours, startMinutes, 0, 0);
       scheduleEndTime = new Date(today);
       scheduleEndTime.setHours(endHours, endMinutes, 0, 0);
+
+      for (const item of schedule) {
+        const day = Number(item.dayOfWeek);
+        if (!Number.isInteger(day) || day < 0 || day > 6) continue;
+        if (prefillDaysOfWeek.includes(day)) continue;
+        const [sh, sm] = String(item.startTime || '18:00').split(':').map(Number);
+        const [eh, em] = String(item.endTime || '19:30').split(':').map(Number);
+        const start = new Date(today);
+        start.setHours(sh || 18, sm || 0, 0, 0);
+        const end = new Date(today);
+        end.setHours(eh || 19, em || 30, 0, 0);
+        prefillDaysOfWeek.push(day);
+        prefillDaySchedules.push({ dayOfWeek: day, startTime: start, endTime: end });
+      }
     }
 
     setTrainingFormData({
@@ -1011,13 +1034,13 @@ const Groups: React.FC = () => {
       trainerId: fullGroup.trainerId,
       branchId: fullGroup.branchId,
       hallId: '',
-      isRecurring: false,
+      isRecurring: prefillDaySchedules.length > 0,
       recurrence: 'weekly',
-      daysOfWeek: [],
+      daysOfWeek: prefillDaysOfWeek,
       recurrenceStartDate: new Date(),
       recurrenceEndDate: null,
       recurrenceMode: 'days',
-      daySchedules: [],
+      daySchedules: prefillDaySchedules,
     });
     setTrainingDialog(true);
   };
@@ -1078,91 +1101,56 @@ const Groups: React.FC = () => {
       };
 
       if (trainingFormData.isRecurring) {
-        const trainings = [];
-        
-        if (trainingFormData.recurrenceMode === 'days') {
-          const startDate = new Date(trainingFormData.recurrenceStartDate!);
-          startDate.setHours(0, 0, 0, 0);
-          
-          const endDate = new Date(trainingFormData.recurrenceEndDate!);
-          endDate.setHours(23, 59, 59, 999);
-          
-          const currentDate = new Date(startDate);
-          currentDate.setHours(0, 0, 0, 0);
-          
-          while (currentDate <= endDate) {
-            const dayOfWeek = currentDate.getDay();
-            const daySchedule = trainingFormData.daySchedules.find(ds => ds.dayOfWeek === dayOfWeek);
-            if (daySchedule && daySchedule.startTime && daySchedule.endTime) {
-              const trainingDate = new Date(currentDate);
-              trainingDate.setHours(0, 0, 0, 0);
-              
-              const recurringStartTime = new Date(trainingDate);
-              recurringStartTime.setHours(daySchedule.startTime.getHours(), daySchedule.startTime.getMinutes(), 0, 0);
-              
-              const recurringEndTime = new Date(trainingDate);
-              recurringEndTime.setHours(daySchedule.endTime.getHours(), daySchedule.endTime.getMinutes(), 0, 0);
+        const expanded =
+          trainingFormData.recurrenceMode === 'days'
+            ? expandRecurringByWeekdays({
+                startDate: trainingFormData.recurrenceStartDate!,
+                endDate: trainingFormData.recurrenceEndDate!,
+                daySchedules: trainingFormData.daySchedules,
+              })
+            : [];
 
-              trainings.push({
-                ...trainingData,
-                startTime: recurringStartTime.toISOString(),
-                endTime: recurringEndTime.toISOString()
-              });
-            }
-            currentDate.setDate(currentDate.getDate() + 1);
-          }
+        const trainings = expanded.map((row) => ({
+          ...trainingData,
+          daysOfWeek: trainingFormData.daySchedules.map((ds) => Number(ds.dayOfWeek)),
+          startTime: row.startTime,
+          endTime: row.endTime,
+        }));
+
+        if (trainings.length === 0) {
+          alert('В выбранном периоде нет подходящих дней для тренировок');
+          return;
         }
 
-        // Используем batch создание для быстрого создания множества тренировок
-        if (trainings.length > 1) {
-          try {
-            const batchResult = await apiService.createTrainingsBatch(trainings);
-            if (batchResult.failedCount > 0) {
-              const errorMessages = batchResult.failed.map((ft: any) => ft.error).join('; ');
-              alert(`Создано тренировок: ${batchResult.createdCount}. Ошибок: ${batchResult.failedCount}. ${errorMessages}`);
-            } else {
-              alert(`Успешно создано ${batchResult.createdCount} тренировок`);
-            }
-          } catch (batchErr: any) {
-            console.error('Error creating trainings batch:', batchErr);
-            // Если batch не удался, пробуем создавать по одной с задержками
-            const createdTrainings = [];
-            const failedTrainings = [];
-            for (let i = 0; i < trainings.length; i++) {
-              const training = trainings[i];
-              try {
-                await apiService.createTraining(training);
-                createdTrainings.push(training);
-                // Увеличиваем задержку между запросами (500ms), чтобы избежать 429 ошибки
-                if (i < trainings.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              } catch (err: any) {
-                console.error('Error creating training:', err);
-                failedTrainings.push({
-                  training,
-                  error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
-                });
-              }
-            }
-            
-            if (failedTrainings.length > 0) {
-              const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
-              alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
-            } else {
-              alert(`Успешно создано ${createdTrainings.length} тренировок`);
-            }
+        const { createdCount, failedCount, failed } = await createTrainingsInChunks(trainings);
+        if (failedCount > 0) {
+          const errorMessages = failed.map((ft: any) => ft.error).join('; ');
+          alert(`Создано тренировок: ${createdCount}. Ошибок: ${failedCount}. ${errorMessages}`);
+          if (createdCount === 0) {
+            throw new Error('Не удалось создать ни одной тренировки');
           }
-        } else if (trainings.length === 1) {
-          // Для одной тренировки используем обычный метод
-          try {
-            await apiService.createTraining(trainings[0]);
-            alert('Тренировка успешно создана');
-          } catch (err: any) {
-            const errorMessage = err.response?.data?.error || err.message || 'Ошибка создания тренировки';
-            alert(`Ошибка создания тренировки: ${errorMessage}`);
-            throw err;
+        } else {
+          alert(
+            trainings.length === 1
+              ? 'Тренировка успешно создана'
+              : `Успешно создано ${createdCount} тренировок`
+          );
+        }
+
+        // Сохраняем график группы — чтобы авто-восстановление знало пн/ср/пт
+        try {
+          const schedulePayload = trainingFormData.daySchedules
+            .filter((ds) => ds.startTime && ds.endTime)
+            .map((ds) => ({
+              dayOfWeek: Number(ds.dayOfWeek),
+              startTime: `${String(ds.startTime!.getHours()).padStart(2, '0')}:${String(ds.startTime!.getMinutes()).padStart(2, '0')}`,
+              endTime: `${String(ds.endTime!.getHours()).padStart(2, '0')}:${String(ds.endTime!.getMinutes()).padStart(2, '0')}`,
+            }));
+          if (schedulePayload.length > 0 && trainingFormData.groupId) {
+            await apiService.updateGroup(trainingFormData.groupId, { schedule: schedulePayload });
           }
+        } catch (schedErr) {
+          console.warn('Could not sync group schedule:', schedErr);
         }
       } else {
         // Создаем одну нерегулярную тренировку

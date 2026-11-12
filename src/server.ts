@@ -302,6 +302,18 @@ httpServer.listen(PORT, () => {
     })
     .catch((err) => console.error('[Startup] Purge invalid training visit accruals failed:', err));
 
+  // Дозаполнение пропущенных дней регулярных серий (идемпотентно)
+  void import('./services/repairRecurringTrainingsService')
+    .then(({ repairIncompleteRecurringSeries }) => repairIncompleteRecurringSeries())
+    .then((r) => {
+      if (r.createdCount > 0) {
+        console.log(
+          `[Startup] Repaired recurring trainings: created ${r.createdCount} in ${r.seriesProcessed} series`
+        );
+      }
+    })
+    .catch((err) => console.error('[Startup] Repair recurring trainings failed:', err));
+
   // Настройка автоматического создания ежемесячных платежей
   // Запускается каждый день в 00:00 (полночь)
   // Можно изменить время через переменную окружения CRON_MONTHLY_PAYMENTS_TIME (формат: "0 0 * * *")

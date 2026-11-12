@@ -1832,6 +1832,16 @@ class ApiService {
     return response.data.data;
   }
 
+  async repairRecurringTrainings(): Promise<{
+    createdCount: number;
+    seriesProcessed: number;
+    skippedSeries: number;
+    tenantsProcessed: number;
+  }> {
+    const response = await this.api.post<ApiResponse>('/trainings/repair-recurring');
+    return response.data.data;
+  }
+
   // Competition endpoints
   async getCompetitions(params?: any, signal?: AbortSignal): Promise<{ data: any[]; pagination: any }> {
     const response = await this.api.get<ApiResponse>('/competitions', { params, signal });

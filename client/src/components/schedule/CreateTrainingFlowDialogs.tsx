@@ -27,13 +27,18 @@ import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
-import { addMonths, isBefore, startOfDay } from 'date-fns';
+import { addMonths, isBefore } from 'date-fns';
 import { apiService } from '../../services/api';
 import { Branch, Client, Group, Trainer } from '../../types';
 import { colors, radii } from '../../theme/tokens';
 import CreateClientDialog from '../client/CreateClientDialog';
 import UnsavedChangesDialog from '../common/UnsavedChangesDialog';
 import { isDirtyValue, useUnsavedClose } from '../../hooks/useUnsavedClose';
+import {
+  createTrainingsInChunks,
+  expandRecurringByWeekdays,
+  normalizeWeekday,
+} from '../../utils/recurringTrainings';
 
 const DESC_MAX = 500;
 
@@ -411,6 +416,10 @@ const CreateTrainingFlowDialogs: React.FC<CreateTrainingFlowDialogsProps> = ({
       return false;
     }
 
+    const daysOfWeek = form.daysOfWeek
+      .map((d) => normalizeWeekday(d))
+      .filter((d): d is number => d != null);
+
     const trainingData = {
       title: resolveTitle(),
       description: buildDescription(),
@@ -419,30 +428,24 @@ const CreateTrainingFlowDialogs: React.FC<CreateTrainingFlowDialogsProps> = ({
       groupId: form.groupId,
       isRecurring: true,
       recurrence: 'weekly',
-      daysOfWeek: form.daysOfWeek,
+      daysOfWeek,
     };
 
-    const trainings: Array<Record<string, unknown>> = [];
-    const cursor = startOfDay(form.recurrenceStart);
-    const endDate = startOfDay(form.recurrenceEnd);
-    const daySet = new Set(form.daysOfWeek);
+    const expanded = expandRecurringByWeekdays({
+      startDate: form.recurrenceStart,
+      endDate: form.recurrenceEnd,
+      daySchedules: daysOfWeek.map((dayOfWeek) => ({
+        dayOfWeek,
+        startTime: form.startTime,
+        endTime: form.endTime,
+      })),
+    });
 
-    while (cursor.getTime() <= endDate.getTime()) {
-      if (daySet.has(cursor.getDay())) {
-        const s = new Date(cursor);
-        s.setHours(form.startTime.getHours(), form.startTime.getMinutes(), 0, 0);
-        const e = new Date(cursor);
-        e.setHours(form.endTime.getHours(), form.endTime.getMinutes(), 0, 0);
-        if (isBefore(s, e)) {
-          trainings.push({
-            ...trainingData,
-            startTime: s.toISOString(),
-            endTime: e.toISOString(),
-          });
-        }
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
+    const trainings = expanded.map((row) => ({
+      ...trainingData,
+      startTime: row.startTime,
+      endTime: row.endTime,
+    }));
 
     if (trainings.length === 0) {
       setLocalError('В выбранном периоде нет подходящих дней');
@@ -452,22 +455,34 @@ const CreateTrainingFlowDialogs: React.FC<CreateTrainingFlowDialogsProps> = ({
     setSaving(true);
     setLocalError(null);
     try {
-      if (trainings.length === 1) {
-        await apiService.createTraining(trainings[0]);
-      } else {
-        const chunkSize = 50;
-        let createdCount = 0;
-        let failedCount = 0;
-        for (let i = 0; i < trainings.length; i += chunkSize) {
-          const chunk = trainings.slice(i, i + chunkSize);
-          const result = await apiService.createTrainingsBatch(chunk);
-          createdCount += result.createdCount || 0;
-          failedCount += result.failedCount || 0;
+      const { createdCount, failedCount } = await createTrainingsInChunks(trainings);
+      if (createdCount === 0) {
+        setLocalError('Не удалось создать серию тренировок');
+        return false;
+      }
+
+      try {
+        if (form.groupId && form.startTime && form.endTime && daysOfWeek.length > 0) {
+          const startHm = `${String(form.startTime.getHours()).padStart(2, '0')}:${String(form.startTime.getMinutes()).padStart(2, '0')}`;
+          const endHm = `${String(form.endTime.getHours()).padStart(2, '0')}:${String(form.endTime.getMinutes()).padStart(2, '0')}`;
+          await apiService.updateGroup(form.groupId, {
+            schedule: daysOfWeek.map((dayOfWeek) => ({
+              dayOfWeek,
+              startTime: startHm,
+              endTime: endHm,
+            })),
+          });
         }
-        if (failedCount > 0 && createdCount === 0) {
-          setLocalError('Не удалось создать серию тренировок');
-          return false;
-        }
+      } catch {
+        /* график группы — вспомогательный */
+      }
+
+      if (failedCount > 0) {
+        setLocalError(
+          `Создано ${createdCount} из ${trainings.length} тренировок. Часть дат не сохранилась — повторите создание или сократите период.`
+        );
+        onSuccess?.();
+        return false;
       }
       onSuccess?.();
       closeFlow();

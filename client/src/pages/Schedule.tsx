@@ -82,6 +82,11 @@ import { Training, Group, Branch, Trainer, Client, Attendance, Competition, Hall
 import { useAuth } from '../contexts/AuthContext';
 import { colors, radii, typography } from '../theme/tokens';
 import CreateStaffTaskDialog from '../components/staff/CreateStaffTaskDialog';
+import {
+  createTrainingsInChunks,
+  expandRecurringByWeekdays,
+  fetchTrainingSeries,
+} from '../utils/recurringTrainings';
 
 const CompetitionsPanel = lazy(() => import('../components/competitions/CompetitionsPanel'));
 const CreateTrainingFlowDialogs = lazy(
@@ -275,6 +280,7 @@ const Schedule: React.FC = () => {
   const [formData, setFormData] = useState<TrainingFormData>(createEmptyTrainingForm);
   const [editFormBaseline, setEditFormBaseline] = useState<TrainingFormData>(createEmptyTrainingForm);
   const catalogLoadedRef = useRef(false);
+  const recurringRepairDoneRef = useRef(false);
   const rangeParamsRef = useRef({
     selectedDate,
     viewMode,
@@ -447,6 +453,27 @@ const Schedule: React.FC = () => {
 
   usePullToRefresh(() => fetchData());
 
+  // Один раз на сессию: дозаполнить пропущенные пн/ср у регулярных серий (если есть следы дней / график группы)
+  useEffect(() => {
+    if (recurringRepairDoneRef.current) return;
+    if (user?.role !== 'OWNER' && user?.role !== 'ADMIN') return;
+    recurringRepairDoneRef.current = true;
+    void (async () => {
+      try {
+        const result = await apiService.repairRecurringTrainings();
+        if (result?.createdCount > 0) {
+          await loadRange();
+          setSnackbarMessage(`Восстановлено пропущенных тренировок: ${result.createdCount}`);
+          setSnackbarSeverity('success');
+          setSnackbarOpen(true);
+        }
+      } catch (err) {
+        console.warn('Repair recurring trainings skipped:', err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role]);
+
   useEffect(() => {
     let isMounted = true;
     const abortController = new AbortController();
@@ -502,43 +529,38 @@ const Schedule: React.FC = () => {
     
     if (training.isRecurring) {
       try {
-        const allTrainings = await apiService.getTrainings({ limit: 1000, page: 1 });
-        const seriesTrainings = allTrainings.data.filter((t: Training) => 
-          t.title === training.title &&
-          t.groupId === training.groupId &&
-          t.trainerId === training.trainerId &&
-          t.branchId === training.branchId &&
-          t.isRecurring &&
-          !t.isCancelled
-        );
-        
+        const seriesTrainings = await fetchTrainingSeries({
+          title: training.title,
+          groupId: training.groupId,
+          trainerId: training.trainerId,
+          branchId: training.branchId,
+        });
+
         if (seriesTrainings.length > 0) {
           // Находим минимальную и максимальную даты
-          const dates = seriesTrainings.map(t => new Date(t.startTime));
+          const dates = seriesTrainings.map((t) => new Date(t.startTime));
           dates.sort((a, b) => a.getTime() - b.getTime());
           recurrenceStartDate = dates[0];
           recurrenceEndDate = dates[dates.length - 1];
-          
+
           // Определяем дни недели и время для каждого дня
           const dayMap = new Map<number, { startTime: Date; endTime: Date }>();
-          seriesTrainings.forEach(t => {
-            const date = new Date(t.startTime);
-            const dayOfWeek = date.getDay();
-            const start = new Date(t.startTime);
-            const end = new Date(t.endTime);
-            
+          seriesTrainings.forEach((t) => {
+            const dayOfWeek = new Date(t.startTime).getDay();
             if (!dayMap.has(dayOfWeek)) {
-              dayMap.set(dayOfWeek, { startTime: start, endTime: end });
+              dayMap.set(dayOfWeek, {
+                startTime: new Date(t.startTime),
+                endTime: new Date(t.endTime),
+              });
             }
           });
-          
-          // Создаем daySchedules
+
           daySchedules = Array.from(dayMap.entries()).map(([dayOfWeek, times]) => ({
             dayOfWeek,
             startTime: times.startTime,
-            endTime: times.endTime
+            endTime: times.endTime,
           }));
-          
+
           recurrenceMode = 'days';
         }
       } catch (error) {
@@ -642,31 +664,24 @@ const Schedule: React.FC = () => {
       if (formData.isRecurring) {
         // Если редактируем регулярную тренировку - удаляем всю серию и создаем заново
         if (editingTraining.isRecurring) {
-          // Находим все тренировки из серии
-          const allTrainings = await apiService.getTrainings({ limit: 1000, page: 1 });
-          const seriesTrainings = allTrainings.data.filter((t: Training) => 
-            t.title === editingTraining.title &&
-            t.groupId === editingTraining.groupId &&
-            t.trainerId === editingTraining.trainerId &&
-            t.branchId === editingTraining.branchId &&
-            t.isRecurring &&
-            !t.isCancelled
-          );
-          
-          // Используем batch удаление для быстрого удаления всех тренировок серии
+          const seriesTrainings = await fetchTrainingSeries({
+            title: editingTraining.title,
+            groupId: editingTraining.groupId,
+            trainerId: editingTraining.trainerId,
+            branchId: editingTraining.branchId,
+          });
+
           if (seriesTrainings.length > 0) {
-            const trainingIds = seriesTrainings.map(t => t.id);
+            const trainingIds = seriesTrainings.map((t) => t.id);
             try {
               await apiService.deleteTrainingsBatch(trainingIds);
             } catch (err: any) {
               console.error('Error deleting trainings batch:', err);
-              // Если batch не удался, пробуем удалять по одной
-          for (const t of seriesTrainings) {
+              for (const t of seriesTrainings) {
                 try {
-            await apiService.deleteTraining(t.id);
+                  await apiService.deleteTraining(t.id);
                 } catch (deleteErr: any) {
                   console.error('Error deleting training:', deleteErr);
-                  // Продолжаем удаление остальных
                 }
               }
             }
@@ -675,126 +690,73 @@ const Schedule: React.FC = () => {
           // Если нерегулярная тренировка становится регулярной - удаляем старую
           await apiService.deleteTraining(editingTraining.id);
         }
-        
-        // Создаем новые регулярные тренировки
+
         const trainingData = {
           title: formData.title,
           description: formData.description,
           groupId: formData.groupId,
-          trainerId: formData.trainerId, // Всегда отправляем оригинального тренера (контроллер сам определит, кто будет проводить)
+          trainerId: formData.trainerId,
           branchId: formData.branchId,
           hallId: formData.hallId || undefined,
           isRecurring: true,
           recurrence: formData.recurrence,
-          daysOfWeek: formData.daysOfWeek,
+          daysOfWeek: formData.daySchedules.map((ds) => ds.dayOfWeek),
           substituteTrainerId: formData.substituteTrainerId || undefined,
-          originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined
+          originalTrainerId: formData.substituteTrainerId ? formData.trainerId : undefined,
         };
 
-        const trainings = [];
-        
-        if (formData.recurrenceMode === 'days') {
-          const startDate = new Date(formData.recurrenceStartDate!);
-          startDate.setHours(0, 0, 0, 0); // Сбрасываем время до начала дня
-          
-          const endDate = new Date(formData.recurrenceEndDate!);
-          endDate.setHours(23, 59, 59, 999); // Устанавливаем время до конца дня
-          
-          const currentDate = new Date(startDate);
-          currentDate.setHours(0, 0, 0, 0);
-          
-          while (currentDate <= endDate) {
-            const dayOfWeek = currentDate.getDay();
-            const daySchedule = formData.daySchedules.find(ds => ds.dayOfWeek === dayOfWeek);
-            if (daySchedule && daySchedule.startTime && daySchedule.endTime) {
-              const trainingDate = new Date(currentDate);
-              trainingDate.setHours(0, 0, 0, 0); // Сбрасываем время для даты тренировки
-              
-              const recurringStartTime = new Date(trainingDate);
-              recurringStartTime.setHours(daySchedule.startTime.getHours(), daySchedule.startTime.getMinutes(), 0, 0);
-              
-              const recurringEndTime = new Date(trainingDate);
-              recurringEndTime.setHours(daySchedule.endTime.getHours(), daySchedule.endTime.getMinutes(), 0, 0);
+        const trainings: any[] = [];
 
-              trainings.push({
-                ...trainingData,
-                startTime: recurringStartTime.toISOString(),
-                endTime: recurringEndTime.toISOString()
-              });
-            }
-            currentDate.setDate(currentDate.getDate() + 1);
+        if (formData.recurrenceMode === 'days') {
+          const expanded = expandRecurringByWeekdays({
+            startDate: formData.recurrenceStartDate!,
+            endDate: formData.recurrenceEndDate!,
+            daySchedules: formData.daySchedules,
+          });
+          for (const row of expanded) {
+            trainings.push({
+              ...trainingData,
+              startTime: row.startTime,
+              endTime: row.endTime,
+            });
           }
         } else if (formData.recurrenceMode === 'dates') {
           for (const dateSchedule of formData.dateSchedules) {
             if (dateSchedule.date && dateSchedule.startTime && dateSchedule.endTime) {
               const trainingDate = new Date(dateSchedule.date);
-              
               const recurringStartTime = new Date(trainingDate);
-              recurringStartTime.setHours(dateSchedule.startTime.getHours(), dateSchedule.startTime.getMinutes());
-              
+              recurringStartTime.setHours(
+                dateSchedule.startTime.getHours(),
+                dateSchedule.startTime.getMinutes(),
+                0,
+                0
+              );
               const recurringEndTime = new Date(trainingDate);
-              recurringEndTime.setHours(dateSchedule.endTime.getHours(), dateSchedule.endTime.getMinutes());
-
+              recurringEndTime.setHours(
+                dateSchedule.endTime.getHours(),
+                dateSchedule.endTime.getMinutes(),
+                0,
+                0
+              );
               trainings.push({
                 ...trainingData,
                 startTime: recurringStartTime.toISOString(),
-                endTime: recurringEndTime.toISOString()
+                endTime: recurringEndTime.toISOString(),
               });
             }
           }
         }
 
-        // Create all recurring trainings with error handling and rate limiting
-        const createdTrainings = [];
-        const failedTrainings = [];
-        for (let i = 0; i < trainings.length; i++) {
-          const training = trainings[i];
-          try {
-          await apiService.createTraining(training);
-            createdTrainings.push(training);
-            // Увеличиваем задержку между запросами (300ms), чтобы избежать 429 ошибки
-            if (i < trainings.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 300));
-            }
-          } catch (err: any) {
-            console.error('Error creating training:', err);
-            // Если ошибка 429, ждем дольше и повторяем
-            if (err.response?.status === 429) {
-              console.warn('Rate limit hit, waiting before retry...');
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              try {
-                await apiService.createTraining(training);
-                createdTrainings.push(training);
-                // После успешного повтора добавляем дополнительную задержку
-                if (i < trainings.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              } catch (retryErr: any) {
-                console.error('Error creating training after retry:', retryErr);
-                failedTrainings.push({
-                  training,
-                  error: retryErr.response?.data?.error || retryErr.message || 'Неизвестная ошибка (после повтора)'
-                });
-                // Если повторная попытка тоже не удалась, ждем перед следующим запросом
-                if (i < trainings.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              }
-            } else {
-              failedTrainings.push({
-                training,
-                error: err.response?.data?.error || err.message || 'Неизвестная ошибка'
-              });
-            }
-          }
+        if (trainings.length === 0) {
+          throw new Error('В выбранном периоде нет подходящих дней для тренировок');
         }
-        
-        // Если были ошибки при создании, показываем предупреждение
-        if (failedTrainings.length > 0) {
-          const errorMessages = failedTrainings.map(ft => ft.error).join('; ');
-          alert(`Создано тренировок: ${createdTrainings.length}. Ошибок: ${failedTrainings.length}. ${errorMessages}`);
-          // Если не удалось создать ни одной тренировки, не обновляем список
-          if (createdTrainings.length === 0) {
+
+        const { createdCount, failedCount, failed } = await createTrainingsInChunks(trainings);
+
+        if (failedCount > 0) {
+          const errorMessages = failed.map((ft) => ft.error).join('; ');
+          alert(`Создано тренировок: ${createdCount}. Ошибок: ${failedCount}. ${errorMessages}`);
+          if (createdCount === 0) {
             throw new Error('Не удалось создать ни одной тренировки');
           }
         }
@@ -828,21 +790,26 @@ const Schedule: React.FC = () => {
 
         // Если редактируем регулярную тренировку, которая становится нерегулярной
         if (editingTraining.isRecurring) {
-          // Находим и удаляем все тренировки из серии
-          const allTrainings = await apiService.getTrainings({ limit: 1000, page: 1 });
-          const seriesTrainings = allTrainings.data.filter((t: Training) => 
-            t.title === editingTraining.title &&
-            t.groupId === editingTraining.groupId &&
-            t.trainerId === editingTraining.trainerId &&
-            t.branchId === editingTraining.branchId &&
-            t.isRecurring &&
-            !t.isCancelled
-          );
-          
-          // Удаляем все тренировки из серии
-          for (const t of seriesTrainings) {
-            if (t.id !== editingTraining.id) {
-              await apiService.deleteTraining(t.id);
+          const seriesTrainings = await fetchTrainingSeries({
+            title: editingTraining.title,
+            groupId: editingTraining.groupId,
+            trainerId: editingTraining.trainerId,
+            branchId: editingTraining.branchId,
+          });
+          const otherIds = seriesTrainings
+            .map((t) => t.id)
+            .filter((id) => id !== editingTraining.id);
+          if (otherIds.length > 0) {
+            try {
+              await apiService.deleteTrainingsBatch(otherIds);
+            } catch {
+              for (const id of otherIds) {
+                try {
+                  await apiService.deleteTraining(id);
+                } catch (deleteErr) {
+                  console.error('Error deleting training:', deleteErr);
+                }
+              }
             }
           }
         }
@@ -3127,30 +3094,44 @@ const Schedule: React.FC = () => {
                                       <Checkbox
                                         checked={isSelected}
                                         onChange={(e) => {
+                                          const dayValue = day.value;
                                           if (e.target.checked) {
-                                            // Add day schedule
-                                            const defaultTime = formData.startTime || new Date();
-                                            defaultTime.setHours(10, 0);
-                                            const defaultEndTime = formData.endTime || new Date();
-                                            defaultEndTime.setHours(11, 0);
-                                            
-                                            setFormData({
-                                              ...formData,
-                                              daySchedules: [
-                                                ...formData.daySchedules,
-                                                {
-                                                  dayOfWeek: day.value,
-                                                  startTime: new Date(defaultTime),
-                                                  endTime: new Date(defaultEndTime)
-                                                }
-                                              ]
+                                            // Functional update: иначе при быстрых кликах пн/ср/пт в state остаётся только последний день
+                                            setFormData((prev) => {
+                                              if (prev.daySchedules.some((ds) => ds.dayOfWeek === dayValue)) {
+                                                return prev;
+                                              }
+                                              const start = prev.startTime
+                                                ? new Date(prev.startTime)
+                                                : new Date();
+                                              if (!prev.startTime) start.setHours(10, 0, 0, 0);
+                                              const end = prev.endTime
+                                                ? new Date(prev.endTime)
+                                                : new Date();
+                                              if (!prev.endTime) end.setHours(11, 0, 0, 0);
+                                              return {
+                                                ...prev,
+                                                daySchedules: [
+                                                  ...prev.daySchedules,
+                                                  {
+                                                    dayOfWeek: dayValue,
+                                                    startTime: start,
+                                                    endTime: end,
+                                                  },
+                                                ],
+                                                daysOfWeek: prev.daysOfWeek.includes(dayValue)
+                                                  ? prev.daysOfWeek
+                                                  : [...prev.daysOfWeek, dayValue],
+                                              };
                                             });
                                           } else {
-                                            // Remove day schedule
-                                            setFormData({
-                                              ...formData,
-                                              daySchedules: formData.daySchedules.filter(ds => ds.dayOfWeek !== day.value)
-                                            });
+                                            setFormData((prev) => ({
+                                              ...prev,
+                                              daySchedules: prev.daySchedules.filter(
+                                                (ds) => ds.dayOfWeek !== dayValue
+                                              ),
+                                              daysOfWeek: prev.daysOfWeek.filter((d) => d !== dayValue),
+                                            }));
                                           }
                                         }}
                                       />
@@ -3161,18 +3142,29 @@ const Schedule: React.FC = () => {
                                             label="Начало"
                                             value={daySchedule.startTime}
                                             onChange={(newValue) => {
-                                              const endTime = endFromStartPreservingDuration(
-                                                newValue,
-                                                daySchedule.startTime,
-                                                daySchedule.endTime
-                                              );
-                                              setFormData({
-                                                ...formData,
-                                                daySchedules: formData.daySchedules.map(ds =>
-                                                  ds.dayOfWeek === day.value
-                                                    ? { ...ds, startTime: newValue, endTime: endTime || ds.endTime }
-                                                    : ds
-                                                )
+                                              const dayValue = day.value;
+                                              setFormData((prev) => {
+                                                const current = prev.daySchedules.find(
+                                                  (ds) => ds.dayOfWeek === dayValue
+                                                );
+                                                if (!current) return prev;
+                                                const endTime = endFromStartPreservingDuration(
+                                                  newValue,
+                                                  current.startTime,
+                                                  current.endTime
+                                                );
+                                                return {
+                                                  ...prev,
+                                                  daySchedules: prev.daySchedules.map((ds) =>
+                                                    ds.dayOfWeek === dayValue
+                                                      ? {
+                                                          ...ds,
+                                                          startTime: newValue,
+                                                          endTime: endTime || ds.endTime,
+                                                        }
+                                                      : ds
+                                                  ),
+                                                };
                                               });
                                             }}
                                             slotProps={{
@@ -3186,14 +3178,15 @@ const Schedule: React.FC = () => {
                                             label="Окончание"
                                             value={daySchedule.endTime}
                                             onChange={(newValue) => {
-                                              setFormData({
-                                                ...formData,
-                                                daySchedules: formData.daySchedules.map(ds =>
-                                                  ds.dayOfWeek === day.value
+                                              const dayValue = day.value;
+                                              setFormData((prev) => ({
+                                                ...prev,
+                                                daySchedules: prev.daySchedules.map((ds) =>
+                                                  ds.dayOfWeek === dayValue
                                                     ? { ...ds, endTime: newValue }
                                                     : ds
-                                                )
-                                              });
+                                                ),
+                                              }));
                                             }}
                                             slotProps={{
                                               textField: {
@@ -3375,15 +3368,14 @@ const Schedule: React.FC = () => {
                     
                     if (selectedTraining.isRecurring) {
                       try {
-                        // Используем уже загруженные тренировки из состояния
-                        seriesTrainings = trainings.filter((t: Training) => 
-                          t.title === selectedTraining.title &&
-                          (t.groupId === selectedTraining.groupId || (!t.groupId && !selectedTraining.groupId)) &&
-                          t.trainerId === selectedTraining.trainerId &&
-                          t.branchId === selectedTraining.branchId &&
-                          t.isRecurring &&
-                          !t.isCancelled &&
-                          t.id !== selectedTraining.id
+                        const series = await fetchTrainingSeries({
+                          title: selectedTraining.title,
+                          groupId: selectedTraining.groupId,
+                          trainerId: selectedTraining.trainerId,
+                          branchId: selectedTraining.branchId,
+                        });
+                        seriesTrainings = series.filter(
+                          (t: Training) => t.id !== selectedTraining.id
                         );
                         
                         if (seriesTrainings.length > 0) {

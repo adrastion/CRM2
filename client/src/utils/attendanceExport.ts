@@ -2,13 +2,17 @@ import { apiService } from '../services/api';
 
 export type AttendanceExportScope = 'trainer' | 'client' | 'group';
 
-/** Период по умолчанию — текущий календарный месяц (YYYY-MM-DD). */
+/** Период по умолчанию — текущий календарный месяц (YYYY-MM-DD, локальная дата). */
 export function currentMonthDateRange(): { from: string; to: string } {
   const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { from: iso(from), to: iso(to) };
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return {
+    from: `${y}-${pad(m + 1)}-01`,
+    to: `${y}-${pad(m + 1)}-${pad(lastDay)}`,
+  };
 }
 
 function formatDateRuFromIso(isoDate: string): string {
